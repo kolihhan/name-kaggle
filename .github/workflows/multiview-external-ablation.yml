@@ -26,3 +26,48 @@ jobs:
         run: pip install pytest numpy pandas scipy scikit-learn pyarrow
       - name: Run Phase 6 contract tests
         run: python -m pytest -q tests/test_multiview_external_ablation.py
+
+  full:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[phase6-run]')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: pip install numpy pandas scipy scikit-learn pyarrow
+      - name: Run Phase 6 multiview external ablation
+        run: python -m scripts.run_multiview_external_ablation
+      - name: Verify result contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('artifacts/phase6/multiview_external_ablation.json').read_text())
+          assert report['validation']['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
+          assert abs(report['validation']['phase5_reference'] - 0.36003977131493914) < 1e-10
+          assert report['data']['official_rows'] == 2699
+          assert report['data']['external_rows'] == 2503
+          assert report['data']['external_prompts'] == 430
+          assert len(report['data']['external_labels']) == 8
+          assert report['data']['balanced_external_rows'] == 1120
+          assert report['data']['prompt_id_overlap_with_official'] == 0
+          conditions = {x['name']: x for x in report['conditions']}
+          assert conditions['official_only_phase5_reference']['balanced_accuracy'] == report['validation']['phase5_reference']
+          assert len(conditions['official_plus_all_external']['folds']) == 5
+          assert len(conditions['official_plus_balanced_external']['folds']) == 5
+          print('reference:', report['validation']['phase5_reference'])
+          print('all external:', conditions['official_plus_all_external']['balanced_accuracy'])
+          print('balanced external:', conditions['official_plus_balanced_external']['balanced_accuracy'])
+          print('decision:', report['decision'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase6-multiview-external-ablation
+          path: |
+            artifacts/phase6/multiview_external_ablation.json
+            artifacts/phase6/multiview_all_external_oof.csv
+            artifacts/phase6/multiview_balanced_external_oof.csv
