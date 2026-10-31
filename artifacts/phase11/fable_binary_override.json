@@ -1,0 +1,119 @@
+{
+  "phase": 11,
+  "experiment": "global_fable_binary_override",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "official_rows": 2699,
+    "official_prompts": 150,
+    "fable_external_rows": 344,
+    "fable_external_source": "TheFusionCube/Fable-5-CoT-Traces",
+    "fable_external_revision": "3624e3a8aab36a89dc3b89aebef0e034a64ea04e"
+  },
+  "configuration": {
+    "baseline": "reproduce canonical Phase 7 in same run",
+    "detector": {
+      "task": "claude-fable-5 vs __other__",
+      "official_training_rows": "all 18 labels from four training folds",
+      "external_positive_rows": 344,
+      "features": "exact Phase 5b strong-sparse feature construction",
+      "classifier": "LinearSVC(C=1.5,class_weight=balanced,dual=True,max_iter=15000)",
+      "prediction_rule": "native classifier predict; no tuned threshold"
+    },
+    "override": "if detector predicts claude-fable-5, output claude-fable-5; otherwise preserve Phase 7 prediction",
+    "new_tuned_parameters": 0
+  },
+  "phase7_reference": {
+    "balanced_accuracy": 0.3700521998508576,
+    "fable_recall": 0.14093959731543623
+  },
+  "detector": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.5019831556783788,
+    "folds": [0.5, 0.49901960784313726, 0.5, 0.511764705882353, 0.49901960784313726],
+    "per_binary_label_recall": {
+      "claude-fable-5": 0.006711409395973154,
+      "__other__": 0.9972549019607844
+    },
+    "predicted_fable_rows": 8
+  },
+  "phase11_final": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.3696843151876709,
+    "folds": [0.38333333333333336, 0.33888888888888885, 0.37222222222222223, 0.3851851851851852, 0.36883780332056193],
+    "per_model_recall": {
+      "claude-fable-5": 0.1476510067114094,
+      "claude-opus-4-6": 0.5066666666666667,
+      "claude-opus-4-8": 0.20666666666666667,
+      "claude-opus-5": 0.6133333333333333,
+      "claude-sonnet-5": 0.38,
+      "gemini-3.1-pro-preview": 0.6466666666666666,
+      "gemini-3.6-flash": 0.41333333333333333,
+      "gemini-3.7-flash": 0.3933333333333333,
+      "gemini-3.8-flash": 0.48,
+      "glm-5.3": 0.18,
+      "glm-5.3-flash": 0.2,
+      "gpt-5.5": 0.38,
+      "gpt-5.6-luna": 0.35333333333333333,
+      "gpt-5.6-sol": 0.18666666666666668,
+      "gpt-5.6-terra": 0.28,
+      "gpt-6-astra": 0.5733333333333334,
+      "kimi-k3": 0.24,
+      "qwen3.8-max": 0.47333333333333333
+    }
+  },
+  "override_stats": {
+    "changed_rows": 5,
+    "changed_true_fable_rows": 1,
+    "changed_non_fable_rows": 4,
+    "phase7_predicted_fable_rows": 83,
+    "final_predicted_fable_rows": 88
+  },
+  "deltas_vs_phase7": {
+    "balanced_accuracy": -0.00036788466318665725,
+    "fable_recall": 0.006711409395973172,
+    "per_model_recall": {
+      "claude-fable-5": 0.006711409395973172,
+      "claude-opus-4-6": -0.006666666666666599,
+      "claude-opus-4-8": 0.0,
+      "claude-opus-5": 0.0,
+      "claude-sonnet-5": 0.0,
+      "gemini-3.1-pro-preview": 0.0,
+      "gemini-3.6-flash": 0.0,
+      "gemini-3.7-flash": 0.0,
+      "gemini-3.8-flash": 0.0,
+      "glm-5.3": 0.0,
+      "glm-5.3-flash": 0.0,
+      "gpt-5.5": 0.0,
+      "gpt-5.6-luna": -0.006666666666666654,
+      "gpt-5.6-sol": 0.0,
+      "gpt-5.6-terra": 0.0,
+      "gpt-6-astra": 0.0,
+      "kimi-k3": 0.0,
+      "qwen3.8-max": 0.0
+    }
+  },
+  "invariants": {
+    "no_phase7_fable_prediction_removed": true,
+    "every_changed_prediction_changes_to_fable": true
+  },
+  "feature_meta": [
+    {"widths":{"char":180000,"word":70715,"boundary":100000,"punct":82815,"style":155},"total_features":433685,"style_features":155,"style_weight":0.2,"fold":0,"official_training_rows":2159,"official_fable_training_rows":119,"official_other_training_rows":2040,"external_fable_training_rows":344,"validation_rows":540,"detector_positive_predictions":0},
+    {"widths":{"char":180000,"word":70537,"boundary":100000,"punct":82548,"style":155},"total_features":433240,"style_features":155,"style_weight":0.2,"fold":1,"official_training_rows":2159,"official_fable_training_rows":119,"official_other_training_rows":2040,"external_fable_training_rows":344,"validation_rows":540,"detector_positive_predictions":1},
+    {"widths":{"char":180000,"word":70596,"boundary":100000,"punct":82720,"style":155},"total_features":433471,"style_features":155,"style_weight":0.2,"fold":2,"official_training_rows":2159,"official_fable_training_rows":119,"official_other_training_rows":2040,"external_fable_training_rows":344,"validation_rows":540,"detector_positive_predictions":0},
+    {"widths":{"char":180000,"word":70815,"boundary":100000,"punct":82762,"style":155},"total_features":433732,"style_features":155,"style_weight":0.2,"fold":3,"official_training_rows":2159,"official_fable_training_rows":119,"official_other_training_rows":2040,"external_fable_training_rows":344,"validation_rows":540,"detector_positive_predictions":6},
+    {"widths":{"char":180000,"word":70639,"boundary":100000,"punct":82739,"style":155},"total_features":433533,"style_features":155,"style_weight":0.2,"fold":4,"official_training_rows":2160,"official_fable_training_rows":120,"official_other_training_rows":2040,"external_fable_training_rows":344,"validation_rows":539,"detector_positive_predictions":1}
+  ],
+  "decision": {
+    "material_ba_gain": false,
+    "improves_fable_recall": true,
+    "no_fable_removed": true,
+    "only_changes_to_fable": true,
+    "promote_phase11": false
+  }
+}
