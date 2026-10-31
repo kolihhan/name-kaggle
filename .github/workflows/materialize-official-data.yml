@@ -1,0 +1,53 @@
+name: Materialize official competition data
+
+on:
+  push:
+    paths:
+      - .github/workflows/materialize-official-data.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download byte-identical train and test files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          base='https://raw.githubusercontent.com/RohanExploit/kaggle-name-that-llm-top20/main/data'
+          curl -fL "$base/train.csv" -o data/train.csv
+          curl -fL "$base/test.csv" -o data/test.csv
+
+      - name: Restore official sample submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' 'UEFSMRUEFWAVbEwVBhUAAAAotS/9IDBtAQBEAgwAAAAwMDM1M2ZiMWM1NDE1ZjVhOWE2MTM5NjJhNTNkNTQ4NwIAYCAzzCUVABUUFSYsFQYVEBUGFQYcNgAoDDAwNjJhNTNkNTQ4NxgMMDAzNTNmYjFjNTQxAAAAKLUv/SAKUQAAAgAAAAYBAgMkABUMGTUABhAZGAJpZBUMFgYW8AEWjgImjgEmCBw2ACgMMDA2MmE1M2Q1NDg3GAwwMDM1M2ZiMWM1NDEAEAAVBBUWFShMFQIVAAAAKLUv/SAIWQAAAwAAAGdwdC01LjUVA_BUFSIsFQYVEBUGFQYcNgAoB2dwdC01LjUYB2dwdC01LjUAAAAotS/9IAhBAAACAAAABgEAAxUMGTUABhAZGAVtb2RlbBUMFgYWjgEWsAEmsAMmjgMcNgAoB2dwdC01LjUYB2dwdC01LjUAABkRAhkYDDAwMzUzZmIxYzU0MRkYDDAwNjJhNTNkNTQ4NxUAGRIAABkRAhkYB2dwdC01LjUZGAdncHQtNS41FQAZFgAAGRwWjgEViAEWAAAAGRwW0AMVcBYAAAAVAhk8SAVyb290FQQAFQwlAhgCaWQAFEwcAAAAFQwlAhgFbW9kZWwlAEwcAAAAFgYZHBksJpwDHBUMGTUABhAZGAJpZBUMFhbwARaOAiaOASYIHDYAKAwwMDYyYTUzZDU0ODcYDDAwMzUzZmIxYzU0MQAAFqQGFRgWnAUVTgAmggUcFQwZNQAGEBkYBW1vZGVsFQwWBhaOARawASawAyaOAxw2ACgHZ3B0LTUuNRgHZ3B0LTUuNQAAFrwGFRYW6gUVOgAW7gIWBiYIFqgDFAAAGRwYDEFSUk9XOnNjaGVtYRjEAS8vLy8vNWNBQUFBRUFBQUE4di8vL3hRQUFBQUVBQUVBQUFBS0FBc0FDQUFLQUFRQStQLy8vd3dBQUFBSUFBZ0FBQUFFQUFJQUFBQXdBQUFBQkFBQUFNVC8vLzhZQUFBQUVBQUFBQWdBQUFBQkZBQUFBQUFBQU1ULy8vOEZBQUFBYlc5a1pXd0FBQURzLy8vL0xBQUFBQ0FBQUFBWUFBQUFBUlFBQUJBQUVnQUVBQkFBRVFBSUFBQUFEQUFBQUFBQS9QLy8vd1FBQkFBQ0FBQUFhV1FBABgGUG9sYXJzGSwcAAAcAAAAygEAAFBBUjE=' | base64 --decode > data/sample_submission.parquet
+
+      - name: Verify against uploaded official package
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707  data/train.csv' | sha256sum -c -
+          echo '4545aa3a3459f4c0724f97ad5bd06c4caa3506bdfea5fab905e8203184fc0c57  data/test.csv' | sha256sum -c -
+          echo 'ccf86796b80fd7f83d8463664603fd1208e17559abcf416f198776b819646188  data/sample_submission.parquet' | sha256sum -c -
+
+      - name: Commit official data snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/train.csv data/test.csv data/sample_submission.parquet
+          if git diff --cached --quiet; then
+            echo 'Official data already materialized.'
+            exit 0
+          fi
+          git commit -m 'Materialize verified official competition data'
+          git push
