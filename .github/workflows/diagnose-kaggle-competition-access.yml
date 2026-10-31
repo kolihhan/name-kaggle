@@ -1,0 +1,27 @@
+name: Diagnose Kaggle competition access
+
+on:
+  push:
+    paths:
+      - .github/workflows/diagnose-kaggle-competition-access.yml
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: pip install kaggle==2.2.5
+      - name: Check competition access
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle competitions files -c name-that-llm --page-size 100
+          echo 'Competition API access: PASS'
