@@ -1,4 +1,4 @@
-name: Audit Tier-A external generations
+name: Audit accessible external generations
 
 on:
   push:
@@ -23,17 +23,17 @@ jobs:
       - name: Install audit dependencies
         run: pip install -r requirements.txt pyarrow
 
-      - name: Download public Tier-A Kaggle dataset
+      - name: Download byte-pinned GPT and Gemini generations
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL \
-            'https://www.kaggle.com/api/v1/datasets/download/maniceet/name-that-llm-openrouter-openai-generations' \
-            -o /tmp/tier_a.zip
-          mkdir -p /tmp/tier_a
-          unzip -q /tmp/tier_a.zip -d /tmp/tier_a
-          echo 'Downloaded files:'
-          find /tmp/tier_a -maxdepth 2 -type f -printf '%p\n' | sort
+          mkdir -p /tmp/external
+          url='https://raw.githubusercontent.com/RohanExploit/kaggle-name-that-llm-top20/main/data/extra_gpt_gemini/ntl_generations.csv'
+          curl -fL "$url" -o /tmp/external/ntl_generations.csv
+          actual_blob="$(git hash-object /tmp/external/ntl_generations.csv)"
+          expected_blob='8dccb6d8f8b8388b134a6aa8f8ea42e99df08c10'
+          echo "Git blob: $actual_blob"
+          test "$actual_blob" = "$expected_blob"
 
       - name: Audit raw rows against official train
         shell: bash
@@ -50,44 +50,20 @@ jobs:
           from sklearn.feature_extraction.text import TfidfVectorizer
           from sklearn.metrics.pairwise import cosine_similarity
 
-          root = Path('/tmp/tier_a')
-          target_labels = set(json.loads(Path('artifacts/phase1/audit.json').read_text())['model_counts'])
+          source_path = Path('/tmp/external/ntl_generations.csv')
+          ext = pd.read_csv(source_path)
           train = pd.read_csv('data/train.csv')
+          target_labels = set(json.loads(Path('artifacts/phase1/audit.json').read_text())['model_counts'])
 
-          def read_table(path: Path):
-              if path.suffix.lower() == '.csv':
-                  return pd.read_csv(path)
-              if path.suffix.lower() in {'.parquet', '.pq'}:
-                  return pd.read_parquet(path)
-              if path.suffix.lower() in {'.jsonl', '.ndjson'}:
-                  return pd.read_json(path, lines=True)
-              return None
+          required = {
+              'label', 'prompt_id', 'setting', 'target_words', 'text',
+              'model_seen', 'finish_reason', 'cost_usd', 'batch'
+          }
+          missing_cols = sorted(required - set(ext.columns))
+          if missing_cols:
+              raise RuntimeError(f'Missing expected columns: {missing_cols}')
 
-          candidates = []
-          inventory = []
-          for path in sorted(root.rglob('*')):
-              if not path.is_file():
-                  continue
-              inventory.append({
-                  'path': str(path.relative_to(root)),
-                  'bytes': path.stat().st_size,
-                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-              })
-              if path.suffix.lower() not in {'.csv', '.parquet', '.pq', '.jsonl', '.ndjson'}:
-                  continue
-              try:
-                  df = read_table(path)
-              except Exception as exc:
-                  print(f'SKIP {path}: {exc}')
-                  continue
-              if df is not None and {'text', 'model'}.issubset(df.columns):
-                  candidates.append((len(df), path, df))
-
-          if not candidates:
-              raise RuntimeError('No downloaded table contains both text and model columns')
-
-          _, source_path, ext = max(candidates, key=lambda x: x[0])
-          ext = ext.copy()
+          ext = ext.rename(columns={'label': 'model'}).copy()
           ext['text'] = ext['text'].astype(str)
           ext['model'] = ext['model'].astype(str)
 
@@ -97,16 +73,14 @@ jobs:
           ext_norm = ext['text'].map(norm)
           train_norm = train['text'].astype(str).map(norm)
           train_set = set(train_norm)
-
           label_counts = ext['model'].value_counts().sort_index()
           invalid_labels = sorted(set(label_counts.index) - target_labels)
           missing_competition_labels = sorted(target_labels - set(label_counts.index))
-
           word_counts = ext_norm.str.split().map(len)
           exact_overlap_mask = ext_norm.isin(train_set)
 
-          # Independent lexical near-overlap check. This is not the publisher's metric;
-          # it is a reproducible local screen for suspicious prompt/text reuse.
+          # Independent lexical screen against official passages. This is diagnostic;
+          # exact overlap and label identity are hard gates, similarity is reported.
           all_text = pd.concat([train_norm, ext_norm], ignore_index=True)
           vec = TfidfVectorizer(
               lowercase=True,
@@ -120,45 +94,45 @@ jobs:
           X_train = X[: len(train)]
           X_ext = X[len(train) :]
           max_sim = np.zeros(len(ext), dtype=np.float32)
-          batch = 256
-          for start in range(0, len(ext), batch):
-              sims = cosine_similarity(X_ext[start : start + batch], X_train, dense_output=True)
-              max_sim[start : start + len(sims)] = sims.max(axis=1)
+          for start in range(0, len(ext), 256):
+              sims = cosine_similarity(X_ext[start:start + 256], X_train, dense_output=True)
+              max_sim[start:start + len(sims)] = sims.max(axis=1)
 
-          provenance_fields = ['api_route', 'provider', 'served_model', 'generator', 'source_tag', 'prompt_source']
-          provenance = {}
-          for col in provenance_fields:
-              if col in ext.columns:
-                  nulls = int(ext[col].isna().sum())
-                  empty = int(ext[col].fillna('').astype(str).str.strip().eq('').sum())
-                  provenance[col] = {
-                      'present': True,
-                      'null_rows': nulls,
-                      'blank_or_null_rows': empty,
-                      'unique_nonblank': int(ext[col].dropna().astype(str).str.strip().replace('', np.nan).dropna().nunique()),
-                  }
-              else:
-                  provenance[col] = {'present': False}
+          prompt_counts = ext['prompt_id'].astype(str).value_counts()
+          seen = ext['model_seen'].fillna('').astype(str).str.strip()
+          finish = ext['finish_reason'].fillna('').astype(str).str.strip()
 
           audit = {
               'source': {
-                  'name': 'Name That LLM: OpenRouter + OpenAI Generations',
-                  'kaggle_slug': 'maniceet/name-that-llm-openrouter-openai-generations',
-                  'selected_file': str(source_path.relative_to(root)),
-                  'selected_file_sha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
-                  'download_inventory': inventory,
+                  'name': 'Extra GPT and Gemini generations (free Kaggle Benchmarks quota)',
+                  'upstream_repo': 'RohanExploit/kaggle-name-that-llm-top20',
+                  'upstream_path': 'data/extra_gpt_gemini/ntl_generations.csv',
+                  'git_blob_sha1': '8dccb6d8f8b8388b134a6aa8f8ea42e99df08c10',
+                  'sha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
+                  'license_reported': 'CC BY 4.0 (best-effort statement in upstream README)',
+                  'prompt_bank': 'seyitkaangunes/ntl-extra-api-passages — 1,000 new prompts, CC BY 4.0',
               },
               'shape': {
                   'rows': int(len(ext)),
                   'columns': list(map(str, ext.columns)),
                   'duplicate_full_rows': int(ext.duplicated().sum()),
                   'duplicate_normalized_texts': int(ext_norm.duplicated().sum()),
+                  'prompt_ids': int(ext['prompt_id'].nunique()),
+                  'prompt_min_rows': int(prompt_counts.min()),
+                  'prompt_max_rows': int(prompt_counts.max()),
               },
               'labels': {
                   'n_present': int(label_counts.size),
                   'counts': {str(k): int(v) for k, v in label_counts.items()},
                   'invalid_labels': invalid_labels,
                   'missing_competition_labels': missing_competition_labels,
+              },
+              'provenance': {
+                  'model_seen_blank_rows': int(seen.eq('').sum()),
+                  'model_seen_unique': int(seen.replace('', np.nan).dropna().nunique()),
+                  'settings': {str(k): int(v) for k, v in ext['setting'].fillna('<NA>').astype(str).value_counts().items()},
+                  'finish_reasons': {str(k): int(v) for k, v in finish.replace('', '<blank>').value_counts().items()},
+                  'batches': int(ext['batch'].nunique()),
               },
               'protocol': {
                   'word_count_min': int(word_counts.min()),
@@ -169,7 +143,6 @@ jobs:
                   'fraction_40_to_250_words': float(word_counts.between(40, 250).mean()),
                   'rows_with_newline': int(ext['text'].str.contains(r'\n', regex=True).sum()),
               },
-              'provenance': provenance,
               'official_train_overlap': {
                   'exact_normalized_text_matches': int(exact_overlap_mask.sum()),
                   'tfidf_word_1_2_max_similarity_max': float(max_sim.max()),
@@ -185,26 +158,29 @@ jobs:
               hard_failures.append(f'invalid competition labels: {invalid_labels}')
           if int(exact_overlap_mask.sum()) > 0:
               hard_failures.append('exact normalized text overlap with official train')
-          if len(ext) != 7753:
-              hard_failures.append(f'row count differs from public card: {len(ext)} != 7753')
+          if int(seen.eq('').sum()) > 0:
+              hard_failures.append('blank model_seen provenance rows')
           audit['gate'] = {
               'hard_failures': hard_failures,
               'passed_raw_identity_gate': not hard_failures,
-              'note': 'Near-similarity thresholds are diagnostics, not automatic failure criteria.'
+              'note': 'Missing competition labels are expected for this targeted source and are not a hard failure.'
           }
 
           out_dir = Path('artifacts/phase2')
           out_dir.mkdir(parents=True, exist_ok=True)
-          (out_dir / 'tier_a_raw_audit.json').write_text(json.dumps(audit, indent=2, ensure_ascii=False) + '\n')
+          (out_dir / 'gpt_gemini_raw_audit.json').write_text(json.dumps(audit, indent=2, ensure_ascii=False) + '\n')
 
           data_dir = Path('data/external')
           data_dir.mkdir(parents=True, exist_ok=True)
-          ext.to_parquet(data_dir / 'tier_a_openrouter_openai_generations.parquet', index=False)
+          ext.to_parquet(data_dir / 'gpt_gemini_generations.parquet', index=False)
 
           print(json.dumps({
               'rows': audit['shape']['rows'],
+              'prompts': audit['shape']['prompt_ids'],
               'labels': audit['labels']['n_present'],
+              'label_counts': audit['labels']['counts'],
               'invalid_labels': invalid_labels,
+              'model_seen_blank': audit['provenance']['model_seen_blank_rows'],
               'exact_overlap': audit['official_train_overlap']['exact_normalized_text_matches'],
               'near_gt_0_50': audit['official_train_overlap']['rows_similarity_gt_0_50'],
               'fraction_40_to_250': audit['protocol']['fraction_40_to_250_words'],
@@ -212,16 +188,16 @@ jobs:
           }, indent=2))
           PY
 
-      - name: Commit audited Tier-A snapshot and report
+      - name: Commit audited snapshot and report
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/phase2/tier_a_raw_audit.json data/external/tier_a_openrouter_openai_generations.parquet
+          git add artifacts/phase2/gpt_gemini_raw_audit.json data/external/gpt_gemini_generations.parquet
           if git diff --cached --quiet; then
-            echo 'No Tier-A audit changes.'
+            echo 'No external audit changes.'
             exit 0
           fi
-          git commit -m 'Materialize and audit Tier-A external generations'
+          git commit -m 'Materialize and audit GPT Gemini external generations'
           git push
