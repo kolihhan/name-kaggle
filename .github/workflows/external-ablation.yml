@@ -1,0 +1,205 @@
+name: Frozen-CV external data ablation
+
+on:
+  push:
+    paths:
+      - .github/workflows/external-ablation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ablation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyarrow
+
+      - name: Recreate frozen folds
+        run: python scripts/make_folds.py
+
+      - name: Run baseline reproduction and external-data ablation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import numpy as np
+          import pandas as pd
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          from sklearn.metrics import balanced_accuracy_score, recall_score
+          from sklearn.svm import LinearSVC
+
+          train = pd.read_csv('data/train.csv')
+          folds = pd.read_csv('artifacts/phase1/folds.csv')[['id', 'fold_id']]
+          train = train.merge(folds, on='id', how='left', validate='one_to_one')
+          ext = pd.read_parquet('data/external/gpt_gemini_generations.parquet')
+          labels = sorted(train['model'].unique())
+          target_baseline = json.loads(Path('artifacts/phase1/baseline_char_1_5.json').read_text())['oof_balanced_accuracy']
+
+          # Reproduce the Phase-1 baseline from a tiny set of plausible TF-IDF defaults.
+          # This is a reproduction check, not model selection: we choose the configuration
+          # that matches the already-frozen historical score, then keep it fixed below.
+          configs = [
+              {'name': 'char_default', 'analyzer': 'char', 'sublinear_tf': False, 'min_df': 1},
+              {'name': 'char_sublinear', 'analyzer': 'char', 'sublinear_tf': True, 'min_df': 1},
+              {'name': 'char_min_df_2', 'analyzer': 'char', 'sublinear_tf': False, 'min_df': 2},
+              {'name': 'char_wb_default', 'analyzer': 'char_wb', 'sublinear_tf': False, 'min_df': 1},
+          ]
+
+          def run_cv(external: pd.DataFrame | None, cfg: dict):
+              pred = np.empty(len(train), dtype=object)
+              fold_scores = []
+              for fold in range(5):
+                  tr = train[train.fold_id != fold]
+                  va = train[train.fold_id == fold]
+                  if external is None:
+                      fit_text = tr['text'].astype(str).tolist()
+                      fit_y = tr['model'].astype(str).tolist()
+                  else:
+                      fit_text = pd.concat([tr['text'], external['text']], ignore_index=True).astype(str).tolist()
+                      fit_y = pd.concat([tr['model'], external['model']], ignore_index=True).astype(str).tolist()
+
+                  vec = TfidfVectorizer(
+                      analyzer=cfg['analyzer'],
+                      ngram_range=(1, 5),
+                      max_features=80000,
+                      min_df=cfg['min_df'],
+                      sublinear_tf=cfg['sublinear_tf'],
+                      dtype=np.float32,
+                  )
+                  Xtr = vec.fit_transform(fit_text)
+                  Xva = vec.transform(va['text'].astype(str))
+                  clf = LinearSVC(class_weight='balanced')
+                  clf.fit(Xtr, fit_y)
+                  p = clf.predict(Xva)
+                  pred[va.index.to_numpy()] = p
+                  fold_scores.append(float(balanced_accuracy_score(va['model'], p)))
+
+              ba = float(balanced_accuracy_score(train['model'], pred))
+              recalls = recall_score(train['model'], pred, labels=labels, average=None, zero_division=0)
+              return {
+                  'balanced_accuracy': ba,
+                  'folds': fold_scores,
+                  'per_model_recall': {label: float(r) for label, r in zip(labels, recalls)},
+              }
+
+          reproduction = []
+          for cfg in configs:
+              result = run_cv(None, cfg)
+              reproduction.append({
+                  'config': cfg,
+                  'balanced_accuracy': result['balanced_accuracy'],
+                  'abs_delta_from_phase1': abs(result['balanced_accuracy'] - target_baseline),
+                  'folds': result['folds'],
+              })
+              print('REPRO', cfg['name'], result['balanced_accuracy'])
+
+          best_repro = min(reproduction, key=lambda x: x['abs_delta_from_phase1'])
+          if best_repro['abs_delta_from_phase1'] > 0.002:
+              raise RuntimeError(
+                  f"Could not reproduce Phase-1 baseline closely: target={target_baseline:.8f}, "
+                  f"best={best_repro['balanced_accuracy']:.8f}, config={best_repro['config']}"
+              )
+          cfg = best_repro['config']
+          base = run_cv(None, cfg)
+
+          # All external rows.
+          all_ext = ext[['text', 'model']].copy()
+          aug_all = run_cv(all_ext, cfg)
+
+          # Conservative class-balanced external slice: at most 140 per represented label,
+          # matching the smallest available source class. Sampling is deterministic.
+          cap = int(ext['model'].value_counts().min())
+          balanced_ext = (
+              ext.groupby('model', group_keys=False)
+                 .apply(lambda x: x.sample(n=min(cap, len(x)), random_state=42))
+                 .reset_index(drop=True)[['text', 'model']]
+          )
+          aug_balanced = run_cv(balanced_ext, cfg)
+
+          augmented_labels = sorted(ext['model'].unique())
+          untouched_labels = sorted(set(labels) - set(augmented_labels))
+
+          def summarize(name, result, n_external):
+              per = result['per_model_recall']
+              return {
+                  'name': name,
+                  'external_rows': int(n_external),
+                  'balanced_accuracy': result['balanced_accuracy'],
+                  'delta_vs_baseline': result['balanced_accuracy'] - base['balanced_accuracy'],
+                  'folds': result['folds'],
+                  'mean_recall_augmented_labels': float(np.mean([per[x] for x in augmented_labels])),
+                  'mean_recall_untouched_labels': float(np.mean([per[x] for x in untouched_labels])),
+                  'per_model_recall': per,
+                  'per_model_delta_vs_baseline': {
+                      x: per[x] - base['per_model_recall'][x] for x in labels
+                  },
+              }
+
+          report = {
+              'validation': {
+                  'folds': 5,
+                  'group_key': 'prompt_id',
+                  'metric': 'balanced_accuracy',
+                  'phase1_target': target_baseline,
+                  'reproduction_candidates': reproduction,
+                  'selected_reproduction_config': cfg,
+                  'selected_reproduction_delta': best_repro['abs_delta_from_phase1'],
+              },
+              'external_source': {
+                  'file': 'data/external/gpt_gemini_generations.parquet',
+                  'rows': int(len(ext)),
+                  'prompts': int(ext['prompt_id'].nunique()),
+                  'represented_labels': augmented_labels,
+                  'balanced_cap_per_label': cap,
+              },
+              'experiments': [
+                  summarize('official_only', base, 0),
+                  summarize('official_plus_all_external', aug_all, len(all_ext)),
+                  summarize('official_plus_balanced_external', aug_balanced, len(balanced_ext)),
+              ],
+          }
+
+          best = max(report['experiments'], key=lambda x: x['balanced_accuracy'])
+          report['decision'] = {
+              'best_experiment': best['name'],
+              'best_balanced_accuracy': best['balanced_accuracy'],
+              'best_delta_vs_baseline': best['delta_vs_baseline'],
+              'promote_external_to_encoder_stage': best['name'] != 'official_only' and best['delta_vs_baseline'] > 0,
+          }
+
+          out = Path('artifacts/phase2/gpt_gemini_char_ablation.json')
+          out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n')
+          print(json.dumps({
+              'baseline': base['balanced_accuracy'],
+              'all_external': aug_all['balanced_accuracy'],
+              'balanced_external': aug_balanced['balanced_accuracy'],
+              'decision': report['decision'],
+          }, indent=2))
+          PY
+
+      - name: Commit ablation report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/phase2/folds.csv artifacts/phase2/gpt_gemini_char_ablation.json 2>/dev/null || true
+          git add artifacts/phase1/folds.csv artifacts/phase2/gpt_gemini_char_ablation.json
+          if git diff --cached --quiet; then
+            echo 'No ablation changes.'
+            exit 0
+          fi
+          git commit -m 'Run frozen-CV GPT Gemini external ablation'
+          git push
