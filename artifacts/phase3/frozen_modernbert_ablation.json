@@ -1,0 +1,125 @@
+{
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only"
+  },
+  "classifier": {
+    "type": "LinearSVC",
+    "class_weight": "balanced",
+    "C": 1.0
+  },
+  "experiments": [
+    {
+      "name": "official_only",
+      "oof_rows": 2699,
+      "balanced_accuracy": 0.3022445935868754,
+      "folds": [
+        0.2777777777777778,
+        0.29629629629629634,
+        0.30185185185185187,
+        0.3277777777777778,
+        0.3075351213282248
+      ],
+      "per_model_recall": {
+        "claude-fable-5": 0.06040268456375839,
+        "claude-opus-4-6": 0.29333333333333333,
+        "claude-opus-4-8": 0.1,
+        "claude-opus-5": 0.7266666666666667,
+        "claude-sonnet-5": 0.36,
+        "gemini-3.1-pro-preview": 0.76,
+        "gemini-3.6-flash": 0.22666666666666666,
+        "gemini-3.7-flash": 0.3933333333333333,
+        "gemini-3.8-flash": 0.28,
+        "glm-5.3": 0.07333333333333333,
+        "glm-5.3-flash": 0.15333333333333332,
+        "gpt-5.5": 0.26,
+        "gpt-5.6-luna": 0.36666666666666664,
+        "gpt-5.6-sol": 0.12,
+        "gpt-5.6-terra": 0.18,
+        "gpt-6-astra": 0.6133333333333333,
+        "kimi-k3": 0.29333333333333333,
+        "qwen3.8-max": 0.18
+      }
+    },
+    {
+      "name": "official_plus_external",
+      "oof_rows": 2699,
+      "balanced_accuracy": 0.29041014168530943,
+      "folds": [
+        0.28888888888888886,
+        0.27962962962962956,
+        0.28703703703703703,
+        0.29444444444444445,
+        0.30204342273307794
+      ],
+      "per_model_recall": {
+        "claude-fable-5": 0.10738255033557047,
+        "claude-opus-4-6": 0.30666666666666664,
+        "claude-opus-4-8": 0.15333333333333332,
+        "claude-opus-5": 0.7066666666666667,
+        "claude-sonnet-5": 0.3933333333333333,
+        "gemini-3.1-pro-preview": 0.64,
+        "gemini-3.6-flash": 0.12666666666666668,
+        "gemini-3.7-flash": 0.62,
+        "gemini-3.8-flash": 0.15333333333333332,
+        "glm-5.3": 0.1,
+        "glm-5.3-flash": 0.19333333333333333,
+        "gpt-5.5": 0.22666666666666666,
+        "gpt-5.6-luna": 0.22,
+        "gpt-5.6-sol": 0.02666666666666667,
+        "gpt-5.6-terra": 0.08,
+        "gpt-6-astra": 0.4266666666666667,
+        "kimi-k3": 0.42,
+        "qwen3.8-max": 0.32666666666666666
+      },
+      "delta_vs_official_only": -0.011834451901565957,
+      "per_model_delta_vs_official_only": {
+        "claude-fable-5": 0.046979865771812075,
+        "claude-opus-4-6": 0.013333333333333308,
+        "claude-opus-4-8": 0.053333333333333316,
+        "claude-opus-5": -0.020000000000000018,
+        "claude-sonnet-5": 0.033333333333333326,
+        "gemini-3.1-pro-preview": -0.12,
+        "gemini-3.6-flash": -0.09999999999999998,
+        "gemini-3.7-flash": 0.22666666666666668,
+        "gemini-3.8-flash": -0.1266666666666667,
+        "glm-5.3": 0.026666666666666672,
+        "glm-5.3-flash": 0.04000000000000001,
+        "gpt-5.5": -0.033333333333333354,
+        "gpt-5.6-luna": -0.14666666666666664,
+        "gpt-5.6-sol": -0.09333333333333332,
+        "gpt-5.6-terra": -0.09999999999999999,
+        "gpt-6-astra": -0.1866666666666666,
+        "kimi-k3": 0.12666666666666665,
+        "qwen3.8-max": 0.14666666666666667
+      }
+    }
+  ],
+  "decision": {
+    "external_improves_frozen_encoder_oof": false,
+    "delta": -0.011834451901565957
+  },
+  "encoder": {
+    "model": "answerdotai/ModernBERT-base",
+    "pooling": "attention_masked_mean_last_hidden_state_then_l2_normalize",
+    "frozen": true,
+    "max_length": 256,
+    "batch_size": 16
+  },
+  "data": {
+    "official_rows": 2699,
+    "external_rows": 2503,
+    "external_labels": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.8-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra"
+    ]
+  }
+}
