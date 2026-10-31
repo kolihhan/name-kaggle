@@ -1,0 +1,113 @@
+name: Phase 8 fetch Maniceet raw dataset
+
+on:
+  push:
+    branches:
+      - exp/phase8-maniceet-audit
+    paths:
+      - .github/workflows/phase8-fetch-maniceet.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch current public dataset archive
+        id: fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/maniceet/raw /tmp/maniceet/extracted
+          archive=/tmp/maniceet/raw/maniceet-name-that-llm.zip
+          public_url='https://www.kaggle.com/api/v1/datasets/download/maniceet/name-that-llm-openrouter-openai-generations'
+
+          route='anonymous-public-api'
+          if ! curl --fail --location --retry 2 --output "$archive" "$public_url"; then
+            if [[ -z "${KAGGLE_API_TOKEN:-}" ]]; then
+              echo 'Anonymous Kaggle dataset download failed and KAGGLE_API_TOKEN is unavailable.' >&2
+              exit 20
+            fi
+            route='authenticated-kaggle-cli'
+            python -m pip install --quiet kaggle
+            kaggle datasets download \
+              -d maniceet/name-that-llm-openrouter-openai-generations \
+              -p /tmp/maniceet/raw \
+              --force
+            downloaded="$(find /tmp/maniceet/raw -maxdepth 1 -type f -name '*.zip' ! -name 'maniceet-name-that-llm.zip' -print -quit)"
+            test -n "$downloaded"
+            mv "$downloaded" "$archive"
+          fi
+
+          test -s "$archive"
+          printf 'route=%s\n' "$route" >> "$GITHUB_OUTPUT"
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          echo "Acquisition route: $route"
+          sha256sum "$archive"
+          unzip -q "$archive" -d /tmp/maniceet/extracted
+
+      - name: Record immutable inventory
+        shell: bash
+        env:
+          ACQUISITION_ROUTE: ${{ steps.fetch.outputs.route }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          archive = Path('/tmp/maniceet/raw/maniceet-name-that-llm.zip')
+          root = Path('/tmp/maniceet/extracted')
+
+          def digest(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          files = []
+          for path in sorted(p for p in root.rglob('*') if p.is_file()):
+              files.append({
+                  'path': str(path.relative_to(root)),
+                  'bytes': path.stat().st_size,
+                  'sha256': digest(path),
+              })
+
+          report = {
+              'kaggle_slug': 'maniceet/name-that-llm-openrouter-openai-generations',
+              'acquisition_route': os.environ['ACQUISITION_ROUTE'],
+              'archive': {
+                  'bytes': archive.stat().st_size,
+                  'sha256': digest(archive),
+              },
+              'files': files,
+          }
+          out = Path('/tmp/maniceet/fetch_inventory.json')
+          out.write_text(json.dumps(report, indent=2) + '\n')
+          print(out.read_text())
+          if not files:
+              raise SystemExit('archive extracted no files')
+          PY
+
+      - name: Upload immutable raw evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase8-maniceet-raw
+          retention-days: 7
+          path: |
+            /tmp/maniceet/fetch_inventory.json
+            /tmp/maniceet/raw/maniceet-name-that-llm.zip
+            /tmp/maniceet/extracted/**
