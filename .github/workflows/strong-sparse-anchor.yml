@@ -41,7 +41,7 @@ jobs:
       - name: Recreate permanent folds
         run: python scripts/make_folds.py
       - name: Run strong sparse anchor
-        run: python scripts/run_strong_sparse_anchor.py --output artifacts/phase5b/strong_sparse_anchor.json --oof-output artifacts/phase5b/strong_sparse_anchor_oof.csv
+        run: python -m scripts.run_strong_sparse_anchor --output artifacts/phase5b/strong_sparse_anchor.json --oof-output artifacts/phase5b/strong_sparse_anchor_oof.csv
       - uses: actions/upload-artifact@v4
         with:
           name: phase5b-strong-sparse-anchor
