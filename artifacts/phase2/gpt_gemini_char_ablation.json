@@ -4,83 +4,13 @@
     "group_key": "prompt_id",
     "metric": "balanced_accuracy",
     "phase1_target": 0.31929654486701464,
-    "reproduction_candidates": [
-      {
-        "config": {
-          "name": "char_default",
-          "analyzer": "char",
-          "sublinear_tf": false,
-          "min_df": 1
-        },
-        "balanced_accuracy": 0.31928908774546355,
-        "abs_delta_from_phase1": 7.457121551091017e-06,
-        "folds": [
-          0.31481481481481477,
-          0.28703703703703703,
-          0.3277777777777778,
-          0.32962962962962966,
-          0.3373563218390805
-        ]
-      },
-      {
-        "config": {
-          "name": "char_sublinear",
-          "analyzer": "char",
-          "sublinear_tf": true,
-          "min_df": 1
-        },
-        "balanced_accuracy": 0.3181854337559036,
-        "abs_delta_from_phase1": 0.0011111111111110628,
-        "folds": [
-          0.3055555555555556,
-          0.2925925925925926,
-          0.3203703703703703,
-          0.3314814814814815,
-          0.34106002554278414
-        ]
-      },
-      {
-        "config": {
-          "name": "char_min_df_2",
-          "analyzer": "char",
-          "sublinear_tf": false,
-          "min_df": 2
-        },
-        "balanced_accuracy": 0.31892368878946065,
-        "abs_delta_from_phase1": 0.00037285607755399575,
-        "folds": [
-          0.3203703703703703,
-          0.2833333333333334,
-          0.32592592592592595,
-          0.3314814814814815,
-          0.3336526181353767
-        ]
-      },
-      {
-        "config": {
-          "name": "char_wb_default",
-          "analyzer": "char_wb",
-          "sublinear_tf": false,
-          "min_df": 1
-        },
-        "balanced_accuracy": 0.2978100919711658,
-        "abs_delta_from_phase1": 0.02148645289584883,
-        "folds": [
-          0.29444444444444445,
-          0.2851851851851852,
-          0.29814814814814816,
-          0.29629629629629634,
-          0.3150702426564495
-        ]
-      }
-    ],
-    "selected_reproduction_config": {
+    "frozen_reproduction_config": {
       "name": "char_default",
       "analyzer": "char",
       "sublinear_tf": false,
       "min_df": 1
     },
-    "selected_reproduction_delta": 7.457121551091017e-06
+    "reproduction_delta": 7.457121551091017e-06
   },
   "external_source": {
     "file": "data/external/gpt_gemini_generations.parquet",
