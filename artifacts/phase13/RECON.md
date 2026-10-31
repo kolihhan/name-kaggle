@@ -53,8 +53,105 @@ Decision: **REJECT AS TRAINING SOURCE.** This source is useful provenance/evalua
 
 Status: **AUDITED / AGGREGATE EVALUATION ONLY / NO RAW TEXT**.
 
-## Implication
+## Candidate B — ProofJudge Gemini 3.7 Flash traces
 
-Do not spend a permanent-fold shot on EEE BenchPress Gemini 3.7 Flash and do not reinterpret benchmark notes or score metadata as model response text.
+Source: `SJCaldwell/proofjudge-eval-traces`.
 
-Next reconnaissance should continue looking for a genuinely pre-competition, publicly available, license-compatible Gemini 3.7 Flash raw-response corpus. If no such source survives provenance checks, stop external-data hunting for that label and require a materially different representation/routing hypothesis before another permanent-fold experiment.
+This is the cleanest technical Gemini 3.7 source found in Phase 13.
+
+Immutable timing was resolved from the Hugging Face commit history rather than page-relative timestamps:
+
+- target file: `data/traces_gemini-3.7-flash.jsonl`;
+- first commit containing the file: `0cb577b0dfef6d3fcb0398d65e1c32351c99f6e4`;
+- first public timestamp: `2026-08-18T01:11:59+00:00`;
+- latest pre-competition commit containing the file: `2fe14f4cb00d624094d9d248fc55012db71ce114`;
+- latest pre-competition timestamp: `2026-08-18T01:14:11+00:00`;
+- declared dataset license: MIT.
+
+Audit-only workflow:
+
+- workflow run: `41221809227` — SUCCESS;
+- artifact: `13050805092`;
+- artifact digest: `sha256:96bb1dd9125ffc6a35eabe2890f8952d341229a524395125b7c601c3943ba2eb`;
+- no model training and no permanent folds.
+
+### Response-only extraction result
+
+At the pinned pre-competition revision:
+
+- exact raw model identity: `gemini-3.7-flash` on all retained trajectories;
+- 1,308 trajectories with non-empty agent-authored message text;
+- 1,308 unique session IDs;
+- 436 unique evaluation cases, with three independent replicates;
+- 1,308 normalized-unique extracted texts;
+- zero normalized duplicate groups;
+- zero exact or normalized official-train overlap;
+- zero exact or normalized overlap with the admitted Phase 7 external corpus;
+- extracted text length: min 1,280 chars, median 2,222, mean 2,226.1, max 3,386.
+
+Extraction is mechanically response-only:
+
+- retain only non-empty `step.message` where `step.source == "agent"`;
+- exclude system prompts;
+- exclude user prompts;
+- exclude observations/tool outputs;
+- exclude tool-call arguments.
+
+The raw traces contain 12,975 tool-call steps with empty agent message fields; those tool calls were excluded from classifier text rather than serialized into it.
+
+Technical audit verdict: **CLEAN CANDIDATE**.
+
+### Provider-output terms blocker
+
+The technical audit is not sufficient to authorize training.
+
+Google's current public terms prohibit using AI-generated content from Google services to develop machine-learning models or related AI technology. A model-attribution classifier is itself an ML model. The dataset's MIT declaration is strong evidence that the publisher intended the traces to be reusable research artifacts, but it is not enough for this repository to assume that it overrides provider-specific output-use restrictions.
+
+The ProofJudge public artifacts do not establish a separate downstream-output license or provider route that clearly removes this restriction.
+
+Decision: **DO NOT MODEL UNDER THE CURRENT CONSERVATIVE ADMISSION STANDARD.**
+
+Status: **AUDITED / TECHNICALLY CLEAN / PROVIDER-TERMS BLOCKED**.
+
+`training_authorized=false` is therefore intentional, not an audit failure.
+
+## Other Gemini 3.7 candidates reviewed
+
+### `bigdatamark/synthid-text-research`
+
+Claims August 2026 Gemini 3.7 Flash and Sonnet 5 generations, but no verified pre-2026-10-14 public provenance was found. The Hugging Face publication path observed in reconnaissance is post-competition.
+
+Status: **NOT ADMITTED / PUBLIC TIMING NOT PROVEN**.
+
+### `kailasa-ngpt/gemini-3.7-flash-ocr-26-aug-2026`
+
+Large raw teacher-output corpus with exact Gemini 3.7 provenance and an August date, but Hugging Face declares the license as `other`; downstream output-use rights were not established.
+
+Status: **NOT ADMITTED / LICENSE-OUTPUT TERMS UNKNOWN**.
+
+### `Rapidata/text-to-svg-human-feedback-benchmark`
+
+A strong provenance corpus:
+
+- pre-competition immutable August revision exists;
+- Gemini 3.7 Flash appears explicitly in per-row model fields;
+- raw SVG model output is stored;
+- dataset annotations/prompts use CC-BY-4.0.
+
+However, the dataset card explicitly separates third-party model outputs from the CC-BY-4.0 grant and leaves them governed by provider terms. This does not resolve the same Google generated-output restriction.
+
+Status: **NOT ADMITTED / PROVIDER-OUTPUT TERMS AMBIGUOUS**.
+
+### JetBrains SWE-TaskFlow trajectories / public syzbot trajectories
+
+Both expose useful raw Gemini 3.7 agent/model text and pre-competition activity, but their output-use/licensing path is not cleaner than ProofJudge. They do not justify another audit while ProofJudge already provides a technically superior clean corpus with the same provider-terms blocker.
+
+Status: **DEPRIORITIZED**.
+
+## Phase 13 decision
+
+Stop hunting additional Gemini 3.7 external outputs unless a source provides a materially clearer downstream-output grant than the candidates above. More raw Gemini text does not solve the current blocker.
+
+Do **not** spend a permanent-fold shot on EEE, ProofJudge, Rapidata, OCR teacher outputs, JetBrains trajectories, or syzbot under the current evidence.
+
+The next reconnaissance target is a genuinely different signal that does not depend on restricted third-party model outputs: public competition methods, representation changes, or routing structures that can be justified before touching the permanent folds.
