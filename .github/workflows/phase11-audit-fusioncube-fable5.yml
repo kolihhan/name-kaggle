@@ -1,0 +1,102 @@
+name: Phase 11 audit FusionCube Fable 5
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase11-audit-fusioncube-fable5.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audit dependencies
+        run: python -m pip install 'pandas>=2,<3' 'pyarrow>=15,<27' 'huggingface_hub>=0.30,<3'
+
+      - name: Download immutable FusionCube Fable 5 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import snapshot_download
+
+          repo_id = 'TheFusionCube/Fable-5-CoT-Traces'
+          revision = '3624e3a8aab36a89dc3b89aebef0e034a64ea04e'
+          root = snapshot_download(
+              repo_id=repo_id,
+              repo_type='dataset',
+              revision=revision,
+              allow_patterns=['train.jsonl', 'README.md'],
+          )
+          source = Path(root) / 'train.jsonl'
+          if not source.is_file():
+              raise SystemExit(f'pinned train.jsonl missing: {source}')
+          print('snapshot_root:', root)
+          print('source_jsonl:', source)
+          output = Path(os.environ['GITHUB_OUTPUT'])
+          with output.open('a', encoding='utf-8') as handle:
+              handle.write(f'root={root}\n')
+              handle.write(f'source={source}\n')
+              handle.write(f'revision={revision}\n')
+          PY
+
+      - name: Run response-only admission audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/phase11_audit_fusioncube_fable5.py \
+            --source-jsonl '${{ steps.source.outputs.source }}' \
+            --official-train data/train.csv \
+            --admitted-external data/external/gpt_gemini_generations.parquet \
+            --source-revision '${{ steps.source.outputs.revision }}' \
+            --output /tmp/fusioncube_fable5_audit.json \
+            --responses-output /tmp/fusioncube_fable5_responses.parquet
+          echo '--- PHASE11_FUSIONCUBE_FABLE5_AUDIT ---'
+          cat /tmp/fusioncube_fable5_audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          report = json.loads(Path('/tmp/fusioncube_fable5_audit.json').read_text())
+          responses = pd.read_parquet('/tmp/fusioncube_fable5_responses.parquet')
+
+          assert report['extraction']['rows_seen'] == 468
+          assert report['extraction']['decoy_rows_excluded'] == 115
+          assert report['extraction']['empty_response_rows'] == 0
+          assert report['extraction']['responses_extracted'] == 353
+          assert len(responses) == 353
+          assert set(responses['model'].astype(str)) == {'claude-fable-5'}
+          assert report['response_duplicates']['normalized_duplicate_groups'] == 0
+          assert report['decision']['training_authorized'] is True
+
+          print('admission gate: PASS')
+          print('response_rows:', len(responses))
+          print('categories:', responses['category'].value_counts().sort_index().to_dict())
+          print('response lengths:')
+          print(responses['text'].str.len().describe().to_string())
+          PY
+
+      - name: Upload admission audit bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase11-fusioncube-fable5-audit
+          path: |
+            /tmp/fusioncube_fable5_audit.json
+            /tmp/fusioncube_fable5_responses.parquet
+          retention-days: 30
