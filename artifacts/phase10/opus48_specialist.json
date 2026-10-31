@@ -1,0 +1,141 @@
+{
+  "phase": 10,
+  "experiment": "opus48_nine_class_gated_specialist",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "official_rows": 2699,
+    "phase7_external_rows": 2503,
+    "opus48_external_rows": 868,
+    "covered_labels": [
+      "claude-opus-4-8",
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.8-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra"
+    ],
+    "uncovered_labels": [
+      "claude-fable-5",
+      "claude-opus-4-6",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gemini-3.7-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "kimi-k3",
+      "qwen3.8-max"
+    ],
+    "opus48_source_revision": "026789c1c12a4c34580a32e84dcaf5630d7e8f31"
+  },
+  "configuration": {
+    "anchor": {
+      "char": "char TF-IDF 1-5, lowercase=False, min_df=2, max_features=180000",
+      "word": "word TF-IDF 1-2, whitespace token, lowercase=False, min_df=2, max_features=150000",
+      "boundary": "char_wb TF-IDF 3-5, min_df=2, max_features=100000",
+      "punct": "punctuation-aware word TF-IDF 1-2, lowercase=False, min_df=2, max_features=100000",
+      "style_weight": 0.2,
+      "classifier": "LinearSVC(C=1.5,class_weight=balanced,dual=True,max_iter=15000)"
+    },
+    "specialist": {
+      "char": "char TF-IDF 1-5, lowercase=False, min_df=2, max_features=180000",
+      "word": "word TF-IDF 1-2, whitespace token, lowercase=False, min_df=2, max_features=150000",
+      "boundary": "char_wb TF-IDF 3-5, min_df=2, max_features=100000",
+      "punct": "punctuation-aware word TF-IDF 1-2, lowercase=False, min_df=2, max_features=100000",
+      "style_weight": 0.2,
+      "classifier": "LinearSVC(C=1.5,class_weight=balanced,dual=True,max_iter=15000)"
+    },
+    "specialist_classes": 9,
+    "gate": "replace Phase 5b anchor label with specialist label iff anchor prediction is in the nine covered labels",
+    "new_tuned_parameters": 0
+  },
+  "phase7_reference": {
+    "balanced_accuracy": 0.3700521998508576,
+    "opus48_recall": 0.20666666666666667
+  },
+  "anchor": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.36708923688789463,
+    "folds": [0.38333333333333336,0.3444444444444444,0.37592592592592594,0.38148148148148153,0.3503192848020434],
+    "per_model_recall": {
+      "claude-fable-5": 0.14093959731543623,
+      "claude-opus-4-6": 0.5133333333333333,
+      "claude-opus-4-8": 0.20666666666666667,
+      "claude-opus-5": 0.6133333333333333,
+      "claude-sonnet-5": 0.38,
+      "gemini-3.1-pro-preview": 0.7933333333333333,
+      "gemini-3.6-flash": 0.4266666666666667,
+      "gemini-3.7-flash": 0.3933333333333333,
+      "gemini-3.8-flash": 0.38,
+      "glm-5.3": 0.18,
+      "glm-5.3-flash": 0.2,
+      "gpt-5.5": 0.36,
+      "gpt-5.6-luna": 0.29333333333333333,
+      "gpt-5.6-sol": 0.16666666666666666,
+      "gpt-5.6-terra": 0.22666666666666666,
+      "gpt-6-astra": 0.62,
+      "kimi-k3": 0.24,
+      "qwen3.8-max": 0.47333333333333333
+    }
+  },
+  "phase10_specialist": {
+    "scored_rows": 1350,
+    "balanced_accuracy_on_covered_true_labels": 0.5362962962962964,
+    "folds_on_covered_true_labels": [0.5222222222222223,0.5148148148148147,0.537037037037037,0.5407407407407407,0.5666666666666668],
+    "per_model_recall": {
+      "claude-opus-4-8": 0.6266666666666667,
+      "gemini-3.1-pro-preview": 0.66,
+      "gemini-3.6-flash": 0.5533333333333333,
+      "gemini-3.8-flash": 0.78,
+      "gpt-5.5": 0.56,
+      "gpt-5.6-luna": 0.41333333333333333,
+      "gpt-5.6-sol": 0.23333333333333334,
+      "gpt-5.6-terra": 0.37333333333333335,
+      "gpt-6-astra": 0.6266666666666667
+    }
+  },
+  "phase10_final": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.37005219985085763,
+    "folds": [0.37037037037037035,0.34074074074074073,0.3833333333333333,0.37962962962962965,0.37624521072796935],
+    "per_model_recall": {
+      "claude-fable-5": 0.14093959731543623,
+      "claude-opus-4-6": 0.5133333333333333,
+      "claude-opus-4-8": 0.20666666666666667,
+      "claude-opus-5": 0.6133333333333333,
+      "claude-sonnet-5": 0.38,
+      "gemini-3.1-pro-preview": 0.6333333333333333,
+      "gemini-3.6-flash": 0.4266666666666667,
+      "gemini-3.7-flash": 0.3933333333333333,
+      "gemini-3.8-flash": 0.5066666666666667,
+      "glm-5.3": 0.18,
+      "glm-5.3-flash": 0.2,
+      "gpt-5.5": 0.38,
+      "gpt-5.6-luna": 0.34,
+      "gpt-5.6-sol": 0.18666666666666668,
+      "gpt-5.6-terra": 0.28,
+      "gpt-6-astra": 0.5666666666666667,
+      "kimi-k3": 0.24,
+      "qwen3.8-max": 0.47333333333333333
+    }
+  },
+  "gate_stats": {"anchor_predicted_covered_rows":1343,"anchor_predicted_uncovered_rows":1356,"changed_rows":515},
+  "deltas_vs_phase7": {"balanced_accuracy":5.551115123125783e-17,"opus48_recall":0.0},
+  "invariants": {"remaining_nine_uncovered_recalls_exactly_preserved":true,"anchor_predictions_outside_nine_class_gate_never_changed":true},
+  "feature_meta": [
+    {"widths":{"char":180000,"word":88473,"boundary":100000,"punct":91554,"style":155},"total_features":460182,"style_features":155,"style_weight":0.2,"fold":0,"official_covered_training_rows":1080,"phase7_external_training_rows":2503,"opus48_external_training_rows":868,"validation_rows":540,"covered_validation_rows":270},
+    {"widths":{"char":180000,"word":88272,"boundary":100000,"punct":91433,"style":155},"total_features":459860,"style_features":155,"style_weight":0.2,"fold":1,"official_covered_training_rows":1080,"phase7_external_training_rows":2503,"opus48_external_training_rows":868,"validation_rows":540,"covered_validation_rows":270},
+    {"widths":{"char":180000,"word":88185,"boundary":100000,"punct":91357,"style":155},"total_features":459697,"style_features":155,"style_weight":0.2,"fold":2,"official_covered_training_rows":1080,"phase7_external_training_rows":2503,"opus48_external_training_rows":868,"validation_rows":540,"covered_validation_rows":270},
+    {"widths":{"char":180000,"word":88253,"boundary":100000,"punct":91359,"style":155},"total_features":459767,"style_features":155,"style_weight":0.2,"fold":3,"official_covered_training_rows":1080,"phase7_external_training_rows":2503,"opus48_external_training_rows":868,"validation_rows":540,"covered_validation_rows":270},
+    {"widths":{"char":180000,"word":88450,"boundary":100000,"punct":91631,"style":155},"total_features":460236,"style_features":155,"style_weight":0.2,"fold":4,"official_covered_training_rows":1080,"phase7_external_training_rows":2503,"opus48_external_training_rows":868,"validation_rows":539,"covered_validation_rows":270}
+  ],
+  "decision": {"beats_phase7":true,"improves_opus48_recall":false,"uncovered_recall_invariant":true,"promote_phase10":false}
+}
