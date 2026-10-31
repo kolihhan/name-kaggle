@@ -1,0 +1,134 @@
+name: Diagnose Kaggle token and dataset access
+
+on:
+  push:
+    paths:
+      - .github/workflows/diagnose-kaggle-token.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install official Kaggle Hub client
+        run: pip install 'kagglehub>=1.0.3,<2' pandas pyarrow
+
+      - name: Validate token and download public dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/maniceet
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import kagglehub
+          import pandas as pd
+
+          # Validate the token itself without printing it or the account name.
+          kagglehub.whoami(verbose=False)
+          print('Kaggle token validation: PASS')
+
+          handle = 'maniceet/name-that-llm-openrouter-openai-generations'
+          path = Path(kagglehub.dataset_download(
+              handle,
+              force_download=True,
+              output_dir='/tmp/maniceet',
+          ))
+          print('Kaggle dataset download: PASS')
+          print(f'Download root: {path}')
+
+          inventory = []
+          candidates = []
+          for file in sorted(Path('/tmp/maniceet').rglob('*')):
+              if not file.is_file():
+                  continue
+              inventory.append({'path': str(file.relative_to('/tmp/maniceet')), 'bytes': file.stat().st_size})
+              try:
+                  if file.suffix.lower() == '.csv':
+                      df = pd.read_csv(file)
+                  elif file.suffix.lower() in {'.parquet', '.pq'}:
+                      df = pd.read_parquet(file)
+                  elif file.suffix.lower() in {'.jsonl', '.ndjson'}:
+                      df = pd.read_json(file, lines=True)
+                  else:
+                      continue
+              except Exception:
+                  continue
+              cols = set(map(str, df.columns))
+              text_col = next((c for c in ['text', 'passage', 'response', 'output'] if c in cols), None)
+              label_col = next((c for c in ['model', 'label'] if c in cols), None)
+              if text_col and label_col:
+                  candidates.append((len(df), file, df, text_col, label_col))
+
+          if not candidates:
+              raise RuntimeError('Downloaded dataset has no recognizable text + model/label table')
+
+          _, source, df, text_col, label_col = max(candidates, key=lambda x: x[0])
+          labels = df[label_col].astype(str).value_counts().sort_index()
+          expected = {
+              'gemini-3.7-flash', 'glm-5.3', 'glm-5.3-flash', 'gpt-5.5',
+              'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-astra',
+              'kimi-k3', 'qwen3.8-max'
+          }
+          actual = set(labels.index)
+          provenance_fields = [
+              c for c in ['api_route', 'provider', 'served_model', 'generator', 'source_tag',
+                          'record_id', 'prompt_id', 'prompt', 'prompt_source', 'prompt_licence']
+              if c in df.columns
+          ]
+
+          report = {
+              'handle': handle,
+              'inventory': inventory,
+              'selected_file': str(source.relative_to('/tmp/maniceet')),
+              'rows': int(len(df)),
+              'columns': list(map(str, df.columns)),
+              'label_counts': {str(k): int(v) for k, v in labels.items()},
+              'label_count': int(labels.size),
+              'matches_expected_10_labels': actual == expected,
+              'missing_expected_labels': sorted(expected - actual),
+              'unexpected_labels': sorted(actual - expected),
+              'provenance_fields_found': provenance_fields,
+              'identity_gate_pass': len(df) == 7753 and actual == expected,
+          }
+          Path('artifacts/phase2').mkdir(parents=True, exist_ok=True)
+          Path('artifacts/phase2/maniceet_kaggle_identity_check.json').write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + '\n'
+          )
+          print(json.dumps({
+              'rows': report['rows'],
+              'labels': report['label_count'],
+              'labels_match': report['matches_expected_10_labels'],
+              'provenance_fields_found': provenance_fields,
+              'identity_gate_pass': report['identity_gate_pass'],
+          }, indent=2))
+          if not report['identity_gate_pass']:
+              raise SystemExit(2)
+          PY
+
+      - name: Commit identity check
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/phase2/maniceet_kaggle_identity_check.json
+          if git diff --cached --quiet; then
+            echo 'No identity-check changes.'
+            exit 0
+          fi
+          git commit -m 'Confirm Maniceet dataset identity via Kaggle API token'
+          git push
