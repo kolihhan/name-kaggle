@@ -1,0 +1,137 @@
+name: First Kaggle submission
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/first-kaggle-submit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/name-that-llm-phase7-first-submission
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt 'kaggle==2.2.5'
+
+      - name: Local Phase 7 submission smoke test
+        run: |
+          set -euo pipefail
+          python scripts/make_submission.py --output /tmp/local-submission.parquet
+          python - <<'PY'
+          import pandas as pd
+          frame = pd.read_parquet('/tmp/local-submission.parquet')
+          assert frame.columns.tolist() == ['id', 'model']
+          assert len(frame) == 3
+          assert frame['id'].is_unique
+          assert not frame.isna().any().any()
+          print(frame.to_string(index=False))
+          PY
+
+      - name: Build frozen Kaggle notebook bundle
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/name-that-llm-kernel
+          python scripts/build_kaggle_kernel.py --output-dir /tmp/name-that-llm-kernel
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('/tmp/name-that-llm-kernel')
+          meta = json.loads((root / 'kernel-metadata.json').read_text())
+          notebook = json.loads((root / meta['code_file']).read_text())
+          assert meta['id'] == 'kolihhan/name-that-llm-phase7-first-submission'
+          assert meta['enable_internet'] is False
+          assert meta['competition_sources'] == ['name-that-llm']
+          assert meta['dataset_sources'] == ['abdullah1afify/ntl-generations']
+          assert notebook['nbformat'] == 4
+          source = ''.join(notebook['cells'][0]['source'])
+          assert '/kaggle/working/submission.parquet' in source
+          assert 'EXPECTED_FROZEN_ROWS = 2503' in source
+          print(json.dumps(meta, indent=2))
+          PY
+
+      - name: Push and run Kaggle notebook
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle kernels push -p /tmp/name-that-llm-kernel --timeout 32400
+
+      - name: Wait for Kaggle notebook completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          completed=0
+          for attempt in $(seq 1 240); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "[$attempt] $status"
+            if printf '%s\n' "$status" | grep -Eqi '(^|[^a-z])(complete|completed|success|succeeded)([^a-z]|$)'; then
+              completed=1
+              break
+            fi
+            if printf '%s\n' "$status" | grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled|canceled)([^a-z]|$)'; then
+              echo '--- Kaggle kernel logs ---'
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 30
+          done
+          if [ "$completed" -ne 1 ]; then
+            echo 'Kernel did not reach COMPLETE within the polling window.' >&2
+            kaggle kernels logs "$KERNEL_REF" || true
+            exit 1
+          fi
+
+      - name: Verify saved notebook output
+        run: |
+          set -euo pipefail
+          echo '--- kernel output files ---'
+          kaggle kernels files "$KERNEL_REF" -v
+          rm -rf /tmp/kernel-output
+          mkdir -p /tmp/kernel-output
+          kaggle kernels output "$KERNEL_REF" -p /tmp/kernel-output --file-pattern '.*submission\.parquet$' -q
+          test -f /tmp/kernel-output/submission.parquet
+          python - <<'PY'
+          import pandas as pd
+          output = pd.read_parquet('/tmp/kernel-output/submission.parquet')
+          train = pd.read_csv('data/train.csv')
+          allowed = set(train['model'].astype(str))
+          assert output.columns.tolist() == ['id', 'model']
+          assert len(output) >= 1
+          assert output['id'].is_unique
+          assert not output.isna().any().any()
+          assert set(output['model'].astype(str)) <= allowed
+          print('saved output rows:', len(output))
+          print(output['model'].value_counts().sort_index().to_string())
+          PY
+
+      - name: Submit notebook version to Name That LLM
+        run: |
+          set -euo pipefail
+          kaggle competitions submit name-that-llm \
+            -f submission.parquet \
+            -k "$KERNEL_REF" \
+            -m 'Phase 7 gated specialist first submission' \
+            --wait 3600 \
+            --poll-interval 15
+
+      - name: Show Kaggle submission state
+        if: always()
+        run: |
+          echo '--- submissions ---'
+          kaggle competitions submissions name-that-llm -v || true
