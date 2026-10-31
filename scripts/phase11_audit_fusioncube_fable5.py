@@ -27,6 +27,8 @@ def extract_fable5_responses(records, *, expected_model: str = EXPECTED_MODEL):
         {
             "rows_seen": 0,
             "decoy_rows_excluded": 0,
+            "singleton_model_dict_rows": 0,
+            "ambiguous_model_rows_excluded": 0,
             "empty_response_rows": 0,
             "responses_extracted": 0,
         }
@@ -43,7 +45,25 @@ def extract_fable5_responses(records, *, expected_model: str = EXPECTED_MODEL):
             continue
 
         observed_model = record.get("model")
-        if observed_model != expected_model:
+        if isinstance(observed_model, str):
+            if observed_model != expected_model:
+                raise ValueError(
+                    "model identity mismatch at "
+                    f"row={row_index}: expected={expected_model!r} observed={observed_model!r}"
+                )
+        elif isinstance(observed_model, dict):
+            model_keys = {str(key) for key in observed_model}
+            if model_keys == {expected_model}:
+                stats["singleton_model_dict_rows"] += 1
+            elif expected_model in model_keys and len(model_keys) > 1:
+                stats["ambiguous_model_rows_excluded"] += 1
+                continue
+            else:
+                raise ValueError(
+                    "model identity mismatch at "
+                    f"row={row_index}: expected={expected_model!r} observed={observed_model!r}"
+                )
+        else:
             raise ValueError(
                 "model identity mismatch at "
                 f"row={row_index}: expected={expected_model!r} observed={observed_model!r}"
