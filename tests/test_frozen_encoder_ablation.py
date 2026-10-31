@@ -4,6 +4,7 @@ import pytest
 
 from scripts.run_frozen_encoder_ablation import (
     prepare_fold_indices,
+    run_embedding_ablation,
     validate_fold_contract,
 )
 
@@ -56,3 +57,35 @@ def test_prepare_fold_indices_keeps_validation_identical_and_external_train_only
         np.concatenate([expected_official_train, external_idx]),
     )
     assert not np.intersect1d(valid_idx, augmented_train_idx).size
+
+
+def test_run_embedding_ablation_scores_only_official_oof_rows():
+    train = sample_train()
+    official_embeddings = np.array(
+        [[-2.0, 0.0] if model == "m0" else [2.0, 0.0] for model in train["model"]],
+        dtype=np.float32,
+    )
+    external = pd.DataFrame(
+        {
+            "model": ["m0", "m1", "m0", "m1"],
+            "text": ["e0", "e1", "e2", "e3"],
+        }
+    )
+    external_embeddings = np.array(
+        [[-2.5, 0.0], [2.5, 0.0], [-3.0, 0.0], [3.0, 0.0]],
+        dtype=np.float32,
+    )
+
+    report = run_embedding_ablation(
+        train=train,
+        official_embeddings=official_embeddings,
+        external=external,
+        external_embeddings=external_embeddings,
+    )
+
+    experiments = {x["name"]: x for x in report["experiments"]}
+    assert set(experiments) == {"official_only", "official_plus_external"}
+    assert experiments["official_only"]["oof_rows"] == len(train)
+    assert experiments["official_plus_external"]["oof_rows"] == len(train)
+    assert experiments["official_only"]["balanced_accuracy"] == pytest.approx(1.0)
+    assert experiments["official_plus_external"]["balanced_accuracy"] == pytest.approx(1.0)
