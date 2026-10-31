@@ -55,6 +55,55 @@ jobs:
               handle.write(f'revision={revision}\n')
           PY
 
+      - name: Diagnose retained model-field shapes
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE='${{ steps.source.outputs.source }}' python - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          source = Path(os.environ['SOURCE'])
+          type_counts = Counter()
+          string_values = Counter()
+          dict_keysets = Counter()
+          categories = Counter()
+          blank_responses = 0
+          retained = 0
+          decoys = 0
+
+          with source.open('r', encoding='utf-8') as handle:
+              for line in handle:
+                  if not line.strip():
+                      continue
+                  row = json.loads(line)
+                  category = str(row.get('category', '')).strip()
+                  if category.casefold() == 'decoy':
+                      decoys += 1
+                      continue
+                  retained += 1
+                  categories[category] += 1
+                  model = row.get('model')
+                  type_counts[type(model).__name__] += 1
+                  if isinstance(model, str):
+                      string_values[model] += 1
+                  elif isinstance(model, dict):
+                      dict_keysets[tuple(sorted(str(k) for k in model))] += 1
+                  response = row.get('response')
+                  if not isinstance(response, str) or not response.strip():
+                      blank_responses += 1
+
+          print('retained:', retained)
+          print('decoys:', decoys)
+          print('model_type_counts:', dict(type_counts))
+          print('model_string_values:', dict(string_values))
+          print('model_dict_keysets:', {str(k): v for k, v in dict_keysets.items()})
+          print('categories:', dict(sorted(categories.items())))
+          print('blank_responses:', blank_responses)
+          PY
+
       - name: Run response-only admission audit
         shell: bash
         run: |
