@@ -1,0 +1,280 @@
+{
+  "phase": 7,
+  "experiment": "gated_external_specialist",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "official_rows": 2699,
+    "official_prompts": 150,
+    "external_rows": 2503,
+    "external_prompts": 430,
+    "covered_labels": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.8-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra"
+    ],
+    "uncovered_labels": [
+      "claude-fable-5",
+      "claude-opus-4-6",
+      "claude-opus-4-8",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gemini-3.7-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "kimi-k3",
+      "qwen3.8-max"
+    ]
+  },
+  "configuration": {
+    "anchor": {
+      "char": "char TF-IDF 1-5, lowercase=False, min_df=2, max_features=180000",
+      "word": "word TF-IDF 1-2, whitespace token, lowercase=False, min_df=2, max_features=150000",
+      "boundary": "char_wb TF-IDF 3-5, min_df=2, max_features=100000",
+      "punct": "punctuation-aware word TF-IDF 1-2, lowercase=False, min_df=2, max_features=100000",
+      "style_weight": 0.2,
+      "classifier": "LinearSVC(C=1.5,class_weight=balanced,dual=True,max_iter=15000)"
+    },
+    "specialist": {
+      "char": "char TF-IDF 1-5, lowercase=False, min_df=2, max_features=180000",
+      "word": "word TF-IDF 1-2, whitespace token, lowercase=False, min_df=2, max_features=150000",
+      "boundary": "char_wb TF-IDF 3-5, min_df=2, max_features=100000",
+      "punct": "punctuation-aware word TF-IDF 1-2, lowercase=False, min_df=2, max_features=100000",
+      "style_weight": 0.2,
+      "classifier": "LinearSVC(C=1.5,class_weight=balanced,dual=True,max_iter=15000)"
+    },
+    "specialist_classes": 8,
+    "gate": "replace anchor label with specialist label iff anchor prediction is in the 8 covered labels",
+    "tuned_gate_parameters": 0
+  },
+  "anchor": {
+    "result": {
+      "oof_rows": 2699,
+      "balanced_accuracy": 0.36708923688789463,
+      "folds": [
+        0.38333333333333336,
+        0.3444444444444444,
+        0.37592592592592594,
+        0.38148148148148153,
+        0.3503192848020434
+      ],
+      "per_model_recall": {
+        "claude-fable-5": 0.14093959731543623,
+        "claude-opus-4-6": 0.5133333333333333,
+        "claude-opus-4-8": 0.20666666666666667,
+        "claude-opus-5": 0.6133333333333333,
+        "claude-sonnet-5": 0.38,
+        "gemini-3.1-pro-preview": 0.7933333333333333,
+        "gemini-3.6-flash": 0.4266666666666667,
+        "gemini-3.7-flash": 0.3933333333333333,
+        "gemini-3.8-flash": 0.38,
+        "glm-5.3": 0.18,
+        "glm-5.3-flash": 0.2,
+        "gpt-5.5": 0.36,
+        "gpt-5.6-luna": 0.29333333333333333,
+        "gpt-5.6-sol": 0.16666666666666666,
+        "gpt-5.6-terra": 0.22666666666666666,
+        "gpt-6-astra": 0.62,
+        "kimi-k3": 0.24,
+        "qwen3.8-max": 0.47333333333333333
+      }
+    },
+    "mean_recall": {
+      "covered": 0.4083333333333333,
+      "uncovered": 0.33409395973154365
+    }
+  },
+  "specialist": {
+    "scored_rows": 1200,
+    "balanced_accuracy_on_covered_true_labels": 0.5316666666666666,
+    "folds_on_covered_true_labels": [
+      0.5458333333333334,
+      0.5166666666666667,
+      0.5083333333333333,
+      0.5416666666666666,
+      0.5458333333333333
+    ],
+    "per_model_recall": {
+      "gemini-3.1-pro-preview": 0.6666666666666666,
+      "gemini-3.6-flash": 0.5533333333333333,
+      "gemini-3.8-flash": 0.76,
+      "gpt-5.5": 0.5866666666666667,
+      "gpt-5.6-luna": 0.43333333333333335,
+      "gpt-5.6-sol": 0.24,
+      "gpt-5.6-terra": 0.37333333333333335,
+      "gpt-6-astra": 0.64
+    }
+  },
+  "ensemble": {
+    "result": {
+      "oof_rows": 2699,
+      "balanced_accuracy": 0.3700521998508576,
+      "folds": [
+        0.38333333333333336,
+        0.33888888888888885,
+        0.37222222222222223,
+        0.38703703703703707,
+        0.36883780332056193
+      ],
+      "per_model_recall": {
+        "claude-fable-5": 0.14093959731543623,
+        "claude-opus-4-6": 0.5133333333333333,
+        "claude-opus-4-8": 0.20666666666666667,
+        "claude-opus-5": 0.6133333333333333,
+        "claude-sonnet-5": 0.38,
+        "gemini-3.1-pro-preview": 0.6466666666666666,
+        "gemini-3.6-flash": 0.41333333333333333,
+        "gemini-3.7-flash": 0.3933333333333333,
+        "gemini-3.8-flash": 0.48,
+        "glm-5.3": 0.18,
+        "glm-5.3-flash": 0.2,
+        "gpt-5.5": 0.38,
+        "gpt-5.6-luna": 0.36,
+        "gpt-5.6-sol": 0.18666666666666668,
+        "gpt-5.6-terra": 0.28,
+        "gpt-6-astra": 0.5733333333333334,
+        "kimi-k3": 0.24,
+        "qwen3.8-max": 0.47333333333333333
+      }
+    },
+    "mean_recall": {
+      "covered": 0.415,
+      "uncovered": 0.33409395973154365
+    }
+  },
+  "gate_stats": {
+    "anchor_predicted_covered_rows": 1229,
+    "anchor_predicted_uncovered_rows": 1470,
+    "changed_rows": 454
+  },
+  "deltas": {
+    "balanced_accuracy": 0.002962962962962945,
+    "covered_mean_recall": 0.006666666666666654,
+    "uncovered_mean_recall": 0.0,
+    "per_model_recall": {
+      "claude-fable-5": 0.0,
+      "claude-opus-4-6": 0.0,
+      "claude-opus-4-8": 0.0,
+      "claude-opus-5": 0.0,
+      "claude-sonnet-5": 0.0,
+      "gemini-3.1-pro-preview": -0.14666666666666672,
+      "gemini-3.6-flash": -0.013333333333333364,
+      "gemini-3.7-flash": 0.0,
+      "gemini-3.8-flash": 0.09999999999999998,
+      "glm-5.3": 0.0,
+      "glm-5.3-flash": 0.0,
+      "gpt-5.5": 0.020000000000000018,
+      "gpt-5.6-luna": 0.06666666666666665,
+      "gpt-5.6-sol": 0.020000000000000018,
+      "gpt-5.6-terra": 0.05333333333333337,
+      "gpt-6-astra": -0.046666666666666634,
+      "kimi-k3": 0.0,
+      "qwen3.8-max": 0.0
+    }
+  },
+  "invariants": {
+    "uncovered_recall_exactly_preserved": true,
+    "anchor_predictions_outside_covered_set_never_changed": true
+  },
+  "fold_feature_meta": [
+    {
+      "widths": {
+        "char": 155310,
+        "word": 67952,
+        "boundary": 74622,
+        "punct": 73899,
+        "style": 155
+      },
+      "total_features": 371938,
+      "style_features": 155,
+      "style_weight": 0.2,
+      "fold": 0,
+      "official_covered_training_rows": 960,
+      "external_training_rows": 2503,
+      "validation_rows": 540,
+      "covered_validation_rows": 240
+    },
+    {
+      "widths": {
+        "char": 155585,
+        "word": 67878,
+        "boundary": 74732,
+        "punct": 73905,
+        "style": 155
+      },
+      "total_features": 372255,
+      "style_features": 155,
+      "style_weight": 0.2,
+      "fold": 1,
+      "official_covered_training_rows": 960,
+      "external_training_rows": 2503,
+      "validation_rows": 540,
+      "covered_validation_rows": 240
+    },
+    {
+      "widths": {
+        "char": 155090,
+        "word": 67717,
+        "boundary": 74585,
+        "punct": 73786,
+        "style": 155
+      },
+      "total_features": 371333,
+      "style_features": 155,
+      "style_weight": 0.2,
+      "fold": 2,
+      "official_covered_training_rows": 960,
+      "external_training_rows": 2503,
+      "validation_rows": 540,
+      "covered_validation_rows": 240
+    },
+    {
+      "widths": {
+        "char": 154843,
+        "word": 67858,
+        "boundary": 74472,
+        "punct": 73849,
+        "style": 155
+      },
+      "total_features": 371177,
+      "style_features": 155,
+      "style_weight": 0.2,
+      "fold": 3,
+      "official_covered_training_rows": 960,
+      "external_training_rows": 2503,
+      "validation_rows": 540,
+      "covered_validation_rows": 240
+    },
+    {
+      "widths": {
+        "char": 155699,
+        "word": 67941,
+        "boundary": 74903,
+        "punct": 74013,
+        "style": 155
+      },
+      "total_features": 372711,
+      "style_features": 155,
+      "style_weight": 0.2,
+      "fold": 4,
+      "official_covered_training_rows": 960,
+      "external_training_rows": 2503,
+      "validation_rows": 539,
+      "covered_validation_rows": 240
+    }
+  ],
+  "decision": {
+    "beats_phase5b_anchor": true,
+    "promote_gated_specialist": true
+  }
+}
