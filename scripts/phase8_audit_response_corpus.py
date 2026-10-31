@@ -29,6 +29,19 @@ MODEL_COLUMNS = [
     "qwen3.8-max",
 ]
 
+PHASE7_UNCOVERED = [
+    "claude-fable-5",
+    "claude-opus-4-6",
+    "claude-opus-4-8",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "gemini-3.7-flash",
+    "glm-5.3",
+    "glm-5.3-flash",
+    "kimi-k3",
+    "qwen3.8-max",
+]
+
 
 def normalize_text(text: str) -> str:
     text = unicodedata.normalize("NFKC", str(text)).casefold()
@@ -84,6 +97,16 @@ def build_source_matrix(provenance: pd.DataFrame):
             "prompt_exact_fraction": float(prompt_exact.mean()) if len(group) else 0.0,
         }
     return dict(sorted(matrix.items()))
+
+
+def select_strict_sources(source_matrix):
+    return sorted(
+        source
+        for source, item in source_matrix.items()
+        if item["license_known_fraction"] == 1.0
+        and item["output_terms_clear_fraction"] == 1.0
+        and item["prompt_exact_fraction"] == 1.0
+    )
 
 
 def sha256(path: Path) -> str:
@@ -161,6 +184,21 @@ def main():
     source_counts = Counter(clean_prov["source"].dropna().astype(str).tolist())
     evidence_counts = Counter(clean_resp["model_evidence_class"].dropna().astype(str).tolist())
     source_matrix = build_source_matrix(clean_prov)
+    strict_sources = select_strict_sources(source_matrix)
+
+    strict_response_ids = set(
+        clean_prov.loc[clean_prov["source"].astype(str).isin(strict_sources), "response_id"].astype(str)
+    )
+    strict_candidate = clean[
+        clean["response_id"].astype(str).isin(strict_response_ids)
+        & clean["model"].isin(PHASE7_UNCOVERED)
+    ].copy()
+    strict_candidate = strict_candidate.drop_duplicates(subset=["response_id", "model"])
+    strict_overlap = summarize_overlap(official["text"], strict_candidate["text"])
+    strict_counts = {
+        m: int((strict_candidate["model"] == m).sum())
+        for m in PHASE7_UNCOVERED
+    }
 
     report = {
         "dataset": "olegzholobov/name-that-llm-response-corpus",
@@ -197,6 +235,18 @@ def main():
             "model_evidence_classes": dict(sorted(evidence_counts.items())),
             "source_matrix": source_matrix,
         },
+        "strict_source_candidate": {
+            "rule": "source must be 100% license-known, 100% output-terms-clear, and 100% exact-prompt provenance within mechanically-clean short rows; then retain only Phase 7 uncovered labels",
+            "phase7_uncovered_labels": PHASE7_UNCOVERED,
+            "eligible_sources": strict_sources,
+            "rows": int(len(strict_candidate)),
+            "unique_response_ids": int(strict_candidate["response_id"].nunique()),
+            "rows_by_model": strict_counts,
+            "labels_with_rows": [m for m in PHASE7_UNCOVERED if strict_counts[m] > 0],
+            "labels_without_rows": [m for m in PHASE7_UNCOVERED if strict_counts[m] == 0],
+            "official_answer_overlap": strict_overlap,
+            "training_authorized": False,
+        },
         "validation_leakage": {
             "official_prompt_text_available": False,
             "status": "UNKNOWN",
@@ -209,7 +259,7 @@ def main():
             "answer_text_overlap_gate": "PASS" if overlap_clean["normalized_overlap_count"] == 0 else "FAIL",
             "prompt_leakage_gate": "BLOCKED_UNKNOWN",
             "training_authorized": False,
-            "next_step": "Use the source matrix to freeze a source-restricted candidate set with independently sourced prompts, then freeze a fold-safe training contract before any CV run.",
+            "next_step": "Persist and review the strict source candidate; do not run CV until its residual prompt-overlap risk is explicitly accepted as unobservable or stronger prompt-independence evidence is obtained.",
         },
     }
 
