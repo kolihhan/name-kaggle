@@ -64,20 +64,54 @@ See `artifacts/phase10/sonnet5_audit.json` and `scripts/phase10_audit_sonnet5.py
 
 Status: **AUDITED / NOT ADMITTED**.
 
-## Candidate C — pinned EEE Opus 4.8 / Opus 5 eval responses
+## Candidate C — EEE Opus 4.8 / Opus 5 records
 
 Source: `evaleval/EEE_datastore`, MIT licensed.
 
-Pinned pre-competition evidence exists for `global-mmlu-lite` records:
+The earlier reconnaissance described these as possible eval-response records. That assumption was wrong.
 
-- `claude-opus-4-8-default`: September 2026 ingestion, 36-record runs visible in the repository history;
-- `claude-opus-5-default`: September 2026 ingestion, 36-record runs visible in the repository history.
+Pinned revision inspected:
 
-Unlike the moving `main` branch rejected during Phase 8, Phase 10 should only use an immutable commit/revision that predates the competition. This converts the previous timing ambiguity into a pinning problem rather than a reason to use current dynamic state.
+`20380bab5d156501e1e10aabbb7a311cf7812577`
 
-Expected volume is small, so this is supplementary evidence, not a standalone large training corpus.
+At that immutable pre-competition revision:
 
-Status: **NEXT / PIN IMMUTABLE PRE-COMPETITION REVISION AND AUDIT RAW RESPONSES**.
+- `data/global-mmlu-lite/anthropic/claude-opus-4-8-default/` contains two aggregate `.json` records;
+- `data/global-mmlu-lite/anthropic/claude-opus-5-default/` contains two aggregate `.json` records;
+- model identity and run dates are explicit;
+- no `.jsonl`, parquet, `_samples`, or other instance-level response files exist in either target directory;
+- the aggregate records expose evaluation scores/metadata only;
+- recursive inspection found no response/output/completion/assistant-message fields.
+
+Decision: **REJECT AS TRAINING SOURCE.** The source proves that those models were evaluated before competition launch, but it does not provide classifier text.
+
+Status: **AUDITED / AGGREGATE ONLY / NO RAW TEXT**.
+
+## Candidate D — ARC Prize Claude Opus 4.8 raw traces
+
+Source: `arcprize/arc_agi_v2_public_eval`.
+
+Pinned immutable source state:
+
+- revision: `026789c1c12a4c34580a32e84dcaf5630d7e8f31`;
+- last modified: 2026-06-04, before competition launch;
+- license: MIT;
+- `claude-opus-4-8-high`: 121 JSON task files;
+- `claude-opus-4-8-medium`: 121 JSON task files;
+- `claude-opus-4-8-max`: 91 JSON task files.
+
+Raw trace inspection shows, per attempt:
+
+- `metadata.model = claude-opus-4-8`;
+- `choices[0].message.role = user` and contains the ARC puzzle prompt;
+- `choices[1].message.role = assistant` and contains the model-generated reasoning/output text;
+- the structured ARC `answer` field is separate from the assistant message.
+
+This means response-only extraction can be mechanical: retain only `message.content` where `role == assistant`; exclude user prompts and the ARC `answer` field entirely.
+
+The source has already passed timing, declared-license, exact-model-identity, and raw-response-availability checks. It still needs a full-corpus audit for missing assistant responses, duplicate response text, official-train overlap, and cross-label overlap against already admitted external text before any modeling.
+
+Status: **HIGHEST PRIORITY / FULL RAW AUDIT IN PROGRESS**.
 
 ## Gemini 3.7 Flash
 
@@ -89,10 +123,11 @@ Status: **STILL BLOCKED**.
 
 ## Priority order
 
-1. Pin an immutable pre-competition `evaleval/EEE_datastore` revision for Opus 4.8 and Opus 5, then audit response-only raw records with exact model provenance.
+1. Complete the full admission audit for `arcprize/arc_agi_v2_public_eval` Opus 4.8 assistant responses. If it passes, freeze one Phase 10 permanent-fold modeling contract before running it.
 2. Resolve `PawanKrd/claude-fable-5-code` licensing; if usable, audit its 603 direct generations.
 3. Keep Sonnet 5 out unless both row-level model provenance and CC-BY-NC compatibility are resolved.
-4. Keep Gemini 3.7 blocked rather than fabricating fresh 3.7 data through a now-rerouted API.
+4. Treat EEE as provenance/evaluation evidence only, not as a text-training source.
+5. Keep Gemini 3.7 blocked rather than fabricating fresh 3.7 data through a now-rerouted API.
 
 ## Gate before Phase 10 modeling
 
