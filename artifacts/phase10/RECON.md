@@ -4,7 +4,7 @@ Date: 2026-10-31
 
 ## Goal
 
-After rejecting Phase 9, do not tune its five-class gate. Search only for genuinely new signal for the five labels that still have no admitted external coverage:
+After rejecting Phase 9, do not tune its five-class gate. Search only for genuinely new signal for the five labels that still had no admitted external coverage:
 
 - `claude-fable-5`
 - `claude-opus-4-8`
@@ -12,7 +12,7 @@ After rejecting Phase 9, do not tune its five-class gate. Search only for genuin
 - `claude-sonnet-5`
 - `gemini-3.7-flash`
 
-No permanent-fold experiment is authorized by this reconnaissance.
+A permanent-fold experiment is authorized only after a candidate passes the full admission gate below.
 
 ## Candidate A — Claude Fable 5 direct generations
 
@@ -96,22 +96,36 @@ Pinned immutable source state:
 - revision: `026789c1c12a4c34580a32e84dcaf5630d7e8f31`;
 - last modified: 2026-06-04, before competition launch;
 - license: MIT;
-- `claude-opus-4-8-high`: 121 JSON task files;
-- `claude-opus-4-8-medium`: 121 JSON task files;
-- `claude-opus-4-8-max`: 91 JSON task files.
+- task files used after excluding each setting's aggregate `results.json`: high **120**, medium **120**, max **90**.
 
-Raw trace inspection shows, per attempt:
+Raw trace identity/extraction:
 
-- `metadata.model = claude-opus-4-8`;
-- `choices[0].message.role = user` and contains the ARC puzzle prompt;
-- `choices[1].message.role = assistant` and contains the model-generated reasoning/output text;
-- the structured ARC `answer` field is separate from the assistant message.
+- every admitted attempt has `metadata.model = claude-opus-4-8`;
+- user messages contain the ARC puzzle prompt and are excluded;
+- assistant messages contain the model-generated text and are the only classifier text retained;
+- the structured ARC `answer` field is separate and excluded.
 
-This means response-only extraction can be mechanical: retain only `message.content` where `role == assistant`; exclude user prompts and the ARC `answer` field entirely.
+Full-corpus audit result:
 
-The source has already passed timing, declared-license, exact-model-identity, and raw-response-availability checks. It still needs a full-corpus audit for missing assistant responses, duplicate response text, official-train overlap, and cross-label overlap against already admitted external text before any modeling.
+- assistant responses: **868**;
+- non-empty: **868 / 868**;
+- unique normalized responses: **868 / 868**;
+- high: **329**; medium: **329**; max: **210**;
+- missing assistant responses: **0**;
+- normalized duplicate groups: **0**;
+- exact / normalized overlap with official train: **0 / 0**;
+- exact / normalized overlap with the already-admitted GPT/Gemini external corpus: **0 / 0**;
+- immutable pre-competition gate: **PASS**;
+- exact model identity gate: **PASS**;
+- MIT license gate: **PASS**;
+- response-only extraction gate: **PASS**;
+- `training_authorized = true`.
 
-Status: **HIGHEST PRIORITY / FULL RAW AUDIT IN PROGRESS**.
+See `artifacts/phase10/arc_opus48_audit.json` and `scripts/phase10_audit_arc_opus48.py`.
+
+Decision: **ADMIT FOR ONE FROZEN PHASE 10 PERMANENT-FOLD EXPERIMENT.** This is the first Phase 10 source to clear every predeclared admission gate.
+
+Status: **ADMITTED / MODELING CONTRACT MAY NOW BE FROZEN**.
 
 ## Gemini 3.7 Flash
 
@@ -123,15 +137,15 @@ Status: **STILL BLOCKED**.
 
 ## Priority order
 
-1. Complete the full admission audit for `arcprize/arc_agi_v2_public_eval` Opus 4.8 assistant responses. If it passes, freeze one Phase 10 permanent-fold modeling contract before running it.
-2. Resolve `PawanKrd/claude-fable-5-code` licensing; if usable, audit its 603 direct generations.
+1. Freeze and execute exactly one Phase 10 experiment using the admitted 868 ARC Opus 4.8 assistant responses; do not tune against the permanent folds.
+2. Resolve `PawanKrd/claude-fable-5-code` licensing only after the Opus 4.8 shot is resolved.
 3. Keep Sonnet 5 out unless both row-level model provenance and CC-BY-NC compatibility are resolved.
 4. Treat EEE as provenance/evaluation evidence only, not as a text-training source.
 5. Keep Gemini 3.7 blocked rather than fabricating fresh 3.7 data through a now-rerouted API.
 
-## Gate before Phase 10 modeling
+## Admission gate
 
-Do not spend another permanent-fold shot until at least one candidate passes:
+Before any new source can enter permanent-fold modeling, it must pass:
 
 - exact raw model identity;
 - immutable/pre-competition provenance;
