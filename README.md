@@ -53,15 +53,17 @@ Treat the 7,753-row source as **blocked on resource-specific dataset access/cons
 
 ## Canonical workflow
 
-The repo source of truth is the code and committed artifacts, not inline Python hidden inside CI YAML.
+The repo source of truth is the reusable code plus committed evidence, not inline experiment code hidden inside CI YAML.
 
 ```text
 data/                    Official competition data and audited external snapshots
 scripts/                 Reproducible audit / fold / experiment code
 artifacts/phase1/        Frozen validation audit and baseline evidence
 artifacts/phase2/        External-data reconnaissance, audits, ablations, access state
-.github/workflows/       Thin execution wrappers only
+.github/workflows/       Execution wrappers plus a few one-shot historical diagnostics
 ```
+
+The reusable Phase 2 audit and ablation paths are now implemented in `scripts/`. The Kaggle access diagnostic workflows are historical one-shot tools and are **not** canonical experiment logic.
 
 Key scripts:
 
