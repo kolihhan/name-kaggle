@@ -44,7 +44,7 @@ jobs:
           print('last_modified:', info.last_modified)
           print('tags:', sorted(info.tags or []))
 
-          interesting = ('model', 'response', 'output', 'completion', 'prediction', 'assistant', 'message', 'content', 'answer')
+          interesting = ('model', 'response', 'output', 'completion', 'prediction', 'assistant', 'message', 'content', 'answer', 'role')
           for folder in folders:
               entries = list(api.list_repo_tree(
                   repo_id,
@@ -83,6 +83,6 @@ jobs:
                           walk(child, f'{prefix}[{idx}]')
               walk(record)
               print('interesting_paths:')
-              for key_path, preview in hits[:120]:
+              for key_path, preview in hits[:160]:
                   print(' ', key_path, '=>', preview)
           PY
