@@ -47,6 +47,24 @@ def test_validate_external_enforces_identity_contract():
         )
 
 
+def test_validate_external_rejects_blank_required_fields():
+    external = pd.DataFrame(
+        {
+            "text": ["x", "   "],
+            "model": ["a", "b"],
+            "prompt_id": ["p1", "p2"],
+        }
+    )
+    with pytest.raises(RuntimeError, match="text contains blank"):
+        validate_external(
+            external,
+            official_labels={"a", "b", "c"},
+            expected_rows=2,
+            expected_prompts=2,
+            expected_labels={"a", "b"},
+        )
+
+
 def test_grouped_recall_means_separates_covered_and_uncovered_labels():
     recalls = {"a": 0.8, "b": 0.4, "c": 0.2}
     grouped = grouped_recall_means(recalls, covered_labels={"a", "b"})
