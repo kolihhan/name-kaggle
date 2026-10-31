@@ -1,0 +1,50 @@
+name: Strong sparse external transfer
+
+on:
+  push:
+    branches:
+      - exp/strong-sparse-external
+    paths:
+      - scripts/run_strong_sparse_external.py
+      - tests/test_strong_sparse_external.py
+      - .github/workflows/strong-sparse-external.yml
+      - artifacts/phase6/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: pip install pytest numpy pandas scipy scikit-learn pyarrow
+      - name: Run Phase 6 contract tests
+        run: python -m pytest -q tests/test_strong_sparse_external.py
+
+  full:
+    if: contains(github.event.head_commit.message, '[phase6-run]') || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install experiment dependencies
+        run: pip install numpy pandas scipy scikit-learn pyarrow
+      - name: Recreate permanent folds
+        run: python scripts/make_folds.py
+      - name: Run strong sparse external transfer
+        run: python -m scripts.run_strong_sparse_external --output artifacts/phase6/strong_sparse_external.json --oof-output artifacts/phase6/strong_sparse_external_oof.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase6-strong-sparse-external
+          path: |
+            artifacts/phase6/strong_sparse_external.json
+            artifacts/phase6/strong_sparse_external_oof.csv
