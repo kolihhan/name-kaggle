@@ -1,0 +1,112 @@
+name: Phase 12 audit HealthBench Anthropic
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase12-audit-healthbench-anthropic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audit dependencies
+        run: python -m pip install 'datasets>=3,<5' 'huggingface_hub>=0.30,<3' 'pandas>=2,<3' 'pyarrow>=15,<27'
+
+      - name: Materialize immutable v1.0.0 responses
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from datasets import load_dataset
+          from huggingface_hub import HfApi
+
+          repo_id = 'mindbench-ai/healthbench-psych'
+          tag = 'v1.0.0'
+          expected_sha = '7a116ea7b4fefe0c72eabb8398ec390c6375f823'
+
+          info = HfApi().dataset_info(repo_id, revision=tag)
+          if info.sha != expected_sha:
+              raise SystemExit(f'v1.0.0 revision drifted: {info.sha} != {expected_sha}')
+
+          ds = load_dataset(repo_id, 'responses', split='train', revision=tag)
+          frame = ds.to_pandas()
+          output_path = Path('/tmp/healthbench_psych_v1_responses.parquet')
+          frame.to_parquet(output_path, index=False)
+          print('resolved_sha:', info.sha)
+          print('rows:', len(frame))
+          print('columns:', frame.columns.tolist())
+
+          out = Path(os.environ['GITHUB_OUTPUT'])
+          with out.open('a', encoding='utf-8') as handle:
+              handle.write(f'sha={info.sha}\n')
+              handle.write(f'parquet={output_path}\n')
+          PY
+
+      - name: Run Opus 5 + Sonnet 5 response-only admission audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/phase12_audit_healthbench_anthropic.py \
+            --responses-parquet '${{ steps.source.outputs.parquet }}' \
+            --official-train data/train.csv \
+            --admitted-external data/external/gpt_gemini_generations.parquet \
+            --source-revision '${{ steps.source.outputs.sha }}' \
+            --output /tmp/phase12_healthbench_anthropic_audit.json \
+            --responses-output /tmp/phase12_healthbench_anthropic_responses.parquet
+          echo '--- PHASE12_HEALTHBENCH_ANTHROPIC_AUDIT ---'
+          cat /tmp/phase12_healthbench_anthropic_audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          report = json.loads(Path('/tmp/phase12_healthbench_anthropic_audit.json').read_text())
+          responses = pd.read_parquet('/tmp/phase12_healthbench_anthropic_responses.parquet')
+
+          assert report['extraction']['raw_rows_by_model'] == {
+              'claude-opus-5': 610,
+              'claude-sonnet-5': 610,
+          }
+          assert report['responses']['rows'] == len(responses)
+          assert report['response_duplicates']['within_label_normalized_duplicate_groups'] == 0
+          assert report['candidate_cross_label_overlap']['normalized'] == 0
+          assert report['official_overlap']['normalized'] == 0
+          assert report['existing_external_overlap']['normalized'] == 0
+          assert report['decision']['training_authorized'] is True
+
+          print('admission gate: PASS')
+          print('retained rows:', report['extraction']['retained_rows_by_model'])
+          print('empty rows:', report['extraction']['empty_rows_by_model'])
+          print('refusals:', report['extraction']['refusal_rows_by_model'])
+          print('corrections:', report['extraction']['correction_rows_by_model'])
+          print('by_model:', report['responses']['by_model'])
+          print('response lengths by model:')
+          for model, group in responses.groupby('model'):
+              print(model)
+              print(group['text'].str.len().describe().to_string())
+          PY
+
+      - name: Upload admission audit bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase12-healthbench-anthropic-audit
+          path: |
+            /tmp/phase12_healthbench_anthropic_audit.json
+            /tmp/phase12_healthbench_anthropic_responses.parquet
+          retention-days: 30
