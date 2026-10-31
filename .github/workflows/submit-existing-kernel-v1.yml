@@ -1,0 +1,55 @@
+name: Submit existing Kaggle kernel v1
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/submit-existing-kernel-v1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/name-that-llm-phase7-first-submission
+      KERNEL_VERSION: '1'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle CLI
+        run: python -m pip install 'kaggle==2.2.5'
+
+      - name: Verify existing kernel is complete and has submission output
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(kaggle kernels status "$KERNEL_REF")"
+          echo "$status"
+          printf '%s\n' "$status" | grep -Eqi '(^|[^a-z])complete([^a-z]|$)'
+          kaggle kernels files "$KERNEL_REF" -v | tee /tmp/kernel-files.csv
+          grep -q 'submission.parquet' /tmp/kernel-files.csv
+
+      - name: Submit verified kernel version 1
+        run: |
+          set -euo pipefail
+          kaggle competitions submit name-that-llm \
+            -f submission.parquet \
+            -k "$KERNEL_REF" \
+            -v "$KERNEL_VERSION" \
+            -m 'Phase 7 gated specialist first submission' \
+            --wait 3600 \
+            --poll-interval 15
+
+      - name: Show Kaggle submission state
+        if: always()
+        run: |
+          echo '--- submissions ---'
+          kaggle competitions submissions name-that-llm -v || true
