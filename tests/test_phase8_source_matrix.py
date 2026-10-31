@@ -1,6 +1,6 @@
 import pandas as pd
 
-from scripts.phase8_audit_response_corpus import build_source_matrix
+from scripts.phase8_audit_response_corpus import build_source_matrix, select_strict_sources
 
 
 def test_source_matrix_counts_unique_responses_and_models():
@@ -24,3 +24,13 @@ def test_source_matrix_counts_unique_responses_and_models():
     assert a["license_known_fraction"] == 1.0
     assert a["output_terms_clear_fraction"] == 1.0
     assert a["prompt_exact_fraction"] == 2 / 3
+
+
+def test_strict_source_rule_requires_all_three_fractions_to_be_one():
+    matrix = {
+        "keep": {"license_known_fraction": 1.0, "output_terms_clear_fraction": 1.0, "prompt_exact_fraction": 1.0},
+        "license_unknown": {"license_known_fraction": 0.99, "output_terms_clear_fraction": 1.0, "prompt_exact_fraction": 1.0},
+        "terms_review": {"license_known_fraction": 1.0, "output_terms_clear_fraction": 0.5, "prompt_exact_fraction": 1.0},
+        "prompt_not_exact": {"license_known_fraction": 1.0, "output_terms_clear_fraction": 1.0, "prompt_exact_fraction": 0.9},
+    }
+    assert select_strict_sources(matrix) == ["keep"]
