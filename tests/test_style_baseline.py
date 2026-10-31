@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 
 from scripts.run_style_baseline import (
     blend_probabilities,
     extract_style_features,
+    make_lr,
     summarize_oof,
 )
 
@@ -42,6 +44,28 @@ def test_geometric_blend_rejects_shape_mismatch():
             np.ones((2, 2)) / 2,
             np.ones((2, 3)) / 3,
         ])
+
+
+def test_multiclass_logistic_regression_supports_sparse_probabilities():
+    x = sparse.csr_matrix(
+        np.array(
+            [
+                [2.0, 0.0, 0.0],
+                [1.5, 0.1, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.1, 1.5, 0.0],
+                [0.0, 0.0, 2.0],
+                [0.0, 0.1, 1.5],
+            ]
+        )
+    )
+    y = np.array(["a", "a", "b", "b", "c", "c"])
+    model = make_lr(42)
+    model.fit(x, y)
+    probs = model.predict_proba(x)
+
+    assert probs.shape == (6, 3)
+    np.testing.assert_allclose(probs.sum(axis=1), np.ones(6))
 
 
 def test_summarize_oof_scores_only_given_official_rows():
