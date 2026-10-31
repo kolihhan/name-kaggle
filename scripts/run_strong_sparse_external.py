@@ -65,7 +65,7 @@ def validate_external(
         )
     for column in ["text", "model", "prompt_id"]:
         values = external[column].astype(str)
-        if values.map(lambda value: bool(value.strip())).all() is False:
+        if not values.map(lambda value: bool(value.strip())).all():
             raise RuntimeError(f"external {column} contains blank values")
 
 
