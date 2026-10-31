@@ -107,6 +107,38 @@ jobs:
               raise SystemExit('archive extracted no files')
           PY
 
+      - name: Inspect metadata documents and parquet schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet pyarrow pandas
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          import pyarrow.parquet as pq
+
+          root = Path('/tmp/response-corpus/extracted')
+          for name in ['README.txt', 'manifest.json', 'validation.json', 'data_dictionary.json']:
+              path = root / name
+              print(f'===== {name} =====')
+              print(path.read_text(errors='replace'))
+
+          print('===== PARQUET SCHEMAS =====')
+          for path in sorted(root.glob('*.parquet')):
+              pf = pq.ParquetFile(path)
+              print(json.dumps({
+                  'path': path.name,
+                  'rows': pf.metadata.num_rows,
+                  'row_groups': pf.metadata.num_row_groups,
+                  'columns': pf.schema_arrow.names,
+              }, ensure_ascii=False))
+
+          print('===== SOURCE CATALOG =====')
+          catalog = pd.read_csv(root / 'source_catalog.csv')
+          print(catalog.to_json(orient='records', force_ascii=False))
+          PY
+
       - name: Upload inventory only
         uses: actions/upload-artifact@v4
         with:
