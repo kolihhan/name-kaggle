@@ -1,0 +1,65 @@
+name: Phase 9 precompetition specialist
+
+on:
+  push:
+    branches:
+      - exp/phase9-precompetition-specialist
+    paths:
+      - scripts/run_phase9_precompetition_specialist.py
+      - tests/test_phase9_precompetition_specialist.py
+      - artifacts/phase9/**
+      - .github/workflows/phase9-precompetition-specialist.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run Phase 9 contract tests
+        run: python -m pytest -q tests/test_phase9_precompetition_specialist.py
+
+  full:
+    if: contains(github.event.head_commit.message, '[phase9-run]') || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install experiment dependencies
+        run: pip install -r requirements.txt
+      - name: Recreate permanent folds
+        run: python scripts/make_folds.py
+      - name: Fetch frozen response-corpus snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/response-corpus
+          curl --fail --location --retry 2 \
+            --output /tmp/response-corpus.zip \
+            'https://www.kaggle.com/api/v1/datasets/download/olegzholobov/name-that-llm-response-corpus'
+          echo '8e238480b2d53b821f35eed847dca4538f91ee2fcff4f104370f896bdfc83ece  /tmp/response-corpus.zip' | sha256sum -c -
+          unzip -q /tmp/response-corpus.zip -d /tmp/response-corpus
+      - name: Run frozen Phase 9 experiment
+        run: |
+          python -m scripts.run_phase9_precompetition_specialist \
+            --corpus-root /tmp/response-corpus \
+            --output artifacts/phase9/precompetition_specialist.json \
+            --oof-output artifacts/phase9/precompetition_specialist_oof.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase9-precompetition-specialist
+          retention-days: 7
+          path: |
+            artifacts/phase9/precompetition_specialist.json
+            artifacts/phase9/precompetition_specialist_oof.csv
