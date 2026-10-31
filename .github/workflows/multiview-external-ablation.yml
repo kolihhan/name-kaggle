@@ -1,0 +1,28 @@
+name: Multiview external ablation
+
+on:
+  push:
+    branches:
+      - exp/multiview-external-ablation
+    paths:
+      - scripts/run_multiview_external_ablation.py
+      - tests/test_multiview_external_ablation.py
+      - .github/workflows/multiview-external-ablation.yml
+      - artifacts/phase6/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight dependencies
+        run: pip install pytest numpy pandas scipy scikit-learn pyarrow
+      - name: Run Phase 6 contract tests
+        run: python -m pytest -q tests/test_multiview_external_ablation.py
