@@ -1,0 +1,36 @@
+name: First submission preflight
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/first-submission-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Verify account and competition state
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          echo '--- Kaggle config ---'
+          kaggle config view
+          echo '--- Authenticated quota check ---'
+          kaggle quota
+          echo '--- Existing submissions ---'
+          kaggle competitions submissions name-that-llm -v -q || true
