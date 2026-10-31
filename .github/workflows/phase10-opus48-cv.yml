@@ -1,0 +1,104 @@
+name: Phase 10 frozen Opus 4.8 CV
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase10-opus48-cv.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sparse-model and source dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt 'huggingface_hub>=0.30,<3'
+
+      - name: Reconstruct immutable ARC Opus 4.8 responses
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import snapshot_download
+
+          repo_id = 'arcprize/arc_agi_v2_public_eval'
+          revision = '026789c1c12a4c34580a32e84dcaf5630d7e8f31'
+          root = snapshot_download(
+              repo_id=repo_id,
+              repo_type='dataset',
+              revision=revision,
+              allow_patterns=[
+                  'claude-opus-4-8-high/*.json',
+                  'claude-opus-4-8-medium/*.json',
+                  'claude-opus-4-8-max/*.json',
+              ],
+          )
+          output = Path(os.environ['GITHUB_OUTPUT'])
+          with output.open('a', encoding='utf-8') as handle:
+              handle.write(f'root={root}\n')
+              handle.write(f'revision={revision}\n')
+          print('snapshot_root:', root)
+          PY
+
+      - name: Re-run admission gate and extract response-only parquet
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/phase10_audit_arc_opus48.py \
+            --snapshot-root '${{ steps.source.outputs.root }}' \
+            --official-train data/train.csv \
+            --admitted-external data/external/gpt_gemini_generations.parquet \
+            --source-revision '${{ steps.source.outputs.revision }}' \
+            --output /tmp/arc_opus48_audit.json \
+            --responses-output /tmp/arc_opus48_responses.parquet
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          report = json.loads(Path('/tmp/arc_opus48_audit.json').read_text())
+          responses = pd.read_parquet('/tmp/arc_opus48_responses.parquet')
+          assert report['decision']['training_authorized'] is True
+          assert len(responses) == 868
+          assert responses['text'].nunique() == 868
+          assert set(responses['model'].astype(str)) == {'claude-opus-4-8'}
+          print('admission gate: PASS; responses:', len(responses))
+          PY
+
+      - name: Run the one frozen permanent-fold shot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_phase10_opus48_specialist.py \
+            --opus48-external /tmp/arc_opus48_responses.parquet \
+            --output /tmp/phase10_opus48_specialist.json \
+            --oof-output /tmp/phase10_opus48_specialist_oof.csv
+          echo '--- PHASE10_RESULT ---'
+          cat /tmp/phase10_opus48_specialist.json
+
+      - name: Upload frozen result bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase10-opus48-frozen-shot
+          path: |
+            /tmp/arc_opus48_audit.json
+            /tmp/arc_opus48_responses.parquet
+            /tmp/phase10_opus48_specialist.json
+            /tmp/phase10_opus48_specialist_oof.csv
+          retention-days: 30
