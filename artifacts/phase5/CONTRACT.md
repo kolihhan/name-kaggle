@@ -21,7 +21,7 @@ Can a cheap, explicit authorship-style model close the visible gap between the P
 2. Word TF-IDF: whitespace-token 1–2 grams, case and punctuation preserved, `min_df=2`, `max_features=150000`.
 3. Numeric style/typography features: length, lexical diversity, word/sentence length statistics, character classes, punctuation/quote/dash/markdown rates, and function-word frequencies.
 
-Each view uses `LogisticRegression(C=4.0, class_weight="balanced", solver="liblinear")`.
+Each view uses `LogisticRegression(C=4.0, class_weight="balanced", solver="lbfgs")`.
 
 ## Blend
 
