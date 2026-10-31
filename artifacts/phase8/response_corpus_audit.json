@@ -24,7 +24,8 @@
     "normalized_overlap_count": 0
   },
   "strict_source_candidate": {
-    "rule": "source must be 100% license-known, 100% output-terms-clear, and 100% exact-prompt provenance within mechanically-clean short rows; then retain only Phase 7 uncovered labels",
+    "rows": 2992,
+    "unique_response_ids": 2992,
     "eligible_sources": [
       "Met4physics/claude-opus-4-8-xhigh-reasoning-8.7k",
       "Zek-Takai/glm53-flash-harvest",
@@ -32,13 +33,26 @@
       "evaleval/EEE_datastore",
       "greghavens/kimi-k3-coding-and-debugging-traces",
       "zlab-princeton/SWEeper-Bench-traces"
+    ]
+  },
+  "precompetition_candidate": {
+    "rule": "strict-source candidate intersected with frozen sources independently verified public before competition start 2026-10-14; retain only Phase 7 uncovered labels",
+    "eligible_sources": [
+      "Zek-Takai/glm53-flash-harvest",
+      "angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k",
+      "greghavens/kimi-k3-coding-and-debugging-traces",
+      "zlab-princeton/SWEeper-Bench-traces"
     ],
-    "rows": 2992,
-    "unique_response_ids": 2992,
+    "excluded_strict_sources": [
+      "Met4physics/claude-opus-4-8-xhigh-reasoning-8.7k",
+      "evaleval/EEE_datastore"
+    ],
+    "rows": 2921,
+    "unique_response_ids": 2921,
     "rows_by_model": {
       "claude-fable-5": 0,
-      "claude-opus-4-6": 1991,
-      "claude-opus-4-8": 14,
+      "claude-opus-4-6": 1934,
+      "claude-opus-4-8": 0,
       "claude-opus-5": 0,
       "claude-sonnet-5": 0,
       "gemini-3.7-flash": 0,
@@ -49,7 +63,6 @@
     },
     "labels_with_rows": [
       "claude-opus-4-6",
-      "claude-opus-4-8",
       "glm-5.3",
       "glm-5.3-flash",
       "kimi-k3",
@@ -57,6 +70,7 @@
     ],
     "labels_without_rows": [
       "claude-fable-5",
+      "claude-opus-4-8",
       "claude-opus-5",
       "claude-sonnet-5",
       "gemini-3.7-flash"
@@ -67,20 +81,22 @@
   },
   "validation_leakage": {
     "official_prompt_text_available": false,
-    "status": "UNKNOWN",
-    "reason": "Official train exposes prompt_id but not prompt text, so exact prompt overlap between external prompts and held-out official prompt groups cannot be proven or excluded from released files alone."
+    "status": "RESIDUAL_UNKNOWN",
+    "reason": "Official train exposes prompt_id but not prompt text, so accidental prompt identity between external prompts and held-out official prompt groups remains unobservable.",
+    "allowed_claim": "The retained external sources/prompt banks demonstrably predate competition launch and have zero exact/normalized official answer-text overlap."
   },
   "decision": {
     "raw_access": "PASS",
     "schema_and_label_coverage": "PASS",
     "answer_text_overlap_gate": "PASS",
-    "strict_candidate_gate": "PASS_FOR_PROVENANCE_AUDIT",
-    "prompt_leakage_gate": "BLOCKED_UNKNOWN",
-    "training_authorized": false
+    "precompetition_provenance_gate": "PASS",
+    "prompt_leakage_gate": "RESIDUAL_UNKNOWN",
+    "training_authorized": false,
+    "next_step": "Freeze a Phase 9 validation statement and exactly one no-tuning experiment before any training with these 2921 rows."
   },
   "evidence": {
-    "audit_run_id": 41198184154,
-    "audit_artifact_id": 13040898900,
-    "red_contract_run_id": 41198147947
+    "red_precompetition_gate_run_id": 41198558902,
+    "green_precompetition_audit_run_id": 41198660881,
+    "green_precompetition_artifact_id": 13040514931
   }
 }
