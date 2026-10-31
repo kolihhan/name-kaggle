@@ -1,0 +1,23 @@
+{
+  "per_model": [
+    {"model":"claude-fable-5","recall":0.09395973154362416,"top_confusions":[["claude-opus-5",22],["glm-5.3-flash",19],["claude-sonnet-5",18]]},
+    {"model":"glm-5.3","recall":0.13333333333333333,"top_confusions":[["claude-opus-5",26],["glm-5.3-flash",24],["claude-fable-5",16]]},
+    {"model":"gpt-5.6-sol","recall":0.15333333333333332,"top_confusions":[["gpt-5.6-luna",29],["gpt-5.6-terra",29],["gpt-6-astra",19]]},
+    {"model":"glm-5.3-flash","recall":0.16,"top_confusions":[["glm-5.3",21],["claude-opus-5",13],["kimi-k3",12]]},
+    {"model":"kimi-k3","recall":0.20666666666666667,"top_confusions":[["gpt-5.5",26],["claude-opus-5",13],["glm-5.3-flash",11]]},
+    {"model":"claude-sonnet-5","recall":0.22666666666666666,"top_confusions":[["claude-opus-4-6",17],["claude-opus-4-8",13],["kimi-k3",11]]},
+    {"model":"gpt-5.5","recall":0.22666666666666666,"top_confusions":[["kimi-k3",20],["gpt-5.6-luna",16],["gpt-5.6-terra",15]]},
+    {"model":"gpt-5.6-luna","recall":0.24,"top_confusions":[["gpt-6-astra",26],["gpt-5.6-terra",22],["gpt-5.6-sol",19]]},
+    {"model":"qwen3.8-max","recall":0.24,"top_confusions":[["gpt-5.5",21],["kimi-k3",15],["gpt-5.6-terra",14]]},
+    {"model":"gpt-5.6-terra","recall":0.26666666666666666,"top_confusions":[["gpt-5.6-luna",25],["gpt-6-astra",22],["kimi-k3",14]]},
+    {"model":"claude-opus-4-8","recall":0.2733333333333333,"top_confusions":[["claude-sonnet-5",16],["claude-opus-5",15],["claude-opus-4-6",13]]},
+    {"model":"gemini-3.8-flash","recall":0.32,"top_confusions":[["gemini-3.7-flash",43],["gemini-3.6-flash",26],["gemini-3.1-pro-preview",12]]},
+    {"model":"gemini-3.6-flash","recall":0.38,"top_confusions":[["gemini-3.7-flash",38],["gemini-3.1-pro-preview",26],["gemini-3.8-flash",20]]},
+    {"model":"gemini-3.7-flash","recall":0.38,"top_confusions":[["gemini-3.8-flash",42],["gemini-3.6-flash",25],["gemini-3.1-pro-preview",15]]},
+    {"model":"claude-opus-4-6","recall":0.4,"top_confusions":[["gemini-3.8-flash",11],["claude-opus-5",11],["claude-sonnet-5",10]]},
+    {"model":"gpt-6-astra","recall":0.4533333333333333,"top_confusions":[["gpt-5.6-luna",23],["gpt-5.6-terra",10],["kimi-k3",9]]},
+    {"model":"claude-opus-5","recall":0.5866666666666667,"top_confusions":[["glm-5.3",11],["kimi-k3",9],["gpt-6-astra",8]]},
+    {"model":"gemini-3.1-pro-preview","recall":0.7,"top_confusions":[["gemini-3.8-flash",14],["gemini-3.6-flash",14],["gemini-3.7-flash",10]]}
+  ],
+  "errors":{"total":1883,"same_lab":899,"cross_lab":984,"same_lab_fraction":0.4774296335634626}
+}
