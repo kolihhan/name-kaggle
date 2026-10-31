@@ -5,6 +5,7 @@ on:
     branches:
       - exp/strong-sparse-external
       - exp/phase7-gated-specialist
+      - exp/phase8-maniceet-audit
     paths:
       - scripts/**
       - tests/**
