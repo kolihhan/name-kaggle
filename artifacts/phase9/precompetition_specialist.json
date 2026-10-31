@@ -1,0 +1,179 @@
+{
+  "phase": 9,
+  "experiment": "precompetition_five_class_gated_specialist",
+  "validation_statement": "Official validation remains the frozen five-fold GroupKFold(prompt_id) OOF. External sources/prompt banks demonstrably predate competition launch and have zero exact/normalized official answer-text overlap. Official prompt text is unavailable, so residual accidental prompt identity is unobservable; this run is not claimed to be provably prompt-leakage-free. External rows are training-only.",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "official_rows": 2699,
+    "external_rows": 2921,
+    "external_unique_response_ids": 2921,
+    "external_counts": {
+      "claude-opus-4-6": 1934,
+      "glm-5.3": 200,
+      "glm-5.3-flash": 284,
+      "kimi-k3": 317,
+      "qwen3.8-max": 186
+    },
+    "external_sources": [
+      "Zek-Takai/glm53-flash-harvest",
+      "angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k",
+      "greghavens/kimi-k3-coding-and-debugging-traces",
+      "zlab-princeton/SWEeper-Bench-traces"
+    ],
+    "specialist_labels": [
+      "claude-opus-4-6",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "kimi-k3",
+      "qwen3.8-max"
+    ]
+  },
+  "configuration": {
+    "phase7_baseline": "reproduced in same run from canonical anchor + Phase 7 8-class specialist",
+    "phase9_specialist": {
+      "char": "char TF-IDF 1-5, lowercase=False, min_df=2, max_features=180000",
+      "word": "word TF-IDF 1-2, whitespace token, lowercase=False, min_df=2, max_features=150000",
+      "boundary": "char_wb TF-IDF 3-5, min_df=2, max_features=100000",
+      "punct": "punctuation-aware word TF-IDF 1-2, lowercase=False, min_df=2, max_features=100000",
+      "style_weight": 0.2,
+      "classifier": "LinearSVC(C=1.5,class_weight=balanced,dual=True,max_iter=15000)"
+    },
+    "specialist_classes": 5,
+    "gate": "replace Phase 7 prediction iff it is one of the five Phase 9 specialist labels",
+    "new_tuned_parameters": 0
+  },
+  "phase7_baseline": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.3700521998508576,
+    "folds": [
+      0.38333333333333336,
+      0.33888888888888885,
+      0.37222222222222223,
+      0.38703703703703707,
+      0.36883780332056193
+    ],
+    "per_model_recall": {
+      "claude-fable-5": 0.14093959731543623,
+      "claude-opus-4-6": 0.5133333333333333,
+      "claude-opus-4-8": 0.20666666666666667,
+      "claude-opus-5": 0.6133333333333333,
+      "claude-sonnet-5": 0.38,
+      "gemini-3.1-pro-preview": 0.6466666666666666,
+      "gemini-3.6-flash": 0.41333333333333333,
+      "gemini-3.7-flash": 0.3933333333333333,
+      "gemini-3.8-flash": 0.48,
+      "glm-5.3": 0.18,
+      "glm-5.3-flash": 0.2,
+      "gpt-5.5": 0.38,
+      "gpt-5.6-luna": 0.36,
+      "gpt-5.6-sol": 0.18666666666666668,
+      "gpt-5.6-terra": 0.28,
+      "gpt-6-astra": 0.5733333333333334,
+      "kimi-k3": 0.24,
+      "qwen3.8-max": 0.47333333333333333
+    }
+  },
+  "phase9_specialist": {
+    "scored_rows": 750,
+    "balanced_accuracy_on_specialist_true_labels": 0.5053333333333334,
+    "folds_on_specialist_true_labels": [
+      0.5333333333333334,
+      0.4666666666666667,
+      0.5599999999999999,
+      0.5066666666666666,
+      0.4600000000000001
+    ],
+    "per_model_recall": {
+      "claude-opus-4-6": 0.76,
+      "glm-5.3": 0.28,
+      "glm-5.3-flash": 0.26666666666666666,
+      "kimi-k3": 0.5066666666666667,
+      "qwen3.8-max": 0.7133333333333334
+    }
+  },
+  "phase9_final": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.36597812577678357,
+    "folds": [
+      0.3722222222222222,
+      0.33888888888888885,
+      0.3703703703703704,
+      0.3833333333333333,
+      0.3651340996168582
+    ],
+    "per_model_recall": {
+      "claude-fable-5": 0.14093959731543623,
+      "claude-opus-4-6": 0.49333333333333335,
+      "claude-opus-4-8": 0.20666666666666667,
+      "claude-opus-5": 0.6133333333333333,
+      "claude-sonnet-5": 0.38,
+      "gemini-3.1-pro-preview": 0.6466666666666666,
+      "gemini-3.6-flash": 0.41333333333333333,
+      "gemini-3.7-flash": 0.3933333333333333,
+      "gemini-3.8-flash": 0.48,
+      "glm-5.3": 0.15333333333333332,
+      "glm-5.3-flash": 0.18666666666666668,
+      "gpt-5.5": 0.38,
+      "gpt-5.6-luna": 0.36,
+      "gpt-5.6-sol": 0.18666666666666668,
+      "gpt-5.6-terra": 0.28,
+      "gpt-6-astra": 0.5733333333333334,
+      "kimi-k3": 0.26,
+      "qwen3.8-max": 0.44
+    }
+  },
+  "gate_stats": {
+    "phase7_predicted_specialist_rows": 724,
+    "phase7_predicted_other_rows": 1975,
+    "changed_rows": 182
+  },
+  "deltas": {
+    "balanced_accuracy": -0.004074074074074008,
+    "per_model_recall": {
+      "claude-fable-5": 0.0,
+      "claude-opus-4-6": -0.019999999999999962,
+      "claude-opus-4-8": 0.0,
+      "claude-opus-5": 0.0,
+      "claude-sonnet-5": 0.0,
+      "gemini-3.1-pro-preview": 0.0,
+      "gemini-3.6-flash": 0.0,
+      "gemini-3.7-flash": 0.0,
+      "gemini-3.8-flash": 0.0,
+      "glm-5.3": -0.026666666666666672,
+      "glm-5.3-flash": -0.013333333333333336,
+      "gpt-5.5": 0.0,
+      "gpt-5.6-luna": 0.0,
+      "gpt-5.6-sol": 0.0,
+      "gpt-5.6-terra": 0.0,
+      "gpt-6-astra": 0.0,
+      "kimi-k3": 0.020000000000000018,
+      "qwen3.8-max": -0.033333333333333326
+    }
+  },
+  "invariants": {
+    "outside_13_label_recall_exactly_preserved": true,
+    "phase7_predictions_outside_five_class_gate_never_changed": true
+  },
+  "feature_meta": [
+    {"widths":{"char":180000,"word":69403,"boundary":100000,"punct":89365,"style":155},"total_features":438923,"style_features":155,"style_weight":0.2,"fold":0,"official_specialist_training_rows":600,"external_training_rows":2921,"validation_rows":540,"specialist_true_validation_rows":150},
+    {"widths":{"char":180000,"word":69476,"boundary":100000,"punct":89464,"style":155},"total_features":439095,"style_features":155,"style_weight":0.2,"fold":1,"official_specialist_training_rows":600,"external_training_rows":2921,"validation_rows":540,"specialist_true_validation_rows":150},
+    {"widths":{"char":180000,"word":69575,"boundary":100000,"punct":89549,"style":155},"total_features":439279,"style_features":155,"style_weight":0.2,"fold":2,"official_specialist_training_rows":600,"external_training_rows":2921,"validation_rows":540,"specialist_true_validation_rows":150},
+    {"widths":{"char":180000,"word":69474,"boundary":100000,"punct":89443,"style":155},"total_features":439072,"style_features":155,"style_weight":0.2,"fold":3,"official_specialist_training_rows":600,"external_training_rows":2921,"validation_rows":540,"specialist_true_validation_rows":150},
+    {"widths":{"char":180000,"word":69317,"boundary":100000,"punct":89251,"style":155},"total_features":438723,"style_features":155,"style_weight":0.2,"fold":4,"official_specialist_training_rows":600,"external_training_rows":2921,"validation_rows":539,"specialist_true_validation_rows":150}
+  ],
+  "decision": {
+    "beats_phase7": false,
+    "promote_phase9": false
+  },
+  "evidence": {
+    "workflow_run_id": 41199035742,
+    "workflow_artifact_id": 13041553880,
+    "artifact_digest": "sha256:ecaf055e6d85265a9742c26e0f07a9b8871e50816138023850f8d347059dd8b7"
+  }
+}
