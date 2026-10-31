@@ -1,0 +1,117 @@
+name: Phase 8 fetch 18-model response corpus
+
+on:
+  push:
+    branches:
+      - exp/phase8-maniceet-audit
+    paths:
+      - .github/workflows/phase8-fetch-response-corpus.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch current public response-corpus archive
+        id: fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/response-corpus/raw /tmp/response-corpus/extracted
+          archive=/tmp/response-corpus/raw/response-corpus.zip
+          public_url='https://www.kaggle.com/api/v1/datasets/download/olegzholobov/name-that-llm-response-corpus'
+
+          route='anonymous-public-api'
+          if ! curl --fail --location --retry 2 --output "$archive" "$public_url"; then
+            if [[ -z "${KAGGLE_API_TOKEN:-}" ]]; then
+              echo 'Anonymous Kaggle dataset download failed and KAGGLE_API_TOKEN is unavailable.' >&2
+              exit 20
+            fi
+            route='authenticated-kaggle-cli'
+            python -m pip install --quiet kaggle
+            kaggle datasets download \
+              -d olegzholobov/name-that-llm-response-corpus \
+              -p /tmp/response-corpus/raw \
+              --force
+            downloaded="$(find /tmp/response-corpus/raw -maxdepth 1 -type f -name '*.zip' ! -name 'response-corpus.zip' -print -quit)"
+            test -n "$downloaded"
+            mv "$downloaded" "$archive"
+          fi
+
+          test -s "$archive"
+          printf 'route=%s\n' "$route" >> "$GITHUB_OUTPUT"
+          echo "Acquisition route: $route"
+          sha256sum "$archive"
+          unzip -q "$archive" -d /tmp/response-corpus/extracted
+
+      - name: Record immutable inventory and table schemas
+        shell: bash
+        env:
+          ACQUISITION_ROUTE: ${{ steps.fetch.outputs.route }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import csv
+
+          archive = Path('/tmp/response-corpus/raw/response-corpus.zip')
+          root = Path('/tmp/response-corpus/extracted')
+
+          def digest(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          files = []
+          for path in sorted(p for p in root.rglob('*') if p.is_file()):
+              item = {
+                  'path': str(path.relative_to(root)),
+                  'bytes': path.stat().st_size,
+                  'sha256': digest(path),
+              }
+              if path.suffix.lower() == '.csv':
+                  with path.open('r', encoding='utf-8-sig', newline='') as f:
+                      reader = csv.reader(f)
+                      item['columns'] = next(reader, [])
+                      item['data_rows'] = sum(1 for _ in reader)
+              files.append(item)
+
+          report = {
+              'kaggle_slug': 'olegzholobov/name-that-llm-response-corpus',
+              'acquisition_route': os.environ['ACQUISITION_ROUTE'],
+              'archive': {
+                  'bytes': archive.stat().st_size,
+                  'sha256': digest(archive),
+              },
+              'files': files,
+          }
+          out = Path('/tmp/response-corpus/fetch_inventory.json')
+          out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n')
+          print(out.read_text())
+          if not files:
+              raise SystemExit('archive extracted no files')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase8-response-corpus-raw
+          retention-days: 7
+          path: |
+            /tmp/response-corpus/fetch_inventory.json
+            /tmp/response-corpus/raw/response-corpus.zip
+            /tmp/response-corpus/extracted/**
