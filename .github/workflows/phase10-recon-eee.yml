@@ -1,0 +1,62 @@
+name: Phase 10 recon EEE precompetition revision
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase10-recon-eee.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Hugging Face client
+        run: python -m pip install 'huggingface_hub>=0.30,<3'
+
+      - name: Pin latest immutable revision before competition launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from huggingface_hub import HfApi
+
+          repo_id = 'evaleval/EEE_datastore'
+          cutoff = datetime(2026, 10, 14, tzinfo=timezone.utc)
+          api = HfApi()
+          commits = list(api.list_repo_commits(repo_id, repo_type='dataset'))
+          eligible = [c for c in commits if c.created_at and c.created_at < cutoff]
+          if not eligible:
+              raise SystemExit('no pre-competition commit found')
+          eligible.sort(key=lambda c: c.created_at, reverse=True)
+          pin = eligible[0]
+
+          print('repo_id:', repo_id)
+          print('competition_cutoff:', cutoff.isoformat())
+          print('latest_precompetition_commit:', pin.commit_id)
+          print('latest_precompetition_created_at:', pin.created_at.isoformat())
+          print('latest_precompetition_title:', pin.title)
+          print('--- nearby precompetition commits ---')
+          for c in eligible[:15]:
+              print(c.created_at.isoformat(), c.commit_id, c.title)
+
+          files = api.list_repo_files(repo_id, repo_type='dataset', revision=pin.commit_id)
+          needles = ('claude-opus-4-8', 'claude-opus-5', 'global-mmlu-lite')
+          candidates = [f for f in files if any(n in f.lower() for n in needles)]
+          print('total_files_at_pin:', len(files))
+          print('candidate_files:', len(candidates))
+          for name in candidates[:200]:
+              print('CANDIDATE', name)
+          if not candidates:
+              raise SystemExit('no Opus/global-mmlu-lite candidate files at pinned revision')
+          PY
