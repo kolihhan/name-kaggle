@@ -1,0 +1,227 @@
+name: Audit Tier-A external generations
+
+on:
+  push:
+    paths:
+      - .github/workflows/audit-tier-a-external.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audit dependencies
+        run: pip install -r requirements.txt pyarrow
+
+      - name: Download public Tier-A Kaggle dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL \
+            'https://www.kaggle.com/api/v1/datasets/download/maniceet/name-that-llm-openrouter-openai-generations' \
+            -o /tmp/tier_a.zip
+          mkdir -p /tmp/tier_a
+          unzip -q /tmp/tier_a.zip -d /tmp/tier_a
+          echo 'Downloaded files:'
+          find /tmp/tier_a -maxdepth 2 -type f -printf '%p\n' | sort
+
+      - name: Audit raw rows against official train
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import re
+          from pathlib import Path
+
+          import numpy as np
+          import pandas as pd
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          from sklearn.metrics.pairwise import cosine_similarity
+
+          root = Path('/tmp/tier_a')
+          target_labels = set(json.loads(Path('artifacts/phase1/audit.json').read_text())['model_counts'])
+          train = pd.read_csv('data/train.csv')
+
+          def read_table(path: Path):
+              if path.suffix.lower() == '.csv':
+                  return pd.read_csv(path)
+              if path.suffix.lower() in {'.parquet', '.pq'}:
+                  return pd.read_parquet(path)
+              if path.suffix.lower() in {'.jsonl', '.ndjson'}:
+                  return pd.read_json(path, lines=True)
+              return None
+
+          candidates = []
+          inventory = []
+          for path in sorted(root.rglob('*')):
+              if not path.is_file():
+                  continue
+              inventory.append({
+                  'path': str(path.relative_to(root)),
+                  'bytes': path.stat().st_size,
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
+              if path.suffix.lower() not in {'.csv', '.parquet', '.pq', '.jsonl', '.ndjson'}:
+                  continue
+              try:
+                  df = read_table(path)
+              except Exception as exc:
+                  print(f'SKIP {path}: {exc}')
+                  continue
+              if df is not None and {'text', 'model'}.issubset(df.columns):
+                  candidates.append((len(df), path, df))
+
+          if not candidates:
+              raise RuntimeError('No downloaded table contains both text and model columns')
+
+          _, source_path, ext = max(candidates, key=lambda x: x[0])
+          ext = ext.copy()
+          ext['text'] = ext['text'].astype(str)
+          ext['model'] = ext['model'].astype(str)
+
+          def norm(s: str) -> str:
+              return re.sub(r'\s+', ' ', s).strip()
+
+          ext_norm = ext['text'].map(norm)
+          train_norm = train['text'].astype(str).map(norm)
+          train_set = set(train_norm)
+
+          label_counts = ext['model'].value_counts().sort_index()
+          invalid_labels = sorted(set(label_counts.index) - target_labels)
+          missing_competition_labels = sorted(target_labels - set(label_counts.index))
+
+          word_counts = ext_norm.str.split().map(len)
+          exact_overlap_mask = ext_norm.isin(train_set)
+
+          # Independent lexical near-overlap check. This is not the publisher's metric;
+          # it is a reproducible local screen for suspicious prompt/text reuse.
+          all_text = pd.concat([train_norm, ext_norm], ignore_index=True)
+          vec = TfidfVectorizer(
+              lowercase=True,
+              analyzer='word',
+              ngram_range=(1, 2),
+              min_df=1,
+              max_features=80000,
+              sublinear_tf=True,
+          )
+          X = vec.fit_transform(all_text)
+          X_train = X[: len(train)]
+          X_ext = X[len(train) :]
+          max_sim = np.zeros(len(ext), dtype=np.float32)
+          batch = 256
+          for start in range(0, len(ext), batch):
+              sims = cosine_similarity(X_ext[start : start + batch], X_train, dense_output=True)
+              max_sim[start : start + len(sims)] = sims.max(axis=1)
+
+          provenance_fields = ['api_route', 'provider', 'served_model', 'generator', 'source_tag', 'prompt_source']
+          provenance = {}
+          for col in provenance_fields:
+              if col in ext.columns:
+                  nulls = int(ext[col].isna().sum())
+                  empty = int(ext[col].fillna('').astype(str).str.strip().eq('').sum())
+                  provenance[col] = {
+                      'present': True,
+                      'null_rows': nulls,
+                      'blank_or_null_rows': empty,
+                      'unique_nonblank': int(ext[col].dropna().astype(str).str.strip().replace('', np.nan).dropna().nunique()),
+                  }
+              else:
+                  provenance[col] = {'present': False}
+
+          audit = {
+              'source': {
+                  'name': 'Name That LLM: OpenRouter + OpenAI Generations',
+                  'kaggle_slug': 'maniceet/name-that-llm-openrouter-openai-generations',
+                  'selected_file': str(source_path.relative_to(root)),
+                  'selected_file_sha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
+                  'download_inventory': inventory,
+              },
+              'shape': {
+                  'rows': int(len(ext)),
+                  'columns': list(map(str, ext.columns)),
+                  'duplicate_full_rows': int(ext.duplicated().sum()),
+                  'duplicate_normalized_texts': int(ext_norm.duplicated().sum()),
+              },
+              'labels': {
+                  'n_present': int(label_counts.size),
+                  'counts': {str(k): int(v) for k, v in label_counts.items()},
+                  'invalid_labels': invalid_labels,
+                  'missing_competition_labels': missing_competition_labels,
+              },
+              'protocol': {
+                  'word_count_min': int(word_counts.min()),
+                  'word_count_p05': float(word_counts.quantile(0.05)),
+                  'word_count_median': float(word_counts.median()),
+                  'word_count_p95': float(word_counts.quantile(0.95)),
+                  'word_count_max': int(word_counts.max()),
+                  'fraction_40_to_250_words': float(word_counts.between(40, 250).mean()),
+                  'rows_with_newline': int(ext['text'].str.contains(r'\n', regex=True).sum()),
+              },
+              'provenance': provenance,
+              'official_train_overlap': {
+                  'exact_normalized_text_matches': int(exact_overlap_mask.sum()),
+                  'tfidf_word_1_2_max_similarity_max': float(max_sim.max()),
+                  'tfidf_word_1_2_max_similarity_p99': float(np.quantile(max_sim, 0.99)),
+                  'rows_similarity_gt_0_25': int((max_sim > 0.25).sum()),
+                  'rows_similarity_gt_0_50': int((max_sim > 0.50).sum()),
+                  'rows_similarity_gt_0_80': int((max_sim > 0.80).sum()),
+              },
+          }
+
+          hard_failures = []
+          if invalid_labels:
+              hard_failures.append(f'invalid competition labels: {invalid_labels}')
+          if int(exact_overlap_mask.sum()) > 0:
+              hard_failures.append('exact normalized text overlap with official train')
+          if len(ext) != 7753:
+              hard_failures.append(f'row count differs from public card: {len(ext)} != 7753')
+          audit['gate'] = {
+              'hard_failures': hard_failures,
+              'passed_raw_identity_gate': not hard_failures,
+              'note': 'Near-similarity thresholds are diagnostics, not automatic failure criteria.'
+          }
+
+          out_dir = Path('artifacts/phase2')
+          out_dir.mkdir(parents=True, exist_ok=True)
+          (out_dir / 'tier_a_raw_audit.json').write_text(json.dumps(audit, indent=2, ensure_ascii=False) + '\n')
+
+          data_dir = Path('data/external')
+          data_dir.mkdir(parents=True, exist_ok=True)
+          ext.to_parquet(data_dir / 'tier_a_openrouter_openai_generations.parquet', index=False)
+
+          print(json.dumps({
+              'rows': audit['shape']['rows'],
+              'labels': audit['labels']['n_present'],
+              'invalid_labels': invalid_labels,
+              'exact_overlap': audit['official_train_overlap']['exact_normalized_text_matches'],
+              'near_gt_0_50': audit['official_train_overlap']['rows_similarity_gt_0_50'],
+              'fraction_40_to_250': audit['protocol']['fraction_40_to_250_words'],
+              'gate_pass': audit['gate']['passed_raw_identity_gate'],
+          }, indent=2))
+          PY
+
+      - name: Commit audited Tier-A snapshot and report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/phase2/tier_a_raw_audit.json data/external/tier_a_openrouter_openai_generations.parquet
+          if git diff --cached --quiet; then
+            echo 'No Tier-A audit changes.'
+            exit 0
+          fi
+          git commit -m 'Materialize and audit Tier-A external generations'
+          git push
