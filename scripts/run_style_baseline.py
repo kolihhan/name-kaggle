@@ -161,7 +161,7 @@ def make_lr(seed: int) -> LogisticRegression:
     return LogisticRegression(
         C=4.0,
         class_weight="balanced",
-        solver="liblinear",
+        solver="lbfgs",
         max_iter=2500,
         random_state=seed,
     )
@@ -277,7 +277,7 @@ def run_cv(train: pd.DataFrame, *, seed: int = DEFAULT_SEED) -> tuple[dict, pd.D
             "char": "TF-IDF char 1-5, case/punctuation preserved, max_features=200000",
             "word": "TF-IDF whitespace-token 1-2, case/punctuation preserved, max_features=150000",
             "style_feature_count": int(extract_style_features([""]).shape[1]),
-            "classifier": "LogisticRegression(C=4,class_weight=balanced,solver=liblinear)",
+            "classifier": "LogisticRegression(C=4,class_weight=balanced,solver=lbfgs)",
             "blend": "equal-weight geometric mean of three fold-local probability matrices",
         },
         "experiments": experiments,
