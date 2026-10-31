@@ -169,7 +169,7 @@ def load_snapshot(snapshot_root: Path, expected_model: str):
 
     for setting, folder_name in SETTING_FOLDERS.items():
         folder = snapshot_root / folder_name
-        files = sorted(folder.glob("*.json"))
+        files = sorted(path for path in folder.glob("*.json") if path.name != "results.json")
         file_counts[setting] = len(files)
         setting_stats = Counter()
         for path in files:
