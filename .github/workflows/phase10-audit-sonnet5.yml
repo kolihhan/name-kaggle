@@ -1,0 +1,81 @@
+name: Phase 10 audit Sonnet 5 source
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase10-audit-sonnet5.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audit dependencies
+        run: python -m pip install 'pandas>=2,<3' 'huggingface_hub>=0.30,<3'
+
+      - name: Pin and download raw Hugging Face dataset
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import HfApi, hf_hub_download
+
+          repo_id = 'Essentialia/claude-sonnet-5-2500x'
+          api = HfApi()
+          info = api.dataset_info(repo_id, files_metadata=True)
+          files = [x.rfilename for x in info.siblings]
+          print('repo_id:', repo_id)
+          print('revision:', info.sha)
+          print('last_modified:', info.last_modified)
+          print('tags:', sorted(info.tags or []))
+          print('files:')
+          for name in files:
+              print(' -', name)
+
+          preferred = 'claude_sonnet_5.jsonl'
+          if preferred in files:
+              filename = preferred
+          else:
+              jsonl = [x for x in files if x.lower().endswith('.jsonl')]
+              if len(jsonl) != 1:
+                  raise SystemExit(f'expected one raw jsonl file; found {jsonl}')
+              filename = jsonl[0]
+
+          path = hf_hub_download(
+              repo_id=repo_id,
+              filename=filename,
+              repo_type='dataset',
+              revision=info.sha,
+          )
+          output = Path(os.environ['GITHUB_OUTPUT'])
+          with output.open('a', encoding='utf-8') as handle:
+              handle.write(f'revision={info.sha}\n')
+              handle.write(f'filename={filename}\n')
+              handle.write(f'path={path}\n')
+          PY
+
+      - name: Run audit-only gate
+        run: |
+          set -euo pipefail
+          python scripts/phase10_audit_sonnet5.py \
+            --external-jsonl '${{ steps.source.outputs.path }}' \
+            --official-train data/train.csv \
+            --output /tmp/sonnet5_audit.json \
+            --source-revision '${{ steps.source.outputs.revision }}'
+          echo '--- PHASE10_SONNET5_AUDIT ---'
+          cat /tmp/sonnet5_audit.json
