@@ -4,109 +4,115 @@ Date: 2026-10-31
 
 ## Goal
 
-Find new external signal for labels not covered by the promoted Phase 7 specialist, without contaminating the permanent official `GroupKFold(prompt_id)` validation.
+Find new external signal for labels not covered by the promoted Phase 7 specialist without weakening the permanent official `GroupKFold(prompt_id)` validation.
 
-**This phase is audit-only. No new external corpus is authorized for training yet.**
+**Phase 8 is audit-only. No new external corpus is authorized for training yet.**
 
 ## 1. Maniceet candidate: access blocked
 
 Target: `maniceet/name-that-llm-openrouter-openai-generations`.
 
-GitHub Actions run `41197148926` tested both acquisition routes:
+GitHub Actions run `41197148926` tested both routes:
 
-- anonymous Kaggle dataset download -> HTTP 403;
-- authenticated Kaggle CLI using the repository Kaggle token -> HTTP 403, `You don't have access to this resource.`
+- anonymous Kaggle download -> HTTP 403;
+- authenticated Kaggle CLI -> HTTP 403, `You don't have access to this resource.`
 
-This is an access gate, not a parsing/workflow failure. Do not repeatedly retry it without a changed Kaggle access state.
+This is an access gate, not a workflow/parsing failure. Do not retry without a changed Kaggle access state.
 
-## 2. Response-corpus candidate: raw access passed
+## 2. Response corpus: raw access passed
 
 Pivot target: `olegzholobov/name-that-llm-response-corpus`.
 
-Anonymous Kaggle API access succeeded. Frozen archive SHA256:
+Frozen archive SHA256:
 
 `8e238480b2d53b821f35eed847dca4538f91ee2fcff4f104370f896bdfc83ece`
 
-The short-view parquet SHA256 is:
+Short-view parquet SHA256:
 
 `15a67d022315b2508af8edd749a7c041d42cc37e266106028c73e405659c400f`
 
-The short view contains 24,025 non-empty model-response cells and covers all 18 official labels.
+The short view contains **24,025** non-empty model-response cells and all 18 official labels.
 
-## 3. Audit results
+## 3. Mechanical/provenance audit
 
-Real-data audit run: `41198184154`.
-
-- mechanically clean short cells: **24,025**
+- mechanically clean cells: **24,025**
 - license-known cells: **14,998**
 - license-known + output-terms-clear cells: **4,463**
-- clean cross-label normalized duplicate groups: **0**
+- cross-label normalized duplicate groups: **0**
 - official answer exact overlap: **0**
 - official answer normalized overlap: **0**
 - exact-prompt provenance fraction: **99.91%**
 
-The answer-text overlap gate passes.
+A strict source must be 100% license-known, 100% output-terms-clear, and 100% exact-prompt provenance. Restricting those sources to the 10 Phase 7-uncovered labels produced **2,992 rows / 2,992 unique responses**.
 
-## 4. Frozen conservative source rule
+## 4. Pre-competition gate
 
-Do not use all 24,025 rows.
+A second frozen gate requires the source or prompt bank to be independently evidenced as public before the competition opened on **2026-10-14**.
 
-A source is eligible only when, across its mechanically-clean short rows, it is simultaneously:
+Retained sources:
 
-1. 100% license-known;
-2. 100% output-terms-clear;
-3. 100% exact-prompt provenance.
+- `angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k` — public/updated 2026-05-01;
+- `greghavens/kimi-k3-coding-and-debugging-traces` — public/updated 2026-07-31;
+- `Zek-Takai/glm53-flash-harvest` — harvested 2026-08-30 to 2026-09-02, updated 2026-09-03;
+- `zlab-princeton/SWEeper-Bench-traces` — benchmark/prompt bank publicly documented 2026-10-08.
 
-Then retain only the 10 labels that were uncovered by Phase 7.
+Excluded despite passing the mechanical strict-source rule:
 
-The rule is data-driven and frozen before any CV run. It yields six sources:
+- `evaleval/EEE_datastore` — dynamic datastore updated after competition launch; exact 57 rows were not pinned strongly enough to a pre-launch state;
+- `Met4physics/claude-opus-4-8-xhigh-reasoning-8.7k` — only 14 rows and no sufficiently strong authoritative timestamp was pinned, so it is not worth carrying the uncertainty.
 
-- `Met4physics/claude-opus-4-8-xhigh-reasoning-8.7k`
-- `Zek-Takai/glm53-flash-harvest`
-- `angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k`
-- `evaleval/EEE_datastore`
-- `greghavens/kimi-k3-coding-and-debugging-traces`
-- `zlab-princeton/SWEeper-Bench-traces`
+Real-data GREEN run: `41198660881`.
 
-Resulting strict candidate:
-
-- **2,992 rows**
-- **2,992 unique response IDs**
-- official exact/normalized answer overlap: **0 / 0**
-
-Coverage:
+Final pre-competition candidate:
 
 | Label | Rows |
 |---|---:|
-| claude-opus-4-6 | 1,991 |
-| claude-opus-4-8 | 14 |
+| claude-opus-4-6 | 1,934 |
 | glm-5.3 | 200 |
 | glm-5.3-flash | 284 |
 | kimi-k3 | 317 |
 | qwen3.8-max | 186 |
+| **Total** | **2,921** |
 
-Still missing from the strict candidate:
+Properties:
+
+- **2,921 rows**
+- **2,921 unique response IDs**
+- official exact/normalized answer overlap: **0 / 0**
+- covers **5 of the 10** Phase 7-uncovered labels
+
+Still uncovered by this candidate:
 
 - `claude-fable-5`
+- `claude-opus-4-8`
 - `claude-opus-5`
 - `claude-sonnet-5`
 - `gemini-3.7-flash`
 
-## 5. Remaining blocker
+## 5. Residual validation risk
 
-Official training data exposes `prompt_id` but not the actual prompt text. Therefore released data cannot prove that an external prompt is different from every held-out official prompt.
+Official train exposes `prompt_id` but not prompt text. Therefore released files cannot mathematically prove that no external prompt happens to equal a held-out official prompt.
 
-Status: **prompt-level leakage = UNKNOWN**.
+Status: **residual prompt identity = UNKNOWN**.
 
-This does not negate the verified zero answer-text overlap or provenance checks. It means we must not call an external-data CV run "provably prompt-leakage-free."
+What we can support is narrower and defensible: the retained external sources/prompt banks demonstrably predate competition launch, and their answers have zero exact or normalized-text overlap with official training answers.
+
+Do **not** describe future external-data CV as "provably prompt-leakage-free."
 
 ## Decision
 
-- raw external access: **PASS**
-- 18-label schema/coverage audit: **PASS**
+- raw access: **PASS**
+- schema/18-label audit: **PASS**
 - answer-text overlap gate: **PASS**
-- conservative source subset: **PASS FOR PROVENANCE AUDIT**
-- prompt-level leakage gate: **BLOCKED / UNKNOWN**
-- training authorized: **NO**
+- strict provenance gate: **PASS**
+- pre-competition provenance gate: **PASS**
+- residual accidental prompt identity: **UNKNOWN / unobservable**
+- training authorized in Phase 8: **NO**
 
-Next gate: either obtain stronger evidence that the strict sources use independently constructed public benchmark prompts, or explicitly freeze a validation statement that accepts the residual unobservable prompt-overlap risk before running exactly one no-tuning external-data experiment.
+## Next gate
+
+Phase 9 must freeze, before training:
+
+1. the exact validation statement acknowledging the residual unobservable prompt-identity risk;
+2. exactly one no-tuning experiment using the 2,921-row pre-competition candidate;
+3. a structural promotion rule that prevents another post-hoc parameter/threshold sweep on the permanent folds.
