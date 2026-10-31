@@ -4,7 +4,12 @@ on:
   push:
     branches:
       - exp/strong-sparse-external
+      - exp/phase7-gated-specialist
     paths:
+      - scripts/**
+      - tests/**
+      - requirements.txt
+      - requirements-encoder.txt
       - .github/workflows/verify-all.yml
   workflow_dispatch:
 
