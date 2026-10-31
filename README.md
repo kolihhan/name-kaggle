@@ -50,8 +50,6 @@ The five-fold Kaggle GPU run passed the official-data SHA, fold fingerprint, row
 
 ### Phase 5 — official-only style multiview
 
-A fixed fold-local three-view baseline was evaluated without external data:
-
 | View | OOF balanced accuracy |
 |---|---:|
 | Char TF-IDF + LogisticRegression | 0.32967 |
@@ -59,25 +57,41 @@ A fixed fold-local three-view baseline was evaluated without external data:
 | Numeric style + LogisticRegression | 0.29008 |
 | Equal geometric-mean blend | **0.34821** |
 
-Blend fold scores: `0.34444 / 0.32037 / 0.37037 / 0.35741 / 0.34860`.
+The blend improved Phase 1 by **+0.02891**, but equal weighting gave too much influence to the weaker word/style branches.
 
-The blend improves Phase 1 by **+0.02891** and improves recall over the char-only view on 12 of 18 labels. It still trails independently observed public prompt-grouped sparse references around `0.374–0.376`.
+### Phase 5b — strong sparse CPU anchor
 
-**Decision:** keep the multiview/style feature families, but do not keep the equal three-way LR blend as the final CPU anchor. The next test should change only the combination/classifier strategy.
+A single fold-local feature union was evaluated with no external data:
+
+- char TF-IDF 1–5
+- word TF-IDF 1–2
+- boundary-char TF-IDF 3–5
+- punctuation-aware TF-IDF
+- deterministic style features at weight `0.2`
+- balanced `LinearSVC(C=1.5)`
+
+| Model | OOF balanced accuracy | Δ vs Phase 1 |
+|---|---:|---:|
+| Phase 5 equal LR blend | 0.34821 | +0.02891 |
+| **Phase 5b strong sparse anchor** | **0.36709** | **+0.04779** |
+
+Fold scores: `0.38333 / 0.34444 / 0.37593 / 0.38148 / 0.35032`.
+
+**Decision:** promote **0.36709** as the current canonical CPU anchor.
+
+Do not tune toward the independently observed public `0.37560` as if it were a same-fold target. That public result used `StratifiedGroupKFold(shuffle=True, random_state=42)` with a different fold fingerprint; this repo keeps its permanent `GroupKFold(prompt_id)` mapping unchanged.
 
 See:
 
-- `artifacts/phase5/CONTRACT.md`
-- `artifacts/phase5/style_baseline.json`
-- `artifacts/phase5/RESULT.md`
+- `artifacts/phase5b/CONTRACT.md`
+- `artifacts/phase5b/strong_sparse_anchor.json`
+- `artifacts/phase5b/RESULT.md`
 
 ### Maniceet 7,753-row source
 
 `maniceet/name-that-llm-openrouter-openai-generations` remains blocked on resource-specific Kaggle dataset access/consent. It has not passed our raw-row audit and must not be treated as verified training data.
 
 ## Canonical workflow
-
-The repo source of truth is reusable code plus committed evidence, not inline experiment code hidden inside CI YAML.
 
 ```text
 data/                    Official competition data and audited external snapshots
@@ -87,6 +101,7 @@ artifacts/phase2/        External-data reconnaissance and ablations
 artifacts/phase3/        Frozen encoder contract, result, and decision
 artifacts/phase4/        Trainable encoder contract, result, and decision
 artifacts/phase5/        Style/multiview contract, result, and decision
+artifacts/phase5b/       Current strong sparse CPU anchor
 .github/workflows/       Execution wrappers plus historical diagnostics
 ```
 
@@ -95,10 +110,11 @@ Key scripts:
 - `scripts/bootstrap_data.sh` — restore official competition data.
 - `scripts/make_folds.py` — recreate the permanent grouped folds.
 - `scripts/audit_gpt_gemini_external.py` — reproduce the 2,503-row external audit.
-- `scripts/run_external_ablation.py` — reproduce the sparse external-data ablation.
+- `scripts/run_external_ablation.py` — reproduce the Phase 2 sparse external-data ablation.
 - `scripts/run_frozen_encoder_ablation.py` — reproduce Phase 3.
 - `scripts/train_modernbert_cv.py` — reproduce Phase 4.
 - `scripts/run_style_baseline.py` — reproduce Phase 5.
+- `scripts/run_strong_sparse_anchor.py` — reproduce Phase 5b.
 
 ## Validation contract
 
@@ -108,16 +124,16 @@ External data is admitted stage by stage. An uplift under one representation doe
 
 ## Next experiment
 
-Run one **official-only strong sparse anchor** under the same permanent folds, not a hyperparameter grid:
+Run one **strong-sparse + audited external** transfer test under the same permanent folds:
 
-1. char TF-IDF view;
-2. word TF-IDF view;
-3. boundary-char and punctuation-aware views;
-4. deterministic style features with a smaller contribution;
-5. one balanced `LinearSVC` over the fold-local feature union;
-6. fixed prior-art-backed configuration, then compare honest OOF against Phase 5 `0.34821` and the public ~`0.374–0.376` reference range.
+1. keep the exact Phase 5b feature pipeline and `LinearSVC(C=1.5)` unchanged;
+2. for each fold, train on the four official training folds plus all admitted 2,503 GPT/Gemini external rows;
+3. fit all TF-IDF vocabularies/scalers inside that fold's combined training set;
+4. score only untouched official validation rows;
+5. compare directly against the official-only Phase 5b anchor **0.36709**;
+6. record per-model recall, especially the 8 externally covered labels versus the 10 uncovered labels.
 
-Only after this official-only sparse anchor is established should external data or neural ensembling return to the main line.
+Do not reintroduce the failed ModernBERT external path unless a new representation-specific reason appears.
 
 ## Data attribution
 
