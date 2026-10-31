@@ -9,6 +9,38 @@
   },
   "sources": [
     {
+      "id": "rohan-gpt-gemini-generations",
+      "name": "Extra GPT and Gemini generations",
+      "upstream_repo": "RohanExploit/kaggle-name-that-llm-top20",
+      "upstream_path": "data/extra_gpt_gemini/ntl_generations.csv",
+      "git_blob_sha1": "8dccb6d8f8b8388b134a6aa8f8ea42e99df08c10",
+      "rows_verified": 2503,
+      "prompts_verified": 430,
+      "labels_verified": [
+        "gemini-3.1-pro-preview",
+        "gemini-3.6-flash",
+        "gemini-3.8-flash",
+        "gpt-5.5",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-6-astra"
+      ],
+      "label_coverage": 8,
+      "provenance": "model_seen_complete",
+      "prompt_independence": "external_prompt_bank",
+      "protocol_match": "high_verified",
+      "license": "CC BY 4.0 reported upstream",
+      "duplicate_normalized_texts": 0,
+      "exact_train_overlap": 0,
+      "max_tfidf_word_1_2_similarity_to_train": 0.16553089022636414,
+      "frozen_cv_official_only": 0.31928908774546355,
+      "frozen_cv_with_all_external": 0.34115585384041763,
+      "frozen_cv_delta": 0.021866766094954082,
+      "status": "promoted_to_encoder_stage",
+      "risk": "medium_low"
+    },
+    {
       "id": "maniceet-openrouter-openai-generations",
       "name": "Name That LLM: OpenRouter + OpenAI Generations",
       "url": "https://www.kaggle.com/maniceet/name-that-llm-openrouter-openai-generations",
@@ -25,45 +57,30 @@
         "kimi-k3",
         "qwen3.8-max"
       ],
-      "label_coverage": 10,
-      "provenance": "row_level_reported",
+      "label_coverage_reported": 10,
+      "provenance": "row_level_reported_not_locally_audited",
       "prompt_independence": "publisher_reports_train_prompt_similarity_filtering",
       "protocol_match": "high_reported",
-      "license": "CC BY 4.0",
-      "status": "tier_a_raw_audit_next",
-      "risk": "medium_low",
+      "license": "CC BY 4.0 reported",
+      "access": {
+        "token_authentication": "verified",
+        "competition_api_access": "verified",
+        "dataset_api": "http_403_resource_specific"
+      },
+      "status": "blocked_resource_access_or_consent",
+      "risk": "unknown_until_raw_audit",
       "unknowns": [
-        "downloaded schema and row counts not independently checked yet",
+        "downloaded schema and row counts not independently checked",
         "served_model completeness by row",
         "per-label balance",
-        "independent near-duplicate result"
-      ]
-    },
-    {
-      "id": "arxitekton-same-prompt-v2",
-      "name": "Name That LLM: same-prompt generations v2",
-      "url": "https://www.kaggle.com/arxitekton/ntl-claude-gen-v2",
-      "rows_reported": 3322,
-      "label_coverage": 14,
-      "provenance": "host_protocol_claim_reported",
-      "prompt_independence": "unknown",
-      "protocol_match": "high_claimed",
-      "license": "unknown",
-      "status": "tier_b_hold_for_raw_audit",
-      "risk": "medium",
-      "unknowns": [
-        "exact labels",
-        "license",
-        "row-level provenance",
-        "whether prompts are derived from official train prompts"
+        "independent duplicate and near-duplicate results"
       ]
     },
     {
       "id": "extra-api-passages",
       "name": "Name That LLM: Extra API Passages",
       "evidence_url": "https://www.kaggle.com/code/seyitkaangunes/does-extra-data-help-ntl-extra-passages",
-      "rows_reported": null,
-      "label_coverage": 5,
+      "label_coverage_reported": 5,
       "labels_reported_family": "Claude",
       "provenance": "not_yet_verified",
       "prompt_independence": "new_prompt_claim_in_public_notebook",
@@ -83,49 +100,32 @@
       "id": "olegzholobov-response-corpus",
       "name": "Name That LLM: Response Corpus",
       "url": "https://www.kaggle.com/datasets/olegzholobov/name-that-llm-response-corpus",
-      "rows_reported": null,
-      "label_coverage": 18,
+      "label_coverage_reported": 18,
       "provenance": "external_response_provenance_reported_by_public_index",
       "prompt_independence": "shared_external_prompts_reported",
       "protocol_match": "unknown",
-      "license": "other_or_unknown_until_original_card_verified",
+      "license": "unknown_until_original_card_verified",
       "status": "tier_b_hold",
-      "risk": "medium_high",
-      "unknowns": [
-        "original dataset card details",
-        "row count",
-        "license terms",
-        "exact model route provenance",
-        "train overlap"
-      ]
+      "risk": "medium_high"
     },
     {
       "id": "trust-worthy-pool-v7",
       "name": "Trust-Worthy Pool Dataset - 254k free passages for all 18 models",
       "evidence_url": "https://www.kaggle.com/competitions/name-that-llm/discussion",
       "rows_reported": 254000,
-      "label_coverage": 18,
+      "label_coverage_reported": 18,
       "provenance": "aggregate_pool_lineage_not_yet_verified",
       "prompt_independence": "mixed_unknown",
       "protocol_match": "mixed_unknown",
       "license": "mixed_unknown",
       "status": "tier_c_do_not_train_yet",
-      "risk": "high",
-      "unknowns": [
-        "upstream source inventory",
-        "per-source licenses",
-        "model aliases/snapshots",
-        "official-prompt-derived contamination",
-        "cross-source duplicate policy",
-        "protocol distribution"
-      ]
+      "risk": "high"
     },
     {
       "id": "qwen38-max-distillation-50k",
       "name": "Qwen3.8-Max Distillation 50K",
       "url": "https://huggingface.co/datasets/r0b0tlab/qwen3.8-max-distillation-50k",
       "rows_reported": 49772,
-      "label_coverage": 0,
       "teacher_label": "qwen3.8-max-preview",
       "competition_label": "qwen3.8-max",
       "provenance": "documented",
