@@ -107,11 +107,9 @@ jobs:
               raise SystemExit('archive extracted no files')
           PY
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload inventory only
+        uses: actions/upload-artifact@v4
         with:
-          name: phase8-response-corpus-raw
+          name: phase8-response-corpus-inventory
           retention-days: 7
-          path: |
-            /tmp/response-corpus/fetch_inventory.json
-            /tmp/response-corpus/raw/response-corpus.zip
-            /tmp/response-corpus/extracted/**
+          path: /tmp/response-corpus/fetch_inventory.json
