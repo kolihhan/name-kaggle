@@ -1,6 +1,11 @@
 import pandas as pd
 
-from scripts.phase8_audit_response_corpus import build_source_matrix, select_strict_sources
+from scripts.phase8_audit_response_corpus import (
+    PRECOMPETITION_SOURCES,
+    build_source_matrix,
+    select_precompetition_sources,
+    select_strict_sources,
+)
 
 
 def test_source_matrix_counts_unique_responses_and_models():
@@ -34,3 +39,8 @@ def test_strict_source_rule_requires_all_three_fractions_to_be_one():
         "prompt_not_exact": {"license_known_fraction": 1.0, "output_terms_clear_fraction": 1.0, "prompt_exact_fraction": 0.9},
     }
     assert select_strict_sources(matrix) == ["keep"]
+
+
+def test_precompetition_gate_is_intersection_with_frozen_evidence_set():
+    strict = sorted(PRECOMPETITION_SOURCES | {"post_competition_or_unpinned"})
+    assert select_precompetition_sources(strict) == sorted(PRECOMPETITION_SOURCES)
