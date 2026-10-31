@@ -62,16 +62,36 @@ def summarize_overlap(official_texts, external_texts):
     }
 
 
+def build_source_matrix(provenance: pd.DataFrame):
+    matrix = {}
+    for source, group in provenance.groupby("source", dropna=False):
+        key = "<missing>" if pd.isna(source) else str(source)
+        license_known = ~group["license_unknown"].fillna(True).astype(bool)
+        terms_clear = ~group["output_terms_review"].fillna(True).astype(bool)
+        prompt_exact = group["prompt_exact"].fillna(False).astype(bool)
+        per_model = group.groupby("model")["response_id"].nunique().sort_index()
+        licenses = sorted({str(x) for x in group.loc[group["license"].notna(), "license"]})
+        evidence = sorted({str(x) for x in group.loc[group["model_evidence_class"].notna(), "model_evidence_class"]})
+        matrix[key] = {
+            "occurrences": int(len(group)),
+            "unique_responses": int(group["response_id"].nunique()),
+            "models": sorted(group["model"].dropna().astype(str).unique().tolist()),
+            "unique_responses_by_model": {str(k): int(v) for k, v in per_model.items()},
+            "licenses": licenses,
+            "evidence_classes": evidence,
+            "license_known_fraction": float(license_known.mean()) if len(group) else 0.0,
+            "output_terms_clear_fraction": float(terms_clear.mean()) if len(group) else 0.0,
+            "prompt_exact_fraction": float(prompt_exact.mean()) if len(group) else 0.0,
+        }
+    return dict(sorted(matrix.items()))
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def count_by(series: pd.Series):
-    return {str(k): int(v) for k, v in series.value_counts(dropna=False).sort_index().items()}
 
 
 def main():
@@ -116,8 +136,7 @@ def main():
     if merged["response_id"].isna().any():
         raise SystemExit("short wide cells failed metadata join")
 
-    clean_mask = build_clean_mask(merged)
-    clean = merged[clean_mask].copy()
+    clean = merged[build_clean_mask(merged)].copy()
     license_clear = clean[(~clean["license_unknown"].fillna(True).astype(bool))].copy()
     strict_terms_clear = license_clear[(~license_clear["output_terms_review"].fillna(True).astype(bool))].copy()
 
@@ -141,6 +160,7 @@ def main():
 
     source_counts = Counter(clean_prov["source"].dropna().astype(str).tolist())
     evidence_counts = Counter(clean_resp["model_evidence_class"].dropna().astype(str).tolist())
+    source_matrix = build_source_matrix(clean_prov)
 
     report = {
         "dataset": "olegzholobov/name-that-llm-response-corpus",
@@ -175,6 +195,7 @@ def main():
             "clean_prompt_exact_fraction": float(prompt_exact.mean()) if len(prompt_exact) else 0.0,
             "clean_sources": dict(sorted(source_counts.items())),
             "model_evidence_classes": dict(sorted(evidence_counts.items())),
+            "source_matrix": source_matrix,
         },
         "validation_leakage": {
             "official_prompt_text_available": False,
@@ -188,7 +209,7 @@ def main():
             "answer_text_overlap_gate": "PASS" if overlap_clean["normalized_overlap_count"] == 0 else "FAIL",
             "prompt_leakage_gate": "BLOCKED_UNKNOWN",
             "training_authorized": False,
-            "next_step": "Use provenance to define a source-restricted candidate set with independently sourced prompts, then freeze a fold-safe training contract before any CV run.",
+            "next_step": "Use the source matrix to freeze a source-restricted candidate set with independently sourced prompts, then freeze a fold-safe training contract before any CV run.",
         },
     }
 
