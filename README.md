@@ -57,7 +57,7 @@ This was an admission signal for representation-matched testing, not proof that 
 
 The blend improved Phase 1 by **+0.02891**.
 
-### Phase 5b — canonical strong sparse CPU anchor
+### Phase 5b — canonical official-only strong sparse anchor
 
 A single fold-local feature union was evaluated with no external data:
 
@@ -75,7 +75,7 @@ A single fold-local feature union was evaluated with no external data:
 
 Fold scores: `0.38333 / 0.34444 / 0.37593 / 0.38148 / 0.35032`.
 
-**Decision:** keep **0.36709** as the canonical CPU anchor.
+**Decision:** keep **0.36709** as the canonical official-only base anchor.
 
 Do not tune toward the independently observed public `0.37560` as if it were a same-fold target. That public result used `StratifiedGroupKFold(shuffle=True, random_state=42)` with a different fold mapping; this repo keeps its permanent `GroupKFold(prompt_id)` mapping unchanged.
 
@@ -95,11 +95,32 @@ The result is asymmetric:
 
 **Decision:** reject global external augmentation for the strong-sparse path. The corpus contains useful specialist signal for represented GPT/Gemini classes, but global inclusion hurts uncovered classes enough to reduce balanced accuracy.
 
+### Phase 7 — gated 8-class external specialist
+
+Phase 7 isolates the same audited external corpus in a separate 8-class specialist. The official-only Phase 5b anchor makes the covered-vs-uncovered decision first; the specialist may replace the exact label only when the anchor already predicts one of the 8 externally covered GPT/Gemini labels. No threshold or blend weight is tuned.
+
+| Condition | OOF balanced accuracy | Δ vs Phase 5b |
+|---|---:|---:|
+| Reproduced Phase 5b anchor | **0.367089** | — |
+| **Phase 7 gated specialist** | **0.370052** | **+0.002963** |
+
+The structural gate behaved as intended:
+
+- covered 8-label mean recall: `0.40833 → 0.41500` (**+0.00667**)
+- uncovered 10-label mean recall: `0.33409 → 0.33409` (**0.00000**)
+- all 10 uncovered per-model recall deltas: exactly **0**
+- anchor predicted uncovered on 1,470 rows; all 1,470 remained untouched
+- specialist changed 454 rows, correcting 110 anchor mistakes while breaking 102 anchor-correct rows: net **+8** correct rows
+
+**Decision:** promote Phase 7 under the frozen contract. **0.370052 is the current best CPU OOF system**, while Phase 5b remains the canonical official-only base anchor.
+
+Do not tune the gate, covered-label set, external sample count, class weights, or SVC C on these permanent folds. The gain is valid but modest; the next useful experiment must add genuinely different information or representation.
+
 See:
 
-- `artifacts/phase6/CONTRACT.md`
-- `artifacts/phase6/strong_sparse_external.json`
-- `artifacts/phase6/RESULT.md`
+- `artifacts/phase7/CONTRACT.md`
+- `artifacts/phase7/gated_specialist.json`
+- `artifacts/phase7/RESULT.md`
 
 ### Maniceet 7,753-row source
 
@@ -115,8 +136,9 @@ artifacts/phase2/        External-data reconnaissance and ablations
 artifacts/phase3/        Frozen encoder contract, result, and decision
 artifacts/phase4/        Trainable encoder contract, result, and decision
 artifacts/phase5/        Style/multiview contract, result, and decision
-artifacts/phase5b/       Current strong sparse CPU anchor
-artifacts/phase6/        Strong-sparse external-transfer test and rejection
+artifacts/phase5b/       Canonical official-only strong sparse anchor
+artifacts/phase6/        Global strong-sparse external transfer rejection
+artifacts/phase7/        Current best gated external-specialist CPU system
 .github/workflows/       Execution wrappers plus historical diagnostics
 ```
 
@@ -131,6 +153,7 @@ Key scripts:
 - `scripts/run_style_baseline.py` — reproduce Phase 5.
 - `scripts/run_strong_sparse_anchor.py` — reproduce Phase 5b.
 - `scripts/run_strong_sparse_external.py` — reproduce Phase 6.
+- `scripts/run_gated_specialist.py` — reproduce Phase 7.
 
 ## Validation contract
 
@@ -140,9 +163,14 @@ External data is admitted stage by stage. An uplift under one representation or 
 
 ## Next experiment
 
-Do **not** globally add the 2,503-row GPT/Gemini corpus again, and do not tune its sample count or class weights on these permanent folds.
+Freeze Phase 7 at **0.370052**. Do not squeeze the same gate with thresholds or weight sweeps.
 
-If this source is revisited, the next defensible hypothesis is a **separate external-trained specialist** that leaves the official-only Phase 5b anchor unchanged and is combined only through a predeclared, untuned mechanism. Before building that, first compare its expected value against higher-diversity directions such as a genuinely different model family or newly audited external coverage for the currently weak/uncovered classes.
+The next experiment should pursue a genuinely different source of signal, in this order:
+
+1. newly audited external generations that cover the currently uncovered/weak Claude, GLM, Kimi, Qwen, and Gemini-3.7 labels; or
+2. a materially different representation/model family whose errors are demonstrably complementary to Phase 7 under the permanent folds.
+
+The blocked Maniceet source stays out until its raw rows and provenance can be audited directly.
 
 ## Data attribution
 
