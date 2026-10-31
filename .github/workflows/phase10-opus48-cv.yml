@@ -85,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/run_phase10_opus48_specialist.py \
+          python -m scripts.run_phase10_opus48_specialist \
             --opus48-external /tmp/arc_opus48_responses.parquet \
             --output /tmp/phase10_opus48_specialist.json \
             --oof-output /tmp/phase10_opus48_specialist_oof.csv
