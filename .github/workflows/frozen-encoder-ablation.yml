@@ -5,7 +5,7 @@ on:
     branches:
       - exp/frozen-encoder-ablation
     paths:
-      - scripts/run_frozen_encoder_ablation.py
+      - scripts/**
       - tests/test_frozen_encoder_ablation.py
       - .github/workflows/frozen-encoder-ablation.yml
       - requirements-encoder.txt
