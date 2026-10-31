@@ -1,11 +1,6 @@
 name: First Kaggle submission
 
 on:
-  push:
-    branches:
-      - exp/first-kaggle-submission
-    paths:
-      - .github/workflows/first-kaggle-submit.yml
   workflow_dispatch:
 
 permissions:
@@ -67,10 +62,15 @@ jobs:
           PY
 
       - name: Push and run Kaggle notebook
+        shell: bash
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          kaggle kernels push -p /tmp/name-that-llm-kernel --timeout 32400
+          push_output="$(kaggle kernels push -p /tmp/name-that-llm-kernel --timeout 32400)"
+          echo "$push_output"
+          kernel_version="$(printf '%s\n' "$push_output" | sed -nE 's/.*Kernel version ([0-9]+) successfully pushed.*/\1/p' | tail -n1)"
+          test -n "$kernel_version"
+          echo "KERNEL_VERSION=$kernel_version" >> "$GITHUB_ENV"
 
       - name: Wait for Kaggle notebook completion
         shell: bash
@@ -123,10 +123,12 @@ jobs:
       - name: Submit notebook version to Name That LLM
         run: |
           set -euo pipefail
+          : "${KERNEL_VERSION:?KERNEL_VERSION was not captured from kaggle kernels push}"
           kaggle competitions submit name-that-llm \
             -f submission.parquet \
             -k "$KERNEL_REF" \
-            -m 'Phase 7 gated specialist first submission' \
+            -v "$KERNEL_VERSION" \
+            -m 'Phase 7 gated specialist submission' \
             --wait 3600 \
             --poll-interval 15
 
