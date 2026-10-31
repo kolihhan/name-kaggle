@@ -59,7 +59,7 @@ def test_prepare_fold_indices_keeps_validation_identical_and_external_train_only
     assert not np.intersect1d(valid_idx, augmented_train_idx).size
 
 
-def test_run_embedding_ablation_scores_only_official_oof_rows():
+def test_run_embedding_ablation_scores_only_official_oof_rows_and_reports_model_deltas():
     train = sample_train()
     official_embeddings = np.array(
         [[-2.0, 0.0] if model == "m0" else [2.0, 0.0] for model in train["model"]],
@@ -89,3 +89,7 @@ def test_run_embedding_ablation_scores_only_official_oof_rows():
     assert experiments["official_plus_external"]["oof_rows"] == len(train)
     assert experiments["official_only"]["balanced_accuracy"] == pytest.approx(1.0)
     assert experiments["official_plus_external"]["balanced_accuracy"] == pytest.approx(1.0)
+    assert experiments["official_plus_external"]["per_model_delta_vs_official_only"] == {
+        "m0": pytest.approx(0.0),
+        "m1": pytest.approx(0.0),
+    }
