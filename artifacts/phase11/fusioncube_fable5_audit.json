@@ -1,0 +1,46 @@
+{
+  "responses": {
+    "rows": 344,
+    "nonempty_rows": 344,
+    "empty_rows": 0,
+    "unique_normalized": 344
+  },
+  "response_duplicates": {
+    "normalized_duplicate_groups": 0,
+    "rows_in_duplicate_groups": 0
+  },
+  "official_overlap": {
+    "exact": 0,
+    "normalized": 0
+  },
+  "cross_label_overlap": {
+    "exact": 0,
+    "normalized": 0
+  },
+  "decision": {
+    "model_identity_gate": "PASS",
+    "immutable_precompetition_gate": "PASS",
+    "license_gate": "PASS",
+    "source_defined_decoy_exclusion_gate": "PASS",
+    "response_only_extraction_gate": "PASS",
+    "official_overlap_gate": "PASS",
+    "cross_label_overlap_gate": "PASS",
+    "training_authorized": true
+  },
+  "dataset": "TheFusionCube/Fable-5-CoT-Traces",
+  "source_revision": "3624e3a8aab36a89dc3b89aebef0e034a64ea04e",
+  "source_repo_state_date": "2026-06-16",
+  "license": "MIT",
+  "expected_model": "claude-fable-5",
+  "extraction": {
+    "rows_seen": 468,
+    "decoy_rows_excluded": 115,
+    "singleton_model_dict_rows": 13,
+    "ambiguous_model_rows_excluded": 9,
+    "empty_response_rows": 0,
+    "responses_extracted": 344
+  },
+  "scope": "audit_only_no_permanent_fold_training",
+  "audit_workflow_run": 41216791302,
+  "audit_artifact_id": 13047968526
+}
