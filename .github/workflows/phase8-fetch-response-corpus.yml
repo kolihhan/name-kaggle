@@ -54,7 +54,7 @@ jobs:
           sha256sum "$archive"
           unzip -q "$archive" -d /tmp/response-corpus/extracted
 
-      - name: Record immutable inventory and table schemas
+      - name: Record immutable inventory
         shell: bash
         env:
           ACQUISITION_ROUTE: ${{ steps.fetch.outputs.route }}
@@ -107,41 +107,24 @@ jobs:
               raise SystemExit('archive extracted no files')
           PY
 
-      - name: Inspect metadata documents and parquet schemas
-        shell: bash
+      - name: Install audit dependencies
+        run: python -m pip install --quiet pandas pyarrow pytest
+
+      - name: Run Phase 8 contract tests
+        run: python -m pytest -q tests/test_phase8_response_corpus_audit.py
+
+      - name: Audit response corpus against official train
         run: |
-          set -euo pipefail
-          python -m pip install --quiet pyarrow pandas
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          import pandas as pd
-          import pyarrow.parquet as pq
+          python scripts/phase8_audit_response_corpus.py \
+            --corpus-root /tmp/response-corpus/extracted \
+            --official-train data/train.csv \
+            --output /tmp/response-corpus/phase8_response_corpus_audit.json
 
-          root = Path('/tmp/response-corpus/extracted')
-          for name in ['README.txt', 'manifest.json', 'validation.json', 'data_dictionary.json']:
-              path = root / name
-              print(f'===== {name} =====')
-              print(path.read_text(errors='replace'))
-
-          print('===== PARQUET SCHEMAS =====')
-          for path in sorted(root.glob('*.parquet')):
-              pf = pq.ParquetFile(path)
-              print(json.dumps({
-                  'path': path.name,
-                  'rows': pf.metadata.num_rows,
-                  'row_groups': pf.metadata.num_row_groups,
-                  'columns': pf.schema_arrow.names,
-              }, ensure_ascii=False))
-
-          print('===== SOURCE CATALOG =====')
-          catalog = pd.read_csv(root / 'source_catalog.csv')
-          print(catalog.to_json(orient='records', force_ascii=False))
-          PY
-
-      - name: Upload inventory only
+      - name: Upload Phase 8 audit evidence
         uses: actions/upload-artifact@v4
         with:
-          name: phase8-response-corpus-inventory
+          name: phase8-response-corpus-audit
           retention-days: 7
-          path: /tmp/response-corpus/fetch_inventory.json
+          path: |
+            /tmp/response-corpus/fetch_inventory.json
+            /tmp/response-corpus/phase8_response_corpus_audit.json
