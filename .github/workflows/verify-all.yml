@@ -6,6 +6,7 @@ on:
       - exp/strong-sparse-external
       - exp/phase7-gated-specialist
       - exp/phase8-maniceet-audit
+      - exp/phase9-precompetition-specialist
     paths:
       - scripts/**
       - tests/**
