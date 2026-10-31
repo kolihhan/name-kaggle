@@ -1,0 +1,62 @@
+{
+  "responses": {
+    "rows": 868,
+    "nonempty_rows": 868,
+    "empty_rows": 0,
+    "unique_normalized": 868,
+    "by_setting": {
+      "high": 329,
+      "max": 210,
+      "medium": 329
+    }
+  },
+  "response_duplicates": {
+    "normalized_duplicate_groups": 0,
+    "rows_in_duplicate_groups": 0
+  },
+  "official_overlap": {
+    "exact": 0,
+    "normalized": 0
+  },
+  "cross_label_overlap": {
+    "exact": 0,
+    "normalized": 0
+  },
+  "decision": {
+    "model_identity_gate": "PASS",
+    "immutable_precompetition_gate": "PASS",
+    "license_gate": "PASS",
+    "response_only_extraction_gate": "PASS",
+    "official_overlap_gate": "PASS",
+    "cross_label_overlap_gate": "PASS",
+    "training_authorized": true
+  },
+  "dataset": "arcprize/arc_agi_v2_public_eval",
+  "source_revision": "026789c1c12a4c34580a32e84dcaf5630d7e8f31",
+  "source_last_modified": "2026-06-04T16:45:03+00:00",
+  "license": "MIT",
+  "expected_model": "claude-opus-4-8",
+  "source_files": {
+    "high": 120,
+    "medium": 120,
+    "max": 90
+  },
+  "extraction": {
+    "high": {
+      "attempts_seen": 329,
+      "responses_extracted": 329,
+      "missing_assistant_response": 0
+    },
+    "medium": {
+      "attempts_seen": 329,
+      "responses_extracted": 329,
+      "missing_assistant_response": 0
+    },
+    "max": {
+      "attempts_seen": 210,
+      "responses_extracted": 210,
+      "missing_assistant_response": 0
+    }
+  },
+  "scope": "audit_only_no_permanent_fold_training"
+}
