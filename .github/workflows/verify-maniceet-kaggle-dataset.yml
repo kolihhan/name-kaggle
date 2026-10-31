@@ -1,0 +1,266 @@
+name: Verify Maniceet Kaggle external dataset
+
+on:
+  push:
+    paths:
+      - .github/workflows/verify-maniceet-kaggle-dataset.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyarrow kaggle
+
+      - name: Verify Kaggle authentication without printing the token
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available to this workflow}"
+          kaggle datasets files -d maniceet/name-that-llm-openrouter-openai-generations --page-size 100
+
+      - name: Download dataset from Kaggle
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/maniceet /tmp/maniceet.zip
+          mkdir -p /tmp/maniceet
+          kaggle datasets download -d maniceet/name-that-llm-openrouter-openai-generations -p /tmp --force
+          zip_path="$(find /tmp -maxdepth 1 -type f -name '*name-that-llm-openrouter-openai-generations*.zip' -print -quit)"
+          test -n "$zip_path"
+          unzip -q "$zip_path" -d /tmp/maniceet
+          find /tmp/maniceet -type f -printf '%P\t%s bytes\n' | sort
+
+      - name: Audit downloaded source against competition train
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import re
+          from pathlib import Path
+
+          import numpy as np
+          import pandas as pd
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          from sklearn.metrics.pairwise import cosine_similarity
+
+          root = Path('/tmp/maniceet')
+          train = pd.read_csv('data/train.csv')
+          phase1 = json.loads(Path('artifacts/phase1/audit.json').read_text())
+          target_labels = set(phase1['model_counts'])
+          expected_labels = {
+              'gemini-3.7-flash',
+              'glm-5.3',
+              'glm-5.3-flash',
+              'gpt-5.5',
+              'gpt-5.6-luna',
+              'gpt-5.6-sol',
+              'gpt-5.6-terra',
+              'gpt-6-astra',
+              'kimi-k3',
+              'qwen3.8-max',
+          }
+
+          inventory = []
+          candidates = []
+
+          def read_table(path: Path):
+              suffix = path.suffix.lower()
+              if suffix == '.csv':
+                  return pd.read_csv(path)
+              if suffix in {'.parquet', '.pq'}:
+                  return pd.read_parquet(path)
+              if suffix in {'.jsonl', '.ndjson'}:
+                  return pd.read_json(path, lines=True)
+              return None
+
+          for path in sorted(root.rglob('*')):
+              if not path.is_file():
+                  continue
+              inventory.append({
+                  'path': str(path.relative_to(root)),
+                  'bytes': path.stat().st_size,
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
+              if path.suffix.lower() not in {'.csv', '.parquet', '.pq', '.jsonl', '.ndjson'}:
+                  continue
+              df = read_table(path)
+              if df is None:
+                  continue
+              cols = set(map(str, df.columns))
+              text_col = next((c for c in ['text', 'passage', 'response', 'output'] if c in cols), None)
+              label_col = next((c for c in ['model', 'label'] if c in cols), None)
+              if text_col and label_col:
+                  candidates.append((len(df), path, df, text_col, label_col))
+
+          if not candidates:
+              raise RuntimeError('No table with a recognizable text + model/label schema was found')
+
+          _, source_path, ext, text_col, label_col = max(candidates, key=lambda x: x[0])
+          ext = ext.copy()
+          if text_col != 'text':
+              ext = ext.rename(columns={text_col: 'text'})
+          if label_col != 'model':
+              ext = ext.rename(columns={label_col: 'model'})
+
+          ext['text'] = ext['text'].astype(str)
+          ext['model'] = ext['model'].astype(str)
+
+          def norm(s: str) -> str:
+              return re.sub(r'\s+', ' ', s).strip()
+
+          ext_norm = ext['text'].map(norm)
+          train_norm = train['text'].astype(str).map(norm)
+          train_set = set(train_norm)
+          label_counts = ext['model'].value_counts().sort_index()
+          actual_labels = set(label_counts.index)
+          word_counts = ext_norm.str.split().map(len)
+          exact_overlap = int(ext_norm.isin(train_set).sum())
+
+          all_text = pd.concat([train_norm, ext_norm], ignore_index=True)
+          vec = TfidfVectorizer(
+              lowercase=True,
+              analyzer='word',
+              ngram_range=(1, 2),
+              min_df=1,
+              max_features=80000,
+              sublinear_tf=True,
+          )
+          X = vec.fit_transform(all_text)
+          X_train = X[:len(train)]
+          X_ext = X[len(train):]
+          max_sim = np.zeros(len(ext), dtype=np.float32)
+          for start in range(0, len(ext), 256):
+              sims = cosine_similarity(X_ext[start:start + 256], X_train, dense_output=True)
+              max_sim[start:start + len(sims)] = sims.max(axis=1)
+
+          provenance_candidates = [
+              'api_route', 'provider', 'served_model', 'generator', 'source_tag',
+              'prompt_source', 'model_seen', 'route', 'source'
+          ]
+          provenance = {}
+          for col in provenance_candidates:
+              if col not in ext.columns:
+                  continue
+              s = ext[col].fillna('').astype(str).str.strip()
+              provenance[col] = {
+                  'blank_rows': int(s.eq('').sum()),
+                  'unique_nonblank': int(s.replace('', np.nan).dropna().nunique()),
+              }
+
+          hard_failures = []
+          if len(ext) != 7753:
+              hard_failures.append(f'expected 7753 rows, found {len(ext)}')
+          if actual_labels != expected_labels:
+              hard_failures.append(
+                  'label set differs from expected public card: '
+                  f'missing={sorted(expected_labels - actual_labels)}, '
+                  f'extra={sorted(actual_labels - expected_labels)}'
+              )
+          invalid_competition_labels = sorted(actual_labels - target_labels)
+          if invalid_competition_labels:
+              hard_failures.append(f'labels outside competition target set: {invalid_competition_labels}')
+          if exact_overlap:
+              hard_failures.append(f'{exact_overlap} exact normalized passages overlap official train')
+
+          report = {
+              'source': {
+                  'kaggle_slug': 'maniceet/name-that-llm-openrouter-openai-generations',
+                  'selected_file': str(source_path.relative_to(root)),
+                  'selected_file_sha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
+                  'inventory': inventory,
+              },
+              'shape': {
+                  'rows': int(len(ext)),
+                  'columns': list(map(str, ext.columns)),
+                  'duplicate_full_rows': int(ext.duplicated().sum()),
+                  'duplicate_normalized_texts': int(ext_norm.duplicated().sum()),
+              },
+              'labels': {
+                  'n_present': int(label_counts.size),
+                  'counts': {str(k): int(v) for k, v in label_counts.items()},
+                  'matches_expected_10_label_set': actual_labels == expected_labels,
+                  'invalid_competition_labels': invalid_competition_labels,
+                  'missing_competition_labels': sorted(target_labels - actual_labels),
+              },
+              'provenance': provenance,
+              'protocol': {
+                  'word_count_min': int(word_counts.min()),
+                  'word_count_p05': float(word_counts.quantile(0.05)),
+                  'word_count_median': float(word_counts.median()),
+                  'word_count_p95': float(word_counts.quantile(0.95)),
+                  'word_count_max': int(word_counts.max()),
+                  'fraction_40_to_250_words': float(word_counts.between(40, 250).mean()),
+                  'rows_with_newline': int(ext['text'].str.contains(r'\n', regex=True).sum()),
+              },
+              'official_train_overlap': {
+                  'exact_normalized_text_matches': exact_overlap,
+                  'tfidf_word_1_2_max_similarity_max': float(max_sim.max()),
+                  'tfidf_word_1_2_max_similarity_p99': float(np.quantile(max_sim, 0.99)),
+                  'rows_similarity_gt_0_25': int((max_sim > 0.25).sum()),
+                  'rows_similarity_gt_0_50': int((max_sim > 0.50).sum()),
+                  'rows_similarity_gt_0_80': int((max_sim > 0.80).sum()),
+              },
+              'gate': {
+                  'hard_failures': hard_failures,
+                  'passed': not hard_failures,
+              },
+          }
+
+          out_dir = Path('artifacts/phase2')
+          out_dir.mkdir(parents=True, exist_ok=True)
+          (out_dir / 'maniceet_kaggle_raw_audit.json').write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + '\n'
+          )
+
+          if not hard_failures:
+              data_dir = Path('data/external')
+              data_dir.mkdir(parents=True, exist_ok=True)
+              ext.to_parquet(data_dir / 'maniceet_openrouter_openai_generations.parquet', index=False)
+
+          print(json.dumps({
+              'rows': report['shape']['rows'],
+              'labels': report['labels']['n_present'],
+              'labels_match_expected': report['labels']['matches_expected_10_label_set'],
+              'duplicate_texts': report['shape']['duplicate_normalized_texts'],
+              'exact_train_overlap': exact_overlap,
+              'near_gt_0_50': report['official_train_overlap']['rows_similarity_gt_0_50'],
+              'provenance_fields_found': sorted(provenance),
+              'fraction_40_to_250': report['protocol']['fraction_40_to_250_words'],
+              'gate_pass': report['gate']['passed'],
+              'hard_failures': hard_failures,
+          }, indent=2))
+
+          if hard_failures:
+              raise SystemExit(2)
+          PY
+
+      - name: Commit verified audit and source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/phase2/maniceet_kaggle_raw_audit.json \
+                  data/external/maniceet_openrouter_openai_generations.parquet
+          if git diff --cached --quiet; then
+            echo 'No verification changes.'
+            exit 0
+          fi
+          git commit -m 'Verify Maniceet external dataset from Kaggle API'
+          git push
