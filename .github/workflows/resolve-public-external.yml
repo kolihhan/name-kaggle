@@ -17,25 +17,51 @@ jobs:
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install Kaggle CLI
-        run: python -m pip install 'kaggle==2.2.5'
-      - name: Find public external dataset
+      - name: Install tooling
+        run: python -m pip install 'kaggle==2.2.5' 'pandas>=2,<3' 'pyarrow>=15,<27'
+      - name: Verify public dataset matches frozen Phase 7 rows
+        shell: bash
         run: |
           set -euo pipefail
-          kaggle datasets list -s 'extra GPT and Gemini generations' -v
-          echo '--- files for likely candidates ---'
+          mkdir -p /tmp/public-ntl
+          kaggle datasets download abdullah1afify/ntl-generations \
+            -f ntl_generations.csv -p /tmp/public-ntl --unzip -q
           python - <<'PY'
-          import csv, subprocess
-          out = subprocess.check_output([
-              'kaggle','datasets','list','-s','extra GPT and Gemini generations','-v'
-          ], text=True)
-          rows = list(csv.DictReader(out.splitlines()))
-          for row in rows[:10]:
-              ref = row.get('ref') or row.get('Ref')
-              if ref:
-                  print(f'### {ref}')
-                  subprocess.run(['kaggle','datasets','files',ref,'-v'], check=False)
+          import hashlib
+          import pandas as pd
+
+          frozen = pd.read_parquet('data/external/gpt_gemini_generations.parquet')
+          public = pd.read_csv('/tmp/public-ntl/ntl_generations.csv')
+
+          print('frozen rows:', len(frozen))
+          print('public rows:', len(public))
+          print('frozen columns:', sorted(frozen.columns.tolist()))
+          print('public columns:', sorted(public.columns.tolist()))
+          print('frozen label counts:')
+          print(frozen['model'].astype(str).value_counts().sort_index().to_string())
+          print('public label counts:')
+          print(public['model'].astype(str).value_counts().sort_index().to_string())
+
+          def fingerprint(frame):
+              rows = frame[['model','text']].astype(str).drop_duplicates().sort_values(['model','text'])
+              payload = '\n'.join(rows['model'] + '\t' + rows['text']).encode('utf-8')
+              return len(rows), hashlib.sha256(payload).hexdigest()
+
+          frozen_n, frozen_sha = fingerprint(frozen)
+          public_n, public_sha = fingerprint(public)
+          print('frozen unique model/text:', frozen_n, frozen_sha)
+          print('public unique model/text:', public_n, public_sha)
+
+          frozen_pairs = set(map(tuple, frozen[['model','text']].astype(str).itertuples(index=False, name=None)))
+          public_pairs = set(map(tuple, public[['model','text']].astype(str).itertuples(index=False, name=None)))
+          print('frozen rows present in public:', len(frozen_pairs & public_pairs), '/', len(frozen_pairs))
+          print('public-only rows:', len(public_pairs - frozen_pairs))
+          print('frozen-only rows:', len(frozen_pairs - public_pairs))
+
+          if not frozen_pairs <= public_pairs:
+              raise SystemExit('PUBLIC DATASET DOES NOT CONTAIN THE FULL FROZEN PHASE 7 SNAPSHOT')
           PY
