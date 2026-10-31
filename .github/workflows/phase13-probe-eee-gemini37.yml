@@ -1,0 +1,128 @@
+name: Phase 13 probe EEE Gemini 3.7 Flash
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase13-probe-eee-gemini37.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install source dependency
+        run: python -m pip install 'huggingface_hub>=0.30,<3'
+      - name: Inspect immutable pre-competition BenchPress records
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from collections import Counter, defaultdict
+          from pathlib import Path
+          from huggingface_hub import snapshot_download
+
+          repo_id = 'evaleval/EEE_datastore'
+          revision = '0d402386b021136075b4462d3cec68337c5f2721'
+          pattern = 'data/benchpress/google/gemini-3.7-flash/*.json'
+          root = Path(snapshot_download(
+              repo_id=repo_id,
+              repo_type='dataset',
+              revision=revision,
+              allow_patterns=[pattern],
+          ))
+          target = root / 'data/benchpress/google/gemini-3.7-flash'
+          files = sorted(target.glob('*.json'))
+          if not files:
+              raise SystemExit('no Gemini 3.7 Flash BenchPress JSON files found at pinned revision')
+
+          key_counts = Counter()
+          leaf_paths = Counter()
+          long_string_paths = defaultdict(list)
+          candidate_paths = defaultdict(list)
+          file_summaries = []
+          candidate_tokens = (
+              'response', 'output', 'completion', 'generated', 'assistant',
+              'message', 'transcript', 'sample', 'answer', 'text'
+          )
+
+          def walk(value, path, filename):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      key_counts[str(key)] += 1
+                      walk(child, path + [str(key)], filename)
+              elif isinstance(value, list):
+                  leaf_paths['.'.join(path) + '[]'] += 1
+                  for idx, child in enumerate(value):
+                      walk(child, path + ['[]'], filename)
+              else:
+                  dotted = '.'.join(path)
+                  leaf_paths[dotted] += 1
+                  if isinstance(value, str):
+                      lowered = dotted.lower()
+                      if len(value) >= 100:
+                          long_string_paths[dotted].append(len(value))
+                      if any(token in lowered for token in candidate_tokens):
+                          candidate_paths[dotted].append(len(value))
+
+          for file in files:
+              data = json.loads(file.read_text(encoding='utf-8'))
+              walk(data, [], file.name)
+              model_info = data.get('model_info', {}) if isinstance(data, dict) else {}
+              file_summaries.append({
+                  'file': file.name,
+                  'bytes': file.stat().st_size,
+                  'top_level_type': type(data).__name__,
+                  'top_level_keys': sorted(data.keys()) if isinstance(data, dict) else None,
+                  'model_name': model_info.get('name') if isinstance(model_info, dict) else None,
+                  'model_id': model_info.get('id') if isinstance(model_info, dict) else None,
+                  'evaluation_results_count': len(data.get('evaluation_results', [])) if isinstance(data, dict) and isinstance(data.get('evaluation_results'), list) else None,
+              })
+
+          report = {
+              'dataset': repo_id,
+              'revision': revision,
+              'license': 'MIT',
+              'competition_precedes': True,
+              'target_directory': str(target.relative_to(root)),
+              'file_count': len(files),
+              'files': file_summaries,
+              'all_key_counts': dict(sorted(key_counts.items())),
+              'long_string_leaf_paths': {
+                  path: {
+                      'count': len(lengths),
+                      'min_length': min(lengths),
+                      'max_length': max(lengths),
+                  }
+                  for path, lengths in sorted(long_string_paths.items())
+              },
+              'response_like_leaf_paths': {
+                  path: {
+                      'count': len(lengths),
+                      'min_length': min(lengths),
+                      'max_length': max(lengths),
+                  }
+                  for path, lengths in sorted(candidate_paths.items())
+              },
+              'scope': 'schema_probe_only_no_training_no_permanent_folds',
+          }
+          out = Path('/tmp/phase13_eee_gemini37_probe.json')
+          out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n')
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          PY
+      - name: Upload probe report
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase13-eee-gemini37-schema-probe
+          path: /tmp/phase13_eee_gemini37_probe.json
+          retention-days: 30
