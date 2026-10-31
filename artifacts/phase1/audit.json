@@ -1,0 +1,51 @@
+{
+  "train_sha256": "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707",
+  "train_rows": 2699,
+  "test_rows": 3,
+  "n_prompts": 150,
+  "n_models": 18,
+  "missing": {
+    "id": 0,
+    "prompt_id": 0,
+    "text": 0,
+    "model": 0,
+    "fold_id": 0
+  },
+  "duplicate_rows": 0,
+  "duplicate_text": 0,
+  "prompt_size_counts": {
+    "17": 1,
+    "18": 149
+  },
+  "model_counts": {
+    "claude-fable-5": 149,
+    "claude-opus-4-6": 150,
+    "claude-opus-4-8": 150,
+    "claude-opus-5": 150,
+    "claude-sonnet-5": 150,
+    "gemini-3.1-pro-preview": 150,
+    "gemini-3.6-flash": 150,
+    "gemini-3.7-flash": 150,
+    "gemini-3.8-flash": 150,
+    "glm-5.3": 150,
+    "glm-5.3-flash": 150,
+    "gpt-5.5": 150,
+    "gpt-5.6-luna": 150,
+    "gpt-5.6-sol": 150,
+    "gpt-5.6-terra": 150,
+    "gpt-6-astra": 150,
+    "kimi-k3": 150,
+    "qwen3.8-max": 150
+  },
+  "prompt_model_cells": {
+    "0": 1,
+    "1": 2699
+  },
+  "fold_summary": [
+    {"fold": 0, "train_rows": 2159, "valid_rows": 540, "valid_prompts": 30, "prompt_overlap": 0, "min_model_count": 30, "max_model_count": 30},
+    {"fold": 1, "train_rows": 2159, "valid_rows": 540, "valid_prompts": 30, "prompt_overlap": 0, "min_model_count": 30, "max_model_count": 30},
+    {"fold": 2, "train_rows": 2159, "valid_rows": 540, "valid_prompts": 30, "prompt_overlap": 0, "min_model_count": 30, "max_model_count": 30},
+    {"fold": 3, "train_rows": 2159, "valid_rows": 540, "valid_prompts": 30, "prompt_overlap": 0, "min_model_count": 30, "max_model_count": 30},
+    {"fold": 4, "train_rows": 2160, "valid_rows": 539, "valid_prompts": 30, "prompt_overlap": 0, "min_model_count": 29, "max_model_count": 30}
+  ]
+}
