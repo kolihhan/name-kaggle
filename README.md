@@ -112,7 +112,7 @@ The structural gate behaved as intended:
 - anchor predicted uncovered on 1,470 rows; all 1,470 remained untouched
 - specialist changed 454 rows, correcting 110 anchor mistakes while breaking 102 anchor-correct rows: net **+8** correct rows
 
-**Decision:** promote Phase 7 under the frozen contract. **0.370052 is the current best CPU OOF system**, while Phase 5b remains the canonical official-only base anchor.
+**Decision:** promote Phase 7 under the frozen contract. **0.3700521999 is the current best CPU OOF system**, while Phase 5b remains the canonical official-only base anchor.
 
 Do not tune the gate, covered-label set, external sample count, class weights, or SVC C on these permanent folds. The gain is valid but modest; the next useful experiment must add genuinely different information or representation.
 
@@ -122,9 +122,75 @@ See:
 - `artifacts/phase7/gated_specialist.json`
 - `artifacts/phase7/RESULT.md`
 
-### Maniceet 7,753-row source
+### Phase 8 — conservative external coverage audit
 
-`maniceet/name-that-llm-openrouter-openai-generations` remains blocked on resource-specific Kaggle dataset access/consent. It has not passed our raw-row audit and must not be treated as verified training data.
+The previously targeted `maniceet/name-that-llm-openrouter-openai-generations` source was tested through both anonymous and authenticated Kaggle routes and returned HTTP 403. It remains access-blocked, not merely parser-blocked.
+
+A public replacement corpus, `olegzholobov/name-that-llm-response-corpus`, was audited instead. Its frozen archive covers all 18 labels. The short view contains 24,025 mechanically clean response cells with zero exact or normalized-text overlap against the official 2,699 training answers.
+
+A conservative provenance rule was frozen before any model run:
+
+1. source rows are 100% license-known;
+2. source rows are 100% output-terms-clear;
+3. source rows have 100% exact prompt provenance;
+4. the retained source/prompt bank is independently evidenced as public before the competition opened on 2026-10-14;
+5. only labels not covered by the Phase 7 specialist are retained.
+
+That produced **2,921 unique responses** across five labels:
+
+| Label | Rows |
+|---|---:|
+| claude-opus-4-6 | 1,934 |
+| glm-5.3 | 200 |
+| glm-5.3-flash | 284 |
+| kimi-k3 | 317 |
+| qwen3.8-max | 186 |
+
+Official train does not expose prompt text, so accidental prompt identity between these public pre-competition prompts and hidden official prompt groups cannot be mathematically ruled out. The defensible statement is narrower: the retained sources/prompt banks predate competition launch and their answer texts have zero exact/normalized overlap with official training answers.
+
+**Decision:** Phase 8 is a reusable provenance/data-audit result, not a promoted model.
+
+See `artifacts/phase8/PHASE8.md` and `artifacts/phase8/response_corpus_audit.json`.
+
+### Phase 9 — pre-competition five-class gated specialist
+
+Phase 9 tested the 2,921-row Phase 8 candidate exactly once under a frozen contract. It stacked a five-class specialist on top of the reproduced **Phase 7 final OOF**. The second gate could only change predictions already inside these five labels:
+
+- `claude-opus-4-6`
+- `glm-5.3`
+- `glm-5.3-flash`
+- `kimi-k3`
+- `qwen3.8-max`
+
+No threshold, class-weight, `C`, feature, label-set, row-selection, or gate sweep was performed after seeing the result.
+
+| Condition | OOF balanced accuracy | Δ vs Phase 7 |
+|---|---:|---:|
+| Reproduced Phase 7 | **0.3700521999** | — |
+| Phase 9 gated specialist | 0.3659781258 | **-0.0040740741** |
+
+The safety invariants held:
+
+- all 13 labels outside the five-class specialist retained exactly the same recall;
+- Phase 7 predictions outside the gate were never changed;
+- 2,699 OOF rows / 2,699 unique IDs / zero nulls;
+- gate changed 182 rows, rescuing 27 mistakes and breaking 38 correct Phase 7 predictions: net **-11** correct rows.
+
+Per-label recall delta inside the gate:
+
+- `claude-opus-4-6`: `-0.0200`
+- `glm-5.3`: `-0.0267`
+- `glm-5.3-flash`: `-0.0133`
+- `kimi-k3`: `+0.0200`
+- `qwen3.8-max`: `-0.0333`
+
+**Decision: REJECT Phase 9.** Clean, pre-competition external data did not transfer strongly enough under this five-class sparse specialist. Do not rescue this route with post-hoc tuning on the permanent folds. **Phase 7 remains the current best system at 0.3700521999.**
+
+See:
+
+- `artifacts/phase9/CONTRACT.md`
+- `artifacts/phase9/precompetition_specialist.json`
+- `artifacts/phase9/RESULT.md`
 
 ## Canonical workflow
 
@@ -139,6 +205,8 @@ artifacts/phase5/        Style/multiview contract, result, and decision
 artifacts/phase5b/       Canonical official-only strong sparse anchor
 artifacts/phase6/        Global strong-sparse external transfer rejection
 artifacts/phase7/        Current best gated external-specialist CPU system
+artifacts/phase8/        External provenance and coverage audit
+artifacts/phase9/        Rejected pre-competition five-class specialist
 .github/workflows/       Execution wrappers plus historical diagnostics
 ```
 
@@ -154,6 +222,8 @@ Key scripts:
 - `scripts/run_strong_sparse_anchor.py` — reproduce Phase 5b.
 - `scripts/run_strong_sparse_external.py` — reproduce Phase 6.
 - `scripts/run_gated_specialist.py` — reproduce Phase 7.
+- `scripts/phase8_audit_response_corpus.py` — reproduce the Phase 8 response-corpus audit.
+- `scripts/run_phase9_precompetition_specialist.py` — reproduce the frozen Phase 9 negative experiment.
 
 ## Validation contract
 
@@ -163,15 +233,17 @@ External data is admitted stage by stage. An uplift under one representation or 
 
 ## Next experiment
 
-Freeze Phase 7 at **0.370052**. Do not squeeze the same gate with thresholds or weight sweeps.
+Keep Phase 7 frozen at **0.3700521999**. Phase 9 showed that simply adding a second sparse specialist for the newly audited Claude/GLM/Kimi/Qwen data is not enough.
 
-The next experiment should pursue a genuinely different source of signal, in this order:
+Do **not** respond by tuning Phase 9's threshold, class subset, SVC C, external sample weights, or gate on the permanent folds.
 
-1. newly audited external generations that cover the currently uncovered/weak Claude, GLM, Kimi, Qwen, and Gemini-3.7 labels; or
-2. a materially different representation/model family whose errors are demonstrably complementary to Phase 7 under the permanent folds.
+The next experiment should require a genuinely different source of information, for example:
 
-The blocked Maniceet source stays out until its raw rows and provenance can be audited directly.
+1. new trustworthy data for the still-uncovered weak labels (`claude-fable-5`, `claude-opus-4-8`, `claude-opus-5`, `claude-sonnet-5`, `gemini-3.7-flash`); or
+2. a materially different representation/model family with complementary OOF errors, evaluated under a newly frozen one-shot contract.
+
+The blocked Maniceet source stays out until its Kaggle access state changes and its raw rows can be audited directly.
 
 ## Data attribution
 
-The competition Data page lists the official dataset under **CC BY-SA 4.0**. See `data/README.md` for source and attribution. External source attribution and provenance are recorded in `artifacts/phase2/`.
+The competition Data page lists the official dataset under **CC BY-SA 4.0**. See `data/README.md` for source and attribution. External source attribution and provenance are recorded in `artifacts/phase2/` and `artifacts/phase8/`.
