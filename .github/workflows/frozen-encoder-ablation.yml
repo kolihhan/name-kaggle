@@ -36,6 +36,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install CPU PyTorch
+        run: pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.4,<3'
       - name: Install encoder dependencies
         run: pip install -r requirements-encoder.txt pytest
       - name: Run tiny-model encoder integration smoke
@@ -50,6 +52,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install CPU PyTorch
+        run: pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.4,<3'
       - name: Install encoder dependencies
         run: pip install -r requirements-encoder.txt
       - name: Recreate frozen folds
