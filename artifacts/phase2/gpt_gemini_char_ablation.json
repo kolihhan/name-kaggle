@@ -1,0 +1,274 @@
+{
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "phase1_target": 0.31929654486701464,
+    "reproduction_candidates": [
+      {
+        "config": {
+          "name": "char_default",
+          "analyzer": "char",
+          "sublinear_tf": false,
+          "min_df": 1
+        },
+        "balanced_accuracy": 0.31928908774546355,
+        "abs_delta_from_phase1": 7.457121551091017e-06,
+        "folds": [
+          0.31481481481481477,
+          0.28703703703703703,
+          0.3277777777777778,
+          0.32962962962962966,
+          0.3373563218390805
+        ]
+      },
+      {
+        "config": {
+          "name": "char_sublinear",
+          "analyzer": "char",
+          "sublinear_tf": true,
+          "min_df": 1
+        },
+        "balanced_accuracy": 0.3181854337559036,
+        "abs_delta_from_phase1": 0.0011111111111110628,
+        "folds": [
+          0.3055555555555556,
+          0.2925925925925926,
+          0.3203703703703703,
+          0.3314814814814815,
+          0.34106002554278414
+        ]
+      },
+      {
+        "config": {
+          "name": "char_min_df_2",
+          "analyzer": "char",
+          "sublinear_tf": false,
+          "min_df": 2
+        },
+        "balanced_accuracy": 0.31892368878946065,
+        "abs_delta_from_phase1": 0.00037285607755399575,
+        "folds": [
+          0.3203703703703703,
+          0.2833333333333334,
+          0.32592592592592595,
+          0.3314814814814815,
+          0.3336526181353767
+        ]
+      },
+      {
+        "config": {
+          "name": "char_wb_default",
+          "analyzer": "char_wb",
+          "sublinear_tf": false,
+          "min_df": 1
+        },
+        "balanced_accuracy": 0.2978100919711658,
+        "abs_delta_from_phase1": 0.02148645289584883,
+        "folds": [
+          0.29444444444444445,
+          0.2851851851851852,
+          0.29814814814814816,
+          0.29629629629629634,
+          0.3150702426564495
+        ]
+      }
+    ],
+    "selected_reproduction_config": {
+      "name": "char_default",
+      "analyzer": "char",
+      "sublinear_tf": false,
+      "min_df": 1
+    },
+    "selected_reproduction_delta": 7.457121551091017e-06
+  },
+  "external_source": {
+    "file": "data/external/gpt_gemini_generations.parquet",
+    "rows": 2503,
+    "prompts": 430,
+    "represented_labels": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.8-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra"
+    ],
+    "balanced_cap_per_label": 140
+  },
+  "experiments": [
+    {
+      "name": "official_only",
+      "external_rows": 0,
+      "balanced_accuracy": 0.31928908774546355,
+      "delta_vs_baseline": 0.0,
+      "folds": [
+        0.31481481481481477,
+        0.28703703703703703,
+        0.3277777777777778,
+        0.32962962962962966,
+        0.3373563218390805
+      ],
+      "mean_recall_augmented_labels": 0.35750000000000004,
+      "mean_recall_untouched_labels": 0.2887203579418345,
+      "per_model_recall": {
+        "claude-fable-5": 0.08053691275167785,
+        "claude-opus-4-6": 0.3933333333333333,
+        "claude-opus-4-8": 0.25333333333333335,
+        "claude-opus-5": 0.6333333333333333,
+        "claude-sonnet-5": 0.32,
+        "gemini-3.1-pro-preview": 0.76,
+        "gemini-3.6-flash": 0.37333333333333335,
+        "gemini-3.7-flash": 0.4,
+        "gemini-3.8-flash": 0.3,
+        "glm-5.3": 0.14,
+        "glm-5.3-flash": 0.12666666666666668,
+        "gpt-5.5": 0.24,
+        "gpt-5.6-luna": 0.28,
+        "gpt-5.6-sol": 0.14666666666666667,
+        "gpt-5.6-terra": 0.25333333333333335,
+        "gpt-6-astra": 0.5066666666666667,
+        "kimi-k3": 0.25333333333333335,
+        "qwen3.8-max": 0.2866666666666667
+      },
+      "per_model_delta_vs_baseline": {
+        "claude-fable-5": 0.0,
+        "claude-opus-4-6": 0.0,
+        "claude-opus-4-8": 0.0,
+        "claude-opus-5": 0.0,
+        "claude-sonnet-5": 0.0,
+        "gemini-3.1-pro-preview": 0.0,
+        "gemini-3.6-flash": 0.0,
+        "gemini-3.7-flash": 0.0,
+        "gemini-3.8-flash": 0.0,
+        "glm-5.3": 0.0,
+        "glm-5.3-flash": 0.0,
+        "gpt-5.5": 0.0,
+        "gpt-5.6-luna": 0.0,
+        "gpt-5.6-sol": 0.0,
+        "gpt-5.6-terra": 0.0,
+        "gpt-6-astra": 0.0,
+        "kimi-k3": 0.0,
+        "qwen3.8-max": 0.0
+      }
+    },
+    {
+      "name": "official_plus_all_external",
+      "external_rows": 2503,
+      "balanced_accuracy": 0.34115585384041763,
+      "delta_vs_baseline": 0.021866766094954082,
+      "folds": [
+        0.3277777777777777,
+        0.32592592592592595,
+        0.34814814814814815,
+        0.3462962962962963,
+        0.35779054916985953
+      ],
+      "mean_recall_augmented_labels": 0.4291666666666667,
+      "mean_recall_untouched_labels": 0.2707472035794184,
+      "per_model_recall": {
+        "claude-fable-5": 0.12080536912751678,
+        "claude-opus-4-6": 0.4066666666666667,
+        "claude-opus-4-8": 0.24,
+        "claude-opus-5": 0.5866666666666667,
+        "claude-sonnet-5": 0.34,
+        "gemini-3.1-pro-preview": 0.7133333333333334,
+        "gemini-3.6-flash": 0.5,
+        "gemini-3.7-flash": 0.26666666666666666,
+        "gemini-3.8-flash": 0.49333333333333335,
+        "glm-5.3": 0.09333333333333334,
+        "glm-5.3-flash": 0.14666666666666667,
+        "gpt-5.5": 0.38,
+        "gpt-5.6-luna": 0.3466666666666667,
+        "gpt-5.6-sol": 0.2,
+        "gpt-5.6-terra": 0.23333333333333334,
+        "gpt-6-astra": 0.5666666666666667,
+        "kimi-k3": 0.22,
+        "qwen3.8-max": 0.2866666666666667
+      },
+      "per_model_delta_vs_baseline": {
+        "claude-fable-5": 0.04026845637583894,
+        "claude-opus-4-6": 0.013333333333333364,
+        "claude-opus-4-8": -0.013333333333333364,
+        "claude-opus-5": -0.046666666666666634,
+        "claude-sonnet-5": 0.020000000000000018,
+        "gemini-3.1-pro-preview": -0.046666666666666634,
+        "gemini-3.6-flash": 0.12666666666666665,
+        "gemini-3.7-flash": -0.13333333333333336,
+        "gemini-3.8-flash": 0.19333333333333336,
+        "glm-5.3": -0.046666666666666676,
+        "glm-5.3-flash": 0.01999999999999999,
+        "gpt-5.5": 0.14,
+        "gpt-5.6-luna": 0.06666666666666665,
+        "gpt-5.6-sol": 0.053333333333333344,
+        "gpt-5.6-terra": -0.020000000000000018,
+        "gpt-6-astra": 0.05999999999999994,
+        "kimi-k3": -0.033333333333333354,
+        "qwen3.8-max": 0.0
+      }
+    },
+    {
+      "name": "official_plus_balanced_external",
+      "external_rows": 1120,
+      "balanced_accuracy": 0.33597315436241604,
+      "delta_vs_baseline": 0.016684066616952486,
+      "folds": [
+        0.33888888888888885,
+        0.3148148148148148,
+        0.3314814814814815,
+        0.35185185185185186,
+        0.342911877394636
+      ],
+      "mean_recall_augmented_labels": 0.4125,
+      "mean_recall_untouched_labels": 0.274751677852349,
+      "per_model_recall": {
+        "claude-fable-5": 0.12751677852348994,
+        "claude-opus-4-6": 0.38,
+        "claude-opus-4-8": 0.24,
+        "claude-opus-5": 0.58,
+        "claude-sonnet-5": 0.32666666666666666,
+        "gemini-3.1-pro-preview": 0.8,
+        "gemini-3.6-flash": 0.4266666666666667,
+        "gemini-3.7-flash": 0.35333333333333333,
+        "gemini-3.8-flash": 0.44,
+        "glm-5.3": 0.12666666666666668,
+        "glm-5.3-flash": 0.14,
+        "gpt-5.5": 0.3933333333333333,
+        "gpt-5.6-luna": 0.32,
+        "gpt-5.6-sol": 0.17333333333333334,
+        "gpt-5.6-terra": 0.18,
+        "gpt-6-astra": 0.5666666666666667,
+        "kimi-k3": 0.18,
+        "qwen3.8-max": 0.29333333333333333
+      },
+      "per_model_delta_vs_baseline": {
+        "claude-fable-5": 0.046979865771812096,
+        "claude-opus-4-6": -0.013333333333333308,
+        "claude-opus-4-8": -0.013333333333333364,
+        "claude-opus-5": -0.053333333333333344,
+        "claude-sonnet-5": 0.006666666666666654,
+        "gemini-3.1-pro-preview": 0.040000000000000036,
+        "gemini-3.6-flash": 0.053333333333333344,
+        "gemini-3.7-flash": -0.04666666666666669,
+        "gemini-3.8-flash": 0.14,
+        "glm-5.3": -0.013333333333333336,
+        "glm-5.3-flash": 0.013333333333333336,
+        "gpt-5.5": 0.15333333333333332,
+        "gpt-5.6-luna": 0.03999999999999998,
+        "gpt-5.6-sol": 0.026666666666666672,
+        "gpt-5.6-terra": -0.07333333333333336,
+        "gpt-6-astra": 0.05999999999999994,
+        "kimi-k3": -0.07333333333333336,
+        "qwen3.8-max": 0.006666666666666654
+      }
+    }
+  ],
+  "decision": {
+    "best_experiment": "official_plus_all_external",
+    "best_balanced_accuracy": 0.34115585384041763,
+    "best_delta_vs_baseline": 0.021866766094954082,
+    "promote_external_to_encoder_stage": true
+  }
+}
