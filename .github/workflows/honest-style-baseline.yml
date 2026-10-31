@@ -40,7 +40,7 @@ jobs:
       - name: Install runtime dependencies
         run: pip install numpy pandas scipy scikit-learn
       - name: Run honest style baseline
-        run: python scripts/run_honest_style_baseline.py
+        run: python -m scripts.run_honest_style_baseline
       - name: Verify result contract
         run: |
           python - <<'PY'
