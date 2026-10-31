@@ -17,7 +17,7 @@ Competition: https://www.kaggle.com/competitions/name-that-llm
 
 ### Phase 2 — external data
 
-The audited 2,503-row GPT/Gemini source improved the sparse baseline:
+The audited 2,503-row GPT/Gemini source improved the weak sparse baseline:
 
 | Experiment | Balanced accuracy | Δ |
 |---|---:|---:|
@@ -25,7 +25,7 @@ The audited 2,503-row GPT/Gemini source improved the sparse baseline:
 | Official + 2,503 external | **0.34116** | **+0.02187** |
 | Official + balanced 1,120-row slice | 0.33597 | +0.01668 |
 
-This was an admission signal for further testing, not proof that the source helps every representation.
+This was an admission signal for representation-matched testing, not proof that the source helps every model.
 
 ### Phase 3 — frozen ModernBERT gate
 
@@ -34,7 +34,7 @@ This was an admission signal for further testing, not proof that the source help
 | Official only frozen ModernBERT | **0.30224** | — |
 | Frozen ModernBERT + 2,503 external | **0.29041** | **-0.01183** |
 
-**Decision:** the 2,503-row source fails the encoder-stage admission gate. Recall fell for all 8 labels directly covered by the external source.
+**Decision:** the external source fails the encoder-stage admission gate.
 
 ### Phase 4 — official-only trainable ModernBERT
 
@@ -44,9 +44,7 @@ This was an admission signal for further testing, not proof that the source help
 | Phase 3 frozen ModernBERT | **0.30224** |
 | Phase 4 trainable ModernBERT | **0.25781** |
 
-The five-fold Kaggle GPU run passed the official-data SHA, fold fingerprint, row-count, label-count, and no-external-data checks.
-
-**Decision:** reject this full-fine-tuning recipe. Do not respond with a blind epoch or hyperparameter sweep.
+**Decision:** reject this full-fine-tuning recipe. Do not respond with a blind hyperparameter sweep.
 
 ### Phase 5 — official-only style multiview
 
@@ -57,9 +55,9 @@ The five-fold Kaggle GPU run passed the official-data SHA, fold fingerprint, row
 | Numeric style + LogisticRegression | 0.29008 |
 | Equal geometric-mean blend | **0.34821** |
 
-The blend improved Phase 1 by **+0.02891**, but equal weighting gave too much influence to the weaker word/style branches.
+The blend improved Phase 1 by **+0.02891**.
 
-### Phase 5b — strong sparse CPU anchor
+### Phase 5b — canonical strong sparse CPU anchor
 
 A single fold-local feature union was evaluated with no external data:
 
@@ -77,15 +75,31 @@ A single fold-local feature union was evaluated with no external data:
 
 Fold scores: `0.38333 / 0.34444 / 0.37593 / 0.38148 / 0.35032`.
 
-**Decision:** promote **0.36709** as the current canonical CPU anchor.
+**Decision:** keep **0.36709** as the canonical CPU anchor.
 
-Do not tune toward the independently observed public `0.37560` as if it were a same-fold target. That public result used `StratifiedGroupKFold(shuffle=True, random_state=42)` with a different fold fingerprint; this repo keeps its permanent `GroupKFold(prompt_id)` mapping unchanged.
+Do not tune toward the independently observed public `0.37560` as if it were a same-fold target. That public result used `StratifiedGroupKFold(shuffle=True, random_state=42)` with a different fold mapping; this repo keeps its permanent `GroupKFold(prompt_id)` mapping unchanged.
+
+### Phase 6 — strong sparse + audited external
+
+The exact Phase 5b model was retrained with all 2,503 audited GPT/Gemini external rows added to every official training partition. Validation remained untouched official rows only.
+
+| Condition | OOF balanced accuracy | Δ vs Phase 5b |
+|---|---:|---:|
+| Official-only Phase 5b | **0.36709** | — |
+| Phase 6 + 2,503 external | 0.35967 | **-0.00742** |
+
+The result is asymmetric:
+
+- externally covered 8-label mean recall: `0.40833 → 0.50917` (**+0.10083**)
+- uncovered 10-label mean recall: `0.33409 → 0.24008` (**-0.09402**)
+
+**Decision:** reject global external augmentation for the strong-sparse path. The corpus contains useful specialist signal for represented GPT/Gemini classes, but global inclusion hurts uncovered classes enough to reduce balanced accuracy.
 
 See:
 
-- `artifacts/phase5b/CONTRACT.md`
-- `artifacts/phase5b/strong_sparse_anchor.json`
-- `artifacts/phase5b/RESULT.md`
+- `artifacts/phase6/CONTRACT.md`
+- `artifacts/phase6/strong_sparse_external.json`
+- `artifacts/phase6/RESULT.md`
 
 ### Maniceet 7,753-row source
 
@@ -102,6 +116,7 @@ artifacts/phase3/        Frozen encoder contract, result, and decision
 artifacts/phase4/        Trainable encoder contract, result, and decision
 artifacts/phase5/        Style/multiview contract, result, and decision
 artifacts/phase5b/       Current strong sparse CPU anchor
+artifacts/phase6/        Strong-sparse external-transfer test and rejection
 .github/workflows/       Execution wrappers plus historical diagnostics
 ```
 
@@ -110,30 +125,24 @@ Key scripts:
 - `scripts/bootstrap_data.sh` — restore official competition data.
 - `scripts/make_folds.py` — recreate the permanent grouped folds.
 - `scripts/audit_gpt_gemini_external.py` — reproduce the 2,503-row external audit.
-- `scripts/run_external_ablation.py` — reproduce the Phase 2 sparse external-data ablation.
+- `scripts/run_external_ablation.py` — reproduce Phase 2.
 - `scripts/run_frozen_encoder_ablation.py` — reproduce Phase 3.
 - `scripts/train_modernbert_cv.py` — reproduce Phase 4.
 - `scripts/run_style_baseline.py` — reproduce Phase 5.
 - `scripts/run_strong_sparse_anchor.py` — reproduce Phase 5b.
+- `scripts/run_strong_sparse_external.py` — reproduce Phase 6.
 
 ## Validation contract
 
 Do **not** use a random row split. Rows sharing a `prompt_id` must stay in the same fold. The competition test contains unseen prompts, so prompt-grouped CV is the local source of truth.
 
-External data is admitted stage by stage. An uplift under one representation does not automatically authorize the same source for another representation.
+External data is admitted stage by stage. An uplift under one representation or weak baseline does not automatically authorize the same source elsewhere.
 
 ## Next experiment
 
-Run one **strong-sparse + audited external** transfer test under the same permanent folds:
+Do **not** globally add the 2,503-row GPT/Gemini corpus again, and do not tune its sample count or class weights on these permanent folds.
 
-1. keep the exact Phase 5b feature pipeline and `LinearSVC(C=1.5)` unchanged;
-2. for each fold, train on the four official training folds plus all admitted 2,503 GPT/Gemini external rows;
-3. fit all TF-IDF vocabularies/scalers inside that fold's combined training set;
-4. score only untouched official validation rows;
-5. compare directly against the official-only Phase 5b anchor **0.36709**;
-6. record per-model recall, especially the 8 externally covered labels versus the 10 uncovered labels.
-
-Do not reintroduce the failed ModernBERT external path unless a new representation-specific reason appears.
+If this source is revisited, the next defensible hypothesis is a **separate external-trained specialist** that leaves the official-only Phase 5b anchor unchanged and is combined only through a predeclared, untuned mechanism. Before building that, first compare its expected value against higher-diversity directions such as a genuinely different model family or newly audited external coverage for the currently weak/uncovered classes.
 
 ## Data attribution
 
