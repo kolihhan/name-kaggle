@@ -1,0 +1,92 @@
+{
+  "source": {
+    "name": "Extra GPT and Gemini generations (free Kaggle Benchmarks quota)",
+    "upstream_repo": "RohanExploit/kaggle-name-that-llm-top20",
+    "upstream_path": "data/extra_gpt_gemini/ntl_generations.csv",
+    "git_blob_sha1": "8dccb6d8f8b8388b134a6aa8f8ea42e99df08c10",
+    "sha256": "8e7a66eb4dda074ab80d47f11ce3002f4dccc19fe363ed252c6cfb5ef834b19e",
+    "license_reported": "CC BY 4.0 (best-effort statement in upstream README)",
+    "prompt_bank": "seyitkaangunes/ntl-extra-api-passages — 1,000 new prompts, CC BY 4.0"
+  },
+  "shape": {
+    "rows": 2503,
+    "columns": [
+      "model",
+      "prompt_id",
+      "setting",
+      "target_words",
+      "text",
+      "model_seen",
+      "finish_reason",
+      "cost_usd",
+      "batch"
+    ],
+    "duplicate_full_rows": 0,
+    "duplicate_normalized_texts": 0,
+    "prompt_ids": 430,
+    "prompt_min_rows": 2,
+    "prompt_max_rows": 20
+  },
+  "labels": {
+    "n_present": 8,
+    "counts": {
+      "gemini-3.1-pro-preview": 140,
+      "gemini-3.6-flash": 314,
+      "gemini-3.8-flash": 320,
+      "gpt-5.5": 313,
+      "gpt-5.6-luna": 370,
+      "gpt-5.6-sol": 321,
+      "gpt-5.6-terra": 370,
+      "gpt-6-astra": 355
+    },
+    "invalid_labels": [],
+    "missing_competition_labels": [
+      "claude-fable-5",
+      "claude-opus-4-6",
+      "claude-opus-4-8",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gemini-3.7-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "kimi-k3",
+      "qwen3.8-max"
+    ]
+  },
+  "provenance": {
+    "model_seen_blank_rows": 0,
+    "model_seen_unique": 8,
+    "settings": {
+      "default": 2313,
+      "low": 104,
+      "none": 86
+    },
+    "finish_reasons": {
+      "stop": 2206,
+      "<blank>": 297
+    },
+    "batches": 10
+  },
+  "protocol": {
+    "word_count_min": 34,
+    "word_count_p05": 44.0,
+    "word_count_median": 101.0,
+    "word_count_p95": 222.0,
+    "word_count_max": 272,
+    "fraction_40_to_250_words": 0.9840191769876149,
+    "rows_with_newline": 0
+  },
+  "official_train_overlap": {
+    "exact_normalized_text_matches": 0,
+    "tfidf_word_1_2_max_similarity_max": 0.16553089022636414,
+    "tfidf_word_1_2_max_similarity_p99": 0.11769726872444153,
+    "rows_similarity_gt_0_25": 0,
+    "rows_similarity_gt_0_50": 0,
+    "rows_similarity_gt_0_80": 0
+  },
+  "gate": {
+    "hard_failures": [],
+    "passed_raw_identity_gate": true,
+    "note": "Missing competition labels are expected for this targeted source and are not a hard failure."
+  }
+}
