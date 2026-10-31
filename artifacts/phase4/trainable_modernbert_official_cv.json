@@ -1,0 +1,82 @@
+{
+  "phase": 4,
+  "experiment": "trainable_modernbert_official_only",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "train_path": "/kaggle/input/competitions/name-that-llm/train.csv",
+    "train_sha256": "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707",
+    "official_rows": 2699,
+    "prompt_count": 150,
+    "labels": [
+      "claude-fable-5",
+      "claude-opus-4-6",
+      "claude-opus-4-8",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra",
+      "kimi-k3",
+      "qwen3.8-max"
+    ],
+    "external_rows": 0
+  },
+  "model": {
+    "name": "answerdotai/ModernBERT-base",
+    "trainable": true,
+    "max_length": 256,
+    "epochs": 2,
+    "train_batch_size": 16,
+    "eval_batch_size": 32,
+    "learning_rate": 2e-05,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "seed": 20261031,
+    "device": "cuda"
+  },
+  "oof": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.2578076062639821,
+    "folds": [
+      0.2277777777777778,
+      0.24444444444444446,
+      0.29259259259259257,
+      0.26296296296296295,
+      0.2612388250319285
+    ],
+    "per_model_recall": {
+      "claude-fable-5": 0.08053691275167785,
+      "claude-opus-4-6": 0.30666666666666664,
+      "claude-opus-4-8": 0.24666666666666667,
+      "claude-opus-5": 0.5,
+      "claude-sonnet-5": 0.18666666666666668,
+      "gemini-3.1-pro-preview": 0.5066666666666667,
+      "gemini-3.6-flash": 0.21333333333333335,
+      "gemini-3.7-flash": 0.32,
+      "gemini-3.8-flash": 0.3333333333333333,
+      "glm-5.3": 0.12,
+      "glm-5.3-flash": 0.17333333333333334,
+      "gpt-5.5": 0.35333333333333333,
+      "gpt-5.6-luna": 0.14666666666666667,
+      "gpt-5.6-sol": 0.08666666666666667,
+      "gpt-5.6-terra": 0.17333333333333334,
+      "gpt-6-astra": 0.38,
+      "kimi-k3": 0.21333333333333335,
+      "qwen3.8-max": 0.3
+    }
+  }
+}
