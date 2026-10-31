@@ -147,6 +147,10 @@ def run_embedding_ablation(
     augmented["delta_vs_official_only"] = (
         augmented["balanced_accuracy"] - official["balanced_accuracy"]
     )
+    augmented["per_model_delta_vs_official_only"] = {
+        label: augmented["per_model_recall"][label] - official["per_model_recall"][label]
+        for label in official["per_model_recall"]
+    }
 
     return {
         "validation": {
