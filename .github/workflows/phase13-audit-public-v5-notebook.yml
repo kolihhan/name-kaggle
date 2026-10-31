@@ -1,0 +1,173 @@
+name: Phase 13 audit public high-score notebook
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase13-audit-public-v5-notebook.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: qasminumber/name-that-llm-v5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public notebook source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/public-v5
+          mkdir -p /tmp/public-v5
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/public-v5 -m
+          find /tmp/public-v5 -maxdepth 2 -type f -printf '%P\t%s bytes\n' | sort
+      - name: Static architecture and input audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import json
+          import re
+          from collections import Counter
+          from pathlib import Path
+
+          root = Path('/tmp/public-v5')
+          notebooks = sorted(root.glob('*.ipynb'))
+          scripts = sorted(root.glob('*.py'))
+          if not notebooks and not scripts:
+              raise SystemExit('no notebook or script source pulled')
+
+          code_chunks = []
+          markdown_chunks = []
+          notebook_meta = None
+          for path in notebooks:
+              nb = json.loads(path.read_text(encoding='utf-8'))
+              notebook_meta = {
+                  'path': path.name,
+                  'nbformat': nb.get('nbformat'),
+                  'cells': len(nb.get('cells', [])),
+                  'code_cells': sum(c.get('cell_type') == 'code' for c in nb.get('cells', [])),
+                  'markdown_cells': sum(c.get('cell_type') == 'markdown' for c in nb.get('cells', [])),
+              }
+              for cell in nb.get('cells', []):
+                  src = cell.get('source', '')
+                  if isinstance(src, list):
+                      src = ''.join(src)
+                  if cell.get('cell_type') == 'code':
+                      code_chunks.append(src)
+                  elif cell.get('cell_type') == 'markdown':
+                      markdown_chunks.append(src)
+          for path in scripts:
+              code_chunks.append(path.read_text(encoding='utf-8'))
+
+          code = '\n\n'.join(code_chunks)
+          markdown = '\n\n'.join(markdown_chunks)
+          lower = code.lower()
+
+          imports = set()
+          for line in code.splitlines():
+              stripped = line.strip()
+              m = re.match(r'(?:from|import)\s+([A-Za-z0-9_\.]+)', stripped)
+              if m:
+                  imports.add(m.group(1).split('.')[0])
+
+          signals = {
+              key: (needle.lower() in lower)
+              for key, needle in {
+                  'tfidf': 'TfidfVectorizer',
+                  'linear_svc': 'LinearSVC',
+                  'logistic_regression': 'LogisticRegression',
+                  'ridge': 'RidgeClassifier',
+                  'transformers': 'transformers',
+                  'auto_tokenizer': 'AutoTokenizer',
+                  'sequence_classifier': 'AutoModelForSequenceClassification',
+                  'sentence_transformers': 'sentence_transformers',
+                  'torch': 'torch',
+                  'lightgbm': 'lightgbm',
+                  'xgboost': 'xgboost',
+                  'catboost': 'catboost',
+                  'faiss': 'faiss',
+                  'embedding': 'embedding',
+                  'rank_blend': 'rank',
+                  'softmax': 'softmax',
+                  'ensemble': 'ensemble',
+                  'temperature': 'temperature',
+                  'pca': 'PCA',
+                  'svd': 'TruncatedSVD',
+              }.items()
+          }
+
+          model_tokens = sorted(set(re.findall(
+              r'(?i)(?:modernbert|deberta|roberta|qwen|gemma|mistral|bert)[A-Za-z0-9_./\-]*',
+              code + '\n' + markdown,
+          )))[:200]
+
+          # Capture Kaggle-mounted paths and common model/data identifiers without reproducing large code blocks.
+          input_paths = sorted(set(re.findall(r'/kaggle/input/[A-Za-z0-9_./\-]+', code)))[:200]
+          dataset_like = sorted(set(re.findall(
+              r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',
+              '\n'.join(input_paths),
+          )))[:200]
+
+          metadata_files = []
+          for path in sorted(root.glob('*metadata*.json')):
+              try:
+                  data = json.loads(path.read_text(encoding='utf-8'))
+              except Exception:
+                  continue
+              metadata_files.append({'path': path.name, 'data': data})
+
+          # Extract only compact parameter/value lines around likely model construction.
+          interesting_lines = []
+          patterns = [
+              'TfidfVectorizer', 'LinearSVC', 'LogisticRegression',
+              'AutoTokenizer', 'AutoModel', 'from_pretrained', 'sentence_transform',
+              'blend', 'ensemble', 'softmax', 'predict_proba', 'decision_function',
+              'Stratified', 'GroupKFold', 'prompt_id', 'external',
+          ]
+          for lineno, line in enumerate(code.splitlines(), start=1):
+              if any(p.lower() in line.lower() for p in patterns):
+                  compact = line.strip()
+                  if compact and len(compact) <= 300:
+                      interesting_lines.append({'line': lineno, 'text': compact})
+          interesting_lines = interesting_lines[:400]
+
+          report = {
+              'kernel_ref': 'qasminumber/name-that-llm-v5',
+              'scope': 'static_source_audit_only_no_execution_no_training_no_submission',
+              'notebook': notebook_meta,
+              'source_files': [p.name for p in notebooks + scripts],
+              'code_chars': len(code),
+              'imports': sorted(imports),
+              'architecture_signals': signals,
+              'model_tokens': model_tokens,
+              'kaggle_input_paths': input_paths,
+              'dataset_like_tokens_from_paths': dataset_like,
+              'metadata_files': metadata_files,
+              'interesting_lines': interesting_lines,
+          }
+          Path('/tmp/phase13_public_v5_audit.json').write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          PY
+      - name: Upload static audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase13-public-v5-static-audit
+          path: /tmp/phase13_public_v5_audit.json
+          retention-days: 30
