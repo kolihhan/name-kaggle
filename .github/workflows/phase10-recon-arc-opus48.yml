@@ -1,0 +1,88 @@
+name: Phase 10 recon ARC Opus 4.8 traces
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase10-recon-arc-opus48.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Hugging Face client
+        run: python -m pip install 'huggingface_hub>=0.30,<3'
+
+      - name: Pin source and inspect one raw trace per Opus 4.8 setting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from huggingface_hub import HfApi, hf_hub_download
+
+          repo_id = 'arcprize/arc_agi_v2_public_eval'
+          folders = [
+              'claude-opus-4-8-high',
+              'claude-opus-4-8-medium',
+              'claude-opus-4-8-max',
+          ]
+          api = HfApi()
+          info = api.dataset_info(repo_id, files_metadata=True)
+          print('repo_id:', repo_id)
+          print('revision:', info.sha)
+          print('last_modified:', info.last_modified)
+          print('tags:', sorted(info.tags or []))
+
+          interesting = ('model', 'response', 'output', 'completion', 'prediction', 'assistant', 'message', 'content', 'answer')
+          for folder in folders:
+              entries = list(api.list_repo_tree(
+                  repo_id,
+                  path_in_repo=folder,
+                  recursive=False,
+                  revision=info.sha,
+                  repo_type='dataset',
+              ))
+              files = [x.path for x in entries if hasattr(x, 'path') and x.path.lower().endswith('.json')]
+              print(f'--- {folder} ---')
+              print('json_files:', len(files))
+              if not files:
+                  continue
+              path = sorted(files)[0]
+              local = hf_hub_download(repo_id, path, repo_type='dataset', revision=info.sha)
+              with open(local, 'r', encoding='utf-8') as handle:
+                  record = json.load(handle)
+              print('sample_file:', path)
+              print('top_level_type:', type(record).__name__)
+              if isinstance(record, dict):
+                  print('top_level_keys:', sorted(record.keys()))
+
+              hits = []
+              def walk(value, prefix=''):
+                  if isinstance(value, dict):
+                      for key, child in value.items():
+                          key_path = f'{prefix}.{key}' if prefix else key
+                          if any(token in key.lower() for token in interesting):
+                              preview = child if isinstance(child, (str, int, float, bool, type(None))) else type(child).__name__
+                              if isinstance(preview, str):
+                                  preview = preview[:300].replace('\n', '\\n')
+                              hits.append((key_path, preview))
+                          walk(child, key_path)
+                  elif isinstance(value, list):
+                      for idx, child in enumerate(value[:8]):
+                          walk(child, f'{prefix}[{idx}]')
+              walk(record)
+              print('interesting_paths:')
+              for key_path, preview in hits[:120]:
+                  print(' ', key_path, '=>', preview)
+          PY
