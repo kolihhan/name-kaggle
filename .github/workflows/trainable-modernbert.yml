@@ -26,3 +26,112 @@ jobs:
         run: pip install pytest numpy pandas scikit-learn
       - name: Run Phase 4 contract tests
         run: python -m pytest -q tests/test_train_modernbert_cv.py
+
+  kaggle-gpu:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[phase4-run]')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle clients
+        run: pip install kaggle kagglehub
+      - name: Build private Kaggle kernel package
+        id: kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          USERNAME="$(python - <<'PY'
+          import kagglehub
+          print(kagglehub.whoami(verbose=False)["username"])
+          PY
+          )"
+          KERNEL_REF="${USERNAME}/name-that-llm-modernbert-official-cv"
+          KERNEL_DIR=".kaggle/phase4"
+          mkdir -p "$KERNEL_DIR"
+          cp scripts/train_modernbert_cv.py "$KERNEL_DIR/train_modernbert_cv.py"
+          python - "$KERNEL_DIR/kernel-metadata.json" "$KERNEL_REF" <<'PY'
+          import json
+          import sys
+
+          path, kernel_ref = sys.argv[1:]
+          payload = {
+              "id": kernel_ref,
+              "title": "Name That LLM ModernBERT Official CV",
+              "code_file": "train_modernbert_cv.py",
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_internet": True,
+              "machine_shape": "NvidiaTeslaT4",
+              "competition_sources": ["name-that-llm"],
+              "dataset_sources": [],
+              "kernel_sources": [],
+              "model_sources": [],
+          }
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2)
+          PY
+          echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
+          cat "$KERNEL_DIR/kernel-metadata.json"
+      - name: Push Phase 4 kernel to Kaggle GPU
+        run: >-
+          kaggle kernels push
+          -p .kaggle/phase4
+          --accelerator NvidiaTeslaT4
+          --timeout 10800
+      - name: Poll kernel until terminal state
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          complete=0
+          for _ in $(seq 1 360); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "$status"
+            if grep -Eqi 'complete|successful' <<<"$status"; then
+              complete=1
+              break
+            fi
+            if grep -Eqi 'error|failed|cancel' <<<"$status"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 30
+          done
+          if [[ "$complete" != "1" ]]; then
+            echo "Kaggle kernel did not reach a successful terminal state"
+            kaggle kernels logs "$KERNEL_REF" || true
+            exit 1
+          fi
+      - name: Download and verify Phase 4 outputs
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p phase4-output
+          kaggle kernels output "$KERNEL_REF" -p phase4-output -o
+          test -s phase4-output/trainable_modernbert_official_cv.json
+          test -s phase4-output/trainable_modernbert_official_oof.csv
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("phase4-output/trainable_modernbert_official_cv.json").read_text())
+          assert report["validation"]["fold_fingerprint"] == "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+          assert report["data"]["official_rows"] == 2699
+          assert report["data"]["external_rows"] == 0
+          assert len(report["oof"]["folds"]) == 5
+          print("OOF balanced accuracy:", report["oof"]["balanced_accuracy"])
+          print("Fold scores:", report["oof"]["folds"])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase4-trainable-modernbert-official
+          path: phase4-output/
