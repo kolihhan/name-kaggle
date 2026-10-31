@@ -11,12 +11,13 @@ from sklearn.metrics import balanced_accuracy_score, recall_score
 from sklearn.svm import LinearSVC
 
 
-REPRODUCTION_CONFIGS = [
-    {"name": "char_default", "analyzer": "char", "sublinear_tf": False, "min_df": 1},
-    {"name": "char_sublinear", "analyzer": "char", "sublinear_tf": True, "min_df": 1},
-    {"name": "char_min_df_2", "analyzer": "char", "sublinear_tf": False, "min_df": 2},
-    {"name": "char_wb_default", "analyzer": "char_wb", "sublinear_tf": False, "min_df": 1},
-]
+BASELINE_CONFIG = {
+    "name": "char_default",
+    "analyzer": "char",
+    "sublinear_tf": False,
+    "min_df": 1,
+}
+BASELINE_TOLERANCE = 0.002
 
 
 def run_cv(train: pd.DataFrame, external: pd.DataFrame | None, config: dict) -> dict:
@@ -98,35 +99,18 @@ def run_ablation(
         "oof_balanced_accuracy"
     ]
 
-    reproduction = []
-    for config in REPRODUCTION_CONFIGS:
-        result = run_cv(train, None, config)
-        reproduction.append(
-            {
-                "config": config,
-                "balanced_accuracy": result["balanced_accuracy"],
-                "abs_delta_from_phase1": abs(
-                    result["balanced_accuracy"] - target_baseline
-                ),
-                "folds": result["folds"],
-            }
-        )
-
-    best_reproduction = min(
-        reproduction, key=lambda item: item["abs_delta_from_phase1"]
-    )
-    if best_reproduction["abs_delta_from_phase1"] > 0.002:
+    baseline = run_cv(train, None, BASELINE_CONFIG)
+    reproduction_delta = abs(baseline["balanced_accuracy"] - target_baseline)
+    if reproduction_delta > BASELINE_TOLERANCE:
         raise RuntimeError(
-            "Could not reproduce Phase-1 baseline closely: "
+            "Frozen Phase-1 baseline no longer reproduces closely: "
             f"target={target_baseline:.8f}, "
-            f"best={best_reproduction['balanced_accuracy']:.8f}, "
-            f"config={best_reproduction['config']}"
+            f"actual={baseline['balanced_accuracy']:.8f}, "
+            f"delta={reproduction_delta:.8f}"
         )
 
-    config = best_reproduction["config"]
-    baseline = run_cv(train, None, config)
     all_external = external[["text", "model"]].copy()
-    augmented_all = run_cv(train, all_external, config)
+    augmented_all = run_cv(train, all_external, BASELINE_CONFIG)
 
     cap = int(external["model"].value_counts().min())
     balanced_external = (
@@ -134,7 +118,7 @@ def run_ablation(
         .apply(lambda frame: frame.sample(n=min(cap, len(frame)), random_state=42))
         .reset_index(drop=True)[["text", "model"]]
     )
-    augmented_balanced = run_cv(train, balanced_external, config)
+    augmented_balanced = run_cv(train, balanced_external, BASELINE_CONFIG)
 
     augmented_labels = sorted(external["model"].unique())
     untouched_labels = sorted(set(labels) - set(augmented_labels))
@@ -167,11 +151,8 @@ def run_ablation(
             "group_key": "prompt_id",
             "metric": "balanced_accuracy",
             "phase1_target": target_baseline,
-            "reproduction_candidates": reproduction,
-            "selected_reproduction_config": config,
-            "selected_reproduction_delta": best_reproduction[
-                "abs_delta_from_phase1"
-            ],
+            "frozen_reproduction_config": BASELINE_CONFIG,
+            "reproduction_delta": reproduction_delta,
         },
         "external_source": {
             "file": str(external_path),
