@@ -6,6 +6,8 @@ on:
       - exp/first-kaggle-submission
     paths:
       - .github/workflows/phase10-audit-arc-opus48.yml
+      - scripts/phase10_audit_arc_opus48.py
+      - tests/test_phase10_arc_opus48.py
   workflow_dispatch:
 
 permissions:
