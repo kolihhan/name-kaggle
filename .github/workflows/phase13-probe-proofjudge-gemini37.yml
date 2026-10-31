@@ -1,0 +1,218 @@
+name: Phase 13 probe ProofJudge Gemini 3.7
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase13-probe-proofjudge-gemini37.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install audit dependencies
+        run: python -m pip install 'huggingface_hub>=0.30,<3' 'pandas>=2,<3' 'pyarrow>=15,<27'
+      - name: Resolve immutable precompetition revision and audit response-only traces
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import re
+          from collections import Counter
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          import pandas as pd
+          from huggingface_hub import HfApi, hf_hub_download
+
+          REPO = 'SJCaldwell/proofjudge-eval-traces'
+          TARGET = 'data/traces_gemini-3.7-flash.jsonl'
+          CUTOFF = datetime(2026, 10, 14, tzinfo=timezone.utc)
+          EXPECTED_MODEL = 'gemini-3.7-flash'
+
+          def norm(value: str) -> str:
+              return re.sub(r'\s+', ' ', str(value).strip()).lower()
+
+          api = HfApi()
+          commits = list(api.list_repo_commits(REPO, repo_type='dataset'))
+          history = []
+          containing = []
+          for commit in commits:
+              created = commit.created_at
+              if created.tzinfo is None:
+                  created = created.replace(tzinfo=timezone.utc)
+              row = {
+                  'commit_id': commit.commit_id,
+                  'created_at': created.isoformat(),
+                  'title': commit.title,
+              }
+              history.append(row)
+              if created >= CUTOFF:
+                  continue
+              try:
+                  files = set(api.list_repo_files(REPO, repo_type='dataset', revision=commit.commit_id))
+              except Exception as exc:
+                  row['file_check_error'] = repr(exc)
+                  continue
+              if TARGET in files:
+                  containing.append((created, commit.commit_id, commit.title))
+
+          if not containing:
+              raise SystemExit('no precompetition commit contains Gemini 3.7 trace file')
+          containing.sort()
+          first_created, first_sha, first_title = containing[0]
+          last_created, last_sha, last_title = containing[-1]
+
+          trace_path = Path(hf_hub_download(
+              REPO,
+              TARGET,
+              repo_type='dataset',
+              revision=last_sha,
+          ))
+
+          official = pd.read_csv('data/train.csv')
+          existing = pd.read_parquet('data/external/gpt_gemini_generations.parquet')
+          official_exact = set(official['text'].astype(str))
+          official_norm = {norm(x) for x in official['text'].astype(str)}
+          existing_exact = set(existing['text'].astype(str))
+          existing_norm = {norm(x) for x in existing['text'].astype(str)}
+
+          extracted = []
+          bad_model = []
+          empty_agent_messages = 0
+          tool_call_steps = 0
+          tool_call_items = 0
+          source_counts = Counter()
+          for line_no, raw in enumerate(trace_path.read_text(encoding='utf-8').splitlines(), start=1):
+              if not raw.strip():
+                  continue
+              record = json.loads(raw)
+              model = str(record.get('agent', {}).get('model_name', ''))
+              if model != EXPECTED_MODEL:
+                  bad_model.append({'line': line_no, 'model': model})
+              messages = []
+              for step in record.get('steps', []):
+                  source = str(step.get('source', ''))
+                  source_counts[source] += 1
+                  if source != 'agent':
+                      continue
+                  message = step.get('message')
+                  if isinstance(message, str) and message.strip():
+                      messages.append(message.strip())
+                  else:
+                      empty_agent_messages += 1
+                  calls = step.get('tool_calls')
+                  if isinstance(calls, list) and calls:
+                      tool_call_steps += 1
+                      tool_call_items += len(calls)
+
+              # Response-only text: agent-authored natural/structured messages only.
+              # Excludes system/user prompts, observations/tool outputs, and tool-call arguments.
+              text = '\n\n'.join(messages).strip()
+              if text:
+                  extracted.append({
+                      'text': text,
+                      'model': EXPECTED_MODEL,
+                      'session_id': str(record.get('session_id', '')),
+                      'case_id': str(record.get('extra', {}).get('case_id', '')),
+                      'replicate': record.get('extra', {}).get('replicate'),
+                  })
+
+          frame = pd.DataFrame(extracted)
+          if bad_model:
+              raise SystemExit(f'exact model identity failed: {bad_model[:5]}')
+          if frame.empty:
+              raise SystemExit('no nonempty agent-authored messages extracted')
+
+          normalized = frame['text'].map(norm)
+          exact_values = set(frame['text'])
+          norm_values = set(normalized)
+          duplicate_groups = int((normalized.value_counts() > 1).sum())
+          rows_in_duplicate_groups = int(
+              normalized.map(normalized.value_counts()).gt(1).sum()
+          )
+
+          report = {
+              'dataset': REPO,
+              'target_file': TARGET,
+              'declared_license': 'MIT',
+              'competition_opened': '2026-10-14T00:00:00+00:00',
+              'commit_history': history,
+              'precompetition_file_presence': {
+                  'first_commit': first_sha,
+                  'first_created_at': first_created.isoformat(),
+                  'first_title': first_title,
+                  'latest_commit_before_competition': last_sha,
+                  'latest_created_at': last_created.isoformat(),
+                  'latest_title': last_title,
+                  'precompetition_commits_containing_file': len(containing),
+              },
+              'extraction': {
+                  'expected_model': EXPECTED_MODEL,
+                  'trajectory_rows_with_nonempty_agent_messages': int(len(frame)),
+                  'unique_session_ids': int(frame['session_id'].nunique()),
+                  'unique_case_ids': int(frame['case_id'].nunique()),
+                  'agent_message_text_unique_normalized': int(normalized.nunique()),
+                  'normalized_duplicate_groups': duplicate_groups,
+                  'rows_in_duplicate_groups': rows_in_duplicate_groups,
+                  'empty_agent_message_steps': int(empty_agent_messages),
+                  'tool_call_steps_excluded_from_text': int(tool_call_steps),
+                  'tool_call_items_excluded_from_text': int(tool_call_items),
+                  'step_source_counts': dict(source_counts),
+                  'text_length_chars': {
+                      'min': int(frame['text'].str.len().min()),
+                      'median': float(frame['text'].str.len().median()),
+                      'mean': float(frame['text'].str.len().mean()),
+                      'max': int(frame['text'].str.len().max()),
+                  },
+              },
+              'official_overlap': {
+                  'exact': int(len(exact_values & official_exact)),
+                  'normalized': int(len(norm_values & official_norm)),
+              },
+              'existing_phase7_external_overlap': {
+                  'exact': int(len(exact_values & existing_exact)),
+                  'normalized': int(len(norm_values & existing_norm)),
+              },
+              'scope': 'audit_only_no_training_no_permanent_folds',
+          }
+          report['decision'] = {
+              'exact_model_identity_gate': 'PASS',
+              'immutable_precompetition_gate': 'PASS',
+              'declared_license_gate': 'PASS',
+              'response_only_extraction_gate': 'PASS',
+              'official_overlap_gate': 'PASS' if report['official_overlap']['normalized'] == 0 else 'FAIL',
+              'existing_external_overlap_gate': 'PASS' if report['existing_phase7_external_overlap']['normalized'] == 0 else 'FAIL',
+              'audit_candidate_clean': (
+                  report['official_overlap']['normalized'] == 0
+                  and report['existing_phase7_external_overlap']['normalized'] == 0
+              ),
+              'training_authorized': False,
+              'training_authorized_reason': 'audit-only probe; modeling requires a separately frozen contract after reviewing extraction quality and provider-output terms',
+          }
+
+          Path('/tmp/phase13_proofjudge_gemini37_probe.json').write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
+          )
+          frame.to_parquet('/tmp/phase13_proofjudge_gemini37_agent_messages.parquet', index=False)
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          PY
+      - name: Upload audit bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase13-proofjudge-gemini37-probe
+          path: |
+            /tmp/phase13_proofjudge_gemini37_probe.json
+            /tmp/phase13_proofjudge_gemini37_agent_messages.parquet
+          retention-days: 30
