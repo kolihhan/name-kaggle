@@ -1,0 +1,84 @@
+{
+  "dataset": "olegzholobov/name-that-llm-response-corpus",
+  "scope": "audit_only_no_training",
+  "official_train": {
+    "rows": 2699,
+    "labels": ["claude-fable-5", "claude-opus-4-6", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-5", "gemini-3.1-pro-preview", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "glm-5.3", "glm-5.3-flash", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "kimi-k3", "qwen3.8-max"],
+    "sha256": "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
+  },
+  "external_short": {
+    "wide_rows": 13642,
+    "nonempty_cells": 24025,
+    "all_18_labels_present": true,
+    "parquet_sha256": "15a67d022315b2508af8edd749a7c041d42cc37e266106028c73e405659c400f"
+  },
+  "quality_filter": {
+    "mechanically_clean_cells": 24025,
+    "license_known_cells": 14998,
+    "license_known_and_output_terms_clear_cells": 4463,
+    "mechanically_clean_by_model": {
+      "claude-fable-5": 1148,
+      "claude-opus-4-6": 4911,
+      "claude-opus-4-8": 1428,
+      "claude-opus-5": 828,
+      "claude-sonnet-5": 1133,
+      "gemini-3.1-pro-preview": 1141,
+      "gemini-3.6-flash": 83,
+      "gemini-3.7-flash": 77,
+      "gemini-3.8-flash": 71,
+      "glm-5.3": 603,
+      "glm-5.3-flash": 1056,
+      "gpt-5.5": 1111,
+      "gpt-5.6-luna": 2285,
+      "gpt-5.6-sol": 3395,
+      "gpt-5.6-terra": 1544,
+      "gpt-6-astra": 723,
+      "kimi-k3": 1689,
+      "qwen3.8-max": 799
+    },
+    "license_known_by_model": {
+      "claude-fable-5": 475,
+      "claude-opus-4-6": 4346,
+      "claude-opus-4-8": 674,
+      "claude-opus-5": 177,
+      "claude-sonnet-5": 420,
+      "gemini-3.1-pro-preview": 346,
+      "gemini-3.6-flash": 81,
+      "gemini-3.7-flash": 66,
+      "gemini-3.8-flash": 47,
+      "glm-5.3": 600,
+      "glm-5.3-flash": 761,
+      "gpt-5.5": 547,
+      "gpt-5.6-luna": 862,
+      "gpt-5.6-sol": 2632,
+      "gpt-5.6-terra": 828,
+      "gpt-6-astra": 709,
+      "kimi-k3": 910,
+      "qwen3.8-max": 517
+    },
+    "cross_label_normalized_duplicate_groups_after_clean_filter": 0
+  },
+  "official_answer_overlap": {
+    "all_short": {"exact_overlap_count": 0, "normalized_overlap_count": 0},
+    "mechanically_clean": {"exact_overlap_count": 0, "normalized_overlap_count": 0}
+  },
+  "provenance": {
+    "clean_unique_response_ids": 24015,
+    "clean_prompt_exact_responses": 23993,
+    "clean_prompt_exact_fraction": 0.9990839058921508
+  },
+  "validation_leakage": {
+    "official_prompt_text_available": false,
+    "status": "UNKNOWN",
+    "reason": "Official train exposes prompt_id but not prompt text, so exact prompt overlap between external prompts and each held-out official prompt group cannot be proven or excluded from released files alone.",
+    "allowed_claim": "No exact/normalized official answer-text overlap; prompt-level leakage remains unresolved."
+  },
+  "decision": {
+    "raw_access": "PASS",
+    "schema_and_label_coverage": "PASS",
+    "answer_text_overlap_gate": "PASS",
+    "prompt_leakage_gate": "BLOCKED_UNKNOWN",
+    "training_authorized": false,
+    "next_step": "Use provenance to define a source-restricted candidate set with independently sourced prompts, then freeze a fold-safe training contract before any CV run."
+  }
+}
