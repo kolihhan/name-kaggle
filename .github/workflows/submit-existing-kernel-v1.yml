@@ -1,11 +1,6 @@
 name: Submit existing Kaggle kernel v1
 
 on:
-  push:
-    branches:
-      - exp/first-kaggle-submission
-    paths:
-      - .github/workflows/submit-existing-kernel-v1.yml
   workflow_dispatch:
 
 permissions:
