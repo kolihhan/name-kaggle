@@ -1,9 +1,12 @@
+import json
+
 import pandas as pd
 import pytest
 
 from scripts.phase10_audit_arc_opus48 import (
     audit_response_rows,
     extract_assistant_responses,
+    load_snapshot,
     normalize_text,
 )
 
@@ -70,6 +73,29 @@ def test_missing_assistant_message_is_counted_but_not_used_as_training_text():
     assert rows == []
     assert stats["attempts_seen"] == 1
     assert stats["missing_assistant_response"] == 1
+
+
+def test_load_snapshot_ignores_aggregate_results_json(tmp_path):
+    high = tmp_path / "claude-opus-4-8-high"
+    medium = tmp_path / "claude-opus-4-8-medium"
+    maximum = tmp_path / "claude-opus-4-8-max"
+    for folder in (high, medium, maximum):
+        folder.mkdir()
+
+    (high / "task-a.json").write_text(
+        json.dumps([{"attempt_1": _attempt(assistant="usable response")}]),
+        encoding="utf-8",
+    )
+    (high / "results.json").write_text(
+        json.dumps({"aggregate_score": 0.42}),
+        encoding="utf-8",
+    )
+
+    responses, stats, file_counts = load_snapshot(tmp_path, "claude-opus-4-8")
+
+    assert responses["text"].tolist() == ["usable response"]
+    assert file_counts == {"high": 1, "medium": 0, "max": 0}
+    assert stats["high"]["responses_extracted"] == 1
 
 
 def test_audit_reports_normalized_overlap_and_cross_label_duplicates():
