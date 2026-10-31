@@ -12,12 +12,23 @@ Competition: https://www.kaggle.com/competitions/name-that-llm
 - Validation: deterministic **5-fold `GroupKFold(prompt_id)`**.
 - Prompt overlap between train and validation: **0 in every fold**.
 - Metric: **balanced accuracy**.
-- Best Phase 1 classical baseline: char TF-IDF (1–5) + balanced LinearSVC, OOF **0.31930**.
+- Phase 1 char TF-IDF + balanced LinearSVC anchor: **0.31930 OOF**.
 - Permanent fold fingerprint: `bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d`.
 
-### Phase 2 — external data
+Do not replace these folds with a different grouped split just to match an external CV number.
 
-The audited 2,503-row GPT/Gemini source improved the sparse baseline:
+### Phase 2 — audited external data
+
+The first admitted external source is a 2,503-row GPT/Gemini snapshot:
+
+- 430 independent prompts;
+- 8 exact competition labels;
+- 0 duplicate normalized texts;
+- 0 exact overlap with official train;
+- max word TF-IDF similarity to official train: 0.166;
+- provenance `model_seen` blank rows: 0.
+
+On the Phase 1 sparse model it improved honest official OOF:
 
 | Experiment | Balanced accuracy | Δ |
 |---|---:|---:|
@@ -25,7 +36,7 @@ The audited 2,503-row GPT/Gemini source improved the sparse baseline:
 | Official + 2,503 external | **0.34116** | **+0.02187** |
 | Official + balanced 1,120-row slice | 0.33597 | +0.01668 |
 
-This was an admission signal for further testing, not proof that the source helps every representation.
+This authorizes representation-specific A/B testing, not unconditional use of the source.
 
 ### Phase 3 — frozen ModernBERT gate
 
@@ -34,46 +45,68 @@ This was an admission signal for further testing, not proof that the source help
 | Official only frozen ModernBERT | **0.30224** | — |
 | Frozen ModernBERT + 2,503 external | **0.29041** | **-0.01183** |
 
-**Decision:** the 2,503-row source fails the encoder-stage admission gate. Recall fell for all 8 labels directly covered by the external source.
+**Decision:** reject the external source for the encoder path. Recall fell for all 8 directly covered labels.
 
 ### Phase 4 — official-only trainable ModernBERT
 
 | Model / representation | OOF balanced accuracy |
 |---|---:|
-| Phase 1 char TF-IDF | **0.31930** |
-| Phase 3 frozen ModernBERT | **0.30224** |
+| Phase 1 char TF-IDF | 0.31930 |
+| Phase 3 frozen ModernBERT | 0.30224 |
 | Phase 4 trainable ModernBERT | **0.25781** |
 
-The five-fold Kaggle GPU run passed the official-data SHA, fold fingerprint, row-count, label-count, and no-external-data checks.
+The five-fold Kaggle GPU run passed official-data SHA, fold fingerprint, row-count, label-count and no-external-data checks.
 
-**Decision:** reject this full-fine-tuning recipe. Do not respond with a blind epoch or hyperparameter sweep.
+**Decision:** reject this full-fine-tuning recipe. Do not respond with a blind epoch / learning-rate sweep.
 
-### Phase 5 — official-only style multiview
+### Phase 5 — style multiview baseline
 
-A fixed fold-local three-view baseline was evaluated without external data:
+Official-only, fold-local three-view baseline:
 
 | View | OOF balanced accuracy |
 |---|---:|
-| Char TF-IDF + LogisticRegression | 0.32967 |
-| Word TF-IDF + LogisticRegression | 0.28669 |
-| Numeric style + LogisticRegression | 0.29008 |
+| Char TF-IDF + LR | 0.32967 |
+| Word TF-IDF + LR | 0.28669 |
+| Numeric style + LR | 0.29008 |
 | Equal geometric-mean blend | **0.34821** |
 
-Blend fold scores: `0.34444 / 0.32037 / 0.37037 / 0.35741 / 0.34860`.
+**Decision:** the views are complementary, but equal probability blending leaves performance on the table.
 
-The blend improves Phase 1 by **+0.02891** and improves recall over the char-only view on 12 of 18 labels. It still trails independently observed public prompt-grouped sparse references around `0.374–0.376`.
+### Phase 5b — strong sparse anchor
 
-**Decision:** keep the multiview/style feature families, but do not keep the equal three-way LR blend as the final CPU anchor. The next test should change only the combination/classifier strategy.
+The same signal families were combined into one fold-local feature union and classified with a fixed balanced LinearSVC:
 
-See:
+- char TF-IDF 1–5, max 180k;
+- word TF-IDF 1–2, max 150k;
+- boundary `char_wb` 3–5, max 100k;
+- punctuation-aware token TF-IDF 1–2, max 100k;
+- deterministic style branch × 0.2;
+- `LinearSVC(C=1.5, class_weight="balanced")`.
 
-- `artifacts/phase5/CONTRACT.md`
-- `artifacts/phase5/style_baseline.json`
-- `artifacts/phase5/RESULT.md`
+Result:
+
+- OOF balanced accuracy: **0.36709**
+- folds: `0.38333 / 0.34444 / 0.37593 / 0.38148 / 0.35032`
+- Δ vs Phase 5 blend: **+0.01888**
+- Δ vs Phase 1: **+0.04779**
+
+**Decision: this is the current canonical CPU anchor.**
+
+### Phase 5c — reference-style reproduction
+
+To explain the apparent gap to a public `0.37560` result, only the style extractor was replaced with the narrower 108-feature public RichStyle definition; every sparse branch, `C=1.5`, style weight and permanent fold remained fixed.
+
+- Phase 5b: `0.3670892`
+- Phase 5c: `0.3670967`
+- Δ: **+0.0000075**
+
+The style extractor does not explain the gap. The public repository evaluates with shuffled `StratifiedGroupKFold`, while this repo intentionally preserves the deterministic Phase 1 `GroupKFold(prompt_id)` mapping. Those CV numbers are therefore not apples-to-apples.
+
+**Decision:** keep Phase 5b as the canonical CPU anchor and stop sparse micro-tuning on official-only data.
 
 ### Maniceet 7,753-row source
 
-`maniceet/name-that-llm-openrouter-openai-generations` remains blocked on resource-specific Kaggle dataset access/consent. It has not passed our raw-row audit and must not be treated as verified training data.
+`maniceet/name-that-llm-openrouter-openai-generations` remains blocked on resource-specific Kaggle dataset access/consent. The account token is valid and can access the competition API, but this resource returns HTTP 403. It has not passed our raw-row audit and must not be treated as verified training data.
 
 ## Canonical workflow
 
@@ -84,9 +117,11 @@ data/                    Official competition data and audited external snapshot
 scripts/                 Reproducible audit / fold / experiment code
 artifacts/phase1/        Frozen validation audit and baseline evidence
 artifacts/phase2/        External-data reconnaissance and ablations
-artifacts/phase3/        Frozen encoder contract, result, and decision
-artifacts/phase4/        Trainable encoder contract, result, and decision
-artifacts/phase5/        Style/multiview contract, result, and decision
+artifacts/phase3/        Frozen encoder gate
+artifacts/phase4/        Trainable encoder baseline
+artifacts/phase5/        Multiview LR baseline
+artifacts/phase5b/       Canonical strong-sparse CPU anchor
+artifacts/phase5c/       Reference-style reproduction check
 .github/workflows/       Execution wrappers plus historical diagnostics
 ```
 
@@ -95,29 +130,32 @@ Key scripts:
 - `scripts/bootstrap_data.sh` — restore official competition data.
 - `scripts/make_folds.py` — recreate the permanent grouped folds.
 - `scripts/audit_gpt_gemini_external.py` — reproduce the 2,503-row external audit.
-- `scripts/run_external_ablation.py` — reproduce the sparse external-data ablation.
+- `scripts/run_external_ablation.py` — reproduce the Phase 2 sparse external-data ablation.
 - `scripts/run_frozen_encoder_ablation.py` — reproduce Phase 3.
 - `scripts/train_modernbert_cv.py` — reproduce Phase 4.
 - `scripts/run_style_baseline.py` — reproduce Phase 5.
+- `scripts/run_strong_sparse_anchor.py` — reproduce Phase 5b.
+- `scripts/run_reference_style_repro.py` — reproduce Phase 5c.
 
 ## Validation contract
 
-Do **not** use a random row split. Rows sharing a `prompt_id` must stay in the same fold. The competition test contains unseen prompts, so prompt-grouped CV is the local source of truth.
+Do **not** use a random row split. Rows sharing a `prompt_id` must stay in the same permanent fold. The hidden test uses unseen prompts, so prompt-grouped CV is the local source of truth.
 
-External data is admitted stage by stage. An uplift under one representation does not automatically authorize the same source for another representation.
+External data is admitted stage by stage. Validation rows are always official rows only; external rows never enter the metric denominator.
 
-## Next experiment
+## Next experiment — Phase 6
 
-Run one **official-only strong sparse anchor** under the same permanent folds, not a hyperparameter grid:
+Run one direct A/B on the **canonical strong-sparse anchor** under the exact same permanent folds:
 
-1. char TF-IDF view;
-2. word TF-IDF view;
-3. boundary-char and punctuation-aware views;
-4. deterministic style features with a smaller contribution;
-5. one balanced `LinearSVC` over the fold-local feature union;
-6. fixed prior-art-backed configuration, then compare honest OOF against Phase 5 `0.34821` and the public ~`0.374–0.376` reference range.
+1. A: official fold-training rows only;
+2. B: the same official fold-training rows + all 2,503 audited GPT/Gemini external rows;
+3. fit each condition's TF-IDF vocabularies and style scaler independently inside that fold's training data;
+4. score only the untouched official validation fold;
+5. report aggregate BA, every fold, per-model recall delta, and covered-vs-uncovered label effects.
 
-Only after this official-only sparse anchor is established should external data or neural ensembling return to the main line.
+The question is narrow: **does the external source still help once the official-only sparse baseline is strong?**
+
+Do not add the blocked Maniceet source or return to neural tuning before this A/B is known.
 
 ## Data attribution
 
