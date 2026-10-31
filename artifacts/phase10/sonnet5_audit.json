@@ -1,0 +1,39 @@
+{
+  "external": {
+    "rows": 2595,
+    "columns": [
+      "question",
+      "answer"
+    ],
+    "null_or_empty_answers": 0,
+    "unique_normalized_answers": 2592,
+    "normalized_duplicate_groups": 2,
+    "classifier_text_column": "answer",
+    "response_only_extraction_gate": "PASS"
+  },
+  "official_answer_overlap": {
+    "exact_overlap_count": 0,
+    "normalized_overlap_count": 0
+  },
+  "model_identity": {
+    "gate": "UNKNOWN",
+    "reason": "raw rows have no model column; repository/card naming alone is not row-level identity evidence",
+    "expected_model": "claude-sonnet-5"
+  },
+  "prompt_leakage": {
+    "gate": "UNKNOWN",
+    "reason": "official train exposes prompt_id but not prompt text, so external question identity against held-out official prompts is not observable from released files"
+  },
+  "decision": {
+    "answer_text_overlap_gate": "PASS",
+    "model_identity_gate": "UNKNOWN",
+    "license_compatibility_gate": "AMBIGUOUS",
+    "training_authorized": false,
+    "reason": "Phase 10 requires row-level model identity and unambiguous usable output/license terms before any permanent-fold experiment"
+  },
+  "dataset": "Essentialia/claude-sonnet-5-2500x",
+  "source_revision": "9c9fe906b8a9420b6577cdb3db13ffa84fa4c559",
+  "external_sha256": "daa6c0b90fba5d663d1439a3fd7a9ff279ce799f2ea7ecc00038ae9f19b5efea",
+  "official_train_sha256": "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707",
+  "scope": "audit_only_no_training"
+}
