@@ -35,7 +35,7 @@ jobs:
           import pandas as pd
 
           frozen = pd.read_parquet('data/external/gpt_gemini_generations.parquet')
-          public = pd.read_csv('/tmp/public-ntl/ntl_generations.csv')
+          public = pd.read_csv('/tmp/public-ntl/ntl_generations.csv').rename(columns={'label': 'model'})
 
           print('frozen rows:', len(frozen))
           print('public rows:', len(public))
