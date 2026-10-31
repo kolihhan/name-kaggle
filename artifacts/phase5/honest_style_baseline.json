@@ -1,0 +1,85 @@
+{
+  "phase": 5,
+  "experiment": "official_only_honest_style_baseline",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d",
+    "phase1_reference": 0.31929654486701464,
+    "phase1_reproduction_delta": 7.457121551091017e-06
+  },
+  "data": {
+    "official_rows": 2699,
+    "prompt_count": 150,
+    "label_count": 18,
+    "external_rows": 0,
+    "train_sha256": "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
+  },
+  "candidates": {
+    "char_sanity": {
+      "oof_rows": 2699,
+      "balanced_accuracy": 0.31928908774546355,
+      "folds": [0.31481481481481477, 0.28703703703703703, 0.3277777777777778, 0.32962962962962966, 0.3373563218390805],
+      "per_model_recall": {
+        "claude-fable-5": 0.08053691275167785,
+        "claude-opus-4-6": 0.3933333333333333,
+        "claude-opus-4-8": 0.25333333333333335,
+        "claude-opus-5": 0.6333333333333333,
+        "claude-sonnet-5": 0.32,
+        "gemini-3.1-pro-preview": 0.76,
+        "gemini-3.6-flash": 0.37333333333333335,
+        "gemini-3.7-flash": 0.4,
+        "gemini-3.8-flash": 0.3,
+        "glm-5.3": 0.14,
+        "glm-5.3-flash": 0.12666666666666668,
+        "gpt-5.5": 0.24,
+        "gpt-5.6-luna": 0.28,
+        "gpt-5.6-sol": 0.14666666666666667,
+        "gpt-5.6-terra": 0.25333333333333335,
+        "gpt-6-astra": 0.5066666666666667,
+        "kimi-k3": 0.25333333333333335,
+        "qwen3.8-max": 0.2866666666666667
+      }
+    },
+    "multiview_style_svm": {
+      "oof_rows": 2699,
+      "balanced_accuracy": 0.36003977131493914,
+      "folds": [0.36851851851851847, 0.3314814814814815, 0.36481481481481487, 0.38148148148148153, 0.35389527458492975],
+      "per_model_recall": {
+        "claude-fable-5": 0.10738255033557047,
+        "claude-opus-4-6": 0.5066666666666667,
+        "claude-opus-4-8": 0.2,
+        "claude-opus-5": 0.5933333333333334,
+        "claude-sonnet-5": 0.38,
+        "gemini-3.1-pro-preview": 0.7733333333333333,
+        "gemini-3.6-flash": 0.4266666666666667,
+        "gemini-3.7-flash": 0.4066666666666667,
+        "gemini-3.8-flash": 0.36666666666666664,
+        "glm-5.3": 0.18,
+        "glm-5.3-flash": 0.2,
+        "gpt-5.5": 0.3933333333333333,
+        "gpt-5.6-luna": 0.2866666666666667,
+        "gpt-5.6-sol": 0.14,
+        "gpt-5.6-terra": 0.24,
+        "gpt-6-astra": 0.62,
+        "kimi-k3": 0.23333333333333334,
+        "qwen3.8-max": 0.4266666666666667
+      }
+    }
+  },
+  "config": {
+    "selection": "fixed_before_oof",
+    "multiview": {
+      "char": "char 1-5, max_features=180000, lowercase=False",
+      "word": "word 1-2, max_features=150000, lowercase=False",
+      "boundary": "char_wb 3-5, max_features=100000",
+      "punct": "word-or-punctuation 1-2, max_features=100000",
+      "style_feature_count": 142,
+      "style_weight": 0.2,
+      "classifier": "LinearSVC(C=1.5, class_weight=balanced)"
+    }
+  },
+  "delta_vs_phase1_reference": 0.0407432264479245
+}
