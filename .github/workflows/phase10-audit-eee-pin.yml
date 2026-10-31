@@ -1,0 +1,89 @@
+name: Phase 10 audit pinned EEE Opus records
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase10-audit-eee-pin.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Hugging Face client
+        run: python -m pip install 'huggingface_hub>=0.30,<3'
+
+      - name: Inspect exact pre-competition model directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from huggingface_hub import HfApi, hf_hub_download
+
+          repo_id = 'evaleval/EEE_datastore'
+          revision = '20380bab5d156501e1e10aabbb7a311cf7812577'
+          targets = {
+              'claude-opus-4-8': 'data/global-mmlu-lite/anthropic/claude-opus-4-8-default',
+              'claude-opus-5': 'data/global-mmlu-lite/anthropic/claude-opus-5-default',
+          }
+          api = HfApi()
+          suspicious_tokens = ('response', 'output', 'completion', 'prediction', 'assistant', 'messages')
+
+          print('repo_id:', repo_id)
+          print('revision:', revision)
+          for label, folder in targets.items():
+              print(f'--- {label} ---')
+              entries = list(api.list_repo_tree(
+                  repo_id,
+                  path_in_repo=folder,
+                  recursive=True,
+                  revision=revision,
+                  repo_type='dataset',
+              ))
+              paths = [entry.path for entry in entries if hasattr(entry, 'path')]
+              print('folder:', folder)
+              print('files:', len(paths))
+              for path in paths:
+                  print('FILE', path)
+
+              sample_files = [p for p in paths if p.lower().endswith(('.jsonl', '.parquet')) or '_samples' in p.lower()]
+              print('instance_level_candidates:', sample_files)
+
+              json_files = [p for p in paths if p.lower().endswith('.json')]
+              for path in json_files:
+                  local = hf_hub_download(repo_id, path, repo_type='dataset', revision=revision)
+                  with open(local, 'r', encoding='utf-8') as handle:
+                      record = json.load(handle)
+                  model_info = record.get('model_info', {})
+                  source_meta = record.get('source_metadata', {})
+                  print('RECORD', path)
+                  print(' model_id:', model_info.get('id'))
+                  print(' model_name:', model_info.get('name'))
+                  print(' cron_run_date:', source_meta.get('additional_details', {}).get('cron_run_date'))
+                  print(' top_level_keys:', sorted(record.keys()))
+
+                  found = []
+                  def walk(value, prefix=''):
+                      if isinstance(value, dict):
+                          for key, child in value.items():
+                              key_path = f'{prefix}.{key}' if prefix else key
+                              if any(token in key.lower() for token in suspicious_tokens):
+                                  found.append(key_path)
+                              walk(child, key_path)
+                      elif isinstance(value, list):
+                          for idx, child in enumerate(value[:20]):
+                              walk(child, f'{prefix}[{idx}]')
+                  walk(record)
+                  print(' response_like_key_paths:', sorted(set(found))[:50])
+          PY
