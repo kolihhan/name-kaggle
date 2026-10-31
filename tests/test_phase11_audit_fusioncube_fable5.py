@@ -33,10 +33,59 @@ def test_extracts_response_only_and_excludes_source_defined_decoys():
     assert stats["responses_extracted"] == 1
 
 
+def test_accepts_singleton_usage_dict_for_expected_model():
+    rows, stats = extract_fable5_responses(
+        [
+            _row(
+                model={
+                    "claude-fable-5": {
+                        "inputTokens": 10,
+                        "outputTokens": 20,
+                    }
+                },
+                response="singleton dict response",
+            )
+        ],
+        expected_model="claude-fable-5",
+    )
+
+    assert [row["text"] for row in rows] == ["singleton dict response"]
+    assert stats["singleton_model_dict_rows"] == 1
+    assert stats["ambiguous_model_rows_excluded"] == 0
+    assert stats["responses_extracted"] == 1
+
+
+def test_excludes_mixed_model_usage_dict_instead_of_guessing_identity():
+    rows, stats = extract_fable5_responses(
+        [
+            _row(
+                model={
+                    "claude-fable-5": {"outputTokens": 10},
+                    "claude-opus-4-8": {"outputTokens": 5},
+                },
+                response="ambiguous response",
+            )
+        ],
+        expected_model="claude-fable-5",
+    )
+
+    assert rows == []
+    assert stats["ambiguous_model_rows_excluded"] == 1
+    assert stats["responses_extracted"] == 0
+
+
 def test_rejects_wrong_model_identity_on_retained_row():
     with pytest.raises(ValueError, match="model identity"):
         extract_fable5_responses(
             [_row(model="claude-opus-5")],
+            expected_model="claude-fable-5",
+        )
+
+
+def test_rejects_singleton_usage_dict_for_wrong_model():
+    with pytest.raises(ValueError, match="model identity"):
+        extract_fable5_responses(
+            [_row(model={"claude-opus-4-8": {"outputTokens": 1}})],
             expected_model="claude-fable-5",
         )
 
