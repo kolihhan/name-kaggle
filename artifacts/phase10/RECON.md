@@ -37,19 +37,32 @@ Status: **HIGH VALUE / LICENSE UNKNOWN**.
 
 Source: `Essentialia/claude-sonnet-5-2500x`
 
-Public evidence:
+The source was pinned and audited at immutable revision:
 
-- 1K–10K size class, repository name/card states ~2,500 Sonnet 5 generations;
-- Hugging Face repository updated 2026-08-21, before competition launch;
-- license: `CC-BY-NC-4.0`;
-- prompting source is explicitly documented as `Roman1111111/prompts-for-claude-opus-4.6`;
-- card states no chain-of-thought.
+`9c9fe906b8a9420b6577cdb3db13ffa84fa4c559`
 
-This is a materially stronger candidate than trying to tune Phase 9 because it covers a label with zero admitted external data.
+Observed raw state:
 
-Before admission, raw rows still need model-label verification, duplicate/overlap audit, prompt provenance inspection, and confirmation that non-commercial licensing is compatible with the intended Kaggle use.
+- 2,595 rows;
+- raw columns: `question`, `answer` only;
+- zero null/empty answers;
+- 2,592 unique normalized answers;
+- two normalized duplicate groups;
+- zero exact official-answer overlap;
+- zero normalized official-answer overlap;
+- answer-only extraction is mechanically safe;
+- prompt bank `Roman1111111/prompts-for-claude-opus-4.6` predates competition launch and is MIT licensed.
 
-Status: **PROMISING / RAW AUDIT REQUIRED**.
+Two admission gates remain unresolved:
+
+1. **Model identity: UNKNOWN.** The raw rows contain no row-level `model` field. The repository/card name is useful provenance evidence but does not satisfy the frozen Phase 10 requirement for exact raw model identity.
+2. **License compatibility: AMBIGUOUS.** The dataset is `CC-BY-NC-4.0`. Because the Kaggle competition carries monetary prizes, this repo will not assume that the non-commercial restriction is compatible without stronger evidence.
+
+Decision: **DO NOT MODEL.** The technical overlap audit passes, but `training_authorized=false`; no permanent-fold shot was spent.
+
+See `artifacts/phase10/sonnet5_audit.json` and `scripts/phase10_audit_sonnet5.py`.
+
+Status: **AUDITED / NOT ADMITTED**.
 
 ## Candidate C — pinned EEE Opus 4.8 / Opus 5 eval responses
 
@@ -64,7 +77,7 @@ Unlike the moving `main` branch rejected during Phase 8, Phase 10 should only us
 
 Expected volume is small, so this is supplementary evidence, not a standalone large training corpus.
 
-Status: **SMALL BUT AUDITABLE / PIN IMMUTABLE REVISION FIRST**.
+Status: **NEXT / PIN IMMUTABLE PRE-COMPETITION REVISION AND AUDIT RAW RESPONSES**.
 
 ## Gemini 3.7 Flash
 
@@ -76,9 +89,9 @@ Status: **STILL BLOCKED**.
 
 ## Priority order
 
-1. Audit `Essentialia/claude-sonnet-5-2500x` raw rows and license/use compatibility.
+1. Pin an immutable pre-competition `evaleval/EEE_datastore` revision for Opus 4.8 and Opus 5, then audit response-only raw records with exact model provenance.
 2. Resolve `PawanKrd/claude-fable-5-code` licensing; if usable, audit its 603 direct generations.
-3. Pin immutable pre-competition EEE revisions for Opus 4.8 and Opus 5 and extract only response text with exact model provenance.
+3. Keep Sonnet 5 out unless both row-level model provenance and CC-BY-NC compatibility are resolved.
 4. Keep Gemini 3.7 blocked rather than fabricating fresh 3.7 data through a now-rerouted API.
 
 ## Gate before Phase 10 modeling
