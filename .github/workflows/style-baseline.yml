@@ -1,0 +1,50 @@
+name: Style baseline
+
+on:
+  push:
+    branches:
+      - exp/style-baseline
+    paths:
+      - scripts/run_style_baseline.py
+      - tests/test_style_baseline.py
+      - .github/workflows/style-baseline.yml
+      - artifacts/phase5/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: pip install pytest numpy pandas scikit-learn scipy
+      - name: Run Phase 5 contract tests
+        run: python -m pytest -q tests/test_style_baseline.py
+
+  full:
+    if: contains(github.event.head_commit.message, '[phase5-run]') || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install experiment dependencies
+        run: pip install numpy pandas scikit-learn scipy
+      - name: Recreate permanent folds
+        run: python scripts/make_folds.py
+      - name: Run official-only style baseline
+        run: python scripts/run_style_baseline.py --output artifacts/phase5/style_baseline.json --oof-output artifacts/phase5/style_baseline_oof.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase5-style-baseline
+          path: |
+            artifacts/phase5/style_baseline.json
+            artifacts/phase5/style_baseline_oof.csv
