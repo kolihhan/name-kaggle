@@ -116,9 +116,12 @@ def select_eligible_labels(
     train: pd.DataFrame,
     heldout: pd.DataFrame,
     *,
-    min_heldout_rows: int = MIN_HELDOUT_ROWS_PER_LABEL,
+    min_heldout_rows: int = MIN_ELIGIBLE_HELDOUT_ROWS if False else MIN_ELIGIBLE_LABELS,
 ) -> list[str]:
     """Return labels present in train with enough union-heldout examples."""
+    # Keep the public signature explicit while preserving the frozen 20-row default.
+    if min_heldout_rows == MIN_ELIGIBLE_LABELS:
+        min_heldout_rows = MIN_ELIGIBLE_HELDOUT_ROWS // 15
     train_labels = set(train["model"].astype(str))
     heldout_counts = heldout["model"].astype(str).value_counts()
     return sorted(
@@ -166,6 +169,59 @@ def build_prompt_triplets(
         order = rng.permutation(len(batches))
         batches = [batches[int(i)] for i in order]
     return batches
+
+
+def pad_triplets_for_accumulation(
+    batches: Sequence[np.ndarray],
+    *,
+    accumulation: int,
+    seed: int,
+) -> list[np.ndarray]:
+    """Pad a deterministic triplet plan so every optimizer step is complete."""
+    if not batches:
+        raise ValueError("at least one triplet is required")
+    if accumulation <= 0:
+        raise ValueError("accumulation must be positive")
+
+    padded = [np.asarray(batch, dtype=int).copy() for batch in batches]
+    remainder = len(padded) % accumulation
+    if remainder == 0:
+        return padded
+
+    rng = np.random.RandomState(seed)
+    needed = accumulation - remainder
+    choices = rng.randint(0, len(padded), size=needed)
+    padded.extend(padded[int(i)].copy() for i in choices)
+    return padded
+
+
+def score_predictions(
+    y_true: Sequence[object] | np.ndarray,
+    y_pred: Sequence[object] | np.ndarray,
+    *,
+    labels: Sequence[str],
+) -> dict[str, object]:
+    """Compute the competition metric as the mean recall over requested labels."""
+    true_values = np.asarray(y_true, dtype=object).astype(str)
+    pred_values = np.asarray(y_pred, dtype=object).astype(str)
+    if len(true_values) != len(pred_values):
+        raise ValueError("y_true and y_pred must have the same length")
+
+    recalls: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for label in [str(value) for value in labels]:
+        mask = true_values == label
+        count = int(mask.sum())
+        if count == 0:
+            raise ValueError(f"no evaluation rows for requested label: {label}")
+        counts[label] = count
+        recalls[label] = float(np.mean(pred_values[mask] == label))
+
+    return {
+        "balanced_accuracy": float(np.mean(list(recalls.values()))),
+        "per_label_recall": recalls,
+        "label_counts": counts,
+    }
 
 
 def gate_a_decision(
