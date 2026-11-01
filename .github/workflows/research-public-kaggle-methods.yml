@@ -24,17 +24,34 @@ jobs:
           python-version: '3.11'
       - name: Install Kaggle client
         run: pip install 'kaggle==2.2.5' six
-      - name: Pull public notebook sources
+      - name: Pull public notebook sources independently
         shell: bash
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
           rm -rf /tmp/ntl-public-methods
           mkdir -p /tmp/ntl-public-methods/620 /tmp/ntl-public-methods/642 /tmp/ntl-public-methods/600
-          kaggle kernels pull cosmorin/name-that-llm-public620-reproduction -p /tmp/ntl-public-methods/620 -m
-          kaggle kernels pull lightningv08/0-636-lora-llama-qwen3-8-27b -p /tmp/ntl-public-methods/642 -m
-          kaggle kernels pull kirilltym/lora-adaptive-claude-gates -p /tmp/ntl-public-methods/600 -m
+
+          pull_one() {
+            local ref="$1"
+            local dir="$2"
+            echo "=== PULL $ref ==="
+            if kaggle kernels pull "$ref" -p "$dir" -m; then
+              echo "PULL_OK $ref"
+            else
+              echo "PULL_UNAVAILABLE $ref"
+            fi
+          }
+
+          pull_one cosmorin/name-that-llm-public620-reproduction /tmp/ntl-public-methods/620
+          pull_one lightningv08/0-636-lora-llama-qwen3-8-27b /tmp/ntl-public-methods/642
+          pull_one kirilltym/lora-adaptive-claude-gates /tmp/ntl-public-methods/600
+          # Alternate current-page slug surfaced by Kaggle search.
+          if ! find /tmp/ntl-public-methods/600 -type f | grep -q .; then
+            pull_one kirilltym/0-55-cohesion-aware-adaptive-centering-lora /tmp/ntl-public-methods/600
+          fi
           find /tmp/ntl-public-methods -maxdepth 2 -type f -printf '%p\n' | sort
+
       - name: Print compact method evidence
         shell: bash
         run: |
@@ -71,6 +88,7 @@ jobs:
               for p in candidates:
                   print(p)
               if not candidates:
+                  print('NO_SOURCE_AVAILABLE')
                   continue
               source = '\n'.join(extract(p) for p in candidates)
               lines = source.splitlines()
@@ -78,14 +96,13 @@ jobs:
               for i, line in enumerate(lines):
                   low = line.lower()
                   if any(k in low for k in keywords):
-                      hit_lines.update(range(max(0, i - 3), min(len(lines), i + 4)))
+                      hit_lines.update(range(max(0, i - 4), min(len(lines), i + 5)))
               ordered = sorted(hit_lines)
-              # Merge contexts but cap the printed evidence to keep logs readable.
               print(f'===== {name} SOURCE_CHARS {len(source)} MATCHED_LINES {len(ordered)} =====')
               last = -2
               printed = 0
               for i in ordered:
-                  if printed >= 900:
+                  if printed >= 1200:
                       print(f'... TRUNCATED after {printed} evidence lines ...')
                       break
                   if i != last + 1:
