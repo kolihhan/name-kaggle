@@ -1,0 +1,100 @@
+name: Phase 14 frozen conservative public sparse CV
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-public-sparse-cv.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sparse-model and Kaggle dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'kaggle==2.2.5'
+
+      - name: Download pinned raw public pool file
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/phase14
+          mkdir -p /tmp/phase14/raw
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/phase14/raw --unzip
+          RAW=$(find /tmp/phase14/raw -type f -name pool_v4.parquet -print -quit)
+          test -n "$RAW"
+          echo "RAW_POOL=$RAW" >> "$GITHUB_ENV"
+          sha256sum "$RAW"
+
+      - name: Run the single frozen permanent-fold shot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.run_phase14_public_sparse \
+            --external-raw "$RAW_POOL" \
+            --output /tmp/phase14/public_sparse.json \
+            --oof-output /tmp/phase14/public_sparse_oof.csv \
+            --subset-output /tmp/phase14/conservative_public_subset.parquet
+          echo '--- PHASE14_RESULT ---'
+          cat /tmp/phase14/public_sparse.json
+
+      - name: Verify frozen-result invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          report = json.loads(Path('/tmp/phase14/public_sparse.json').read_text())
+          oof = pd.read_csv('/tmp/phase14/public_sparse_oof.csv')
+          subset = pd.read_parquet('/tmp/phase14/conservative_public_subset.parquet')
+
+          assert report['validation']['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
+          assert report['data']['raw_pool_sha256'] == '37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec'
+          assert report['data']['raw_pool_rows'] == 75783
+          assert report['data']['external_rows'] == 43781
+          assert report['data']['external_prompt_ids'] == 3736
+          assert len(subset) == 43781
+          assert subset['prompt_id'].astype(str).nunique() == 3736
+          assert subset['model'].astype(str).nunique() == 18
+          assert len(oof) == 2699
+          assert oof['id'].nunique() == 2699
+          assert oof['prediction'].notna().all()
+          assert set(oof['fold_id']) == {0, 1, 2, 3, 4}
+          assert all(meta['external_validation_rows'] == 0 for meta in report['fold_feature_meta'])
+          assert all(meta['external_training_rows'] == 43781 for meta in report['fold_feature_meta'])
+
+          print('phase14_ba:', report['result']['balanced_accuracy'])
+          print('phase7_reference:', report['decision']['phase7_reference'])
+          print('delta_vs_phase7:', report['decision']['delta_vs_phase7'])
+          print('decision:', report['decision'])
+          PY
+
+      - name: Upload frozen Phase 14 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase14-public-sparse-frozen-shot
+          path: |
+            /tmp/phase14/public_sparse.json
+            /tmp/phase14/public_sparse_oof.csv
+            /tmp/phase14/conservative_public_subset.parquet
+          retention-days: 30
