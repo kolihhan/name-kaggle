@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -208,6 +209,62 @@ def group_triplets_for_accumulation(
         copied[start : start + accumulation]
         for start in range(0, len(copied), accumulation)
     ]
+
+
+def masked_mean_pool(hidden, attention_mask, *, mask_first_token: bool):
+    """Mean-pool non-padding tokens, optionally excluding token position zero."""
+    mask = attention_mask.unsqueeze(-1).to(dtype=hidden.dtype).clone()
+    if mask_first_token and mask.shape[1] > 0:
+        mask[:, 0] = 0
+    denominator = mask.sum(dim=1).clamp(min=1)
+    return (hidden * mask).sum(dim=1) / denominator
+
+
+def center_triplet(features):
+    """Center one same-prompt microbatch independently in feature space."""
+    return features - features.mean(dim=0, keepdim=True)
+
+
+def warmup_cosine_multiplier(
+    *,
+    step: int,
+    total_steps: int,
+    warmup_steps: int,
+) -> float:
+    """Frozen warm-up/cosine multiplier on a conceptual 0..total_steps axis."""
+    if total_steps <= 0:
+        raise ValueError("total_steps must be positive")
+    if warmup_steps < 0 or warmup_steps > total_steps:
+        raise ValueError("warmup_steps must be between 0 and total_steps")
+    if step < 0:
+        raise ValueError("step must be nonnegative")
+    if step >= total_steps:
+        return 0.0
+    if warmup_steps > 0 and step <= warmup_steps:
+        return float(step / warmup_steps)
+
+    decay_steps = total_steps - warmup_steps
+    if decay_steps <= 0:
+        return 0.0
+    progress = (step - warmup_steps) / decay_steps
+    return float(0.5 * (1.0 + math.cos(math.pi * progress)))
+
+
+def truncate_qwen_layers(model, *, keep_layers: int):
+    """Keep only the first N decoder layers on a Qwen-style model object."""
+    if keep_layers <= 0:
+        raise ValueError("keep_layers must be positive")
+
+    container = getattr(model, "model", model)
+    if not hasattr(container, "layers"):
+        raise AttributeError("model has no Qwen-style layers container")
+    layers = container.layers
+    if len(layers) < keep_layers:
+        raise ValueError(
+            f"model has fewer layers than requested: {len(layers)} < {keep_layers}"
+        )
+    container.layers = layers[:keep_layers]
+    return model
 
 
 def score_predictions(
