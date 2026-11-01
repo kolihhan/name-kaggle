@@ -2,13 +2,20 @@
 
 Date: 2026-11-01
 
-## Verdict
+## Final verdict
 
-**PROMOTE Phase 15 and authorize a second Kaggle submission.**
+**LOCAL PROMOTION PASSED; KAGGLE PROMOTION FAILED. Keep Phase 7 as the competition champion.**
 
-The single frozen permanent-fold run passed every committed invariant and materially exceeded the last submission-eligible promoted system, Phase 7.
+The single frozen permanent-fold run passed every committed local invariant and materially exceeded Phase 7 in OOF validation. A subsequently authorized second real Kaggle submission completed successfully but scored **0.357 Public**, below Phase 7's **0.369 Public**.
 
-## Frozen comparison
+Therefore:
+
+- Phase 15 remains a valid frozen local experiment result;
+- Phase 15 is **not** the current competition system;
+- the Phase 14/15 external-pool OOF uplift is not a reliable hidden-test proxy;
+- no result-dependent tuning of Phase 15 is authorized from this leaderboard outcome.
+
+## Frozen local comparison
 
 | System | OOF balanced accuracy | Delta vs Phase 7 |
 |---|---:|---:|
@@ -16,11 +23,22 @@ The single frozen permanent-fold run passed every committed invariant and materi
 | Phase 14 diagnostic (terms-blocked) | 0.4178100919711658 | +0.04775789212030823 |
 | **Phase 15 terms-clean** | **0.4053218990802883** | **+0.03526969922943074** |
 
-Phase 15 is lower than the Phase 14 diagnostic by `-0.012488192890877492`, but Phase 14 is not submission-eligible under the repository's conservative provider-output-terms standard. The Phase 15 contract explicitly made Phase 7 the eligibility baseline before this result was observed.
-
 Fold scores:
 
 `0.416667 / 0.381481 / 0.392593 / 0.416667 / 0.419093`
+
+## Real Kaggle comparison
+
+| Submission | System | Public LB |
+|---|---|---:|
+| `57838845` | Phase 7 gated specialist | **0.369** |
+| `57861337` | Phase 15 terms-clean public sparse | **0.357** |
+
+Phase 15 validation-to-Public gap: `-0.0483218990802883`.
+
+Phase 15 Public delta vs Phase 7 Public: `-0.012`.
+
+The Phase 15 submission used private kernel `kolihhan/name-that-llm-phase15-terms-clean`, version `1`, and completed through GitHub Actions run `41276327535`. Full evidence is recorded in `artifacts/submission/SECOND_SUBMISSION.md`.
 
 ## Data / compliance invariants
 
@@ -58,28 +76,30 @@ The model recipe is exactly Phase 14's four-view sparse system with no changed m
 
 Classifier: `LinearSVC(C=0.5, random_state=42, max_iter=5000, class_weight="balanced")`.
 
-The only Phase 15 change is the independently justified external-data eligibility filter.
+The only Phase 15 modeling change from Phase 14 was the independently justified external-data eligibility filter.
 
-## Decision
+## Decision history
 
-`promote_phase15 = true`.
+Before the leaderboard result, the frozen contract correctly produced `promote_phase15 = true` under the **local** promotion rule, and authorized one second Kaggle submission. That submission has now supplied the missing external anchor.
 
-Phase 15 becomes the current best **submission-eligible** validated system at **0.4053218990802883** OOF balanced accuracy.
+After observing the real Public score, the competition-level decision is:
 
-A second Kaggle submission is authorized, provided the submission notebook:
+`competition_promote_phase15 = false`.
 
-1. rebuilds the same pinned raw public pool;
-2. reproduces the exact 43,781-row Phase 14 conservative subset;
-3. applies the exact Phase 15 seven-label exclusion to obtain 26,025 external rows;
-4. uses the frozen Phase 14 feature/model recipe unchanged;
-5. passes a fresh read-only Kaggle preflight confirming no unexpected duplicate submission state.
+The promoted competition system remains Phase 7 (`OOF 0.3700521998508576`, Public `0.369`).
+
+Do **not** tune external-source membership, SVC C/class weights, view weights, ngram ranges, prompt filters, provider-label exclusions, or post-hoc overrides using the Phase 15 Public score. Any future submission requires a new pre-specified hypothesis and stronger validation evidence that addresses the observed transfer failure.
 
 ## Evidence
 
 - provider-terms decision: `artifacts/phase15/TERMS_AUDIT.md`
 - audit-only result: `artifacts/phase15/terms_clean_audit.json`
 - frozen contract: `artifacts/phase15/CONTRACT.md`
-- machine-readable result: `artifacts/phase15/terms_clean_sparse.json`
+- machine-readable local result: `artifacts/phase15/terms_clean_sparse.json`
 - successful frozen workflow: `41270900644`
-- workflow artifact: `13069183594`
-- artifact digest: `sha256:d4462b2bc0b8d6e4029766ae60f8bda410cbb60bdb8d4b5d511324fbdf08dba2`
+- frozen workflow artifact: `13069183594`
+- frozen artifact digest: `sha256:d4462b2bc0b8d6e4029766ae60f8bda410cbb60bdb8d4b5d511324fbdf08dba2`
+- second submission record: `artifacts/submission/SECOND_SUBMISSION.md`
+- second submission workflow: `41276327535`
+- second submission ref: `57861337`
+- second submission Public score: `0.357`
