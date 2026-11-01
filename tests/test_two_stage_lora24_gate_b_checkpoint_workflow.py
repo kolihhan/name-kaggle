@@ -22,6 +22,14 @@ def test_gate_b_checkpoint_workflow_is_exact_private_transport_only():
     assert "--public" not in text
 
 
+def test_gate_b_checkpoint_workflow_installs_kaggle_runtime_dependency_six():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    install_line = next(
+        line for line in text.splitlines() if "pip install -r requirements.txt" in line
+    )
+    assert "six" in install_line.split()
+
+
 def test_gate_b_checkpoint_workflow_verifies_lineage_before_dataset_create():
     text = WORKFLOW.read_text(encoding="utf-8")
     verify_pos = text.index("Verify exact Gate-A artifact and checkpoint lineage")
