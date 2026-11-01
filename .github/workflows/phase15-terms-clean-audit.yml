@@ -1,0 +1,106 @@
+name: Phase 15 terms-clean external audit
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase15-terms-clean-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'kaggle==2.2.5'
+      - name: Download pinned raw public pool
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/phase15
+          mkdir -p /tmp/phase15/raw
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/phase15/raw --unzip
+          RAW=$(find /tmp/phase15/raw -type f -name pool_v4.parquet -print -quit)
+          test -n "$RAW"
+          echo "RAW_POOL=$RAW" >> "$GITHUB_ENV"
+          sha256sum "$RAW"
+      - name: Rebuild exact Phase 14 subset without folds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+          from scripts.run_phase14_public_sparse import (
+              EXPECTED_RAW_SHA256,
+              build_conservative_subset,
+              sha256_file,
+          )
+          import os
+
+          raw = Path(os.environ['RAW_POOL'])
+          observed = sha256_file(raw)
+          assert observed == EXPECTED_RAW_SHA256, (observed, EXPECTED_RAW_SHA256)
+          pool = pd.read_parquet(raw)
+          phase14 = build_conservative_subset(pool, validate_full_contract=True)
+          out = Path('/tmp/phase15/phase14_external.parquet')
+          phase14.to_parquet(out, index=False)
+          print('phase14_rows:', len(phase14))
+          print('phase14_prompts:', phase14['prompt_id'].astype(str).nunique())
+          PY
+      - name: Apply frozen provider-terms filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.phase15_terms_clean \
+            --phase14-external /tmp/phase15/phase14_external.parquet \
+            --output /tmp/phase15/terms_clean_audit.json \
+            --subset-output /tmp/phase15/terms_clean_external.parquet
+          cat /tmp/phase15/terms_clean_audit.json
+      - name: Verify audit-only invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          from scripts.phase15_terms_clean import BLOCKED_EXTERNAL_LABELS
+
+          report = json.loads(Path('/tmp/phase15/terms_clean_audit.json').read_text())
+          subset = pd.read_parquet('/tmp/phase15/terms_clean_external.parquet')
+          assert report['scope'] == 'provider_terms_admission_only_no_training_no_permanent_folds'
+          assert report['phase14_external_rows'] == 43781
+          assert report['blocked_rows'] == 17756
+          assert report['retained_rows'] == 26025
+          assert len(subset) == 26025
+          assert not set(subset['model'].astype(str).unique()) & BLOCKED_EXTERNAL_LABELS
+          assert report['invariants']['no_blocked_labels_remain'] is True
+          assert report['decision']['training_authorized_after_terms_filter'] is True
+          assert report['decision']['permanent_folds_authorized'] is False
+          print('retained_prompt_ids:', report['retained_prompt_ids'])
+          print('retained_labels:', json.dumps(report['retained_labels'], sort_keys=True))
+          PY
+      - name: Upload Phase 15 audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase15-terms-clean-audit
+          path: |
+            /tmp/phase15/terms_clean_audit.json
+            /tmp/phase15/terms_clean_external.parquet
+          retention-days: 30
