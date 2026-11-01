@@ -282,3 +282,150 @@ jobs:
           name: two-stage-lora24-gate-a-a1-checkpoint
           path: gate-a-output/two_stage_lora24_gate_a_checkpoint
           retention-days: 90
+
+  recover-existing-kaggle-gate-a:
+    if: contains(github.event.head_commit.message, '[gate-a-recover]')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle clients
+        run: pip install 'kaggle==2.2.5' kagglehub six
+
+      - name: Resolve existing Gate A kernel reference
+        id: kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          USERNAME="$(python - <<'PY'
+          import kagglehub
+          print(kagglehub.whoami(verbose=False)["username"])
+          PY
+          )"
+          KERNEL_REF="${USERNAME}/name-that-llm-two-stage-lora24-gate-a"
+          echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
+          echo "RECOVERY_KERNEL_REF $KERNEL_REF"
+
+      - name: Inspect existing kernel without pushing a new version
+        id: status
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+          echo "$status"
+          if grep -Eqi 'complete|successful' <<<"$status"; then
+            echo "state=complete" >> "$GITHUB_OUTPUT"
+          elif grep -Eqi 'error|failed|cancel' <<<"$status"; then
+            echo "state=failed" >> "$GITHUB_OUTPUT"
+            kaggle kernels logs "$KERNEL_REF" || true
+            exit 1
+          elif grep -Eqi 'running|queued' <<<"$status"; then
+            echo "state=running" >> "$GITHUB_OUTPUT"
+            echo "RECOVERY_STATUS_RUNNING"
+          else
+            echo "state=unknown" >> "$GITHUB_OUTPUT"
+            echo "Unrecognized Kaggle kernel status"
+            exit 1
+          fi
+
+      - name: Download existing Gate A output
+        if: steps.status.outputs.state == 'complete'
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          rm -rf gate-a-output
+          mkdir -p gate-a-output
+          kaggle kernels output "$KERNEL_REF" -p gate-a-output -o
+          test -s gate-a-output/two_stage_lora24_gate_a.json
+
+      - name: Verify and print recovered Gate A evidence
+        if: steps.status.outputs.state == 'complete'
+        id: verify_recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path('gate-a-output/two_stage_lora24_gate_a.json')
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+
+          assert report['candidate'] == 'two-stage-lora24-v1'
+          assert report['scope'] == 'external_transfer_gate_a_only_no_official_oof'
+          assert report['official_rows_scored'] == 0
+          assert report['official_oof_runs'] == 0
+          assert report['competition_test_rows_used'] == 0
+          assert report['public_lb_tuning'] is False
+          assert report['kaggle_submission_authorized'] is False
+
+          assert report['model']['id'] == 'Qwen/Qwen3-8B-Base'
+          assert report['model']['revision'] == '49e3418fbbbca6ecbdf9608b4d22e5a407081db4'
+          assert report['model']['transformers'] == '4.57.1'
+          assert report['model']['peft'] == '0.17.1'
+
+          data = report['data']
+          assert data['raw_pool_sha256'] == '37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec'
+          assert data['raw_rows'] == 75783
+          assert data['phase14_rows'] == 43781
+          assert data['phase14_prompt_ids'] == 3736
+          assert len(data['phase14_labels']) == 18
+          assert len(data['holdout_sources']) == 3
+          assert data['prompt_id_overlap'] == 0
+          assert data['prompt_key_overlap'] == 0
+
+          decision = report['gate_a']['decision']
+          status = decision['status']
+          assert status in {'pass', 'fail', 'inconclusive'}
+          assert decision['official_oof_authorized'] is (status == 'pass')
+
+          if status in {'pass', 'fail'}:
+              assert set(report['conditions']) == {'A0', 'A1'}
+              pooled_a0 = report['conditions']['A0']['scores']['pooled']['balanced_accuracy']
+              pooled_a1 = report['conditions']['A1']['scores']['pooled']['balanced_accuracy']
+              print('POOLED_A0', pooled_a0)
+              print('POOLED_A1', pooled_a1)
+              print('POOLED_DELTA', report['gate_a']['pooled_delta_a1_minus_a0'])
+              for source, delta in report['gate_a']['source_deltas_a1_minus_a0'].items():
+                  print('SOURCE_DELTA', source, delta)
+              checkpoint = Path('gate-a-output/two_stage_lora24_gate_a_checkpoint')
+              assert (checkpoint / 'adapter').is_dir()
+              assert (checkpoint / 'heads.safetensors').is_file()
+              assert (checkpoint / 'meta.json').is_file()
+          else:
+              assert report['conditions'] == {}
+
+          authorized = status == 'pass'
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              handle.write(f"gate_b_authorized={'true' if authorized else 'false'}\n")
+          print('DECISION', decision)
+          PY
+
+      - name: Upload recovered Gate A JSON evidence
+        if: steps.status.outputs.state == 'complete'
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-a-evidence
+          path: gate-a-output/two_stage_lora24_gate_a.json
+          retention-days: 90
+
+      - name: Preserve exact recovered A1 checkpoint only when Gate A passes
+        if: steps.status.outputs.state == 'complete' && steps.verify_recovery.outputs.gate_b_authorized == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-a-a1-checkpoint
+          path: gate-a-output/two_stage_lora24_gate_a_checkpoint
+          retention-days: 90
