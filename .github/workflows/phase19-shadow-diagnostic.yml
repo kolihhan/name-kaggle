@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt 'pytest>=8,<10' 'kaggle==2.2.5'
+          python -m pip install -r requirements.txt 'pytest>=8,<10' 'kaggle==2.2.5' six
 
       - name: Verify Phase 19 diagnostic tests
         run: |
