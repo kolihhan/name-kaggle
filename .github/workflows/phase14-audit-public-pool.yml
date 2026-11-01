@@ -32,11 +32,10 @@ jobs:
           rm -rf /tmp/public-pool && mkdir -p /tmp/public-pool
           kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/public-pool --unzip
           find /tmp/public-pool -type f -printf '%P\t%s bytes\n'
-      - name: Audit schema, labels, sources and overlap
+      - name: Audit schema, labels, sources and prompt overlap
         run: |
           python - <<'PY'
           import hashlib, json, re, unicodedata
-          from collections import Counter
           from pathlib import Path
           import pandas as pd
 
@@ -51,28 +50,42 @@ jobs:
               return x
 
           cols=list(pool.columns)
-          text_candidates=[c for c in cols if c.lower() in {'text','answer','response','passage','content','output'}]
-          label_candidates=[c for c in cols if c.lower() in {'model','label','model_name','target'}]
-          if len(text_candidates)!=1: raise SystemExit(f'ambiguous text column candidates: {text_candidates}; all={cols}')
-          if len(label_candidates)!=1: raise SystemExit(f'ambiguous label column candidates: {label_candidates}; all={cols}')
-          text_col=text_candidates[0]; label_col=label_candidates[0]
-
-          off_text_candidates=[c for c in official.columns if c.lower() in {'text','answer','response','passage','content','output'}]
-          if len(off_text_candidates)!=1: raise SystemExit(f'ambiguous official text column: {off_text_candidates}; all={list(official.columns)}')
-          off_text_col=off_text_candidates[0]
+          text_col='text'; label_col='model'
+          if text_col not in cols or label_col not in cols: raise SystemExit(f'unexpected pool schema: {cols}')
+          off_text_col='text' if 'text' in official.columns else 'answer'
+          if off_text_col not in official.columns: raise SystemExit(f'unexpected official schema: {list(official.columns)}')
 
           norm_pool=pool[text_col].astype(str).map(norm)
           norm_off=official[off_text_col].astype(str).map(norm)
           off_set=set(norm_off)
-          overlap=int(norm_pool.isin(off_set).sum())
 
-          source_like=[c for c in cols if any(k in c.lower() for k in ('source','dataset','origin','provenance'))]
-          source_summaries={}
-          for c in source_like:
-              vc=pool[c].astype(str).value_counts(dropna=False)
-              source_summaries[c]={'nunique':int(vc.size),'top':{str(k):int(v) for k,v in vc.head(100).items()}}
-
+          source_counts={str(k):int(v) for k,v in pool['source'].astype(str).value_counts().items()}
           label_counts={str(k):int(v) for k,v in pool[label_col].astype(str).value_counts().sort_index().items()}
+          setting_counts={str(k):int(v) for k,v in pool['setting'].astype(str).value_counts().head(100).items()}
+
+          official_prompt_ids=set(official['prompt_id'].astype(str)) if 'prompt_id' in official.columns else set()
+          pool_prompt_ids=set(pool['prompt_id'].astype(str))
+          direct_prompt_id_overlap=sorted(official_prompt_ids & pool_prompt_ids)
+          prompt_keys=pool['prompt_key'].astype(str)
+          pool_prompt_id_counts=pool['prompt_id'].astype(str).value_counts()
+          prompt_key_counts=prompt_keys.value_counts()
+
+          # Check whether the same prompt_key is shared across sources/models; this is useful
+          # for deciding whether fold-local purging can be done from the external pool itself.
+          key_source_n=pool.groupby('prompt_key')['source'].nunique()
+          key_model_n=pool.groupby('prompt_key')['model'].nunique()
+          source_prompt_stats={}
+          for src,g in pool.groupby('source'):
+              source_prompt_stats[str(src)]={
+                'rows':int(len(g)),
+                'unique_prompt_ids':int(g['prompt_id'].astype(str).nunique()),
+                'unique_prompt_keys':int(g['prompt_key'].astype(str).nunique()),
+                'unique_models':int(g['model'].astype(str).nunique()),
+                'settings':sorted(g['setting'].astype(str).unique().tolist())[:50],
+                'sample_prompt_ids':g['prompt_id'].astype(str).drop_duplicates().head(3).tolist(),
+                'sample_prompt_keys':g['prompt_key'].astype(str).drop_duplicates().head(3).tolist(),
+              }
+
           report={
             'dataset_ref':'nishantdahal/ntl-handwriting-blend',
             'file':'pool_v4.parquet',
@@ -80,18 +93,29 @@ jobs:
             'rows':int(len(pool)),
             'columns':cols,
             'dtypes':{c:str(pool[c].dtype) for c in cols},
-            'text_column':text_col,
-            'label_column':label_col,
             'label_counts':label_counts,
             'label_count':len(label_counts),
+            'source_counts':source_counts,
+            'source_count':len(source_counts),
+            'setting_counts':setting_counts,
             'null_text_rows':int(pool[text_col].isna().sum()),
             'empty_text_rows':int((pool[text_col].astype(str).str.strip()=='').sum()),
             'normalized_unique_texts':int(norm_pool.nunique()),
             'normalized_duplicate_rows':int(len(pool)-norm_pool.nunique()),
-            'normalized_official_overlap_rows':overlap,
+            'normalized_official_overlap_rows':int(norm_pool.isin(off_set).sum()),
             'official_rows':int(len(official)),
-            'source_like_columns':source_like,
-            'source_summaries':source_summaries,
+            'official_unique_prompt_ids':len(official_prompt_ids),
+            'pool_unique_prompt_ids':int(len(pool_prompt_ids)),
+            'pool_unique_prompt_keys':int(prompt_keys.nunique()),
+            'direct_official_pool_prompt_id_overlap_count':len(direct_prompt_id_overlap),
+            'direct_official_pool_prompt_id_overlap_examples':direct_prompt_id_overlap[:20],
+            'prompt_keys_shared_across_multiple_sources':int((key_source_n>1).sum()),
+            'prompt_keys_shared_across_multiple_models':int((key_model_n>1).sum()),
+            'max_sources_per_prompt_key':int(key_source_n.max()),
+            'max_models_per_prompt_key':int(key_model_n.max()),
+            'max_rows_per_prompt_id':int(pool_prompt_id_counts.max()),
+            'max_rows_per_prompt_key':int(prompt_key_counts.max()),
+            'source_prompt_stats':source_prompt_stats,
             'text_length_chars':{
               'min':int(pool[text_col].astype(str).str.len().min()),
               'median':float(pool[text_col].astype(str).str.len().median()),
