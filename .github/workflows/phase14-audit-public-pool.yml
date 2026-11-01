@@ -1,0 +1,110 @@
+name: Phase 14 audit 75k public passage pool
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-public-pool.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install 'kaggle==2.2.5' pandas pyarrow
+      - name: Download only public passage pool
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
+          rm -rf /tmp/public-pool && mkdir -p /tmp/public-pool
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/public-pool --unzip
+          find /tmp/public-pool -type f -printf '%P\t%s bytes\n'
+      - name: Audit schema, labels, sources and overlap
+        run: |
+          python - <<'PY'
+          import hashlib, json, re, unicodedata
+          from collections import Counter
+          from pathlib import Path
+          import pandas as pd
+
+          paths=list(Path('/tmp/public-pool').rglob('pool_v4.parquet'))
+          if len(paths)!=1: raise SystemExit(f'expected one pool_v4.parquet, found {paths}')
+          pool=pd.read_parquet(paths[0])
+          official=pd.read_csv('data/train.csv')
+
+          def norm(x):
+              x=unicodedata.normalize('NFKC',str(x)).lower()
+              x=re.sub(r'\s+',' ',x).strip()
+              return x
+
+          cols=list(pool.columns)
+          text_candidates=[c for c in cols if c.lower() in {'text','answer','response','passage','content','output'}]
+          label_candidates=[c for c in cols if c.lower() in {'model','label','model_name','target'}]
+          if len(text_candidates)!=1: raise SystemExit(f'ambiguous text column candidates: {text_candidates}; all={cols}')
+          if len(label_candidates)!=1: raise SystemExit(f'ambiguous label column candidates: {label_candidates}; all={cols}')
+          text_col=text_candidates[0]; label_col=label_candidates[0]
+
+          off_text_candidates=[c for c in official.columns if c.lower() in {'text','answer','response','passage','content','output'}]
+          if len(off_text_candidates)!=1: raise SystemExit(f'ambiguous official text column: {off_text_candidates}; all={list(official.columns)}')
+          off_text_col=off_text_candidates[0]
+
+          norm_pool=pool[text_col].astype(str).map(norm)
+          norm_off=official[off_text_col].astype(str).map(norm)
+          off_set=set(norm_off)
+          overlap=int(norm_pool.isin(off_set).sum())
+
+          source_like=[c for c in cols if any(k in c.lower() for k in ('source','dataset','origin','provenance'))]
+          source_summaries={}
+          for c in source_like:
+              vc=pool[c].astype(str).value_counts(dropna=False)
+              source_summaries[c]={'nunique':int(vc.size),'top':{str(k):int(v) for k,v in vc.head(100).items()}}
+
+          label_counts={str(k):int(v) for k,v in pool[label_col].astype(str).value_counts().sort_index().items()}
+          report={
+            'dataset_ref':'nishantdahal/ntl-handwriting-blend',
+            'file':'pool_v4.parquet',
+            'scope':'audit_only_no_training_no_permanent_folds',
+            'rows':int(len(pool)),
+            'columns':cols,
+            'dtypes':{c:str(pool[c].dtype) for c in cols},
+            'text_column':text_col,
+            'label_column':label_col,
+            'label_counts':label_counts,
+            'label_count':len(label_counts),
+            'null_text_rows':int(pool[text_col].isna().sum()),
+            'empty_text_rows':int((pool[text_col].astype(str).str.strip()=='').sum()),
+            'normalized_unique_texts':int(norm_pool.nunique()),
+            'normalized_duplicate_rows':int(len(pool)-norm_pool.nunique()),
+            'normalized_official_overlap_rows':overlap,
+            'official_rows':int(len(official)),
+            'source_like_columns':source_like,
+            'source_summaries':source_summaries,
+            'text_length_chars':{
+              'min':int(pool[text_col].astype(str).str.len().min()),
+              'median':float(pool[text_col].astype(str).str.len().median()),
+              'mean':float(pool[text_col].astype(str).str.len().mean()),
+              'max':int(pool[text_col].astype(str).str.len().max()),
+            },
+            'file_sha256':hashlib.sha256(paths[0].read_bytes()).hexdigest(),
+          }
+          Path('/tmp/phase14_public_pool_audit.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase14-public-pool-audit
+          path: /tmp/phase14_public_pool_audit.json
+          retention-days: 30
