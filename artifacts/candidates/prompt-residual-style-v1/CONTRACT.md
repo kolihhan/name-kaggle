@@ -41,6 +41,8 @@ Use exactly the existing Phase 15 provider-terms-clean reconstruction:
 - labels: 11;
 - source lineage: Phase 14 conservative public-pool subset followed by the frozen Phase 15 provider-terms exclusions.
 
+The Phase 15 filter preserves the Phase 14 metadata columns, including `source`, `prompt_id`, and `prompt_key`.
+
 No new source, label, row weighting, or source weighting may be added after this contract.
 
 ## Frozen base encoder
@@ -78,7 +80,7 @@ This gate runs before any new official-fold score is observed.
 
 Purpose: test whether the style subspace captures model identity that transfers across public source/prompt-bank construction rather than merely making the external training distribution easier.
 
-Use the existing external `source` and `prompt_id` metadata from the Phase 14 reconstruction.
+Use the existing external `source`, `prompt_id`, and `prompt_key` metadata from the Phase 14 reconstruction.
 
 For every Phase 14 seed source that, after the Phase 15 terms filter, has at least:
 
@@ -88,13 +90,14 @@ For every Phase 14 seed source that, after the Phase 15 terms filter, has at lea
 
 run one leave-source-out diagnostic:
 
-1. define the held-out prompt set as every `prompt_id` appearing in that source;
-2. remove **all rows from all sources** whose `prompt_id` belongs to that held-out set from the external training partition, preventing prompt-bank leakage through inherited sources;
+1. collect every `prompt_id` **and** every `prompt_key` appearing in the held-out source;
+2. remove **all rows from all sources** whose `prompt_id` or `prompt_key` matches either held-out set from the external training partition; this prevents leakage through inherited rows and known public prompt-bank reuse across sources;
 3. fit the prompt-residual LDA projection only on the remaining external training partition;
-4. compare two classifiers on the same held-out rows and shared-label scope:
+4. on that same remaining partition, fit both frozen comparison classifiers using only labels also present in the held-out rows:
    - raw frozen ModernBERT embeddings + `LinearSVC(class_weight="balanced", C=1.0)`;
    - prompt-residual LDA features + the same `LinearSVC`;
-5. report balanced accuracy and per-label recall for both.
+5. score both classifiers on the same untouched held-out-source rows restricted to that shared-label scope;
+6. report balanced accuracy and per-label recall for both.
 
 Aggregate across eligible held-out sources with an unweighted mean of source-level balanced accuracy.
 
@@ -171,7 +174,7 @@ No model run or Kaggle submission is authorized by this contract alone.
 The next step is a small implementation plan and tests for:
 
 - prompt-residual construction;
-- source/prompt leakage exclusion in Gate A;
+- source / `prompt_id` / `prompt_key` leakage exclusion in Gate A;
 - deterministic LDA projection;
 - fold-local official classifier isolation;
 - required OOF/error-overlap outputs.
