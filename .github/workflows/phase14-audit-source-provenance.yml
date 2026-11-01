@@ -1,0 +1,107 @@
+name: Phase 14 audit source-level prompt provenance
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-source-provenance.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Fetch source dataset metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
+          python - <<'PY'
+          import json, re, subprocess
+          from pathlib import Path
+
+          refs = [
+            'seyitkaangunes/ntl-extra-api-passages',
+            'willrice/name-that-llm-openrouter-harvest',
+            'lxdlxdlxd/ntl-synth-generations-v1',
+            'prvsiyan/prvsiyans-extended-name-that-llm-dataset',
+            'alperen5252525/ntl-vertex-gemini-proxy-gpt-generations',
+            'haileycheng/name-that-llm-same-prompt-passages',
+            'kaplinskiy/ntl-gpt-proxy-passages',
+            'lucasboesen/ntl-free-proxy-generations',
+            'abdullah1afify/ntl-generations',
+            'dophuchung/ntl-proxy-generations',
+            'ziyuzhou1207/ntl-zz-proxy-generations',
+            'keshavatearth/ntl-gpt-new-prompts-v1',
+            'michaelsemenoff/ntl-own-extra-v1',
+            'jadkutbi/ntl-own-proxy-generations',
+            'pardheev/ntl-proxy-extra-passages',
+            'abhinavsaipodugu/ntl-proxy-gpt-gemini-passages',
+            'zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations',
+            'zbigniewkirchner/ntl-extra-gpt-passages',
+            'arxitekton/ntl-claude-gen-v1',
+            'arxitekton/ntl-claude-gen-v2',
+            'maniceet/name-that-llm-openrouter-openai-generations',
+            'dedruck/ntl-proxy-gen',
+            'prvsiyan/ntl-own-prompt-generations-v1',
+            'drjcfmd/ntl-generated-v2',
+            'illiadolenko/ntl-generated-corpus-v1',
+          ]
+          outroot = Path('/tmp/source-meta'); outroot.mkdir(parents=True, exist_ok=True)
+          records=[]
+          phrases = {
+            'mentions_competition_prompt': r'competition.{0,40}prompt|prompt.{0,40}competition',
+            'mentions_train_prompt': r'train.{0,40}prompt|prompt.{0,40}train',
+            'mentions_same_prompt': r'same[- ]prompt|same prompt',
+            'mentions_new_prompt': r'new[- ]prompt|new prompt|own prompt|custom prompt|fresh prompt',
+            'mentions_random_prompt': r'random prompt|unrelated prompt|independent prompt',
+            'mentions_similarity_filter': r'tfidf|tf-idf|cosine|similarity|near duplicate|near-duplicate',
+            'mentions_no_competition_text': r'no competition text|without competition text|does not include competition',
+          }
+          for i, ref in enumerate(refs):
+              dest = outroot / f'{i:02d}'
+              dest.mkdir(exist_ok=True)
+              cmd=['kaggle','datasets','metadata',ref,'-p',str(dest)]
+              p=subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+              rec={'ref':ref,'returncode':p.returncode,'stderr':p.stderr[-2000:]}
+              metas=list(dest.glob('*.json'))
+              if p.returncode==0 and metas:
+                  try:
+                      raw=json.loads(metas[0].read_text(encoding='utf-8'))
+                      info=raw.get('info',raw)
+                      desc=str(info.get('description',''))
+                      rec.update({
+                        'title':info.get('title'),
+                        'subtitle':info.get('subtitle'),
+                        'licenses':info.get('licenses'),
+                        'description':desc,
+                        'created':info.get('creationDate') or info.get('dateCreated') or raw.get('creationDate'),
+                        'updated':info.get('lastUpdated') or raw.get('lastUpdated'),
+                        'flags':{k:bool(re.search(pattern,desc,re.I|re.S)) for k,pattern in phrases.items()},
+                      })
+                  except Exception as e:
+                      rec['parse_error']=repr(e)
+              records.append(rec)
+
+          Path('/tmp/phase14_source_provenance.json').write_text(json.dumps(records,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(records,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload provenance matrix
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase14-source-provenance
+          path: /tmp/phase14_source_provenance.json
+          retention-days: 30
