@@ -174,7 +174,7 @@ def pad_triplets_for_accumulation(
     accumulation: int,
     seed: int,
 ) -> list[np.ndarray]:
-    """Pad a deterministic triplet plan so every optimizer step is complete."""
+    """Legacy helper retained until the GPU runner migrates to exact grouping."""
     if not batches:
         raise ValueError("at least one triplet is required")
     if accumulation <= 0:
@@ -190,6 +190,24 @@ def pad_triplets_for_accumulation(
     choices = rng.randint(0, len(padded), size=needed)
     padded.extend(padded[int(i)].copy() for i in choices)
     return padded
+
+
+def group_triplets_for_accumulation(
+    batches: Sequence[np.ndarray],
+    *,
+    accumulation: int,
+) -> list[list[np.ndarray]]:
+    """Group one exact epoch into optimizer steps without duplicating triplets."""
+    if not batches:
+        raise ValueError("at least one triplet is required")
+    if accumulation <= 0:
+        raise ValueError("accumulation must be positive")
+
+    copied = [np.asarray(batch, dtype=int).copy() for batch in batches]
+    return [
+        copied[start : start + accumulation]
+        for start in range(0, len(copied), accumulation)
+    ]
 
 
 def score_predictions(
