@@ -1,0 +1,101 @@
+name: Phase 16 audit Nishant neural training provenance
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase16-audit-nishant-neural-training.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: nishantdahal/two-stage-lora-part-two
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/p16nishant
+          mkdir -p /tmp/p16nishant
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/p16nishant -m
+          find /tmp/p16nishant -maxdepth 1 -type f -printf '%f\t%s bytes\n' | sort
+      - name: Extract training-provenance evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, re
+          from pathlib import Path
+          root=Path('/tmp/p16nishant')
+          chunks=[]
+          sources=[]
+          for p in sorted(root.glob('*.ipynb')):
+              nb=json.loads(p.read_text(encoding='utf-8'))
+              for c in nb.get('cells',[]):
+                  if c.get('cell_type')=='code':
+                      s=c.get('source','')
+                      if isinstance(s,list): s=''.join(s)
+                      chunks.append(s)
+              sources.append({'path':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          for p in sorted(root.glob('*.py')):
+              txt=p.read_text(encoding='utf-8')
+              chunks.append(txt)
+              sources.append({'path':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          code='\n\n'.join(chunks)
+          code_sha=hashlib.sha256(code.encode()).hexdigest()
+          lines=code.splitlines()
+          pats=[
+              'pool_v4', 'pool.parquet', 'ntl-handwriting-blend',
+              'lora_qwen3', 'lora_qwen25', 'deberta_v3_large',
+              'adapter', 'train_info', 'fit(', 'Trainer(', 'train()',
+              'official', 'train.csv', 'external', 'concat', 'pd.concat',
+              'steps = 300', 'max_steps', 'num_train_epochs'
+          ]
+          hits=[]
+          seen=set()
+          for i,line in enumerate(lines):
+              if any(p.lower() in line.lower() for p in pats):
+                  lo=max(0,i-3); hi=min(len(lines),i+4)
+                  key=(lo,hi)
+                  if key in seen: continue
+                  seen.add(key)
+                  context='\n'.join(f'{j+1}: {lines[j]}' for j in range(lo,hi))
+                  if len(context)<=5000:
+                      hits.append({'line':i+1,'context':context})
+          metadata=[]
+          for p in sorted(root.glob('*metadata*.json')):
+              try: metadata.append({'path':p.name,'data':json.loads(p.read_text())})
+              except Exception: pass
+          report={
+              'kernel_ref':'nishantdahal/two-stage-lora-part-two',
+              'scope':'static_source_only_no_execution_no_training_no_submission',
+              'source_files':sources,
+              'combined_code_sha256':code_sha,
+              'metadata':metadata,
+              'training_contexts':hits[:200],
+          }
+          out=Path('/tmp/phase16_nishant_training_audit.json')
+          out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload training provenance audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase16-nishant-neural-training-audit
+          path: /tmp/phase16_nishant_training_audit.json
+          retention-days: 30
