@@ -21,13 +21,16 @@ from scripts.run_two_stage_lora24_gate_a import (
     MIN_ELIGIBLE_LABELS,
     build_prompt_triplets,
     build_stage1_split,
+    center_triplet,
     compute_class_weights,
     gate_a_condition_specs,
     gate_a_decision,
     gate_a_training_spec,
-    pad_triplets_for_accumulation,
+    group_triplets_for_accumulation,
+    masked_mean_pool,
     score_predictions,
     select_eligible_labels,
+    truncate_qwen_layers,
 )
 from scripts.run_phase14_public_sparse import (
     EXPECTED_EXTERNAL_ROWS,
@@ -409,9 +412,9 @@ def _run_condition_worker(
         local_files_only=True,
         low_cpu_mem_usage=True,
     ).to(device)
+    truncate_qwen_layers(base, keep_layers=int(spec["keep_layers"]))
     if not hasattr(base, "norm"):
         raise RuntimeError("Qwen3 AutoModel is missing final norm")
-    base.norm = nn.Identity()
 
     if train_lora:
         base.gradient_checkpointing_enable(
@@ -468,13 +471,12 @@ def _run_condition_worker(
     )
 
     triplets = build_prompt_triplets(frame, train_idx, seed=seed)
-    triplets = pad_triplets_for_accumulation(
-        triplets,
-        accumulation=int(spec["gradient_accumulation_triplets"]),
-        seed=seed,
-    )
     accumulation = int(spec["gradient_accumulation_triplets"])
-    total_steps = len(triplets) // accumulation
+    step_groups = group_triplets_for_accumulation(
+        triplets,
+        accumulation=accumulation,
+    )
+    total_steps = len(step_groups)
     warmup_steps = max(1, int(float(spec["warmup_fraction"]) * total_steps))
 
     def lr_multiplier(step: int) -> float:
@@ -506,11 +508,14 @@ def _run_condition_worker(
                 hidden_states = model(
                     **enc, output_hidden_states=True, use_cache=False
                 ).hidden_states
-        mask = enc["attention_mask"].unsqueeze(-1).float()
-        mask[:, 0] = 0
-        denominator = mask.sum(1).clamp(min=1)
         pooled = [
-            norm((hidden_states[layer].float() * mask).sum(1) / denominator)
+            norm(
+                masked_mean_pool(
+                    hidden_states[layer].float(),
+                    enc["attention_mask"],
+                    mask_first_token=True,
+                )
+            )
             for layer, norm in zip(layers, norms)
         ]
         return torch.cat(pooled, dim=-1)
@@ -524,52 +529,63 @@ def _run_condition_worker(
     plain.train()
     centered.train()
     dropout.train()
-    optimizer.zero_grad(set_to_none=True)
 
     loss_sum = 0.0
     loss_count = 0
     skipped_steps = 0
     optimizer_steps = 0
-    for batch_index, rows in enumerate(triplets):
-        enc = make_encoding(rows)
-        z = representation(enc)
-        target = torch.as_tensor(y[rows], dtype=torch.long, device=device)
-        plain_logits = plain(dropout(z))
-        centered_logits = centered(dropout(z - z.mean(0, keepdim=True)))
-        loss = F.cross_entropy(plain_logits, target, weight=class_weights) + F.cross_entropy(
-            centered_logits, target, weight=class_weights
-        )
-        if not bool(torch.isfinite(loss)):
-            raise RuntimeError(f"non-finite training loss in {condition}: {float(loss.detach())}")
-        scaler.scale(loss / accumulation).backward()
-        loss_sum += float(loss.detach().cpu())
-        loss_count += 1
+    for rows_group in step_groups:
+        optimizer.zero_grad(set_to_none=True)
+        group_size = len(rows_group)
+        if group_size <= 0:
+            raise RuntimeError("empty optimizer-step group")
 
-        if (batch_index + 1) % accumulation == 0:
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(
-                adapter_parameters + head_parameters,
-                float(spec["gradient_clip"]),
+        for rows in rows_group:
+            enc = make_encoding(rows)
+            z = representation(enc)
+            target = torch.as_tensor(y[rows], dtype=torch.long, device=device)
+            plain_logits = plain(dropout(z))
+            centered_logits = centered(dropout(center_triplet(z)))
+            loss = F.cross_entropy(
+                plain_logits, target, weight=class_weights
+            ) + F.cross_entropy(
+                centered_logits, target, weight=class_weights
             )
-            previous_scale = float(scaler.get_scale())
-            scaler.step(optimizer)
-            scaler.update()
-            if float(scaler.get_scale()) < previous_scale:
-                skipped_steps += 1
-            optimizer.zero_grad(set_to_none=True)
-            scheduler.step()
-            optimizer_steps += 1
-            if optimizer_steps % 50 == 0 or optimizer_steps == total_steps:
-                print(
-                    f"{condition} step {optimizer_steps}/{total_steps} "
-                    f"mean_loss={loss_sum / max(1, loss_count):.6f} skipped={skipped_steps} "
-                    f"elapsed={time.time() - started:.0f}s",
-                    flush=True,
+            if not bool(torch.isfinite(loss)):
+                raise RuntimeError(
+                    f"non-finite training loss in {condition}: {float(loss.detach())}"
                 )
+            scaler.scale(loss / group_size).backward()
+            loss_sum += float(loss.detach().cpu())
+            loss_count += 1
+
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(
+            adapter_parameters + head_parameters,
+            float(spec["gradient_clip"]),
+        )
+        previous_scale = float(scaler.get_scale())
+        scaler.step(optimizer)
+        scaler.update()
+        if float(scaler.get_scale()) < previous_scale:
+            skipped_steps += 1
+        scheduler.step()
+        optimizer_steps += 1
+        if optimizer_steps % 50 == 0 or optimizer_steps == total_steps:
+            print(
+                f"{condition} step {optimizer_steps}/{total_steps} "
+                f"mean_loss={loss_sum / max(1, loss_count):.6f} skipped={skipped_steps} "
+                f"elapsed={time.time() - started:.0f}s",
+                flush=True,
+            )
 
     if optimizer_steps != total_steps:
         raise RuntimeError(
             f"optimizer step mismatch for {condition}: {optimizer_steps} != {total_steps}"
+        )
+    if loss_count != len(triplets):
+        raise RuntimeError(
+            f"exact-one-epoch mismatch for {condition}: {loss_count} != {len(triplets)}"
         )
 
     if condition == "A1":
@@ -594,6 +610,11 @@ def _run_condition_worker(
                 "model_revision": MODEL_REVISION,
                 "labels": labels,
                 "training_spec": spec,
+                "implementation_invariants": {
+                    "stock_qwen_final_norm_retained": True,
+                    "triplet_padding": False,
+                    "exact_one_epoch": True,
+                },
                 "holdout_sources": list(split["holdout_sources"]),
                 "prompt_id_overlap": int(split["prompt_id_overlap"]),
                 "prompt_key_overlap": int(split["prompt_key_overlap"]),
@@ -637,6 +658,11 @@ def _run_condition_worker(
             "torch": str(torch.__version__),
             "transformers": str(transformers.__version__),
             "peft": str(peft.__version__),
+        },
+        "implementation_invariants": {
+            "stock_qwen_final_norm_retained": True,
+            "triplet_padding": False,
+            "exact_one_epoch": True,
         },
         "train": {
             "rows": int(len(train_idx)),
@@ -694,6 +720,11 @@ def _aggregate_report(
                 "peft": PEFT_VERSION,
             },
             "training_spec": gate_a_training_spec(),
+            "implementation_invariants": {
+                "stock_qwen_final_norm_retained": True,
+                "triplet_padding": False,
+                "exact_one_epoch": True,
+            },
             "data": data,
             "conditions": conditions,
             "checkpoint": {
@@ -727,6 +758,11 @@ def _inconclusive_report(data: dict[str, Any], reason: str) -> dict[str, Any]:
                 "peft": PEFT_VERSION,
             },
             "training_spec": gate_a_training_spec(),
+            "implementation_invariants": {
+                "stock_qwen_final_norm_retained": True,
+                "triplet_padding": False,
+                "exact_one_epoch": True,
+            },
             "data": data,
             "conditions": {},
             "checkpoint": None,
