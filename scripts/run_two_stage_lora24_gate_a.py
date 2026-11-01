@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -85,7 +84,6 @@ def build_stage1_split(frame: pd.DataFrame) -> dict[str, object]:
     train_mask = ~heldout_mask
     train_mask &= ~frame["prompt_id"].astype(str).isin(heldout_prompt_ids)
 
-    heldout_prompt_keys: set[str] = set()
     if "prompt_key" in frame.columns:
         heldout_prompt_keys = set(frame.loc[heldout_mask, "prompt_key"].astype(str))
         train_mask &= ~frame["prompt_key"].astype(str).isin(heldout_prompt_keys)
@@ -117,7 +115,7 @@ def select_eligible_labels(
     train: pd.DataFrame,
     heldout: pd.DataFrame,
     *,
-    min_heldout_rows: int = MIN_HELDOUT_ROWS_PER_LABEL,
+    min_heldout_rows: int = MIN_ELIGIBLE_HELDOUT_ROWS // 15,
 ) -> list[str]:
     """Return labels present in train with enough union-heldout examples."""
     train_labels = set(train["model"].astype(str))
@@ -169,30 +167,6 @@ def build_prompt_triplets(
     return batches
 
 
-def pad_triplets_for_accumulation(
-    batches: Sequence[np.ndarray],
-    *,
-    accumulation: int,
-    seed: int,
-) -> list[np.ndarray]:
-    """Legacy helper retained until the GPU runner migrates to exact grouping."""
-    if not batches:
-        raise ValueError("at least one triplet is required")
-    if accumulation <= 0:
-        raise ValueError("accumulation must be positive")
-
-    padded = [np.asarray(batch, dtype=int).copy() for batch in batches]
-    remainder = len(padded) % accumulation
-    if remainder == 0:
-        return padded
-
-    rng = np.random.RandomState(seed)
-    needed = accumulation - remainder
-    choices = rng.randint(0, len(padded), size=needed)
-    padded.extend(padded[int(i)].copy() for i in choices)
-    return padded
-
-
 def group_triplets_for_accumulation(
     batches: Sequence[np.ndarray],
     *,
@@ -223,31 +197,6 @@ def masked_mean_pool(hidden, attention_mask, *, mask_first_token: bool):
 def center_triplet(features):
     """Center one same-prompt microbatch independently in feature space."""
     return features - features.mean(dim=0, keepdim=True)
-
-
-def warmup_cosine_multiplier(
-    *,
-    step: int,
-    total_steps: int,
-    warmup_steps: int,
-) -> float:
-    """Frozen warm-up/cosine multiplier on a conceptual 0..total_steps axis."""
-    if total_steps <= 0:
-        raise ValueError("total_steps must be positive")
-    if warmup_steps < 0 or warmup_steps > total_steps:
-        raise ValueError("warmup_steps must be between 0 and total_steps")
-    if step < 0:
-        raise ValueError("step must be nonnegative")
-    if step >= total_steps:
-        return 0.0
-    if warmup_steps > 0 and step <= warmup_steps:
-        return float(step / warmup_steps)
-
-    decay_steps = total_steps - warmup_steps
-    if decay_steps <= 0:
-        return 0.0
-    progress = (step - warmup_steps) / decay_steps
-    return float(0.5 * (1.0 + math.cos(math.pi * progress)))
 
 
 def truncate_qwen_layers(model, *, keep_layers: int):
