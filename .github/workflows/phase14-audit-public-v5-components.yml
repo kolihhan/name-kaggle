@@ -1,0 +1,168 @@
+name: Phase 14 audit public v5 components
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-public-v5-components.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: qasminumber/name-that-llm-v5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public notebook source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/public-v5
+          mkdir -p /tmp/public-v5
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/public-v5 -m
+      - name: Extract compact component map
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path('/tmp/public-v5')
+          nb_path = next(root.glob('*.ipynb'))
+          nb = json.loads(nb_path.read_text(encoding='utf-8'))
+
+          code_cells = []
+          markdown_headings = []
+          for idx, cell in enumerate(nb.get('cells', [])):
+              src = cell.get('source', '')
+              if isinstance(src, list):
+                  src = ''.join(src)
+              if cell.get('cell_type') == 'code':
+                  code_cells.append((idx, src))
+              elif cell.get('cell_type') == 'markdown':
+                  for line in src.splitlines():
+                      if line.lstrip().startswith('#'):
+                          markdown_headings.append({'cell': idx, 'text': line.strip()[:240]})
+
+          code = '\n\n'.join(src for _, src in code_cells)
+          lines = code.splitlines()
+
+          # Compact cell map: first non-empty line and selected architecture keywords.
+          cell_map = []
+          keywords = (
+              'ensemble', 'blend', 'svc', 'tfidf', 'lightgbm', 'lgbm', 'encoder',
+              'lora', 'adapter', 'atlas', 'gsq', 'gaussian', 'spectral', 'readout',
+              'deberta', 'ultrabert', 'qwen', 'external', 'proxy', 'generation',
+          )
+          for idx, src in code_cells:
+              nonempty = [x.strip() for x in src.splitlines() if x.strip()]
+              first = nonempty[0][:240] if nonempty else ''
+              lower = src.lower()
+              hits = sorted({k for k in keywords if k in lower})
+              if hits:
+                  cell_map.append({'cell': idx, 'first_line': first, 'signals': hits})
+
+          # Parse safe literal assignments only. Focus on architecture/weight/config names.
+          assignment_tokens = (
+              'WEIGHT', 'SHARE', 'TEMP', 'ALPHA', 'BETA', 'GAMMA', 'LORA', 'ATLAS',
+              'GSQ', 'CORE', 'COMP', 'BLEND', 'ENSEMBLE', 'GROUP', 'SVC', 'TFIDF',
+              'MODEL', 'ENCODER', 'READOUT', 'GAUSS', 'PCA', 'FOLD', 'PATH', 'DATA',
+          )
+          literal_assignments = []
+          for idx, src in code_cells:
+              try:
+                  tree = ast.parse(src)
+              except SyntaxError:
+                  continue
+              for node in tree.body:
+                  names = []
+                  value = None
+                  if isinstance(node, ast.Assign):
+                      for target in node.targets:
+                          if isinstance(target, ast.Name):
+                              names.append(target.id)
+                      value = node.value
+                  elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                      names.append(node.target.id)
+                      value = node.value
+                  if not names or value is None:
+                      continue
+                  for name in names:
+                      if not any(tok in name.upper() for tok in assignment_tokens):
+                          continue
+                      try:
+                          val = ast.literal_eval(value)
+                      except Exception:
+                          continue
+                      rendered = repr(val)
+                      if len(rendered) <= 2000:
+                          literal_assignments.append({'cell': idx, 'name': name, 'value': val})
+
+          # Calls that register/blend members, with compact source only.
+          registry_calls = []
+          patterns = ('add_member(', 'blend_all_rows(', 'decision_function(', 'predict_proba(', 'softmax_rows(')
+          for lineno, line in enumerate(lines, start=1):
+              s = line.strip()
+              if any(p in s for p in patterns) and len(s) <= 500:
+                  registry_calls.append({'line': lineno, 'text': s})
+
+          # Function/class inventory helps separate independent stages from glue.
+          defs = []
+          for idx, src in code_cells:
+              try:
+                  tree = ast.parse(src)
+              except SyntaxError:
+                  continue
+              for node in ast.walk(tree):
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                      name = node.name
+                      lower = name.lower()
+                      if any(k in lower for k in keywords):
+                          defs.append({'cell': idx, 'kind': type(node).__name__, 'name': name})
+
+          input_paths = sorted(set(re.findall(r'/kaggle/input/[A-Za-z0-9_./\-]+', code)))
+          datasets = sorted({
+              m.group(1)
+              for path in input_paths
+              for m in [re.search(r'/kaggle/input/datasets/([^/]+/[^/]+)', path)]
+              if m
+          })
+
+          report = {
+              'kernel_ref': 'qasminumber/name-that-llm-v5',
+              'scope': 'static_component_audit_only_no_execution_no_training_no_submission',
+              'notebook_cells': len(nb.get('cells', [])),
+              'markdown_headings': markdown_headings,
+              'cell_map': cell_map,
+              'literal_assignments': literal_assignments,
+              'registry_calls': registry_calls,
+              'architecture_defs': defs,
+              'dataset_sources': datasets,
+              'kaggle_input_paths': input_paths,
+          }
+          out = Path('/tmp/phase14_public_v5_components.json')
+          out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          PY
+      - name: Upload component audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase14-public-v5-components
+          path: /tmp/phase14_public_v5_components.json
+          retention-days: 30
