@@ -18,6 +18,7 @@ jobs:
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       KERNEL_REF: cosmorin/name-that-llm-public620-reproduction
+      CACHE_REF: cosmorin/name-that-llm-0-622-reproduction-svc-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,12 +26,15 @@ jobs:
           python-version: '3.11'
       - name: Install Kaggle client
         run: python -m pip install 'kaggle==2.2.5'
-      - name: Pull notebook source
+      - name: Pull notebook source and cache metadata
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
-          rm -rf /tmp/public-0622 && mkdir -p /tmp/public-0622
+          rm -rf /tmp/public-0622 /tmp/cache-meta
+          mkdir -p /tmp/public-0622 /tmp/cache-meta
           kaggle kernels pull "$KERNEL_REF" -p /tmp/public-0622 -m
+          kaggle datasets files "$CACHE_REF" > /tmp/cache-files.txt
+          kaggle datasets metadata "$CACHE_REF" -p /tmp/cache-meta
       - name: Audit SVC recipe statically
         run: |
           python - <<'PY'
@@ -41,8 +45,8 @@ jobs:
           meta=json.loads((root/'kernel-metadata.json').read_text(encoding='utf-8'))
           nb=json.loads(next(root.glob('*.ipynb')).read_text(encoding='utf-8'))
           code='\n\n'.join(''.join(c.get('source',[])) if isinstance(c.get('source',''),list) else c.get('source','') for c in nb.get('cells',[]) if c.get('cell_type')=='code')
-
           tree=ast.parse(code)
+
           vectorizers=[]; classifiers=[]; literal_assignments=[]
           for node in ast.walk(tree):
               if isinstance(node,ast.Call):
@@ -62,6 +66,8 @@ jobs:
                           except Exception: kwargs[kw.arg]='<dynamic>'
                       classifiers.append({'type':fn,'kwargs':kwargs})
 
+          wanted_exact={'VIEWS','W_SVC','LABELS','K','EXPECTED_CACHE_SHA256'}
+          wanted_tokens=('SVC','TFIDF','VEC','CACHE','WORD','CHAR','NGRAM','MIN_DF','MAX_FEATURE','ANALYZER','LOWER')
           for node in tree.body:
               if not isinstance(node,(ast.Assign,ast.AnnAssign)): continue
               if isinstance(node,ast.Assign):
@@ -70,25 +76,31 @@ jobs:
                   names=[node.target.id] if isinstance(node.target,ast.Name) else []; value=node.value
               if value is None: continue
               for name in names:
-                  if not any(k in name.upper() for k in ('SVC','TFIDF','VEC','CACHE','WORD','CHAR','NGRAM','MIN_DF','MAX_FEATURE','ANALYZER','LOWER')): continue
+                  if name not in wanted_exact and not any(k in name.upper() for k in wanted_tokens): continue
                   try: val=ast.literal_eval(value)
                   except Exception: continue
-                  if len(repr(val))<=2000: literal_assignments.append({'name':name,'value':val})
+                  if len(repr(val))<=5000: literal_assignments.append({'name':name,'value':val})
 
           cache_refs=[]
           for lineno,line in enumerate(code.splitlines(),1):
               s=line.strip()
-              if ('cache[' in s or 'cache.get' in s or 'joblib.load' in s or 'hstack(' in s) and len(s)<=500:
+              if ('cache[' in s or 'cache.get' in s or 'joblib.load' in s or 'hstack(' in s or 'VIEWS' in s) and len(s)<=500:
                   cache_refs.append({'line':lineno,'text':s})
 
-          # Identify lookup filenames passed to find(...), which reveal mounted asset structure.
           find_args=sorted(set(re.findall(r'find\([\"\']([^\"\']+)[\"\']\)',code)))
+          cache_files=Path('/tmp/cache-files.txt').read_text(encoding='utf-8',errors='replace')
+          cache_meta_files=[]
+          for p in sorted(Path('/tmp/cache-meta').glob('*.json')):
+              try: cache_meta_files.append({'file':p.name,'data':json.loads(p.read_text(encoding='utf-8'))})
+              except Exception: cache_meta_files.append({'file':p.name,'text':p.read_text(encoding='utf-8',errors='replace')[:10000]})
 
-          # Keep only source metadata; no execution of external pickle/model artifacts.
           report={
               'kernel_ref':'cosmorin/name-that-llm-public620-reproduction',
-              'scope':'static_recipe_audit_no_external_pickle_execution',
+              'cache_ref':'cosmorin/name-that-llm-0-622-reproduction-svc-cache',
+              'scope':'static_recipe_and_dataset_metadata_audit_no_external_pickle_execution',
               'kernel_metadata':meta,
+              'cache_file_listing':cache_files,
+              'cache_metadata':cache_meta_files,
               'vectorizer_constructors':vectorizers,
               'classifier_constructors':classifiers,
               'literal_assignments':literal_assignments,
