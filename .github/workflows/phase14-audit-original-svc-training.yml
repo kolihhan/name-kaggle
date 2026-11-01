@@ -78,6 +78,7 @@ jobs:
                       functions.append({'name':node.name,'source':seg})
 
           literal_assignments={}
+          assignment_sources={}
           for node in tree.body:
               names=[]; value=None
               if isinstance(node,ast.Assign): names=[t.id for t in node.targets if isinstance(t,ast.Name)]; value=node.value
@@ -85,6 +86,7 @@ jobs:
               if value is None: continue
               for name in names:
                   if name not in {'VIEWS','SMALL_WORDS','LABELS'}: continue
+                  assignment_sources[name]=ast.get_source_segment(code,node) or ''
                   try: literal_assignments[name]=ast.literal_eval(value)
                   except Exception: pass
 
@@ -96,10 +98,11 @@ jobs:
             'constructors':constructors,
             'constructor_context':interesting_lines,
             'literal_assignments':literal_assignments,
+            'assignment_sources':assignment_sources,
             'relevant_functions':functions,
           }
           Path('/tmp/phase14_original_svc_training.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
-          print(json.dumps({'meta':meta,'constructors':constructors,'literal_assignments':literal_assignments,'functions':[x['name'] for x in functions]},indent=2,ensure_ascii=False))
+          print(json.dumps({'meta':meta,'constructors':constructors,'literal_assignments':literal_assignments,'assignment_sources':assignment_sources,'functions':[x['name'] for x in functions]},indent=2,ensure_ascii=False))
           PY
       - uses: actions/upload-artifact@v4
         with:
