@@ -23,27 +23,31 @@ def test_score_predictions_rejects_requested_label_without_support():
         gate.score_predictions(["a"], ["a"], labels=["a", "b"])
 
 
-def test_pad_triplets_for_accumulation_is_deterministic_and_full_steps():
+def test_group_triplets_for_accumulation_preserves_exact_one_epoch():
     batches = [
         np.array([0, 1, 2]),
         np.array([3, 4]),
         np.array([5]),
         np.array([6, 7, 8]),
         np.array([9]),
+        np.array([10, 11]),
+        np.array([12]),
     ]
 
-    first = gate.pad_triplets_for_accumulation(batches, accumulation=6, seed=20261101)
-    second = gate.pad_triplets_for_accumulation(batches, accumulation=6, seed=20261101)
+    groups = gate.group_triplets_for_accumulation(batches, accumulation=6)
 
-    assert len(first) == 6
-    assert len(first) % 6 == 0
-    for original, padded in zip(batches, first[: len(batches)]):
-        np.testing.assert_array_equal(original, padded)
-    for left, right in zip(first, second):
-        np.testing.assert_array_equal(left, right)
-    assert any(np.array_equal(first[-1], original) for original in batches)
+    assert [len(group) for group in groups] == [6, 1]
+    flattened = [batch for group in groups for batch in group]
+    assert len(flattened) == len(batches)
+    for original, observed in zip(batches, flattened):
+        np.testing.assert_array_equal(original, observed)
 
 
-def test_pad_triplets_for_accumulation_rejects_empty_input():
+def test_group_triplets_for_accumulation_rejects_empty_input():
     with pytest.raises(ValueError, match="at least one triplet"):
-        gate.pad_triplets_for_accumulation([], accumulation=6, seed=20261101)
+        gate.group_triplets_for_accumulation([], accumulation=6)
+
+
+def test_group_triplets_for_accumulation_rejects_nonpositive_accumulation():
+    with pytest.raises(ValueError, match="accumulation must be positive"):
+        gate.group_triplets_for_accumulation([np.array([0])], accumulation=0)
