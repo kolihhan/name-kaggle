@@ -1,0 +1,284 @@
+name: Two-stage LoRA24 Gate A
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/two-stage-lora24-gate-a.yml
+      - scripts/run_two_stage_lora24_gate_a.py
+      - scripts/run_two_stage_lora24_gate_a_gpu.py
+      - scripts/run_phase14_public_sparse.py
+      - tests/test_two_stage_lora24_gate_a.py
+      - tests/test_two_stage_lora24_training_spec.py
+      - tests/test_two_stage_lora24_gate_a_scoring.py
+      - tests/test_two_stage_lora24_gpu_contract.py
+      - artifacts/candidates/two-stage-lora24-v1/CONTRACT.md
+      - artifacts/candidates/two-stage-lora24-v1/MODEL_LOCK.md
+      - artifacts/candidates/two-stage-lora24-v1/RUN_AUTHORIZATION.md
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight contract dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Compile Gate A modules
+        run: >-
+          python -m py_compile
+          scripts/run_two_stage_lora24_gate_a.py
+          scripts/run_two_stage_lora24_gate_a_gpu.py
+      - name: Run frozen Gate A tests
+        run: >-
+          python -m pytest -q
+          tests/test_two_stage_lora24_gate_a.py
+          tests/test_two_stage_lora24_training_spec.py
+          tests/test_two_stage_lora24_gate_a_scoring.py
+          tests/test_two_stage_lora24_gpu_contract.py
+
+  kaggle-gpu:
+    if: contains(github.event.head_commit.message, '[gate-a-run]')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle clients
+        run: pip install 'kaggle==2.2.5' kagglehub six
+
+      - name: Build private external-only Kaggle kernel
+        id: kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          USERNAME="$(python - <<'PY'
+          import kagglehub
+          print(kagglehub.whoami(verbose=False)["username"])
+          PY
+          )"
+          KERNEL_REF="${USERNAME}/name-that-llm-two-stage-lora24-gate-a"
+          KERNEL_DIR=".kaggle/two-stage-lora24-gate-a"
+          rm -rf "$KERNEL_DIR"
+          mkdir -p "$KERNEL_DIR"
+
+          # Kaggle script kernels reliably preserve the declared code_file. Embed
+          # the repository's Python package into that single file so worker
+          # subprocesses can import the exact same frozen source tree.
+          python - "$KERNEL_DIR/kernel_main.py" <<'PY'
+          import base64
+          import io
+          import pathlib
+          import sys
+          import zipfile
+
+          payload_buffer = io.BytesIO()
+          with zipfile.ZipFile(payload_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(pathlib.Path("scripts").rglob("*.py")):
+                  if "__pycache__" in path.parts:
+                      continue
+                  archive.write(path, path.as_posix())
+
+          payload = base64.b64encode(payload_buffer.getvalue()).decode("ascii")
+          bootstrap = f'''import base64
+          import io
+          import pathlib
+          import subprocess
+          import sys
+          import zipfile
+
+          PAYLOAD = {payload!r}
+          package_root = pathlib.Path("/kaggle/working/gate_a_pkg")
+          package_root.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(io.BytesIO(base64.b64decode(PAYLOAD))) as archive:
+              archive.extractall(package_root)
+          sys.path.insert(0, str(package_root))
+
+          subprocess.check_call([
+              sys.executable,
+              "-m",
+              "pip",
+              "install",
+              "-q",
+              "transformers==4.57.1",
+              "peft==0.17.1",
+              "safetensors",
+          ])
+
+          from scripts.run_two_stage_lora24_gate_a_gpu import main
+
+          sys.argv = [
+              "run_two_stage_lora24_gate_a_gpu",
+              "--output",
+              "/kaggle/working/two_stage_lora24_gate_a.json",
+              "--checkpoint-dir",
+              "/kaggle/working/two_stage_lora24_gate_a_checkpoint",
+          ]
+          main()
+          '''
+          output = pathlib.Path(sys.argv[1])
+          output.write_text(bootstrap, encoding="utf-8")
+          print("embedded_python_files:", len(list(pathlib.Path("scripts").rglob("*.py"))))
+          print("kernel_main_bytes:", output.stat().st_size)
+          PY
+
+          python -m py_compile "$KERNEL_DIR/kernel_main.py"
+          python - "$KERNEL_DIR/kernel-metadata.json" "$KERNEL_REF" <<'PY'
+          import json
+          import sys
+
+          path, kernel_ref = sys.argv[1:]
+          payload = {
+              "id": kernel_ref,
+              "title": "Name That LLM Two-stage LoRA24 Gate A",
+              "code_file": "kernel_main.py",
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_internet": True,
+              "machine_shape": "NvidiaTeslaT4",
+              "competition_sources": [],
+              "dataset_sources": ["nishantdahal/ntl-handwriting-blend"],
+              "kernel_sources": [],
+              "model_sources": [],
+          }
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2)
+          PY
+          echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
+          cat "$KERNEL_DIR/kernel-metadata.json"
+
+      - name: Push frozen Gate A kernel to Kaggle GPU
+        run: >-
+          kaggle kernels push
+          -p .kaggle/two-stage-lora24-gate-a
+          --accelerator NvidiaTeslaT4
+          --timeout 18000
+
+      - name: Poll kernel until terminal state
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          complete=0
+          for _ in $(seq 1 540); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "$status"
+            if grep -Eqi 'complete|successful' <<<"$status"; then
+              complete=1
+              break
+            fi
+            if grep -Eqi 'error|failed|cancel' <<<"$status"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 30
+          done
+          if [[ "$complete" != "1" ]]; then
+            echo "Kaggle kernel did not reach a successful terminal state"
+            kaggle kernels logs "$KERNEL_REF" || true
+            exit 1
+          fi
+
+      - name: Download Gate A output
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          rm -rf gate-a-output
+          mkdir -p gate-a-output
+          kaggle kernels output "$KERNEL_REF" -p gate-a-output -o
+          test -s gate-a-output/two_stage_lora24_gate_a.json
+
+      - name: Verify and print consumed Gate A evidence
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path('gate-a-output/two_stage_lora24_gate_a.json')
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+
+          assert report['candidate'] == 'two-stage-lora24-v1'
+          assert report['scope'] == 'external_transfer_gate_a_only_no_official_oof'
+          assert report['official_rows_scored'] == 0
+          assert report['official_oof_runs'] == 0
+          assert report['competition_test_rows_used'] == 0
+          assert report['public_lb_tuning'] is False
+          assert report['kaggle_submission_authorized'] is False
+
+          assert report['model']['id'] == 'Qwen/Qwen3-8B-Base'
+          assert report['model']['revision'] == '49e3418fbbbca6ecbdf9608b4d22e5a407081db4'
+          assert report['model']['transformers'] == '4.57.1'
+          assert report['model']['peft'] == '0.17.1'
+
+          data = report['data']
+          assert data['raw_pool_sha256'] == '37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec'
+          assert data['raw_rows'] == 75783
+          assert data['phase14_rows'] == 43781
+          assert data['phase14_prompt_ids'] == 3736
+          assert len(data['phase14_labels']) == 18
+          assert len(data['holdout_sources']) == 3
+          assert data['prompt_id_overlap'] == 0
+          assert data['prompt_key_overlap'] == 0
+
+          decision = report['gate_a']['decision']
+          status = decision['status']
+          assert status in {'pass', 'fail', 'inconclusive'}
+          assert decision['official_oof_authorized'] is (status == 'pass')
+
+          if status in {'pass', 'fail'}:
+              assert set(report['conditions']) == {'A0', 'A1'}
+              pooled_a0 = report['conditions']['A0']['scores']['pooled']['balanced_accuracy']
+              pooled_a1 = report['conditions']['A1']['scores']['pooled']['balanced_accuracy']
+              print('POOLED_A0', pooled_a0)
+              print('POOLED_A1', pooled_a1)
+              print('POOLED_DELTA', report['gate_a']['pooled_delta_a1_minus_a0'])
+              for source, delta in report['gate_a']['source_deltas_a1_minus_a0'].items():
+                  print('SOURCE_DELTA', source, delta)
+              checkpoint = Path('gate-a-output/two_stage_lora24_gate_a_checkpoint')
+              assert (checkpoint / 'adapter').is_dir()
+              assert (checkpoint / 'heads.safetensors').is_file()
+              assert (checkpoint / 'meta.json').is_file()
+          else:
+              assert report['conditions'] == {}
+
+          authorized = status == 'pass'
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              handle.write(f"gate_b_authorized={'true' if authorized else 'false'}\n")
+          print('DECISION', decision)
+          PY
+
+      - name: Upload Gate A JSON evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-a-evidence
+          path: gate-a-output/two_stage_lora24_gate_a.json
+          retention-days: 90
+
+      - name: Preserve exact A1 checkpoint only when Gate A passes
+        if: steps.verify.outputs.gate_b_authorized == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-a-a1-checkpoint
+          path: gate-a-output/two_stage_lora24_gate_a_checkpoint
+          retention-days: 90
