@@ -24,13 +24,13 @@ jobs:
           python-version: '3.11'
       - name: Install Kaggle client
         run: pip install 'kaggle==2.2.5' six
-      - name: Pull source notebooks independently
+      - name: Pull training notebook sources independently
         shell: bash
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          rm -rf /tmp/ntl-method-audit
-          mkdir -p /tmp/ntl-method-audit/repro636 /tmp/ntl-method-audit/original
+          rm -rf /tmp/ntl-training-audit
+          mkdir -p /tmp/ntl-training-audit/first /tmp/ntl-training-audit/lightning /tmp/ntl-training-audit/lucas
 
           pull_one() {
             local ref="$1"
@@ -43,11 +43,12 @@ jobs:
             fi
           }
 
-          pull_one cosmorin/name-that-llm-how-to-reproduce-0-636 /tmp/ntl-method-audit/repro636
-          pull_one nishantdahal/two-stage-lora-part-two /tmp/ntl-method-audit/original
-          find /tmp/ntl-method-audit -maxdepth 2 -type f -printf '%p\n' | sort
+          pull_one nishantdahal/two-stage-lora-on-the-public-pool /tmp/ntl-training-audit/first
+          pull_one lightningv08/ntl-lora24-fivefold-training /tmp/ntl-training-audit/lightning
+          pull_one lucasboesen/name-that-llm-train-lora24-s7 /tmp/ntl-training-audit/lucas
+          find /tmp/ntl-training-audit -maxdepth 2 -type f -printf '%p\n' | sort
 
-      - name: Print training and inference method evidence
+      - name: Print exact training-contract evidence
         shell: bash
         run: |
           python - <<'PY'
@@ -55,50 +56,50 @@ jobs:
           from pathlib import Path
 
           roots = [
-              ('repro636', Path('/tmp/ntl-method-audit/repro636')),
-              ('original_two_stage', Path('/tmp/ntl-method-audit/original')),
+              ('nishant_first_two_stage', Path('/tmp/ntl-training-audit/first')),
+              ('lightning_fivefold', Path('/tmp/ntl-training-audit/lightning')),
+              ('lucas_seed7', Path('/tmp/ntl-training-audit/lucas')),
           ]
           keywords = (
-              'stage', 'lora', 'adapter', 'qwen', 'deberta', 'train', 'valid',
-              'external', 'official', 'competition', 'prompt_id', 'groupkfold',
-              'fold', 'pool_v4', 'head', 'center', 'centered', 'sinkhorn',
-              'loss', 'epoch', 'checkpoint', 'dataset', 'max_len', 'layers',
-              'keep', 'eos_id', 'plain.weight', 'centered.weight', 'svc',
-              'weight', 'public', 'private', 'fit', 'freeze', 'label',
+              'stage', 'fold', 'groupkfold', 'prompt_id', 'train_idx', 'valid_idx',
+              'public', 'pool', 'external', 'official', 'competition', 'lora',
+              'rank', 'alpha', 'dropout', 'target_modules', 'epoch', 'lr',
+              'learning_rate', 'scheduler', 'warmup', 'batch', 'grad', 'keep',
+              'layers', 'head', 'centered', 'plain', 'loss', 'class_weight',
+              'max_len', 'eos', 'checkpoint', 'adapter', 'seed', 'freeze',
+              'train.csv', 'pool_v', 'similarity', 'cosine', '0.3', 'filter',
           )
 
           def extract(path: Path) -> str:
               if path.suffix == '.ipynb':
                   nb = json.loads(path.read_text(encoding='utf-8'))
-                  blocks = []
+                  out = []
                   for i, cell in enumerate(nb.get('cells', [])):
                       src = ''.join(cell.get('source', []))
                       if src.strip():
-                          blocks.append(f'\n# CELL {i} [{cell.get("cell_type")}]\n{src}')
-                  return '\n'.join(blocks)
+                          out.append(f'\n# CELL {i} [{cell.get("cell_type")}]\n{src}')
+                  return '\n'.join(out)
               return path.read_text(encoding='utf-8', errors='replace')
 
           for name, root in roots:
-              candidates = sorted([p for p in root.rglob('*') if p.suffix in {'.py', '.ipynb'}])
+              files = sorted(p for p in root.rglob('*') if p.suffix in {'.py', '.ipynb'})
               print(f'\n===== {name} FILES =====')
-              for p in candidates:
-                  print(p)
-              if not candidates:
+              for p in files: print(p)
+              if not files:
                   print('NO_SOURCE_AVAILABLE')
                   continue
-              source = '\n'.join(extract(p) for p in candidates)
+              source = '\n'.join(extract(p) for p in files)
               lines = source.splitlines()
-              hit_lines = set()
+              hits = set()
               for i, line in enumerate(lines):
-                  low = line.lower()
-                  if any(k in low for k in keywords):
-                      hit_lines.update(range(max(0, i - 5), min(len(lines), i + 6)))
-              ordered = sorted(hit_lines)
+                  if any(k in line.lower() for k in keywords):
+                      hits.update(range(max(0, i-6), min(len(lines), i+7)))
+              ordered = sorted(hits)
               print(f'===== {name} SOURCE_CHARS {len(source)} MATCHED_LINES {len(ordered)} =====')
               last = -2
               printed = 0
               for i in ordered:
-                  if printed >= 1800:
+                  if printed >= 2200:
                       print(f'... TRUNCATED after {printed} evidence lines ...')
                       break
                   if i != last + 1:
