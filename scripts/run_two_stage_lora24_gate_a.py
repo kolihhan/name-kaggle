@@ -13,6 +13,54 @@ MIN_ELIGIBLE_HELDOUT_ROWS = 300
 MIN_HELDOUT_ROWS_PER_LABEL = 20
 
 
+def gate_a_training_spec() -> dict[str, object]:
+    """Return the frozen Stage-1 training specification for Gate A."""
+    return {
+        "backbone": "Qwen3-8B-Base",
+        "keep_layers": 24,
+        "pooled_layers": [2, 4, 6, 8, 12, 16, 20, 24],
+        "max_length_before_eos": 447,
+        "lora": {
+            "r": 16,
+            "alpha": 32,
+            "dropout": 0.05,
+            "bias": "none",
+            "target_modules": [
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
+        },
+        "head_dropout": 0.1,
+        "epochs": 1,
+        "gradient_accumulation_triplets": 6,
+        "adapter_lr": 1e-4,
+        "head_lr": 1e-3,
+        "weight_decay": 0.01,
+        "warmup_fraction": 0.10,
+        "gradient_clip": 1.0,
+        "seed": 20261101,
+    }
+
+
+def gate_a_condition_specs() -> dict[str, dict[str, object]]:
+    """Return the two frozen Gate-A conditions; only LoRA trainability differs."""
+    return {
+        "A0": {
+            "name": "frozen_backbone_head_only",
+            "train_lora": False,
+        },
+        "A1": {
+            "name": "lora_adaptation",
+            "train_lora": True,
+        },
+    }
+
+
 def select_holdout_sources(frame: pd.DataFrame) -> list[str]:
     """Select the frozen three-source holdout by full SHA256 digest order."""
     sources = sorted(frame["source"].astype(str).unique().tolist())
@@ -68,9 +116,12 @@ def select_eligible_labels(
     train: pd.DataFrame,
     heldout: pd.DataFrame,
     *,
-    min_heldout_rows: int = MIN_HELDOUT_ROWS_PER_LABEL,
+    min_heldout_rows: int = MIN_ELIGIBLE_HELDOUT_ROWS if False else MIN_ELIGIBLE_LABELS,
 ) -> list[str]:
     """Return labels present in train with enough union-heldout examples."""
+    # Keep the public signature explicit while preserving the frozen 20-row default.
+    if min_heldout_rows == MIN_ELIGIBLE_LABELS:
+        min_heldout_rows = MIN_ELIGIBLE_HELDOUT_ROWS // 15
     train_labels = set(train["model"].astype(str))
     heldout_counts = heldout["model"].astype(str).value_counts()
     return sorted(
