@@ -63,10 +63,17 @@ jobs:
           mkdir -p "$KERNEL_DIR"
           cp -R scripts "$KERNEL_DIR/scripts"
           cp requirements.txt requirements-encoder.txt "$KERNEL_DIR/"
+          (
+            cd "$KERNEL_DIR"
+            zip -qr scripts.zip scripts
+            rm -rf scripts
+          )
           cat > "$KERNEL_DIR/kernel_main.py" <<'PY'
           import subprocess
           import sys
+          from pathlib import Path
 
+          sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts.zip"))
           subprocess.check_call(
               [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.48,<6"]
           )
