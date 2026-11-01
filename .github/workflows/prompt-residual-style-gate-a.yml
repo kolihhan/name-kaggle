@@ -61,19 +61,39 @@ jobs:
           KERNEL_DIR=".kaggle/prompt-residual-style-gate-a"
           rm -rf "$KERNEL_DIR"
           mkdir -p "$KERNEL_DIR"
-          cp -R scripts "$KERNEL_DIR/scripts"
-          cp requirements.txt requirements-encoder.txt "$KERNEL_DIR/"
-          (
-            cd "$KERNEL_DIR"
-            zip -qr scripts.zip scripts
-            rm -rf scripts
-          )
-          cat > "$KERNEL_DIR/kernel_main.py" <<'PY'
+
+          # Kaggle script kernels reliably preserve the declared code_file, but prior
+          # runs showed sibling directories/files are not available at runtime. Embed
+          # the exact repo scripts as a zip payload inside the single code_file.
+          python - "$KERNEL_DIR/kernel_main.py" <<'PY'
+          import base64
+          import io
+          import pathlib
+          import sys
+          import zipfile
+
+          payload_buffer = io.BytesIO()
+          with zipfile.ZipFile(payload_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(pathlib.Path("scripts").rglob("*.py")):
+                  if "__pycache__" in path.parts:
+                      continue
+                  archive.write(path, path.as_posix())
+
+          payload = base64.b64encode(payload_buffer.getvalue()).decode("ascii")
+          bootstrap = f'''import base64
+          import io
+          import pathlib
           import subprocess
           import sys
-          from pathlib import Path
+          import zipfile
 
-          sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts.zip"))
+          PAYLOAD = {payload!r}
+          package_root = pathlib.Path("/kaggle/working/gate_a_pkg")
+          package_root.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(io.BytesIO(base64.b64decode(PAYLOAD))) as archive:
+              archive.extractall(package_root)
+          sys.path.insert(0, str(package_root))
+
           subprocess.check_call(
               [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.48,<6"]
           )
@@ -94,7 +114,14 @@ jobs:
               "cuda",
           ]
           main()
+          '''
+          output = pathlib.Path(sys.argv[1])
+          output.write_text(bootstrap, encoding="utf-8")
+          print("embedded_python_files:", len(list(pathlib.Path("scripts").rglob("*.py"))))
+          print("kernel_main_bytes:", output.stat().st_size)
           PY
+
+          python -m py_compile "$KERNEL_DIR/kernel_main.py"
           python - "$KERNEL_DIR/kernel-metadata.json" "$KERNEL_REF" <<'PY'
           import json
           import sys
