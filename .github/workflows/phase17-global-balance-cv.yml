@@ -1,0 +1,94 @@
+name: Phase 17 frozen global balancing CV
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase17-global-balance-cv.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sparse-model dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run the single frozen permanent-fold shot
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/phase17
+          mkdir -p /tmp/phase17
+          python -m scripts.run_phase17_global_balance \
+            --output /tmp/phase17/global_balance.json \
+            --oof-output /tmp/phase17/global_balance_oof.csv
+          echo '--- PHASE17_RESULT ---'
+          cat /tmp/phase17/global_balance.json
+
+      - name: Verify frozen-result invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+
+          report = json.loads(Path('/tmp/phase17/global_balance.json').read_text())
+          oof = pd.read_csv('/tmp/phase17/global_balance_oof.csv')
+
+          assert report['validation']['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
+          assert report['data']['official_rows'] == 2699
+          assert report['data']['external_rows'] == 0
+          assert len(report['data']['labels']) == 18
+          assert report['configuration']['softmax_temperature'] == 1.0
+          assert report['configuration']['sinkhorn_iterations'] == 100
+          assert report['configuration']['target_prior'] == 'uniform'
+          assert report['configuration']['new_tuned_parameters'] == 0
+          assert report['invariants']['margin_shape'] == [2699, 18]
+          assert report['invariants']['all_margins_finite'] is True
+          assert report['invariants']['all_balanced_values_finite'] is True
+          assert report['invariants']['rows_normalized'] is True
+          assert report['invariants']['raw_argmax_reproduces_phase5b'] is True
+          assert report['invariants']['external_training_rows'] == 0
+          assert np.isclose(
+              report['raw_phase5b']['balanced_accuracy'],
+              0.36708923688789463,
+              atol=1e-12,
+              rtol=0,
+          )
+          assert len(oof) == 2699
+          assert oof['id'].nunique() == 2699
+          assert not oof[['raw_prediction', 'prediction']].isna().any().any()
+          assert set(oof['fold_id']) == {0, 1, 2, 3, 4}
+
+          print('phase5b_ba:', report['raw_phase5b']['balanced_accuracy'])
+          print('phase17_ba:', report['phase17']['balanced_accuracy'])
+          print('delta_vs_phase5b:', report['decision']['delta_vs_phase5b'])
+          print('delta_vs_phase7:', report['decision']['delta_vs_phase7'])
+          print('promote_phase17:', report['decision']['promote_phase17'])
+          PY
+
+      - name: Upload frozen Phase 17 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase17-global-balance-frozen-shot
+          path: |
+            /tmp/phase17/global_balance.json
+            /tmp/phase17/global_balance_oof.csv
+          retention-days: 30
