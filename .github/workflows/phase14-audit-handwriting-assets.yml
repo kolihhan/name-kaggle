@@ -1,0 +1,61 @@
+name: Phase 14 audit 0.622 public training assets
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-handwriting-assets.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Fetch dataset metadata and file listing
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
+          rm -rf /tmp/asset-meta && mkdir -p /tmp/asset-meta
+          kaggle datasets files "$DATASET_REF" > /tmp/asset-files.txt
+          kaggle datasets metadata "$DATASET_REF" -p /tmp/asset-meta
+      - name: Build compact audit
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          listing=Path('/tmp/asset-files.txt').read_text(encoding='utf-8',errors='replace')
+          metadata=[]
+          for p in sorted(Path('/tmp/asset-meta').glob('*.json')):
+              try: metadata.append({'file':p.name,'data':json.loads(p.read_text(encoding='utf-8'))})
+              except Exception: metadata.append({'file':p.name,'text':p.read_text(encoding='utf-8',errors='replace')[:20000]})
+          # Parse tabular CLI listing into compact filenames/sizes/dates where possible.
+          rows=[]
+          for line in listing.splitlines():
+              s=line.strip()
+              if not s or s.startswith('name ') or set(s)<=set('- '): continue
+              m=re.match(r'(.+?)\s+(\d+)\s+(\d{4}-\d{2}-\d{2}.*)$',s)
+              if m: rows.append({'name':m.group(1).strip(),'size':int(m.group(2)),'creation':m.group(3).strip()})
+              else: rows.append({'raw':s})
+          report={'dataset_ref':'nishantdahal/ntl-handwriting-blend','scope':'metadata_and_file_listing_only_no_data_training','files':rows,'metadata':metadata}
+          Path('/tmp/phase14_handwriting_assets.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase14-handwriting-assets-audit
+          path: /tmp/phase14_handwriting_assets.json
+          retention-days: 30
