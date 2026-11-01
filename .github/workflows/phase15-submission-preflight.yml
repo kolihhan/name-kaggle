@@ -1,0 +1,47 @@
+name: Phase 15 second-submission preflight
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase15-submission-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Verify account, competition state, and external dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/phase15-submit-preflight
+          mkdir -p /tmp/phase15-submit-preflight/meta
+          kaggle config view > /tmp/phase15-submit-preflight/config.txt
+          kaggle quota > /tmp/phase15-submit-preflight/quota.txt
+          kaggle competitions submissions name-that-llm -v -q > /tmp/phase15-submit-preflight/submissions.txt
+          kaggle datasets metadata nishantdahal/ntl-handwriting-blend -p /tmp/phase15-submit-preflight/meta
+          printf '%s\n' '--- submissions ---'
+          cat /tmp/phase15-submit-preflight/submissions.txt
+          printf '%s\n' '--- dataset metadata ---'
+          cat /tmp/phase15-submit-preflight/meta/dataset-metadata.json
+      - name: Upload read-only evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase15-second-submission-preflight
+          path: /tmp/phase15-submit-preflight
+          retention-days: 30
