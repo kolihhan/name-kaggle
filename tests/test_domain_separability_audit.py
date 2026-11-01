@@ -94,7 +94,7 @@ def test_style_features_capture_basic_format_signals():
 
 def test_score_summary_uses_sample_standard_deviation():
     summary = summarize_scores([0.6, 0.7, 0.8])
-    assert summary["mean"] == 0.7
+    assert abs(summary["mean"] - 0.7) < 1e-12
     assert abs(summary["sample_std"] - 0.1) < 1e-12
     assert summary["min"] == 0.6
     assert summary["max"] == 0.8
