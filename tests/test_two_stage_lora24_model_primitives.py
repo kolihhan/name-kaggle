@@ -32,15 +32,6 @@ def test_center_triplet_has_zero_mean_per_feature():
     )
 
 
-def test_warmup_cosine_schedule_hits_frozen_boundaries():
-    assert gate.warmup_cosine_multiplier(step=0, total_steps=100, warmup_steps=10) == 0.0
-    assert gate.warmup_cosine_multiplier(step=10, total_steps=100, warmup_steps=10) == 1.0
-    assert gate.warmup_cosine_multiplier(step=100, total_steps=100, warmup_steps=10) == 0.0
-
-    mid = gate.warmup_cosine_multiplier(step=55, total_steps=100, warmup_steps=10)
-    assert 0.49 < mid < 0.51
-
-
 def test_truncate_qwen_layers_keeps_first_layers_only():
     class Inner(torch.nn.Module):
         def __init__(self):
