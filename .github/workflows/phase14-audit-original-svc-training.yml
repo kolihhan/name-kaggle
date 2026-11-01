@@ -1,0 +1,89 @@
+name: Phase 14 audit original public SVC training recipe
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-original-svc-training.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: nishantdahal/two-stage-lora-part-two
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public notebook source
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
+          rm -rf /tmp/original && mkdir -p /tmp/original
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/original -m
+          find /tmp/original -type f -maxdepth 2 -printf '%P\t%s bytes\n'
+      - name: Extract sparse training code statically
+        run: |
+          python - <<'PY'
+          import ast, hashlib, json
+          from pathlib import Path
+
+          root=Path('/tmp/original')
+          meta=json.loads((root/'kernel-metadata.json').read_text(encoding='utf-8'))
+          nb_path=next(root.glob('*.ipynb'))
+          raw=nb_path.read_bytes()
+          nb=json.loads(raw)
+          code='\n\n'.join(''.join(c.get('source',[])) if isinstance(c.get('source',''),list) else c.get('source','') for c in nb.get('cells',[]) if c.get('cell_type')=='code')
+          tree=ast.parse(code)
+
+          constructors=[]
+          for node in ast.walk(tree):
+              if not isinstance(node,ast.Call): continue
+              fn=''
+              if isinstance(node.func,ast.Name): fn=node.func.id
+              elif isinstance(node.func,ast.Attribute): fn=node.func.attr
+              if fn not in {'TfidfVectorizer','LinearSVC','SVC','LogisticRegression','SGDClassifier'}: continue
+              kwargs={}
+              for kw in node.keywords:
+                  try: kwargs[kw.arg]=ast.literal_eval(kw.value)
+                  except Exception: kwargs[kw.arg]='<dynamic>'
+              args=[]
+              for arg in node.args:
+                  try: args.append(ast.literal_eval(arg))
+                  except Exception: args.append('<dynamic>')
+              constructors.append({'type':fn,'args':args,'kwargs':kwargs,'lineno':getattr(node,'lineno',None)})
+
+          functions=[]
+          for node in tree.body:
+              if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                  seg=ast.get_source_segment(code,node) or ''
+                  low=seg.lower()
+                  if any(tok in low for tok in ('linearsvc','tfidfvectorizer','shape_text','small_words_text','views')):
+                      functions.append({'name':node.name,'source':seg})
+
+          report={
+            'kernel_ref':'nishantdahal/two-stage-lora-part-two',
+            'scope':'static_source_audit_no_training',
+            'kernel_metadata':meta,
+            'notebook_sha256':hashlib.sha256(raw).hexdigest(),
+            'constructors':constructors,
+            'relevant_functions':functions,
+          }
+          Path('/tmp/phase14_original_svc_training.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps({'meta':meta,'constructors':constructors,'functions':[x['name'] for x in functions]},indent=2,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase14-original-svc-training
+          path: /tmp/phase14_original_svc_training.json
+          retention-days: 30
