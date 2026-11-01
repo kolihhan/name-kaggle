@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from scripts import run_two_stage_lora24_gate_a_gpu as gpu
 
 
@@ -23,3 +25,14 @@ def test_gpu_runner_scope_is_external_only_and_never_submits():
 
 def test_gpu_runner_conditions_are_frozen_a0_a1_only():
     assert gpu.CONDITIONS == ("A0", "A1")
+
+
+def test_gpu_runner_consumes_exactly_one_epoch_without_triplet_padding():
+    source = inspect.getsource(gpu._run_condition_worker)
+    assert "group_triplets_for_accumulation" in source
+    assert "pad_triplets_for_accumulation" not in source
+
+
+def test_gpu_runner_retains_pinned_qwen_stock_final_norm():
+    source = inspect.getsource(gpu._run_condition_worker)
+    assert "base.norm = nn.Identity()" not in source
