@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
+from scripts.phase14_submission import train_full_and_predict
 from scripts.run_phase14_public_sparse import (
     PHASE7_SCORE,
     SEED_SOURCES,
@@ -13,7 +14,6 @@ from scripts.run_phase14_public_sparse import (
     promotion_decision,
     shape_text,
     small_words_text,
-    train_full_and_predict,
 )
 
 
