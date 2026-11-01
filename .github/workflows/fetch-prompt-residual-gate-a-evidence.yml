@@ -1,0 +1,100 @@
+name: Fetch completed prompt residual Gate A evidence
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/fetch-prompt-residual-gate-a-evidence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/name-that-llm-prompt-residual-style-gate-a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle client only
+        run: pip install 'kaggle==2.2.5' six
+
+      - name: Download already-completed Gate A output
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf gate-a-evidence
+          mkdir -p gate-a-evidence
+          kaggle kernels output "$KERNEL_REF" -p gate-a-evidence -o
+          test -s gate-a-evidence/prompt_residual_style_gate_a.json
+
+      - name: Verify and print frozen Gate A evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          EXPECTED_RAW_SHA256 = '37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec'
+          report = json.loads(Path('gate-a-evidence/prompt_residual_style_gate_a.json').read_text())
+
+          assert report['scope'] == 'external_transfer_gate_a_only_no_official_oof'
+          assert report['data'] == {
+              'raw_pool_sha256': EXPECTED_RAW_SHA256,
+              'phase14_rows': 43781,
+              'phase15_rows': 26025,
+              'phase15_prompt_ids': 2801,
+              'phase15_labels': 11,
+          }
+          assert report['encoder'] == {
+              'model': 'answerdotai/ModernBERT-base',
+              'frozen': True,
+              'max_length': 256,
+              'pooling': 'attention_mask_mean_then_l2',
+          }
+          assert report['projection']['type'] == 'LinearDiscriminantAnalysis'
+          assert report['projection']['solver'] == 'svd'
+          assert report['classifier'] == {
+              'type': 'LinearSVC',
+              'class_weight': 'balanced',
+              'C': 1.0,
+          }
+          assert report['official_rows_scored'] == 0
+          assert report['kaggle_submission_authorized'] is False
+
+          gate = report['gate_a']
+          decision = gate['decision']
+          assert decision['status'] in {'pass', 'fail', 'inconclusive'}
+          assert decision['official_oof_authorized'] is (decision['status'] == 'pass')
+          assert len(gate['eligible_sources']) == len(gate['source_results'])
+
+          for item in gate['source_results']:
+              assert item['prompt_id_overlap'] == 0
+              assert item['prompt_key_overlap'] == 0
+              print(
+                  'SOURCE', item['source'],
+                  'RAW', item['raw']['balanced_accuracy'],
+                  'PROJECTED', item['projected']['balanced_accuracy'],
+                  'DELTA', item['delta_projected_minus_raw'],
+              )
+          print('ELIGIBLE', gate['eligible_sources'])
+          print('AGGREGATE', gate['aggregate'])
+          print('DECISION', decision)
+          PY
+
+      - name: Upload recovered Gate A evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-residual-style-gate-a-recovered
+          path: gate-a-evidence/prompt_residual_style_gate_a.json
+          retention-days: 30
