@@ -1,0 +1,94 @@
+name: Phase 16 audit Nishant LoRA training source
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase16-audit-nishant-training-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Find and pull likely training notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/p16train && mkdir -p /tmp/p16train/search /tmp/p16train/src
+          kaggle kernels list -s 'two-stage lora' -v > /tmp/p16train/search/kernels.csv || true
+          cat /tmp/p16train/search/kernels.csv
+          pulled=''
+          for ref in nishantdahal/two-stage-lora-part-one nishantdahal/two-stage-lora-part-1; do
+            if kaggle kernels pull "$ref" -p /tmp/p16train/src -m; then
+              pulled="$ref"
+              break
+            fi
+          done
+          echo "PULLED_REF=$pulled" >> "$GITHUB_ENV"
+          find /tmp/p16train/src -maxdepth 1 -type f -printf '%f\t%s bytes\n' | sort
+      - name: Extract compact training recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast, hashlib, json, os, re
+          from pathlib import Path
+          root=Path('/tmp/p16train/src')
+          chunks=[]; meta=[]; source_files=[]
+          for p in sorted(root.glob('*.ipynb')):
+              nb=json.loads(p.read_text(encoding='utf-8'))
+              source_files.append({'path':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+              for c in nb.get('cells',[]):
+                  if c.get('cell_type')=='code':
+                      s=c.get('source','')
+                      if isinstance(s,list): s=''.join(s)
+                      chunks.append(s)
+          for p in sorted(root.glob('*.py')):
+              txt=p.read_text(encoding='utf-8'); chunks.append(txt)
+              source_files.append({'path':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          for p in sorted(root.glob('*metadata*.json')):
+              try: meta.append({'path':p.name,'data':json.loads(p.read_text())})
+              except Exception: pass
+          code='\n\n'.join(chunks)
+          lines=code.splitlines()
+          pats=['Qwen3','Qwen2.5','LoRA','LoraConfig','triplet','group','prompt_id','GroupKFold','epochs','warmup','lr_adapter','lr_head','heads','centered','plain','loss','AdamW','scheduler','pool_v4','public','stage','train.csv']
+          contexts=[]; seen=set()
+          for i,line in enumerate(lines):
+              if any(p.lower() in line.lower() for p in pats):
+                  lo=max(0,i-3); hi=min(len(lines),i+4)
+                  if (lo,hi) in seen: continue
+                  seen.add((lo,hi))
+                  ctx='\n'.join(f'{j+1}: {lines[j]}' for j in range(lo,hi))
+                  if len(ctx)<=5000: contexts.append({'line':i+1,'context':ctx})
+          report={
+              'pulled_ref':os.environ.get('PULLED_REF',''),
+              'scope':'static_training_recipe_only_no_execution',
+              'source_files':source_files,
+              'metadata':meta,
+              'training_contexts':contexts[:300],
+          }
+          out=Path('/tmp/p16train/phase16_training_source_audit.json')
+          out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase16-nishant-training-source
+          path: /tmp/p16train/phase16_training_source_audit.json
+          retention-days: 30
