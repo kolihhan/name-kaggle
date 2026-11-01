@@ -1,0 +1,127 @@
+name: Phase 14 audit public 0.642 components
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-public-0642-components.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: lightningv08/0-636-lora-llama-qwen3-8-27b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public notebook source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/public-0642
+          mkdir -p /tmp/public-0642
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/public-0642 -m
+      - name: Extract compact component map
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path('/tmp/public-0642')
+          notebooks = sorted(root.glob('*.ipynb'))
+          scripts = sorted(root.glob('*.py'))
+          if not notebooks and not scripts:
+              raise SystemExit('no notebook/script source pulled')
+
+          cells = []
+          headings = []
+          for path in notebooks:
+              nb = json.loads(path.read_text(encoding='utf-8'))
+              for idx, cell in enumerate(nb.get('cells', [])):
+                  src = cell.get('source', '')
+                  if isinstance(src, list): src = ''.join(src)
+                  if cell.get('cell_type') == 'code': cells.append((idx, src))
+                  elif cell.get('cell_type') == 'markdown':
+                      for line in src.splitlines():
+                          if line.lstrip().startswith('#'):
+                              headings.append({'cell': idx, 'text': line.strip()[:240]})
+          for path in scripts:
+              cells.append((-1, path.read_text(encoding='utf-8')))
+
+          code = '\n\n'.join(src for _, src in cells)
+          lines = code.splitlines()
+          keywords = ('ensemble','blend','svc','tfidf','lightgbm','lgbm','encoder','lora','adapter','atlas','gsq','gaussian','spectral','readout','deberta','ultrabert','qwen','llama','external','proxy','generation','hungarian')
+
+          cell_map = []
+          for idx, src in cells:
+              nonempty = [x.strip() for x in src.splitlines() if x.strip()]
+              hits = sorted({k for k in keywords if k in src.lower()})
+              if hits:
+                  cell_map.append({'cell': idx, 'first_line': (nonempty[0][:240] if nonempty else ''), 'signals': hits})
+
+          assignment_tokens = ('WEIGHT','SHARE','TEMP','ALPHA','BETA','GAMMA','LORA','ATLAS','GSQ','CORE','COMP','BLEND','ENSEMBLE','GROUP','SVC','TFIDF','MODEL','ENCODER','READOUT','GAUSS','PCA','FOLD','PATH','DATA','LLAMA','QWEN')
+          assigns = []
+          for idx, src in cells:
+              try: tree = ast.parse(src)
+              except SyntaxError: continue
+              for node in tree.body:
+                  names=[]; value=None
+                  if isinstance(node, ast.Assign):
+                      names=[t.id for t in node.targets if isinstance(t, ast.Name)]; value=node.value
+                  elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                      names=[node.target.id]; value=node.value
+                  if not names or value is None: continue
+                  for name in names:
+                      if not any(tok in name.upper() for tok in assignment_tokens): continue
+                      try: val=ast.literal_eval(value)
+                      except Exception: continue
+                      if len(repr(val)) <= 2500: assigns.append({'cell':idx,'name':name,'value':val})
+
+          calls=[]
+          for lineno,line in enumerate(lines,1):
+              s=line.strip()
+              if any(p in s for p in ('add_member(','blend','decision_function(','predict_proba(','softmax','linear_sum_assignment','load_model','from_pretrained')) and len(s)<=500:
+                  calls.append({'line':lineno,'text':s})
+
+          input_paths=sorted(set(re.findall(r'/kaggle/input/[A-Za-z0-9_./\-]+',code)))
+          datasets=sorted({m.group(1) for path in input_paths for m in [re.search(r'/kaggle/input/datasets/([^/]+/[^/]+)',path)] if m})
+          notebook_inputs=sorted({m.group(1) for path in input_paths for m in [re.search(r'/kaggle/input/notebooks/([^/]+/[^/]+)',path)] if m})
+          model_inputs=sorted({m.group(1) for path in input_paths for m in [re.search(r'/kaggle/input/models/([^/]+/[^/]+)',path)] if m})
+
+          report={
+            'kernel_ref':'lightningv08/0-636-lora-llama-qwen3-8-27b',
+            'scope':'static_component_audit_only_no_execution_no_training_no_submission',
+            'headings':headings,
+            'cell_map':cell_map,
+            'literal_assignments':assigns,
+            'interesting_calls':calls,
+            'dataset_sources':datasets,
+            'notebook_sources':notebook_inputs,
+            'model_sources':model_inputs,
+            'input_paths':input_paths,
+          }
+          Path('/tmp/phase14_public_0642_components.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload component audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase14-public-0642-components
+          path: /tmp/phase14_public_0642_components.json
+          retention-days: 30
