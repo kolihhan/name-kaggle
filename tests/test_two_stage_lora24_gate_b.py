@@ -147,7 +147,7 @@ def test_gate_b_decision_passes_only_when_all_frozen_conditions_pass():
     assert decision["status"] == "pass"
     assert decision["candidate_beats_phase7"] is True
     assert decision["bootstrap_ci_lower_positive"] is True
-    assert decision["fold_wins"] == 4
+    assert decision["fold_wins"] == 5
     assert decision["class_recall_safety_veto"] is False
 
 
