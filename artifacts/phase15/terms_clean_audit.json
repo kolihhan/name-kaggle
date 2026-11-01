@@ -1,0 +1,39 @@
+{
+  "phase": 15,
+  "scope": "provider_terms_admission_only_no_training_no_permanent_folds",
+  "phase14_external_rows": 43781,
+  "blocked_labels": [
+    "gemini-3.1-pro-preview",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "glm-5.3",
+    "glm-5.3-flash",
+    "kimi-k3"
+  ],
+  "blocked_rows": 17756,
+  "retained_rows": 26025,
+  "retained_prompt_ids": 2801,
+  "retained_labels": {
+    "claude-fable-5": 1193,
+    "claude-opus-4-6": 1352,
+    "claude-opus-4-8": 1364,
+    "claude-opus-5": 1240,
+    "claude-sonnet-5": 1350,
+    "gpt-5.5": 3525,
+    "gpt-5.6-luna": 4326,
+    "gpt-5.6-sol": 3879,
+    "gpt-5.6-terra": 3875,
+    "gpt-6-astra": 3044,
+    "qwen3.8-max": 877
+  },
+  "invariants": {
+    "no_blocked_labels_remain": true,
+    "no_null_text": true,
+    "no_null_model": true
+  },
+  "decision": {
+    "training_authorized_after_terms_filter": true,
+    "permanent_folds_authorized": false
+  }
+}
