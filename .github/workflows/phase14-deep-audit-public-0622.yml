@@ -1,0 +1,121 @@
+name: Phase 14 deep audit public 0.622 components
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-deep-audit-public-0622.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: cosmorin/name-that-llm-public620-reproduction
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public notebook source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/public-0622-deep
+          mkdir -p /tmp/public-0622-deep
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/public-0622-deep -m
+      - name: Extract compact configuration map
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast, json, re
+          from pathlib import Path
+
+          root = Path('/tmp/public-0622-deep')
+          notebooks = sorted(root.glob('*.ipynb'))
+          scripts = sorted(root.glob('*.py'))
+          chunks=[]
+          if notebooks:
+              nb=json.loads(notebooks[0].read_text(encoding='utf-8'))
+              for c in nb.get('cells',[]):
+                  if c.get('cell_type')=='code':
+                      src=c.get('source','')
+                      if isinstance(src,list): src=''.join(src)
+                      chunks.append(src)
+          for p in scripts:
+              chunks.append(p.read_text(encoding='utf-8'))
+          code='\n\n'.join(chunks)
+          tree=ast.parse(code)
+
+          literals=[]
+          for node in ast.walk(tree):
+              if isinstance(node,(ast.Assign,ast.AnnAssign)):
+                  targets=[]
+                  val=node.value
+                  if isinstance(node,ast.Assign):
+                      for t in node.targets:
+                          if isinstance(t,ast.Name): targets.append(t.id)
+                  elif isinstance(node.target,ast.Name):
+                      targets.append(node.target.id)
+                  for name in targets:
+                      if re.search(r'(?i)(^W_|WEIGHT|MODEL|BASE|CKPT|CHECKPOINT|LORA|TWIN|DEBERTA|SVC|CFG|CONFIG|MAX_LEN|BATCH|TEMP|ALPHA|BETA|GAMMA)', name):
+                          try:
+                              v=ast.literal_eval(val)
+                          except Exception:
+                              continue
+                          s=repr(v)
+                          if len(s)<=1200:
+                              literals.append({'name':name,'value':v})
+
+          find_args=[]
+          pretrained_args=[]
+          for node in ast.walk(tree):
+              if isinstance(node,ast.Call):
+                  fn=''
+                  if isinstance(node.func,ast.Name): fn=node.func.id
+                  elif isinstance(node.func,ast.Attribute): fn=node.func.attr
+                  if fn=='find' and node.args:
+                      try: v=ast.literal_eval(node.args[0])
+                      except Exception: v=None
+                      if isinstance(v,str): find_args.append(v)
+                  if fn=='from_pretrained' and node.args:
+                      a=node.args[0]
+                      try: v=ast.literal_eval(a)
+                      except Exception:
+                          v=ast.unparse(a) if hasattr(ast,'unparse') else None
+                      if v is not None: pretrained_args.append(str(v)[:500])
+
+          compact_lines=[]
+          pats=['vote(', 'sinkhorn(', 'linkage(', 'fcluster(', 'W_', 'twin_w', 'plain.weight', 'deberta', 'qwen', 'lora', 'svc', 'cache[']
+          for i,line in enumerate(code.splitlines(),1):
+              st=line.strip()
+              if st and len(st)<=320 and any(p.lower() in st.lower() for p in pats):
+                  compact_lines.append({'line':i,'text':st})
+
+          report={
+            'kernel_ref':'cosmorin/name-that-llm-public620-reproduction',
+            'scope':'static_only_no_execution_no_training_no_submission',
+            'literal_configuration':literals,
+            'find_string_arguments':sorted(set(find_args)),
+            'from_pretrained_arguments':sorted(set(pretrained_args)),
+            'compact_component_lines':compact_lines[:300],
+          }
+          Path('/tmp/phase14_public_0622_deep.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload deep audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase14-public-0622-deep
+          path: /tmp/phase14_public_0622_deep.json
+          retention-days: 30
