@@ -44,7 +44,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Kaggle clients
-        run: pip install 'kaggle==2.2.5' kagglehub
+        run: pip install 'kaggle==2.2.5' kagglehub six
 
       - name: Build private external-only Kaggle kernel
         id: kernel
