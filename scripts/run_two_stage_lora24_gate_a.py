@@ -115,7 +115,7 @@ def select_eligible_labels(
     train: pd.DataFrame,
     heldout: pd.DataFrame,
     *,
-    min_heldout_rows: int = MIN_ELIGIBLE_HELDOUT_ROWS // 15,
+    min_heldout_rows: int = MIN_HELDOUT_ROWS_PER_LABEL,
 ) -> list[str]:
     """Return labels present in train with enough union-heldout examples."""
     train_labels = set(train["model"].astype(str))
