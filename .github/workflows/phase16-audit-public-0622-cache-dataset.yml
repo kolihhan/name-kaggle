@@ -1,0 +1,110 @@
+name: Phase 16 audit public 0.622 cache dataset
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase16-audit-public-0622-cache-dataset.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: cosmorin/name-that-llm-0-622-reproduction-svc-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Read dataset metadata and file inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/p16cache
+          mkdir -p /tmp/p16cache/meta /tmp/p16cache/small
+          kaggle datasets metadata "$DATASET_REF" -p /tmp/p16cache/meta || true
+          kaggle datasets files "$DATASET_REF" -v > /tmp/p16cache/files.csv
+          cat /tmp/p16cache/files.csv
+          find /tmp/p16cache/meta -maxdepth 2 -type f -printf '%P\t%s bytes\n' | sort
+      - name: Download only small provenance/config files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, os, re, subprocess
+          from pathlib import Path
+          rows=list(csv.DictReader(Path('/tmp/p16cache/files.csv').open()))
+          names=[]
+          for r in rows:
+              name=(r.get('name') or r.get('ref') or '').strip()
+              size_raw=(r.get('size') or r.get('totalBytes') or '').strip()
+              try:
+                  size=int(float(size_raw))
+              except Exception:
+                  size=None
+              low=name.lower()
+              if any(tok in low for tok in ['manifest','meta','config','readme','license','adapter_config']) or low.endswith(('.json','.txt','.md','.csv')):
+                  if size is None or size <= 5_000_000:
+                      names.append(name)
+          names=sorted(set(n for n in names if n))
+          print('small files selected:', names)
+          out=Path('/tmp/p16cache/small')
+          for name in names:
+              subprocess.run([
+                  'kaggle','datasets','download','-d',os.environ['DATASET_REF'],
+                  '-f',name,'-p',str(out),'--unzip'
+              ], check=True)
+          PY
+          find /tmp/p16cache/small -type f -printf '%P\t%s bytes\n' | sort
+      - name: Build compact audit report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, json
+          from pathlib import Path
+          root=Path('/tmp/p16cache')
+          files=list(csv.DictReader((root/'files.csv').open()))
+          small=[]
+          for p in sorted((root/'small').rglob('*')):
+              if not p.is_file():
+                  continue
+              entry={'path':str(p.relative_to(root/'small')),'size':p.stat().st_size}
+              if p.suffix.lower() in {'.json','.txt','.md','.csv'} and p.stat().st_size <= 500_000:
+                  try:
+                      text=p.read_text(encoding='utf-8', errors='replace')
+                      entry['text']=text[:100_000]
+                  except Exception:
+                      pass
+              small.append(entry)
+          meta=[]
+          for p in sorted((root/'meta').rglob('*')):
+              if p.is_file() and p.stat().st_size <= 500_000:
+                  meta.append({'path':str(p.relative_to(root/'meta')),'text':p.read_text(encoding='utf-8',errors='replace')[:100_000]})
+          report={
+              'dataset_ref':'cosmorin/name-that-llm-0-622-reproduction-svc-cache',
+              'scope':'read_only_metadata_inventory_no_weight_execution',
+              'files':files,
+              'metadata_files':meta,
+              'small_provenance_files':small,
+          }
+          out=root/'phase16_cache_audit.json'
+          out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload cache audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase16-public-0622-cache-audit
+          path: /tmp/p16cache/phase16_cache_audit.json
+          retention-days: 30
