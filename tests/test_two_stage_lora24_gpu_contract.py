@@ -43,6 +43,12 @@ def test_gate_a_recovery_attaches_to_existing_kernel_without_pushing_new_version
     workflow = Path(".github/workflows/two-stage-lora24-gate-a.yml").read_text(encoding="utf-8")
     assert "[gate-a-recover]" in workflow
     assert "recover-existing-kaggle-gate-a:" in workflow
+
+    main_job = workflow.split("kaggle-gpu:", 1)[1].split("recover-existing-kaggle-gate-a:", 1)[0]
+    assert "[gate-a-run]" in main_job
+    assert "[gate-a-recover]" not in main_job
+    assert "kaggle kernels push" in main_job
+
     recovery = workflow.split("recover-existing-kaggle-gate-a:", 1)[1]
     assert "kaggle kernels push" not in recovery
     assert 'kaggle kernels status "$KERNEL_REF"' in recovery
