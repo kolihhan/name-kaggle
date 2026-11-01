@@ -1,0 +1,82 @@
+{
+  "phase": 14,
+  "experiment": "conservative_public_four_view_svc",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "official_rows": 2699,
+    "external_rows": 43781,
+    "external_prompt_ids": 3736,
+    "external_labels": {
+      "claude-fable-5": 1193,
+      "claude-opus-4-6": 1352,
+      "claude-opus-4-8": 1364,
+      "claude-opus-5": 1240,
+      "claude-sonnet-5": 1350,
+      "gemini-3.1-pro-preview": 1409,
+      "gemini-3.6-flash": 2880,
+      "gemini-3.7-flash": 1704,
+      "gemini-3.8-flash": 2778,
+      "glm-5.3": 3240,
+      "glm-5.3-flash": 4236,
+      "gpt-5.5": 3525,
+      "gpt-5.6-luna": 4326,
+      "gpt-5.6-sol": 3879,
+      "gpt-5.6-terra": 3875,
+      "gpt-6-astra": 3044,
+      "kimi-k3": 1509,
+      "qwen3.8-max": 877
+    },
+    "seed_sources": ["abhinav","hailey","kaplinskiy","keshav","lucasboesen","maniceet","prvsiyan","prvsiyan_v1","semenoff","seyit","willrice","zakir","zbigniew"],
+    "raw_pool_sha256": "37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec",
+    "raw_pool_rows": 75783
+  },
+  "configuration": {
+    "views": [
+      {"name":"char","ngram_range":[3,5],"max_features":250000,"weight":1.0},
+      {"name":"word","ngram_range":[1,3],"max_features":180000,"weight":0.7},
+      {"name":"shape","ngram_range":[2,6],"max_features":60000,"weight":0.5},
+      {"name":"small","ngram_range":[1,3],"max_features":50000,"weight":0.5}
+    ],
+    "tfidf": {"lowercase":false,"sublinear_tf":true,"min_df":2,"dtype":"float32","word_token_pattern":"(?u)\\b\\w+\\b|[^\\w\\s]"},
+    "classifier": "LinearSVC(C=0.5,random_state=42,max_iter=5000,class_weight=balanced)",
+    "new_tuned_parameters": 0
+  },
+  "result": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.4178100919711658,
+    "folds": [0.4092592592592592,0.4018518518518518,0.4166666666666667,0.4351851851851852,0.4259897828863346],
+    "per_model_recall": {
+      "claude-fable-5": 0.087248322147651,
+      "claude-opus-4-6": 0.6133333333333333,
+      "claude-opus-4-8": 0.22666666666666666,
+      "claude-opus-5": 0.5,
+      "claude-sonnet-5": 0.52,
+      "gemini-3.1-pro-preview": 0.7333333333333333,
+      "gemini-3.6-flash": 0.6533333333333333,
+      "gemini-3.7-flash": 0.2733333333333333,
+      "gemini-3.8-flash": 0.6533333333333333,
+      "glm-5.3": 0.21333333333333335,
+      "glm-5.3-flash": 0.3933333333333333,
+      "gpt-5.5": 0.38666666666666666,
+      "gpt-5.6-luna": 0.47333333333333333,
+      "gpt-5.6-sol": 0.25333333333333335,
+      "gpt-5.6-terra": 0.3466666666666667,
+      "gpt-6-astra": 0.6,
+      "kimi-k3": 0.20666666666666667,
+      "qwen3.8-max": 0.38666666666666666
+    }
+  },
+  "decision": {
+    "phase7_reference": 0.3700521998508576,
+    "balanced_accuracy": 0.4178100919711658,
+    "delta_vs_phase7": 0.04775789212030823,
+    "beats_phase7_beyond_numeric_equality": true,
+    "promote_phase14": true
+  }
+}
