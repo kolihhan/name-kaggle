@@ -1,0 +1,249 @@
+name: Phase 18 audit external transfer risk
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase18-audit-external-transfer-risk.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt 'kaggle==2.2.5'
+
+      - name: Download pinned public pool
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/phase18
+          mkdir -p /tmp/phase18/raw
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/phase18/raw --unzip
+          RAW=$(find /tmp/phase18/raw -type f -name pool_v4.parquet -print -quit)
+          test -n "$RAW"
+          echo "RAW_POOL=$RAW" >> "$GITHUB_ENV"
+
+      - name: Compare Phase 7 and Phase 15 external proximity to official train
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          import numpy as np
+          import pandas as pd
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          from sklearn.metrics.pairwise import cosine_similarity
+
+          from scripts.run_phase14_public_sparse import (
+              EXPECTED_RAW_SHA256,
+              build_conservative_subset,
+              sha256_file,
+          )
+          from scripts.phase15_terms_clean import build_terms_clean_subset
+
+          out = Path('/tmp/phase18')
+          raw = Path(__import__('os').environ['RAW_POOL'])
+          if sha256_file(raw) != EXPECTED_RAW_SHA256:
+              raise RuntimeError('Phase 14/15 raw pool hash drifted')
+
+          official = pd.read_csv('data/train.csv')
+          phase7 = pd.read_parquet('data/external/gpt_gemini_generations.parquet')
+          pool = pd.read_parquet(raw)
+          phase14 = build_conservative_subset(pool, validate_full_contract=True)
+          phase15 = build_terms_clean_subset(phase14, validate_full_contract=True)
+
+          assert len(official) == 2699
+          assert len(phase7) == 2503
+          assert len(phase15) == 26025
+          assert {'id', 'text', 'model'} <= set(official.columns)
+          assert {'text', 'model'} <= set(phase7.columns)
+          assert {'text', 'model', 'source', 'prompt_id'} <= set(phase15.columns)
+
+          def norm_text(value):
+              return re.sub(r'\s+', ' ', str(value)).strip()
+
+          official_text = official['text'].map(norm_text).tolist()
+          p7_text = phase7['text'].map(norm_text).tolist()
+          p15_text = phase15['text'].map(norm_text).tolist()
+
+          # One shared vocabulary so Phase 7 and Phase 15 similarity values are directly comparable.
+          vectorizer = TfidfVectorizer(
+              lowercase=True,
+              analyzer='word',
+              ngram_range=(1, 2),
+              min_df=1,
+              max_features=80000,
+              sublinear_tf=True,
+          )
+          all_text = official_text + p7_text + p15_text
+          matrix = vectorizer.fit_transform(all_text)
+          n_off = len(official)
+          n_p7 = len(phase7)
+          x_off = matrix[:n_off]
+          x_p7 = matrix[n_off:n_off+n_p7]
+          x_p15 = matrix[n_off+n_p7:]
+
+          def nearest_profile(ext, x_ext, name):
+              ext_models = ext['model'].astype(str).to_numpy()
+              off_models = official['model'].astype(str).to_numpy()
+              any_max = np.zeros(n_off, dtype=np.float32)
+              same_max = np.full(n_off, np.nan, dtype=np.float32)
+              cross_max = np.zeros(n_off, dtype=np.float32)
+              cross_index = np.full(n_off, -1, dtype=np.int64)
+
+              for start in range(0, n_off, 128):
+                  stop = min(start + 128, n_off)
+                  sims = cosine_similarity(x_off[start:stop], x_ext, dense_output=True)
+                  for local, row_index in enumerate(range(start, stop)):
+                      values = sims[local]
+                      label = off_models[row_index]
+                      same = ext_models == label
+                      cross = ~same
+                      any_max[row_index] = float(values.max())
+                      if same.any():
+                          same_max[row_index] = float(values[same].max())
+                      if cross.any():
+                          cross_positions = np.flatnonzero(cross)
+                          best_local = int(np.argmax(values[cross]))
+                          best_index = int(cross_positions[best_local])
+                          cross_max[row_index] = float(values[best_index])
+                          cross_index[row_index] = best_index
+
+              def summary(values, allow_nan=False):
+                  arr = np.asarray(values, dtype=np.float64)
+                  if allow_nan:
+                      arr = arr[np.isfinite(arr)]
+                  return {
+                      'n': int(len(arr)),
+                      'p50': float(np.quantile(arr, 0.50)),
+                      'p90': float(np.quantile(arr, 0.90)),
+                      'p95': float(np.quantile(arr, 0.95)),
+                      'p99': float(np.quantile(arr, 0.99)),
+                      'max': float(arr.max()),
+                      'gt_0_25': int((arr > 0.25).sum()),
+                      'gt_0_50': int((arr > 0.50).sum()),
+                      'gt_0_80': int((arr > 0.80).sum()),
+                  }
+
+              result = {
+                  'name': name,
+                  'rows': int(len(ext)),
+                  'labels': int(ext['model'].astype(str).nunique()),
+                  'exact_normalized_text_overlap': int(len(set(official_text) & set(map(norm_text, ext['text'])))),
+                  'official_to_external_any': summary(any_max),
+                  'official_to_external_same_model': summary(same_max, allow_nan=True),
+                  'official_to_external_cross_model': summary(cross_max),
+              }
+              return result, any_max, same_max, cross_max, cross_index
+
+          p7_result, p7_any, p7_same, p7_cross, p7_idx = nearest_profile(phase7, x_p7, 'phase7_external')
+          p15_result, p15_any, p15_same, p15_cross, p15_idx = nearest_profile(phase15, x_p15, 'phase15_external')
+
+          # Persist row-level diagnostic evidence without copying response text.
+          rows = pd.DataFrame({
+              'official_id': official['id'],
+              'official_model': official['model'].astype(str),
+              'phase7_any_max': p7_any,
+              'phase7_same_model_max': p7_same,
+              'phase7_cross_model_max': p7_cross,
+              'phase15_any_max': p15_any,
+              'phase15_same_model_max': p15_same,
+              'phase15_cross_model_max': p15_cross,
+          })
+          valid = p15_idx >= 0
+          rows['phase15_cross_neighbor_model'] = ''
+          rows['phase15_cross_neighbor_source'] = ''
+          rows['phase15_cross_neighbor_prompt_id'] = ''
+          rows.loc[valid, 'phase15_cross_neighbor_model'] = phase15.iloc[p15_idx[valid]]['model'].astype(str).to_numpy()
+          rows.loc[valid, 'phase15_cross_neighbor_source'] = phase15.iloc[p15_idx[valid]]['source'].astype(str).to_numpy()
+          rows.loc[valid, 'phase15_cross_neighbor_prompt_id'] = phase15.iloc[p15_idx[valid]]['prompt_id'].astype(str).to_numpy()
+          rows.to_csv(out / 'external_transfer_similarity_rows.csv', index=False)
+
+          top_source_counts = (
+              rows.loc[rows['phase15_cross_model_max'] > 0.25, 'phase15_cross_neighbor_source']
+              .value_counts()
+              .to_dict()
+          )
+          per_official_model = {}
+          for model, group in rows.groupby('official_model', sort=True):
+              per_official_model[str(model)] = {
+                  'rows': int(len(group)),
+                  'phase7_cross_p95': float(group['phase7_cross_model_max'].quantile(0.95)),
+                  'phase15_cross_p95': float(group['phase15_cross_model_max'].quantile(0.95)),
+                  'phase7_cross_gt_0_25': int((group['phase7_cross_model_max'] > 0.25).sum()),
+                  'phase15_cross_gt_0_25': int((group['phase15_cross_model_max'] > 0.25).sum()),
+              }
+
+          report = {
+              'phase': 18,
+              'kind': 'audit_only_no_model_fit_no_permanent_fold_score_no_submission',
+              'vectorizer': {
+                  'analyzer': 'word',
+                  'ngram_range': [1, 2],
+                  'lowercase': True,
+                  'min_df': 1,
+                  'max_features': 80000,
+                  'sublinear_tf': True,
+                  'vocabulary_fit': 'joint_official_phase7_external_phase15_external',
+              },
+              'official_rows': int(len(official)),
+              'phase7': p7_result,
+              'phase15': p15_result,
+              'phase15_cross_gt_0_25_top_neighbor_sources': {str(k): int(v) for k, v in top_source_counts.items()},
+              'per_official_model': per_official_model,
+              'comparison': {
+                  'cross_model_p95_delta_phase15_minus_phase7': float(
+                      p15_result['official_to_external_cross_model']['p95']
+                      - p7_result['official_to_external_cross_model']['p95']
+                  ),
+                  'cross_model_p99_delta_phase15_minus_phase7': float(
+                      p15_result['official_to_external_cross_model']['p99']
+                      - p7_result['official_to_external_cross_model']['p99']
+                  ),
+                  'cross_model_gt_0_25_delta': int(
+                      p15_result['official_to_external_cross_model']['gt_0_25']
+                      - p7_result['official_to_external_cross_model']['gt_0_25']
+                  ),
+              },
+              'interpretation_rule': (
+                  'This audit is descriptive. High cross-model similarity can indicate prompt/topic proximity, '
+                  'but it is not by itself proof of leaked official prompts.'
+              ),
+          }
+          (out / 'external_transfer_risk.json').write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase18-external-transfer-risk-audit
+          path: |
+            /tmp/phase18/external_transfer_risk.json
+            /tmp/phase18/external_transfer_similarity_rows.csv
+          retention-days: 30
