@@ -1,0 +1,86 @@
+name: Phase 14 pin public 0.622 SVC recipe
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-audit-0622-svc-recipe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: cosmorin/name-that-llm-public620-reproduction
+      CACHE_REF: cosmorin/name-that-llm-0-622-reproduction-svc-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull public source and manifest only
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
+          rm -rf /tmp/p14recipe && mkdir -p /tmp/p14recipe/kernel /tmp/p14recipe/cache
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/p14recipe/kernel -m
+          kaggle datasets download -d "$CACHE_REF" -f ntl620_svc_prefit_v1/manifest.json -p /tmp/p14recipe/cache --unzip
+          find /tmp/p14recipe -type f -printf '%P\t%s bytes\n'
+      - name: Extract exact reconstructible recipe
+        run: |
+          python - <<'PY'
+          import ast, json
+          from pathlib import Path
+
+          manifest_path=next(Path('/tmp/p14recipe/cache').rglob('manifest.json'))
+          manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+          nb=json.loads(next(Path('/tmp/p14recipe/kernel').glob('*.ipynb')).read_text(encoding='utf-8'))
+          code='\n\n'.join(''.join(c.get('source',[])) if isinstance(c.get('source',''),list) else c.get('source','') for c in nb.get('cells',[]) if c.get('cell_type')=='code')
+          tree=ast.parse(code)
+
+          # Capture functions that define/transform the four SVC views, without executing them.
+          view_functions=[]
+          for node in tree.body:
+              if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                  seg=ast.get_source_segment(code,node) or ''
+                  low=seg.lower()
+                  if any(tok in low for tok in ('shape','small','tfidfvectorizer','views')):
+                      view_functions.append({'name':node.name,'source':seg})
+
+          # Capture relevant top-level assignments exactly when literal.
+          assigns={}
+          for node in tree.body:
+              names=[]; value=None
+              if isinstance(node,ast.Assign): names=[t.id for t in node.targets if isinstance(t,ast.Name)]; value=node.value
+              elif isinstance(node,ast.AnnAssign) and isinstance(node.target,ast.Name): names=[node.target.id]; value=node.value
+              if value is None: continue
+              for name in names:
+                  if name in {'VIEWS','LABELS','W_SVC','K'}:
+                      try: assigns[name]=ast.literal_eval(value)
+                      except Exception: pass
+
+          # Manifest is creator-provided machine-readable provenance for the fitted cache.
+          report={
+            'kernel_ref':'cosmorin/name-that-llm-public620-reproduction',
+            'cache_ref':'cosmorin/name-that-llm-0-622-reproduction-svc-cache',
+            'scope':'static_reconstruction_recipe_no_pickle_execution_no_training',
+            'manifest':manifest,
+            'literal_assignments':assigns,
+            'view_functions':view_functions,
+          }
+          Path('/tmp/p14recipe/phase14_0622_svc_recipe.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps({'manifest_keys':list(manifest),'literal_assignments':assigns,'view_function_names':[x['name'] for x in view_functions]},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase14-0622-svc-recipe
+          path: /tmp/p14recipe/phase14_0622_svc_recipe.json
+          retention-days: 30
