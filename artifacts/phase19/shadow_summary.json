@@ -1,0 +1,134 @@
+{
+  "phase": 19,
+  "purpose": "historical_phase7_vs_phase15_shadow_split_diagnostic",
+  "status": "complete",
+  "workflow_run_id": 41283425138,
+  "shadow_folds_csv_sha256": "8b6cd708ba07fc7bd774ec349873a6deda484f999d1780a118b9e0b5cb95cebb",
+  "original_permanent_split": {
+    "phase7_balanced_accuracy": 0.3700521998508576,
+    "phase15_balanced_accuracy": 0.4053218990802883,
+    "phase15_minus_phase7": 0.03526969922943074
+  },
+  "shadows": [
+    {
+      "name": "shadow_a",
+      "salt": "ntl-shadow-v1-a",
+      "phase7_balanced_accuracy": 0.36670892368878943,
+      "phase15_balanced_accuracy": 0.3986502609992543,
+      "phase15_minus_phase7": 0.03194133731046489,
+      "paired_correctness": {
+        "both_correct": 636,
+        "phase7_only_correct": 354,
+        "phase15_only_correct": 440,
+        "both_wrong": 1269
+      },
+      "prompt_bootstrap_phase15_minus_phase7": {
+        "seed": 20261101,
+        "reps": 5000,
+        "mean": 0.03180163031051696,
+        "std": 0.008631369983646518,
+        "p025": 0.015179157345264682,
+        "median": 0.03191523738503607,
+        "p975": 0.04835397897897895,
+        "probability_delta_gt_zero": 0.9998
+      }
+    },
+    {
+      "name": "shadow_b",
+      "salt": "ntl-shadow-v1-b",
+      "phase7_balanced_accuracy": 0.3626373353218991,
+      "phase15_balanced_accuracy": 0.4079194630872483,
+      "phase15_minus_phase7": 0.04528212776534918,
+      "paired_correctness": {
+        "both_correct": 646,
+        "phase7_only_correct": 333,
+        "phase15_only_correct": 455,
+        "both_wrong": 1265
+      },
+      "prompt_bootstrap_phase15_minus_phase7": {
+        "seed": 20261101,
+        "reps": 5000,
+        "mean": 0.04518646627356732,
+        "std": 0.009287104773784804,
+        "p025": 0.0272101321119778,
+        "median": 0.04501001001001004,
+        "p975": 0.06350913413413414,
+        "probability_delta_gt_zero": 1.0
+      }
+    },
+    {
+      "name": "shadow_c",
+      "salt": "ntl-shadow-v1-c",
+      "phase7_balanced_accuracy": 0.36523738503604275,
+      "phase15_balanced_accuracy": 0.40754412130251055,
+      "phase15_minus_phase7": 0.042306736266467804,
+      "paired_correctness": {
+        "both_correct": 651,
+        "phase7_only_correct": 335,
+        "phase15_only_correct": 449,
+        "both_wrong": 1264
+      },
+      "prompt_bootstrap_phase15_minus_phase7": {
+        "seed": 20261101,
+        "reps": 5000,
+        "mean": 0.04221545058305019,
+        "std": 0.008564834372001062,
+        "p025": 0.02555067567567562,
+        "median": 0.04222222222222216,
+        "p975": 0.05925925925925918,
+        "probability_delta_gt_zero": 1.0
+      }
+    }
+  ],
+  "aggregate": {
+    "phase7_balanced_accuracy": {
+      "mean": 0.3648612146822437,
+      "sample_std": 0.002061694948011724,
+      "min": 0.3626373353218991,
+      "max": 0.36670892368878943
+    },
+    "phase15_balanced_accuracy": {
+      "mean": 0.4047046151296711,
+      "sample_std": 0.005246582060371607,
+      "min": 0.3986502609992543,
+      "max": 0.4079194630872483
+    },
+    "phase15_minus_phase7": {
+      "mean": 0.03984340044742729,
+      "sample_std": 0.007003227113860361,
+      "min": 0.03194133731046489,
+      "max": 0.04528212776534918,
+      "positive_on_all_three": true
+    }
+  },
+  "stable_per_class_direction": {
+    "phase15_better_all_three": [
+      "claude-fable-5",
+      "claude-opus-4-6",
+      "claude-opus-4-8",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gemini-3.1-pro-preview",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra",
+      "qwen3.8-max"
+    ],
+    "phase15_worse_all_three": [
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "kimi-k3"
+    ]
+  },
+  "interpretation": {
+    "fact": "Phase 15 beat Phase 7 on all three frozen alternate prompt-grouped partitions without retuning.",
+    "inference": "The original permanent fold assignment being uniquely favorable to Phase 15 is not a sufficient explanation for the Public-leaderboard collapse.",
+    "remaining_risk": "All partitions reuse the same 2699 official rows, so broader adaptive overfitting to the official-training sample/distribution remains possible.",
+    "consumption": "All three shadow mappings are spent diagnostic folds and must not be presented as unseen promotion holdouts for future systems."
+  }
+}
