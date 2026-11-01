@@ -1,0 +1,122 @@
+name: Frozen domain separability transfer audit
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/domain-separability-audit.yml
+      - scripts/audit_domain_separability.py
+      - artifacts/domain-separability/CONTRACT.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'kaggle==2.2.5' six
+
+      - name: Download pinned Phase 15 raw pool
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/domain-audit
+          mkdir -p /tmp/domain-audit/raw
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/domain-audit/raw --unzip
+          RAW=$(find /tmp/domain-audit/raw -type f -name pool_v4.parquet -print -quit)
+          test -n "$RAW"
+          echo "RAW_POOL=$RAW" >> "$GITHUB_ENV"
+
+      - name: Rebuild exact Phase 15 terms-clean external corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import pandas as pd
+
+          from scripts.run_phase14_public_sparse import EXPECTED_RAW_SHA256, build_conservative_subset, sha256_file
+          from scripts.phase15_terms_clean import build_terms_clean_subset
+
+          raw = Path(os.environ['RAW_POOL'])
+          observed_sha = sha256_file(raw)
+          assert observed_sha == EXPECTED_RAW_SHA256, (observed_sha, EXPECTED_RAW_SHA256)
+          pool = pd.read_parquet(raw)
+          assert len(pool) == 75783
+          phase14 = build_conservative_subset(pool, validate_full_contract=True)
+          assert len(phase14) == 43781
+          phase15 = build_terms_clean_subset(phase14, validate_full_contract=True)
+          assert len(phase15) == 26025
+          assert phase15['prompt_id'].astype(str).nunique() == 2801
+          phase15.to_parquet('/tmp/domain-audit/phase15_external.parquet', index=False)
+          print('phase15_rows:', len(phase15))
+          print('phase15_prompt_ids:', phase15['prompt_id'].astype(str).nunique())
+          PY
+
+      - name: Run model-controlled domain separability audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_domain_separability \
+            --phase15-external /tmp/domain-audit/phase15_external.parquet \
+            --output /tmp/domain-audit/result.json \
+            > /tmp/domain-audit/stdout.txt
+
+      - name: Verify and print compact result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path('/tmp/domain-audit/result.json').read_text())
+          assert result['scope'] == 'audit_only_domain_separability_no_competition_model_tuning'
+          assert result['holdout_salt'] == 'ntl-domain-separability-v1'
+          assert result['kaggle_submission_authorized'] is False
+          assert result['phase7_control']['shared_label_count'] == 8
+          assert result['phase15']['shared_label_count'] == 11
+
+          for key in ['phase7_control', 'phase15']:
+              block = result[key]
+              for metric in ['style_balanced_accuracy', 'lexical_balanced_accuracy']:
+                  summary = block[metric]
+                  assert 0.0 <= summary['min'] <= summary['max'] <= 1.0
+              for entry in block['per_label']:
+                  assert set(entry['counts']['train']['rows_by_domain']) == {'external', 'official'}
+                  assert set(entry['counts']['test']['rows_by_domain']) == {'external', 'official'}
+
+          print('PHASE7_STYLE', result['phase7_control']['style_balanced_accuracy'])
+          print('PHASE7_LEXICAL', result['phase7_control']['lexical_balanced_accuracy'])
+          print('PHASE15_STYLE', result['phase15']['style_balanced_accuracy'])
+          print('PHASE15_LEXICAL', result['phase15']['lexical_balanced_accuracy'])
+          print('PHASE7_TOP_STYLE', result['phase7_control']['aggregate_top_style_smd'])
+          print('PHASE15_TOP_STYLE', result['phase15']['aggregate_top_style_smd'])
+          print('PHASE7_PER_LABEL', [(x['model_label'], x['style']['balanced_accuracy'], x['lexical']['balanced_accuracy']) for x in result['phase7_control']['per_label']])
+          print('PHASE15_PER_LABEL', [(x['model_label'], x['style']['balanced_accuracy'], x['lexical']['balanced_accuracy']) for x in result['phase15']['per_label']])
+          PY
+
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: domain-separability-transfer-audit
+          path: |
+            /tmp/domain-audit/result.json
+          retention-days: 30
