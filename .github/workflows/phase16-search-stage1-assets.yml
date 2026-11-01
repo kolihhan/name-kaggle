@@ -1,0 +1,165 @@
+name: Phase 16 search public-only stage-one LoRA assets
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase16-search-stage1-assets.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+
+      - name: Search public Kaggle assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/p16-stage1-search
+          mkdir -p /tmp/p16-stage1-search/meta
+
+          for q in 'stage one lora' 'stage1 lora' 'public only lora' 'public pool lora' 'ntl lora' 'two stage lora'; do
+            slug="$(printf '%s' "$q" | tr ' ' '-')"
+            kaggle datasets list -s "$q" -v > "/tmp/p16-stage1-search/datasets-$slug.csv" || true
+            kaggle kernels list -s "$q" -v > "/tmp/p16-stage1-search/kernels-$slug.csv" || true
+          done
+
+          # Owner-scoped listings when supported by this CLI version.
+          kaggle datasets list --user nishantdahal -v > /tmp/p16-stage1-search/datasets-owner-nishantdahal.csv || true
+          kaggle kernels list --user nishantdahal -v > /tmp/p16-stage1-search/kernels-owner-nishantdahal.csv || true
+
+          python - <<'PY'
+          import csv, json, re, subprocess
+          from pathlib import Path
+
+          root = Path('/tmp/p16-stage1-search')
+          candidate_refs = set()
+          rows = []
+
+          for path in sorted(root.glob('datasets-*.csv')):
+              try:
+                  with path.open(newline='', encoding='utf-8-sig') as f:
+                      reader = csv.DictReader(f)
+                      for row in reader:
+                          ref = (row.get('ref') or '').strip()
+                          title = (row.get('title') or '').strip()
+                          if not ref:
+                              continue
+                          hay = f'{ref} {title}'.lower()
+                          if ('nishantdahal/' in ref.lower() or
+                              any(k in hay for k in ['stage1', 'stage one', 'public pool', 'public-only', 'public only', 'lora', 'ntl'])):
+                              candidate_refs.add(ref)
+                              rows.append({'source': path.name, 'ref': ref, 'title': title})
+              except Exception as exc:
+                  rows.append({'source': path.name, 'parse_error': repr(exc)})
+
+          # Always include known packs for an explicit negative/positive comparison.
+          candidate_refs.update({
+              'nishantdahal/ntl-two-stage-lora',
+              'nishantdahal/ntl-handwriting-blend',
+          })
+
+          metadata = []
+          for ref in sorted(candidate_refs):
+              safe = re.sub(r'[^A-Za-z0-9_.-]+', '__', ref)
+              outdir = root / 'meta' / safe
+              outdir.mkdir(parents=True, exist_ok=True)
+              proc = subprocess.run(
+                  ['kaggle', 'datasets', 'metadata', ref, '-p', str(outdir)],
+                  text=True, capture_output=True,
+              )
+              item = {'ref': ref, 'metadata_rc': proc.returncode, 'stderr': proc.stderr[-1000:]}
+              meta_path = outdir / 'dataset-metadata.json'
+              if meta_path.exists():
+                  try:
+                      data = json.loads(meta_path.read_text(encoding='utf-8'))
+                      item['metadata'] = data
+                      text = json.dumps(data, ensure_ascii=False).lower()
+                      item['stage1_markers'] = [
+                          marker for marker in [
+                              'stage one', 'stage-one', 'stage1', 'public only', 'public-only',
+                              'public pool only', 'before competition train', 'first stage'
+                          ] if marker in text
+                      ]
+                  except Exception as exc:
+                      item['metadata_parse_error'] = repr(exc)
+
+              files = subprocess.run(
+                  ['kaggle', 'datasets', 'files', ref, '-v'],
+                  text=True, capture_output=True,
+              )
+              item['files_rc'] = files.returncode
+              item['files_stdout'] = files.stdout[-20000:]
+              item['files_stderr'] = files.stderr[-1000:]
+              file_text = files.stdout.lower()
+              item['stage1_file_markers'] = sorted({m for m in [
+                  'stage1', 'stage_1', 'stage-one', 'stage_one', 'public_only',
+                  'public-only', 'epoch1', 'epoch_1', 'prestage2', 'pre_stage2'
+              ] if m in file_text})
+              metadata.append(item)
+
+          kernel_hits = []
+          for path in sorted(root.glob('kernels-*.csv')):
+              try:
+                  with path.open(newline='', encoding='utf-8-sig') as f:
+                      reader = csv.DictReader(f)
+                      for row in reader:
+                          ref = (row.get('ref') or '').strip()
+                          title = (row.get('title') or '').strip()
+                          if ref and ('nishantdahal/' in ref.lower() or any(
+                              k in f'{ref} {title}'.lower()
+                              for k in ['stage1', 'stage one', 'public pool', 'lora', 'ntl']
+                          )):
+                              kernel_hits.append({'source': path.name, 'ref': ref, 'title': title})
+              except Exception as exc:
+                  kernel_hits.append({'source': path.name, 'parse_error': repr(exc)})
+
+          clean_candidates = []
+          for item in metadata:
+              if item.get('stage1_markers') or item.get('stage1_file_markers'):
+                  clean_candidates.append({
+                      'ref': item['ref'],
+                      'metadata_markers': item.get('stage1_markers', []),
+                      'file_markers': item.get('stage1_file_markers', []),
+                  })
+
+          report = {
+              'scope': 'read_only_public_asset_search_no_training_no_submission',
+              'dataset_search_hits': rows,
+              'kernel_search_hits': kernel_hits,
+              'dataset_metadata': metadata,
+              'candidate_stage1_assets_by_literal_marker': clean_candidates,
+              'candidate_count': len(clean_candidates),
+              'note': 'Literal markers are discovery evidence only; any candidate still requires provenance review before OOF use.'
+          }
+          out = root / 'phase16_stage1_asset_search.json'
+          out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          print(json.dumps({
+              'dataset_candidates_scanned': len(metadata),
+              'kernel_hits': len(kernel_hits),
+              'literal_stage1_candidates': clean_candidates,
+          }, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload search evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase16-stage1-asset-search
+          path: /tmp/p16-stage1-search
+          retention-days: 30
