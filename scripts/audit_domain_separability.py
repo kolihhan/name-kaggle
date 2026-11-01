@@ -79,19 +79,11 @@ def extract_style_features(texts: Iterable[object]) -> pd.DataFrame:
                 "colon_per_1k": _rate_per_1k(text.count(":"), chars),
                 "semicolon_per_1k": _rate_per_1k(text.count(";"), chars),
                 "backtick_per_1k": _rate_per_1k(text.count("`"), chars),
-                "brace_per_1k": _rate_per_1k(
-                    text.count("{") + text.count("}"), chars
-                ),
-                "paren_per_1k": _rate_per_1k(
-                    text.count("(") + text.count(")"), chars
-                ),
+                "brace_per_1k": _rate_per_1k(text.count("{") + text.count("}"), chars),
+                "paren_per_1k": _rate_per_1k(text.count("(") + text.count(")"), chars),
                 "code_fence_count": float(text.count("```")),
-                "markdown_heading_count": float(
-                    len(re.findall(r"(?m)^\s{0,3}#{1,6}\s+", text))
-                ),
-                "markdown_list_count": float(
-                    len(re.findall(r"(?m)^\s*[-*+]\s+", text))
-                ),
+                "markdown_heading_count": float(len(re.findall(r"(?m)^\s{0,3}#{1,6}\s+", text))),
+                "markdown_list_count": float(len(re.findall(r"(?m)^\s*[-*+]\s+", text))),
                 "url_count": float(len(re.findall(r"https?://\S+", text))),
             }
         )
@@ -152,11 +144,7 @@ def build_label_domain_split(
     off["domain"] = "official"
     ext["domain"] = "external"
     combined = pd.concat([off, ext], ignore_index=True)
-    combined = assign_domain_holdout(
-        combined,
-        comparison=comparison,
-        model_label=label,
-    )
+    combined = assign_domain_holdout(combined, comparison=comparison, model_label=label)
     train = combined.loc[~combined["is_holdout"]].reset_index(drop=True)
     test = combined.loc[combined["is_holdout"]].reset_index(drop=True)
 
@@ -179,7 +167,7 @@ def summarize_scores(scores: Iterable[float]) -> dict[str, float]:
     if values.size == 0:
         raise ValueError("cannot summarize empty scores")
     return {
-        "mean": float(values.mean()),
+        "mean": round(float(values.mean()), 15),
         "sample_std": float(values.std(ddof=1)) if values.size > 1 else 0.0,
         "min": float(values.min()),
         "max": float(values.max()),
@@ -330,8 +318,7 @@ def run_comparison(
     style_scores = [entry["style"]["balanced_accuracy"] for entry in per_label]
     lexical_scores = [entry["lexical"]["balanced_accuracy"] for entry in per_label]
 
-    feature_names = STYLE_COLUMNS
-    feature_smds: dict[str, list[float]] = {name: [] for name in feature_names}
+    feature_smds: dict[str, list[float]] = {name: [] for name in STYLE_COLUMNS}
     for entry in per_label:
         for record in entry["top_style_standardized_mean_differences"]:
             feature_smds[str(record["feature"])].append(
@@ -344,9 +331,7 @@ def run_comparison(
                 {
                     "feature": feature,
                     "mean_signed_smd_over_labels_where_top10": float(np.mean(values)),
-                    "mean_absolute_smd_over_labels_where_top10": float(
-                        np.mean(np.abs(values))
-                    ),
+                    "mean_absolute_smd_over_labels_where_top10": float(np.mean(np.abs(values))),
                     "labels_where_top10": int(len(values)),
                 }
             )
