@@ -1,0 +1,96 @@
+name: Research current public Kaggle methods
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/research-public-kaggle-methods.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: pip install 'kaggle==2.2.5' six
+      - name: Pull public notebook sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/ntl-public-methods
+          mkdir -p /tmp/ntl-public-methods/620 /tmp/ntl-public-methods/642 /tmp/ntl-public-methods/600
+          kaggle kernels pull cosmorin/name-that-llm-public620-reproduction -p /tmp/ntl-public-methods/620 -m
+          kaggle kernels pull lightningv08/0-636-lora-llama-qwen3-8-27b -p /tmp/ntl-public-methods/642 -m
+          kaggle kernels pull kirilltym/lora-adaptive-claude-gates -p /tmp/ntl-public-methods/600 -m
+          find /tmp/ntl-public-methods -maxdepth 2 -type f -printf '%p\n' | sort
+      - name: Print compact method evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          roots = [
+              ('public620', Path('/tmp/ntl-public-methods/620')),
+              ('public642', Path('/tmp/ntl-public-methods/642')),
+              ('public600', Path('/tmp/ntl-public-methods/600')),
+          ]
+          keywords = (
+              'lora', 'adapter', 'qwen', 'llama', 'olmo', 'gaussian', 'svc',
+              'center', 'claude', 'prompt', 'head', 'blend', 'checkpoint',
+              'train', 'external', 'pool', 'tfidf', 'decision_function',
+              'linear', 'weight', 'temperature', 'family', 'gate', 'model_path',
+          )
+
+          def extract(path: Path) -> str:
+              if path.suffix == '.ipynb':
+                  nb = json.loads(path.read_text(encoding='utf-8'))
+                  blocks = []
+                  for i, cell in enumerate(nb.get('cells', [])):
+                      src = ''.join(cell.get('source', []))
+                      if src.strip():
+                          blocks.append(f'\n# CELL {i} [{cell.get("cell_type")}]\n{src}')
+                  return '\n'.join(blocks)
+              return path.read_text(encoding='utf-8', errors='replace')
+
+          for name, root in roots:
+              candidates = sorted([p for p in root.rglob('*') if p.suffix in {'.py', '.ipynb'}])
+              print(f'\n===== {name} FILES =====')
+              for p in candidates:
+                  print(p)
+              if not candidates:
+                  continue
+              source = '\n'.join(extract(p) for p in candidates)
+              lines = source.splitlines()
+              hit_lines = set()
+              for i, line in enumerate(lines):
+                  low = line.lower()
+                  if any(k in low for k in keywords):
+                      hit_lines.update(range(max(0, i - 3), min(len(lines), i + 4)))
+              ordered = sorted(hit_lines)
+              # Merge contexts but cap the printed evidence to keep logs readable.
+              print(f'===== {name} SOURCE_CHARS {len(source)} MATCHED_LINES {len(ordered)} =====')
+              last = -2
+              printed = 0
+              for i in ordered:
+                  if printed >= 900:
+                      print(f'... TRUNCATED after {printed} evidence lines ...')
+                      break
+                  if i != last + 1:
+                      print(f'\n--- around source line {i+1} ---')
+                  print(f'{i+1:05d}: {lines[i]}')
+                  printed += 1
+                  last = i
+          PY
