@@ -1,0 +1,110 @@
+name: Phase 14 build conservative public subset
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase14-build-safe-public-subset.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install 'kaggle==2.2.5' pandas pyarrow
+      - name: Download raw public pool only
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing Kaggle token}"
+          rm -rf /tmp/p14 && mkdir -p /tmp/p14
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/p14 --unzip
+      - name: Build conservative provenance subset
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          src = next(Path('/tmp/p14').rglob('pool_v4.parquet'))
+          pool = pd.read_parquet(src)
+          required={'prompt_id','prompt_key','text','model','source','setting'}
+          if not required <= set(pool.columns):
+              raise SystemExit(f'missing columns: {sorted(required-set(pool.columns))}')
+
+          # Primary-source prompt provenance established before this build:
+          # - new/independently authored prompts, or
+          # - explicitly derived from those public prompt banks.
+          # maniceet is admitted from its Kaggle dataset page because the CLI metadata
+          # endpoint currently fails for that dataset; its page documents own/public
+          # prompt bodies filtered against competition-train passages (TF-IDF <= .25).
+          seed_sources={
+              'seyit', 'willrice', 'prvsiyan', 'hailey', 'kaplinskiy',
+              'lucasboesen', 'keshav', 'semenoff', 'abhinav', 'zakir',
+              'zbigniew', 'maniceet', 'prvsiyan_v1',
+          }
+
+          # The consolidated prvsiyan slice must remain the 231 clean `new` prompt
+          # groups, not train_regen/reconstructed-prompt rows from the upstream dataset.
+          prv = pool.loc[pool['source'].astype(str).eq('prvsiyan')]
+          assert prv['prompt_key'].astype(str).nunique() == 231
+          assert prv['prompt_key'].astype(str).str.startswith('prvsiyan:n').all()
+
+          seed_mask=pool['source'].astype(str).isin(seed_sources)
+          safe_prompt_ids=set(pool.loc[seed_mask,'prompt_id'].astype(str))
+
+          # Propagate safety only by exact consolidated prompt_id identity. In this pool,
+          # prompt_id is stable across sources that used the same prompt text; this lets
+          # downstream generation datasets inherit the already-audited prompt provenance
+          # without treating an undocumented new prompt as safe.
+          inherited_mask=pool['prompt_id'].astype(str).isin(safe_prompt_ids)
+          keep=seed_mask | inherited_mask
+          safe=pool.loc[keep].copy()
+
+          # No extra row selection by labels, settings, classifier behaviour or CV score.
+          safe.to_parquet('/tmp/p14/phase14_safe_public_subset.parquet', index=False)
+
+          by_source={str(k):int(v) for k,v in safe['source'].astype(str).value_counts().items()}
+          by_label={str(k):int(v) for k,v in safe['model'].astype(str).value_counts().sort_index().items()}
+          inherited_only=safe.loc[~safe['source'].astype(str).isin(seed_sources)]
+          excluded=pool.loc[~keep]
+          report={
+            'raw_rows':int(len(pool)),
+            'seed_sources':sorted(seed_sources),
+            'seed_rows':int(seed_mask.sum()),
+            'safe_prompt_ids':int(len(safe_prompt_ids)),
+            'retained_rows':int(len(safe)),
+            'retained_unique_prompt_ids':int(safe['prompt_id'].astype(str).nunique()),
+            'retained_unique_prompt_keys':int(safe['prompt_key'].astype(str).nunique()),
+            'retained_sources':by_source,
+            'retained_labels':by_label,
+            'retained_label_count':len(by_label),
+            'inherited_only_rows':int(len(inherited_only)),
+            'inherited_only_sources':{str(k):int(v) for k,v in inherited_only['source'].astype(str).value_counts().items()},
+            'excluded_rows':int(len(excluded)),
+            'excluded_sources':{str(k):int(v) for k,v in excluded['source'].astype(str).value_counts().items()},
+            'selection_rule':'seed source provenance OR exact prompt_id shared with a seed source; no score-dependent selection',
+          }
+          Path('/tmp/p14/phase14_safe_public_subset.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload subset and audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase14-safe-public-subset
+          path: |
+            /tmp/p14/phase14_safe_public_subset.parquet
+            /tmp/p14/phase14_safe_public_subset.json
+          retention-days: 30
