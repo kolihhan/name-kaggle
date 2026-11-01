@@ -1,0 +1,137 @@
+name: Phase 15 frozen terms-clean sparse CV
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase15-terms-clean-cv.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sparse-model and Kaggle dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'kaggle==2.2.5'
+
+      - name: Download pinned raw public pool
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/phase15-cv
+          mkdir -p /tmp/phase15-cv/raw
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/phase15-cv/raw --unzip
+          RAW=$(find /tmp/phase15-cv/raw -type f -name pool_v4.parquet -print -quit)
+          test -n "$RAW"
+          echo "RAW_POOL=$RAW" >> "$GITHUB_ENV"
+          sha256sum "$RAW"
+
+      - name: Rebuild frozen Phase 14 subset and Phase 15 terms-clean subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import pandas as pd
+
+          from scripts.run_phase14_public_sparse import (
+              EXPECTED_RAW_SHA256,
+              build_conservative_subset,
+              sha256_file,
+          )
+          from scripts.phase15_terms_clean import build_terms_clean_subset
+
+          raw = Path(os.environ['RAW_POOL'])
+          observed_sha = sha256_file(raw)
+          assert observed_sha == EXPECTED_RAW_SHA256, (observed_sha, EXPECTED_RAW_SHA256)
+
+          pool = pd.read_parquet(raw)
+          assert len(pool) == 75783
+          phase14 = build_conservative_subset(pool, validate_full_contract=True)
+          assert len(phase14) == 43781
+          assert phase14['prompt_id'].astype(str).nunique() == 3736
+
+          clean = build_terms_clean_subset(phase14, validate_full_contract=True)
+          assert len(clean) == 26025
+          assert clean['prompt_id'].astype(str).nunique() == 2801
+          clean.to_parquet('/tmp/phase15-cv/terms_clean_external.parquet', index=False)
+          print('phase14_external_rows:', len(phase14))
+          print('phase15_external_rows:', len(clean))
+          print('phase15_prompt_ids:', clean['prompt_id'].astype(str).nunique())
+          print(clean['model'].astype(str).value_counts().sort_index().to_string())
+          PY
+
+      - name: Run the single frozen Phase 15 permanent-fold evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.run_phase15_terms_clean_sparse \
+            --external /tmp/phase15-cv/terms_clean_external.parquet \
+            --output /tmp/phase15-cv/result.json \
+            --oof-output /tmp/phase15-cv/oof.csv
+          echo '--- PHASE15_RESULT ---'
+          cat /tmp/phase15-cv/result.json
+
+      - name: Verify frozen-result invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          from scripts.phase15_terms_clean import BLOCKED_EXTERNAL_LABELS, EXPECTED_RETAINED_LABEL_COUNTS
+
+          report = json.loads(Path('/tmp/phase15-cv/result.json').read_text())
+          oof = pd.read_csv('/tmp/phase15-cv/oof.csv')
+          subset = pd.read_parquet('/tmp/phase15-cv/terms_clean_external.parquet')
+
+          assert report['validation']['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
+          assert report['data']['official_rows'] == 2699
+          assert report['data']['external_rows'] == 26025
+          assert report['data']['external_prompt_ids'] == 2801
+          assert report['data']['external_labels'] == EXPECTED_RETAINED_LABEL_COUNTS
+          assert not set(subset['model'].astype(str).unique()) & BLOCKED_EXTERNAL_LABELS
+          assert len(subset) == 26025
+          assert len(oof) == 2699
+          assert oof['id'].nunique() == 2699
+          assert oof['prediction'].notna().all()
+          assert set(oof['fold_id']) == {0, 1, 2, 3, 4}
+          assert report['invariants']['no_blocked_external_labels'] is True
+          assert report['invariants']['external_validation_rows_all_zero'] is True
+          assert all(meta['external_validation_rows'] == 0 for meta in report['fold_feature_meta'])
+          assert all(meta['external_training_rows'] == 26025 for meta in report['fold_feature_meta'])
+
+          print('phase15_ba:', report['result']['balanced_accuracy'])
+          print('phase7_reference:', report['decision']['phase7_reference'])
+          print('phase14_diagnostic_reference:', report['decision']['phase14_diagnostic_reference'])
+          print('delta_vs_phase7:', report['decision']['delta_vs_phase7'])
+          print('decision:', report['decision'])
+          PY
+
+      - name: Upload frozen Phase 15 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase15-terms-clean-frozen-shot
+          path: |
+            /tmp/phase15-cv/result.json
+            /tmp/phase15-cv/oof.csv
+            /tmp/phase15-cv/terms_clean_external.parquet
+          retention-days: 30
