@@ -1,10 +1,10 @@
 # two-stage-lora24-v1 — Gate A Run Authorization
 
-Status: **ONE EXTERNAL-ONLY GATE A EXECUTION AUTHORIZED**
+Status: **ONE EXTERNAL-ONLY GATE A EXECUTION AUTHORIZED AND TRIGGERED**
 
 Date: 2026-11-01
 
-This record is frozen before any `two-stage-lora24-v1` Gate A model metric has been observed.
+This record was frozen before any `two-stage-lora24-v1` Gate A model metric had been observed.
 
 ## Authorized execution
 
@@ -46,6 +46,13 @@ Full repository verification:
 - result: `154 passed in 232.70s`
 - failures: `0`
 
+Authorization-record verification:
+
+- workflow run: `41309390544`
+- lightweight Gate A test job: success
+- heavy Kaggle job: skipped
+- no candidate model metric was produced before the trigger
+
 The final pre-run implementation also passed the adversarial checks recorded in `MODEL_LOCK.md`:
 
 - exact one-epoch Stage-1 consumption; no triplet padding to fill the final accumulation group;
@@ -53,6 +60,16 @@ The final pre-run implementation also passed the adversarial checks recorded in 
 - first-token-masked pooling and triplet centering are tested primitives;
 - exact A1 adapter + LayerNorm/head checkpoint is preserved by the run if a valid A1 condition completes;
 - no competition source or submission command exists in the Gate A workflow.
+
+## Execution trigger
+
+The single authorized scientific execution is triggered by the commit whose message contains:
+
+```text
+[gate-a-run] execute authorized external-only LoRA24 Gate A
+```
+
+This trigger changes only this authorization record. It does not alter the frozen model, data, split, training, metric, or decision rules.
 
 ## Result-consumption rule
 
