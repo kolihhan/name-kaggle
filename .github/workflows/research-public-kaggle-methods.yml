@@ -24,13 +24,13 @@ jobs:
           python-version: '3.11'
       - name: Install Kaggle client
         run: pip install 'kaggle==2.2.5' six
-      - name: Pull public notebook sources independently
+      - name: Pull source notebooks independently
         shell: bash
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          rm -rf /tmp/ntl-public-methods
-          mkdir -p /tmp/ntl-public-methods/620 /tmp/ntl-public-methods/642 /tmp/ntl-public-methods/600
+          rm -rf /tmp/ntl-method-audit
+          mkdir -p /tmp/ntl-method-audit/repro636 /tmp/ntl-method-audit/original
 
           pull_one() {
             local ref="$1"
@@ -43,16 +43,11 @@ jobs:
             fi
           }
 
-          pull_one cosmorin/name-that-llm-public620-reproduction /tmp/ntl-public-methods/620
-          pull_one lightningv08/0-636-lora-llama-qwen3-8-27b /tmp/ntl-public-methods/642
-          pull_one kirilltym/lora-adaptive-claude-gates /tmp/ntl-public-methods/600
-          # Alternate current-page slug surfaced by Kaggle search.
-          if ! find /tmp/ntl-public-methods/600 -type f | grep -q .; then
-            pull_one kirilltym/0-55-cohesion-aware-adaptive-centering-lora /tmp/ntl-public-methods/600
-          fi
-          find /tmp/ntl-public-methods -maxdepth 2 -type f -printf '%p\n' | sort
+          pull_one cosmorin/name-that-llm-how-to-reproduce-0-636 /tmp/ntl-method-audit/repro636
+          pull_one nishantdahal/two-stage-lora-part-two /tmp/ntl-method-audit/original
+          find /tmp/ntl-method-audit -maxdepth 2 -type f -printf '%p\n' | sort
 
-      - name: Print compact method evidence
+      - name: Print training and inference method evidence
         shell: bash
         run: |
           python - <<'PY'
@@ -60,15 +55,16 @@ jobs:
           from pathlib import Path
 
           roots = [
-              ('public620', Path('/tmp/ntl-public-methods/620')),
-              ('public642', Path('/tmp/ntl-public-methods/642')),
-              ('public600', Path('/tmp/ntl-public-methods/600')),
+              ('repro636', Path('/tmp/ntl-method-audit/repro636')),
+              ('original_two_stage', Path('/tmp/ntl-method-audit/original')),
           ]
           keywords = (
-              'lora', 'adapter', 'qwen', 'llama', 'olmo', 'gaussian', 'svc',
-              'center', 'claude', 'prompt', 'head', 'blend', 'checkpoint',
-              'train', 'external', 'pool', 'tfidf', 'decision_function',
-              'linear', 'weight', 'temperature', 'family', 'gate', 'model_path',
+              'stage', 'lora', 'adapter', 'qwen', 'deberta', 'train', 'valid',
+              'external', 'official', 'competition', 'prompt_id', 'groupkfold',
+              'fold', 'pool_v4', 'head', 'center', 'centered', 'sinkhorn',
+              'loss', 'epoch', 'checkpoint', 'dataset', 'max_len', 'layers',
+              'keep', 'eos_id', 'plain.weight', 'centered.weight', 'svc',
+              'weight', 'public', 'private', 'fit', 'freeze', 'label',
           )
 
           def extract(path: Path) -> str:
@@ -96,13 +92,13 @@ jobs:
               for i, line in enumerate(lines):
                   low = line.lower()
                   if any(k in low for k in keywords):
-                      hit_lines.update(range(max(0, i - 4), min(len(lines), i + 5)))
+                      hit_lines.update(range(max(0, i - 5), min(len(lines), i + 6)))
               ordered = sorted(hit_lines)
               print(f'===== {name} SOURCE_CHARS {len(source)} MATCHED_LINES {len(ordered)} =====')
               last = -2
               printed = 0
               for i in ordered:
-                  if printed >= 1200:
+                  if printed >= 1800:
                       print(f'... TRUNCATED after {printed} evidence lines ...')
                       break
                   if i != last + 1:
