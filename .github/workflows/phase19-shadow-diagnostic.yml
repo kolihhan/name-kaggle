@@ -1,0 +1,164 @@
+name: Phase 19 frozen shadow validation diagnostic
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase19-shadow-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shadow-diagnostic:
+    name: ${{ matrix.shadow }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shadow:
+          - shadow_a
+          - shadow_b
+          - shadow_c
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt 'pytest>=8,<10' 'kaggle==2.2.5'
+
+      - name: Verify Phase 19 diagnostic tests
+        run: |
+          python -m pytest -q \
+            tests/test_phase19_shadow_folds.py \
+            tests/test_phase19_shadow_diagnostic.py
+
+      - name: Freeze deterministic shadow panel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/phase19
+          mkdir -p /tmp/phase19/raw
+          python -m scripts.make_shadow_folds \
+            --train data/train.csv \
+            --original-folds artifacts/phase1/folds.csv \
+            --output /tmp/phase19/shadow_folds.csv \
+            --manifest /tmp/phase19/shadow_fold_manifest.json
+          cat /tmp/phase19/shadow_fold_manifest.json
+
+      - name: Rebuild exact frozen Phase 15 external subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle datasets download -d "$DATASET_REF" -f pool_v4.parquet -p /tmp/phase19/raw --unzip
+          RAW=$(find /tmp/phase19/raw -type f -name pool_v4.parquet -print -quit)
+          test -n "$RAW"
+          RAW_POOL="$RAW" python - <<'PY'
+          import os
+          from pathlib import Path
+          import pandas as pd
+
+          from scripts.run_phase14_public_sparse import (
+              EXPECTED_RAW_SHA256,
+              build_conservative_subset,
+              sha256_file,
+          )
+          from scripts.phase15_terms_clean import build_terms_clean_subset
+
+          raw = Path(os.environ['RAW_POOL'])
+          observed_sha = sha256_file(raw)
+          assert observed_sha == EXPECTED_RAW_SHA256, (observed_sha, EXPECTED_RAW_SHA256)
+
+          pool = pd.read_parquet(raw)
+          assert len(pool) == 75783
+          phase14 = build_conservative_subset(pool, validate_full_contract=True)
+          assert len(phase14) == 43781
+          clean = build_terms_clean_subset(phase14, validate_full_contract=True)
+          assert len(clean) == 26025
+          assert clean['prompt_id'].astype(str).nunique() == 2801
+          clean.to_parquet('/tmp/phase19/terms_clean_external.parquet', index=False)
+          print('raw_sha256:', observed_sha)
+          print('phase15_external_rows:', len(clean))
+          print('phase15_external_prompts:', clean['prompt_id'].astype(str).nunique())
+          PY
+
+      - name: Run frozen Phase 7 versus Phase 15 diagnostic
+        shell: bash
+        env:
+          SHADOW: ${{ matrix.shadow }}
+        run: |
+          set -euo pipefail
+          python -m scripts.run_phase19_shadow_diagnostic \
+            --shadow "$SHADOW" \
+            --train data/train.csv \
+            --shadow-folds /tmp/phase19/shadow_folds.csv \
+            --phase7-external data/external/gpt_gemini_generations.parquet \
+            --phase15-external /tmp/phase19/terms_clean_external.parquet \
+            --output "/tmp/phase19/result-${SHADOW}.json" \
+            --oof-output "/tmp/phase19/oof-${SHADOW}.csv"
+
+      - name: Verify frozen diagnostic invariants
+        shell: bash
+        env:
+          SHADOW: ${{ matrix.shadow }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import pandas as pd
+
+          shadow = os.environ['SHADOW']
+          report = json.loads(Path(f'/tmp/phase19/result-{shadow}.json').read_text())
+          oof = pd.read_csv(f'/tmp/phase19/oof-{shadow}.csv')
+          manifest = json.loads(Path('/tmp/phase19/shadow_fold_manifest.json').read_text())
+
+          assert report['phase'] == 19
+          assert report['purpose'] == 'diagnostic_only_not_model_selection'
+          assert report['shadow'] == shadow
+          assert report['frozen_recipes']['retuned_parameters'] == 0
+          assert report['invariants']['official_rows'] == 2699
+          assert report['invariants']['official_prompt_groups'] == 150
+          assert report['invariants']['phase7_external_rows'] == 2503
+          assert report['invariants']['phase15_external_rows'] == 26025
+          assert report['invariants']['shadow_prompts_per_fold'] == 30
+          assert report['invariants']['kaggle_submission_authorized'] is False
+          assert report['invariants']['shadow_is_spent_after_this_diagnostic'] is True
+          assert len(oof) == 2699
+          assert oof['id'].nunique() == 2699
+          assert oof['prompt_id'].astype(str).nunique() == 150
+          assert set(oof['fold_id']) == {0, 1, 2, 3, 4}
+          assert not oof[['phase7_prediction', 'phase15_prediction']].isna().any().any()
+          assert manifest['rows'] == 2699
+          assert manifest['prompt_ids'] == 150
+          assert manifest['labels'] == 18
+          print('verified_shadow:', shadow)
+          print('phase7_ba:', report['result']['phase7_balanced_accuracy'])
+          print('phase15_ba:', report['result']['phase15_balanced_accuracy'])
+          print('phase15_minus_phase7:', report['result']['phase15_minus_phase7'])
+          print('bootstrap:', report['result']['prompt_bootstrap_phase15_minus_phase7'])
+          PY
+
+      - name: Upload Phase 19 diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase19-${{ matrix.shadow }}
+          path: |
+            /tmp/phase19/shadow_folds.csv
+            /tmp/phase19/shadow_fold_manifest.json
+            /tmp/phase19/result-${{ matrix.shadow }}.json
+            /tmp/phase19/oof-${{ matrix.shadow }}.csv
+          retention-days: 30
