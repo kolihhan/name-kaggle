@@ -13,6 +13,7 @@ from scripts.run_phase14_public_sparse import (
     promotion_decision,
     shape_text,
     small_words_text,
+    train_full_and_predict,
 )
 
 
@@ -82,6 +83,35 @@ def test_phase14_classifier_configuration_is_frozen():
     assert model.class_weight == "balanced"
     assert model.random_state == 42
     assert model.max_iter == 5000
+
+
+def test_phase14_full_train_predict_uses_official_plus_external_rows():
+    official = pd.DataFrame(
+        {
+            "text": ["alpha one", "alpha two", "beta one", "beta two"],
+            "model": ["a", "a", "b", "b"],
+        }
+    )
+    external = pd.DataFrame(
+        {
+            "text": ["alpha external", "beta external"],
+            "model": ["a", "b"],
+        }
+    )
+    test = pd.DataFrame({"id": ["x", "y"], "text": ["alpha three", "beta three"]})
+    pred, meta = train_full_and_predict(
+        official,
+        external,
+        test,
+        min_df=1,
+        feature_cap=100,
+    )
+    assert len(pred) == 2
+    assert set(pred) <= {"a", "b"}
+    assert meta["official_training_rows"] == 4
+    assert meta["external_training_rows"] == 2
+    assert meta["total_training_rows"] == 6
+    assert meta["test_rows"] == 2
 
 
 def test_phase14_promotion_rejects_numeric_tie_and_requires_real_gain():
