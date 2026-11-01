@@ -1,0 +1,88 @@
+{
+  "phase": 15,
+  "experiment": "provider_terms_clean_public_four_view_svc",
+  "validation": {
+    "folds": 5,
+    "group_key": "prompt_id",
+    "metric": "balanced_accuracy",
+    "scored_rows": "official_validation_only",
+    "fold_fingerprint": "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+  },
+  "data": {
+    "official_rows": 2699,
+    "external_rows": 26025,
+    "external_prompt_ids": 2801,
+    "external_labels": {
+      "claude-fable-5": 1193,
+      "claude-opus-4-6": 1352,
+      "claude-opus-4-8": 1364,
+      "claude-opus-5": 1240,
+      "claude-sonnet-5": 1350,
+      "gpt-5.5": 3525,
+      "gpt-5.6-luna": 4326,
+      "gpt-5.6-sol": 3879,
+      "gpt-5.6-terra": 3875,
+      "gpt-6-astra": 3044,
+      "qwen3.8-max": 877
+    },
+    "blocked_provider_labels": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "kimi-k3"
+    ]
+  },
+  "configuration": {
+    "recipe": "exact_phase14_four_view_sparse_recipe_unchanged",
+    "classifier": "LinearSVC(C=0.5,random_state=42,max_iter=5000,class_weight=balanced)",
+    "new_tuned_parameters": 0
+  },
+  "result": {
+    "oof_rows": 2699,
+    "balanced_accuracy": 0.4053218990802883,
+    "folds": [
+      0.41666666666666663,
+      0.38148148148148153,
+      0.3925925925925926,
+      0.4166666666666667,
+      0.41909323116219666
+    ],
+    "per_model_recall": {
+      "claude-fable-5": 0.3691275167785235,
+      "claude-opus-4-6": 0.64,
+      "claude-opus-4-8": 0.43333333333333335,
+      "claude-opus-5": 0.7066666666666667,
+      "claude-sonnet-5": 0.6733333333333333,
+      "gemini-3.1-pro-preview": 0.6866666666666666,
+      "gemini-3.6-flash": 0.3333333333333333,
+      "gemini-3.7-flash": 0.32666666666666666,
+      "gemini-3.8-flash": 0.35333333333333333,
+      "glm-5.3": 0.02,
+      "glm-5.3-flash": 0.013333333333333334,
+      "gpt-5.5": 0.47333333333333333,
+      "gpt-5.6-luna": 0.44666666666666666,
+      "gpt-5.6-sol": 0.23333333333333334,
+      "gpt-5.6-terra": 0.38,
+      "gpt-6-astra": 0.6666666666666666,
+      "kimi-k3": 0.04666666666666667,
+      "qwen3.8-max": 0.49333333333333335
+    }
+  },
+  "decision": {
+    "phase7_reference": 0.3700521998508576,
+    "phase14_diagnostic_reference": 0.4178100919711658,
+    "balanced_accuracy": 0.4053218990802883,
+    "delta_vs_phase7": 0.03526969922943074,
+    "delta_vs_phase14_diagnostic": -0.012488192890877492,
+    "beats_phase7_beyond_numeric_equality": true,
+    "beats_phase14_diagnostic": false,
+    "promote_phase15": true
+  },
+  "invariants": {
+    "no_blocked_external_labels": true,
+    "external_validation_rows_all_zero": true
+  }
+}
