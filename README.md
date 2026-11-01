@@ -195,19 +195,20 @@ See:
 ## Canonical workflow
 
 ```text
-data/                    Official competition data and audited external snapshots
-scripts/                 Reproducible audit / fold / experiment code
-artifacts/phase1/        Frozen validation audit and baseline evidence
-artifacts/phase2/        External-data reconnaissance and ablations
-artifacts/phase3/        Frozen encoder contract, result, and decision
-artifacts/phase4/        Trainable encoder contract, result, and decision
-artifacts/phase5/        Style/multiview contract, result, and decision
-artifacts/phase5b/       Canonical official-only strong sparse anchor
-artifacts/phase6/        Global strong-sparse external transfer rejection
-artifacts/phase7/        Current best gated external-specialist CPU system
-artifacts/phase8/        External provenance and coverage audit
-artifacts/phase9/        Rejected pre-competition five-class specialist
-.github/workflows/       Execution wrappers plus historical diagnostics
+EVALUATION_POLICY.md      Frozen future candidate-selection / transfer rules
+data/                     Official competition data and audited external snapshots
+scripts/                  Reproducible audit / fold / experiment code
+artifacts/phase1/         Frozen validation audit and baseline evidence
+artifacts/phase2/         External-data reconnaissance and ablations
+artifacts/phase3/         Frozen encoder contract, result, and decision
+artifacts/phase4/         Trainable encoder contract, result, and decision
+artifacts/phase5/         Style/multiview contract, result, and decision
+artifacts/phase5b/        Canonical official-only strong sparse anchor
+artifacts/phase6/         Global strong-sparse external transfer rejection
+artifacts/phase7/         Current best gated external-specialist CPU system
+artifacts/phase8/         External provenance and coverage audit
+artifacts/phase9/         Rejected pre-competition five-class specialist
+.github/workflows/        Execution wrappers plus historical diagnostics
 ```
 
 Key scripts:
@@ -227,7 +228,11 @@ Key scripts:
 
 ## Validation contract
 
-Do **not** use a random row split. Rows sharing a `prompt_id` must stay in the same fold. The competition test contains unseen prompts, so prompt-grouped CV is the local source of truth.
+Do **not** use a random row split. Rows sharing a `prompt_id` must stay in the same fold.
+
+The permanent prompt-grouped 5-fold OOF remains required for historical comparability, but after repeated adaptive use it is **not the sole future promotion oracle**. Phase 19's three alternate assignments are also spent diagnostics; repeatedly minting more splits of the same 2,699 rows does not create a new hidden distribution.
+
+All new candidate selection is governed by `EVALUATION_POLICY.md`: freeze the candidate before evaluation, preserve fold isolation, require one predeclared transfer/robustness check beyond re-splitting official rows, and never use Kaggle Public LB as a tuning loop.
 
 External data is admitted stage by stage. An uplift under one representation or weak baseline does not automatically authorize the same source elsewhere.
 
@@ -240,7 +245,7 @@ Do **not** respond by tuning Phase 9's threshold, class subset, SVC C, external 
 The next experiment should require a genuinely different source of information, for example:
 
 1. new trustworthy data for the still-uncovered weak labels (`claude-fable-5`, `claude-opus-4-8`, `claude-opus-5`, `claude-sonnet-5`, `gemini-3.7-flash`); or
-2. a materially different representation/model family with complementary OOF errors, evaluated under a newly frozen one-shot contract.
+2. a materially different representation/model family with complementary OOF errors, frozen and evaluated under `EVALUATION_POLICY.md`.
 
 The blocked Maniceet source stays out until its Kaggle access state changes and its raw rows can be audited directly.
 
