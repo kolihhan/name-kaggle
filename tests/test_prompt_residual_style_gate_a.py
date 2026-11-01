@@ -28,7 +28,14 @@ def _small_style_fixture() -> tuple[pd.DataFrame, np.ndarray]:
     for source_i, source in enumerate(["hailey", "keshav", "other"]):
         for prompt_i in range(3):
             prompt = np.asarray([0.0, 0.0, 0.0, 20.0 + 5.0 * prompt_i + source_i])
+            interaction = 1 + prompt_i + 3 * source_i
             for model in ["a", "b", "c"]:
+                if model == "a":
+                    jitter = np.asarray([0.02 * interaction, -0.01 * interaction, 0.0, 0.0])
+                elif model == "b":
+                    jitter = np.asarray([0.0, 0.015 * interaction, -0.005 * interaction, 0.0])
+                else:
+                    jitter = np.asarray([-0.01 * interaction, 0.0, 0.02 * interaction, 0.0])
                 rows.append(
                     {
                         "source": source,
@@ -37,7 +44,7 @@ def _small_style_fixture() -> tuple[pd.DataFrame, np.ndarray]:
                         "model": model,
                     }
                 )
-                vectors.append((prompt + model_style[model]).tolist())
+                vectors.append((prompt + model_style[model] + jitter).tolist())
     return pd.DataFrame(rows), np.asarray(vectors, dtype=np.float32)
 
 
