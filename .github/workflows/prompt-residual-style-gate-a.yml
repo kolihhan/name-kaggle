@@ -1,0 +1,215 @@
+name: Prompt residual style Gate A
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/prompt-residual-style-gate-a.yml
+      - scripts/run_prompt_residual_style_gate_a.py
+      - tests/test_prompt_residual_style_gate_a.py
+      - artifacts/candidates/prompt-residual-style-v1/CONTRACT.md
+      - requirements.txt
+      - requirements-encoder.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight Gate A dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run Gate A contract tests
+        run: python -m pytest -q tests/test_prompt_residual_style_gate_a.py
+
+  kaggle-gpu:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[gate-a-run]')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle clients
+        run: pip install 'kaggle==2.2.5' kagglehub
+
+      - name: Build private external-only Kaggle kernel
+        id: kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          USERNAME="$(python - <<'PY'
+          import kagglehub
+          print(kagglehub.whoami(verbose=False)["username"])
+          PY
+          )"
+          KERNEL_REF="${USERNAME}/name-that-llm-prompt-residual-style-gate-a"
+          KERNEL_DIR=".kaggle/prompt-residual-style-gate-a"
+          rm -rf "$KERNEL_DIR"
+          mkdir -p "$KERNEL_DIR"
+          cp -R scripts "$KERNEL_DIR/scripts"
+          cp requirements.txt requirements-encoder.txt "$KERNEL_DIR/"
+          cat > "$KERNEL_DIR/kernel_main.py" <<'PY'
+          import subprocess
+          import sys
+
+          subprocess.check_call(
+              [sys.executable, "-m", "pip", "install", "-q", "transformers>=4.48,<6"]
+          )
+
+          from scripts.run_prompt_residual_style_gate_a import main
+
+          sys.argv = [
+              "run_prompt_residual_style_gate_a",
+              "--output",
+              "/kaggle/working/prompt_residual_style_gate_a.json",
+              "--model",
+              "answerdotai/ModernBERT-base",
+              "--batch-size",
+              "16",
+              "--max-length",
+              "256",
+              "--device",
+              "cuda",
+          ]
+          main()
+          PY
+          python - "$KERNEL_DIR/kernel-metadata.json" "$KERNEL_REF" <<'PY'
+          import json
+          import sys
+
+          path, kernel_ref = sys.argv[1:]
+          payload = {
+              "id": kernel_ref,
+              "title": "Name That LLM Prompt Residual Style Gate A",
+              "code_file": "kernel_main.py",
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_internet": True,
+              "machine_shape": "NvidiaTeslaT4",
+              "competition_sources": [],
+              "dataset_sources": ["nishantdahal/ntl-handwriting-blend"],
+              "kernel_sources": [],
+              "model_sources": [],
+          }
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2)
+          PY
+          echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
+          cat "$KERNEL_DIR/kernel-metadata.json"
+
+      - name: Push Gate A kernel to Kaggle GPU
+        run: >-
+          kaggle kernels push
+          -p .kaggle/prompt-residual-style-gate-a
+          --accelerator NvidiaTeslaT4
+          --timeout 10800
+
+      - name: Poll kernel until terminal state
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          complete=0
+          for _ in $(seq 1 360); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "$status"
+            if grep -Eqi 'complete|successful' <<<"$status"; then
+              complete=1
+              break
+            fi
+            if grep -Eqi 'error|failed|cancel' <<<"$status"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 30
+          done
+          if [[ "$complete" != "1" ]]; then
+            echo "Kaggle kernel did not reach a successful terminal state"
+            kaggle kernels logs "$KERNEL_REF" || true
+            exit 1
+          fi
+
+      - name: Download Gate A output
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          rm -rf gate-a-output
+          mkdir -p gate-a-output
+          kaggle kernels output "$KERNEL_REF" -p gate-a-output -o
+          test -s gate-a-output/prompt_residual_style_gate_a.json
+
+      - name: Verify and print consumed Gate A evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.run_phase14_public_sparse import EXPECTED_RAW_SHA256
+
+          report = json.loads(Path('gate-a-output/prompt_residual_style_gate_a.json').read_text())
+          assert report['scope'] == 'external_transfer_gate_a_only_no_official_oof'
+          assert report['data']['raw_pool_sha256'] == EXPECTED_RAW_SHA256
+          assert report['data']['phase14_rows'] == 43781
+          assert report['data']['phase15_rows'] == 26025
+          assert report['data']['phase15_prompt_ids'] == 2801
+          assert report['data']['phase15_labels'] == 11
+          assert report['encoder'] == {
+              'model': 'answerdotai/ModernBERT-base',
+              'frozen': True,
+              'max_length': 256,
+              'pooling': 'attention_mask_mean_then_l2',
+          }
+          assert report['projection']['type'] == 'LinearDiscriminantAnalysis'
+          assert report['projection']['solver'] == 'svd'
+          assert report['classifier'] == {
+              'type': 'LinearSVC',
+              'class_weight': 'balanced',
+              'C': 1.0,
+          }
+          assert report['official_rows_scored'] == 0
+          assert report['kaggle_submission_authorized'] is False
+
+          gate = report['gate_a']
+          decision = gate['decision']
+          assert decision['status'] in {'pass', 'fail', 'inconclusive'}
+          assert decision['official_oof_authorized'] is (decision['status'] == 'pass')
+          assert len(gate['eligible_sources']) == len(gate['source_results'])
+
+          for item in gate['source_results']:
+              assert item['prompt_id_overlap'] == 0
+              assert item['prompt_key_overlap'] == 0
+              print(
+                  'SOURCE', item['source'],
+                  'RAW', item['raw']['balanced_accuracy'],
+                  'PROJECTED', item['projected']['balanced_accuracy'],
+                  'DELTA', item['delta_projected_minus_raw'],
+              )
+          print('AGGREGATE', gate['aggregate'])
+          print('DECISION', decision)
+          PY
+
+      - name: Upload Gate A evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-residual-style-gate-a
+          path: gate-a-output/prompt_residual_style_gate_a.json
+          retention-days: 30
