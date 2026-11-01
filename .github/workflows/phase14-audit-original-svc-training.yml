@@ -44,9 +44,11 @@ jobs:
           raw=nb_path.read_bytes()
           nb=json.loads(raw)
           code='\n\n'.join(''.join(c.get('source',[])) if isinstance(c.get('source',''),list) else c.get('source','') for c in nb.get('cells',[]) if c.get('cell_type')=='code')
+          lines=code.splitlines()
           tree=ast.parse(code)
 
           constructors=[]
+          interesting_lines=[]
           for node in ast.walk(tree):
               if not isinstance(node,ast.Call): continue
               fn=''
@@ -61,7 +63,11 @@ jobs:
               for arg in node.args:
                   try: args.append(ast.literal_eval(arg))
                   except Exception: args.append('<dynamic>')
-              constructors.append({'type':fn,'args':args,'kwargs':kwargs,'lineno':getattr(node,'lineno',None)})
+              lineno=getattr(node,'lineno',None)
+              constructors.append({'type':fn,'args':args,'kwargs':kwargs,'lineno':lineno})
+              if lineno:
+                  lo=max(1,lineno-12); hi=min(len(lines),lineno+12)
+                  interesting_lines.append({'constructor':fn,'lineno':lineno,'context':[{'line':i,'text':lines[i-1]} for i in range(lo,hi+1)]})
 
           functions=[]
           for node in tree.body:
@@ -71,16 +77,29 @@ jobs:
                   if any(tok in low for tok in ('linearsvc','tfidfvectorizer','shape_text','small_words_text','views')):
                       functions.append({'name':node.name,'source':seg})
 
+          literal_assignments={}
+          for node in tree.body:
+              names=[]; value=None
+              if isinstance(node,ast.Assign): names=[t.id for t in node.targets if isinstance(t,ast.Name)]; value=node.value
+              elif isinstance(node,ast.AnnAssign) and isinstance(node.target,ast.Name): names=[node.target.id]; value=node.value
+              if value is None: continue
+              for name in names:
+                  if name not in {'VIEWS','SMALL_WORDS','LABELS'}: continue
+                  try: literal_assignments[name]=ast.literal_eval(value)
+                  except Exception: pass
+
           report={
             'kernel_ref':'nishantdahal/two-stage-lora-part-two',
             'scope':'static_source_audit_no_training',
             'kernel_metadata':meta,
             'notebook_sha256':hashlib.sha256(raw).hexdigest(),
             'constructors':constructors,
+            'constructor_context':interesting_lines,
+            'literal_assignments':literal_assignments,
             'relevant_functions':functions,
           }
           Path('/tmp/phase14_original_svc_training.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
-          print(json.dumps({'meta':meta,'constructors':constructors,'functions':[x['name'] for x in functions]},indent=2,ensure_ascii=False))
+          print(json.dumps({'meta':meta,'constructors':constructors,'literal_assignments':literal_assignments,'functions':[x['name'] for x in functions]},indent=2,ensure_ascii=False))
           PY
       - uses: actions/upload-artifact@v4
         with:
