@@ -1,0 +1,98 @@
+name: Phase 16 audit public-pool LoRA training recipe
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/phase16-audit-public-pool-training-recipe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: nishantdahal/two-stage-lora-on-the-public-pool
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client
+        run: python -m pip install 'kaggle==2.2.5'
+      - name: Pull source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/p16pooltrain && mkdir -p /tmp/p16pooltrain
+          kaggle kernels pull "$KERNEL_REF" -p /tmp/p16pooltrain -m
+          find /tmp/p16pooltrain -maxdepth 1 -type f -printf '%f\t%s bytes\n' | sort
+      - name: Extract compact training recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          root=Path('/tmp/p16pooltrain')
+          chunks=[]; source_files=[]; metadata=[]
+          for p in sorted(root.glob('*.ipynb')):
+              nb=json.loads(p.read_text(encoding='utf-8'))
+              source_files.append({'path':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+              for c in nb.get('cells',[]):
+                  if c.get('cell_type')=='code':
+                      s=c.get('source','')
+                      if isinstance(s,list): s=''.join(s)
+                      chunks.append(s)
+          for p in sorted(root.glob('*.py')):
+              txt=p.read_text(encoding='utf-8'); chunks.append(txt)
+              source_files.append({'path':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          for p in sorted(root.glob('*metadata*.json')):
+              try: metadata.append({'path':p.name,'data':json.loads(p.read_text())})
+              except Exception: pass
+          code='\n\n'.join(chunks); lines=code.splitlines()
+          patterns=[
+            'LoraConfig','target_modules','r=', 'lora_alpha','lora_dropout',
+            'prompt_id','group','triplet','Sampler','BatchSampler','DataLoader',
+            'CrossEntropy','cross_entropy','loss','centered','plain','head',
+            'AdamW','optimizer','scheduler','warmup','lr_adapter','lr_head','weight_decay',
+            'Qwen3','Qwen2.5','layers','keep','max_len','pool_v4','train.csv','epochs',
+            'gradient_checkpoint','autocast','GradScaler','clip_grad','save_pretrained'
+          ]
+          contexts=[]; seen=set()
+          for i,line in enumerate(lines):
+              if any(p.lower() in line.lower() for p in patterns):
+                  lo=max(0,i-4); hi=min(len(lines),i+5)
+                  if (lo,hi) in seen: continue
+                  seen.add((lo,hi))
+                  ctx='\n'.join(f'{j+1}: {lines[j]}' for j in range(lo,hi))
+                  if len(ctx)<=7000: contexts.append({'line':i+1,'context':ctx})
+          # Literal configuration values only.
+          literals=[]
+          for name in ['CFG','CONFIG','MODEL_CFGS','MODELS','LABELS']:
+              m=re.search(rf'(?ms)^\s*{re.escape(name)}\s*=\s*(\{{.*?^\}}|\[.*?^\])',code)
+              if m and len(m.group(0))<20000: literals.append(m.group(0))
+          report={
+            'kernel_ref':'nishantdahal/two-stage-lora-on-the-public-pool',
+            'scope':'static_training_recipe_only_no_execution',
+            'source_files':source_files,
+            'metadata':metadata,
+            'literal_blocks':literals,
+            'training_contexts':contexts[:400],
+          }
+          out=Path('/tmp/phase16_public_pool_training_recipe.json')
+          out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase16-public-pool-training-recipe
+          path: /tmp/phase16_public_pool_training_recipe.json
+          retention-days: 30
