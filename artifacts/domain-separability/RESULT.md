@@ -52,6 +52,19 @@ Ranges:
 
 Phase 15 lexical separation is close to chance for some labels, including `gpt-5.6-sol` at `0.49549`.
 
+### Common-label control
+
+The headline macro averages cover different label sets (8 labels for Phase 7 and 11 for Phase 15), so they are not a perfectly matched comparison. As a post-result descriptive check, using only the **five labels present in both external corpora** (`gpt-5.5`, `gpt-5.6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-6-astra`) and reusing the already frozen per-label outputs:
+
+| Comparison on same 5 labels | Style/format domain BA | Lexical domain BA |
+|---|---:|---:|
+| Phase 7 external | `0.7361290925` | `0.7426462345` |
+| Phase 15 external | `0.7085470986` | `0.5375923037` |
+
+The large lexical-separability difference therefore does not come from the 8-vs-11 label-set composition. The style difference becomes smaller on the matched labels but keeps the same direction.
+
+This is still not a fully paired estimate because the frozen hash includes the comparison name, so the Phase 7 and Phase 15 prompt-group holdouts are deterministic but not identical. Do not rerun with a newly chosen split after seeing these results merely to improve the comparison.
+
 ## Per-label Phase 15 domain BA
 
 | Label | Style | Lexical |
@@ -81,7 +94,7 @@ But these signals are **not stronger overall for Phase 15 than for Phase 7**. Th
 - Phase 15 beats Phase 7 on the permanent grouped OOF and all three Phase 19 shadow assignments.
 - Phase 15 loses to Phase 7 on the real Public leaderboard (`0.357` vs `0.369`).
 - Phase 18 found Phase 15 external text materially closer to official responses than Phase 7 external under common cross-model nearest-neighbor statistics.
-- This audit finds Phase 15 external text less separable from official responses than Phase 7 external under both frozen model-controlled domain classifiers.
+- This audit finds Phase 15 external text less separable from official responses than Phase 7 external under both frozen model-controlled domain classifiers; the lexical direction remains strong when restricted to the five labels common to both corpora.
 
 ### INFERENCE
 
