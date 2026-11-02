@@ -49,9 +49,9 @@ jobs:
           ]
           assert m['model_sources']==['qwen-lm/qwen-3/transformers/8b-base/1']
           src=Path('/tmp/v2-transfer-kernel/kernel_main.py').read_text()
-          assert 'competition_test' not in src.lower()
           assert 'competitions submit' not in src.lower()
           assert 'EXPECTED_HOLDOUT_SOURCES' in src
+          assert 'competition_sources": []' in Path('/tmp/v2-transfer-kernel/kernel-metadata.json').read_text()
           print('STATIC_GATE_PASS')
           PY
       - name: Push one frozen paired-transfer kernel
