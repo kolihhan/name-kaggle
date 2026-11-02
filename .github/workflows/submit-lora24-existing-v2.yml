@@ -1,0 +1,88 @@
+name: Submit completed LoRA24 kernel v2
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/submit-lora24-existing-v2.yml
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/name-that-llm-lora24-v1-final
+      KERNEL_VERSION: '2'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install submission tooling only
+        run: python -m pip install -q 'kaggle==2.2.5' pandas pyarrow six
+
+      - name: Verify completed kernel v2 output
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          status="$(kaggle kernels status "$KERNEL_REF")"
+          echo "$status"
+          printf '%s\n' "$status" | grep -Eqi '(^|[^a-z])complete([^a-z]|$)'
+          rm -rf /tmp/lora24-existing
+          mkdir -p /tmp/lora24-existing
+          kaggle kernels output "$KERNEL_REF" -p /tmp/lora24-existing -o -q
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          root=Path('/tmp/lora24-existing')
+          sp=next(root.rglob('submission.parquet'))
+          lp=next(root.rglob('submission_lineage.json'))
+          s=pd.read_parquet(sp)
+          l=json.loads(lp.read_text())
+
+          assert s.columns.tolist()==['id','model'], s.columns.tolist()
+          assert len(s)==3, len(s)
+          assert s['id'].is_unique
+          assert not s[['id','model']].isna().any().any()
+          assert l['candidate']=='two-stage-lora24-v1'
+          assert l['primary_head']=='plain'
+          assert l['centered_head_used_for_submission'] is False
+          assert l['competition_test_rows_used_for_training']==0
+          assert l['competition_test_rows_used_for_model_selection']==0
+          assert l['public_lb_tuning'] is False
+          assert l['official_training_rows']==2699
+          assert l['official_train_sha256']=='40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
+          assert l['base_manifest_sha256']=='kaggle-model-source:qwen-lm/qwen-3/transformers/8b-base/1'
+          assert l['runtime_manifest_sha256']=='2ede08586490ab65e52d57bc95ea95580a6c3ea0c7b269d57bef6fe117b39275'
+          assert int(l['submission_rows'])==len(s)==int(l['test_rows'])==3
+          assert l['submission_sha256']=='6e8b2a61d98c415c39e09815fe83482407ce7ff27bd64f1c617003d9e51b3ab4'
+          print('VERIFIED_SUBMISSION_ROWS',len(s))
+          print('SUBMISSION_SHA256',l['submission_sha256'])
+          print(s.to_string(index=False))
+          PY
+
+      - name: Submit existing kernel version 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle competitions submit name-that-llm \
+            -f submission.parquet \
+            -k "$KERNEL_REF" \
+            -v "$KERNEL_VERSION" \
+            -m 'two-stage-lora24-v1 plain final fit' \
+            --wait 3600 \
+            --poll-interval 15
+
+      - name: Show resulting submission state
+        if: always()
+        run: |
+          echo '--- submissions ---'
+          kaggle competitions submissions name-that-llm -v || true
