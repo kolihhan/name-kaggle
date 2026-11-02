@@ -129,12 +129,14 @@ Only after paired transfer PASS:
 4. compare the primary **plain** head against v1 on the same rows;
 5. treat this official OOF as consumed/adaptive comparison evidence, not fresh hidden proof.
 
-Minimum OOF promotion requirements will not be loosened after observing results:
+All official-OOF promotion conditions are frozen before the paired transfer result is observed:
 
 - v2 primary plain OOF BA must exceed v1 `0.5467611235396471`;
 - v2 must win at least `3/5` folds against v1;
-- paired prompt-group bootstrap lower 95% CI for `v2-v1` must be positive;
-- no material class-regression safety veto.
+- 5,000-resample paired prompt-group bootstrap lower 95% CI for `v2-v1` must be positive;
+- class-regression safety veto uses the exact v1 Gate-B rule: for any label where **v1 recall is at least `0.25`**, if **v1 recall minus v2 recall is greater than `0.15`**, the candidate is vetoed.
+
+The safety thresholds above are not tunable after any v2 official OOF prediction is observed.
 
 ## Deployment / Kaggle rule
 
