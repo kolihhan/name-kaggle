@@ -120,7 +120,7 @@ for key, expected in {{
 }}.items():
     if base_lineage.get(key) != expected:
         raise RuntimeError(f"base lineage drift for {{key}}: {{base_lineage.get(key)!r}} != {{expected!r}}")
-base_root = base_lineage_path.parent / "model"
+base_root = base_lineage_path.parent
 base_manifest = verify_manifest(
     base_root,
     base_lineage["files"],
@@ -138,7 +138,7 @@ for key, expected in {{
 }}.items():
     if runtime_lineage.get(key) != expected:
         raise RuntimeError(f"runtime lineage drift for {{key}}: {{runtime_lineage.get(key)!r}} != {{expected!r}}")
-wheelhouse = runtime_lineage_path.parent / "wheelhouse"
+wheelhouse = runtime_lineage_path.parent
 runtime_manifest = verify_manifest(
     wheelhouse,
     runtime_lineage["files"],
@@ -230,7 +230,9 @@ def write_kernel_bundle(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build offline LoRA24 v1 submission-preflight kernel")
+    parser = argparse.ArgumentParser(
+        description="Build offline LoRA24 v1 submission-preflight kernel"
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     return parser.parse_args()
