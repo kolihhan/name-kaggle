@@ -152,6 +152,59 @@ Repair / verification lineage:
 
 The next `[gate-b-run]` trigger is therefore an **infra-only retry of the same frozen scientific execution**, not a second scientific experiment.
 
-## Infra-only retry trigger
+## Runtime transport infrastructure and expanded-layout recovery
 
-This documentation-only change is the retry trigger. It does not modify scientific code, official data, folds, checkpoint bytes, model configuration, training hyperparameters, evaluation logic, or PASS thresholds. The retry must use the same locked checkpoint dataset version `1` and the same one-shot Gate-B OOF contract.
+The Gate-B runtime payload was moved into a private immutable Kaggle dataset only to satisfy Kaggle orchestration/source-size constraints. This changes transport, not science.
+
+Locked runtime dataset:
+
+- dataset: `kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime`
+- status: `ready`
+- version: `1`
+- source commit: `1d466f4c756394aea4b57f056238ff457f9f0852`
+- exact eight-file manifest SHA256: `8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933`
+- deterministic pre-upload transport SHA256: `f818750300838089f3610347074da52a8340d74a57f54b698ce6c65ea68c3785`
+- exact lock: `artifacts/candidates/two-stage-lora24-v1/GATE_B_RUNTIME_LOCK.md`
+
+The runtime dataset contains only the already-frozen official `train.csv`, permanent `folds.csv`, and the exact runtime Python files needed by the Gate-B worker. It contains zero competition-test rows and zero Stage-1 public rows.
+
+An initial attach-only runtime recovery incorrectly required the uploaded `gate-b-runtime.tar.gz` container to remain present after Kaggle download. Kaggle instead exposes the archive expanded into its eight files. The recovery repeatedly downloaded the ready version-1 dataset successfully but rejected the layout locally. The then-current scientific kernel bootstrap made the same tar-container assumption, so it was repaired before another scientific execution was allowed.
+
+TDD / verification lineage:
+
+- RED contract commit: `48c3a5fcf245c984b155bf8edaaaa352d0768e2a`;
+- focused RED Actions run `41396671325`: exactly `2 failed, 43 passed`, both failures were the two tar-container assumptions;
+- attach-only expanded-byte verification repair: `ca076918d5619177444aa85372aa3aee9bc255a0`;
+- scientific-kernel expanded-runtime bootstrap repair: `691c270d41f64996bf1dd8466c3a5fd606573783`;
+- stale test-only alignment commit: `49e67d9aba28a759956580a3f0619740521dc67d`;
+- focused Gate-B run `41397205977`: success with `kaggle-gpu` skipped;
+- full repository verification run `41397206216`: `213 passed in 269.97s (0:04:29)`;
+- compare from runtime source commit `1d466f4c756394aea4b57f056238ff457f9f0852` through verified head `49e67d9aba28a759956580a3f0619740521dc67d` changed only the two orchestration workflow files and their tests; no `scripts/**`, official data/folds, contract, checkpoint, evaluator, training hyperparameter, bootstrap rule, or PASS threshold changed.
+
+Expanded-layout attach-only verification then succeeded:
+
+- recovery trigger commit: `a11056d829fbe7b829b886f522b75b678543806c`;
+- Actions run: `41397900907`;
+- materialization/create job: skipped;
+- existing dataset status: `ready`;
+- existing dataset version: `1`;
+- rebuilt expanded-file manifest SHA256: `8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933`;
+- recovery artifact: `13119669832`;
+- recovery artifact digest: `sha256:a1df7ac90acf20010970b03b504b8de66324c1488676425559b716fc27160001`;
+- `attach_only_recovery=true`;
+- `dataset_create_called=false`;
+- `dataset_version_called=false`;
+- `gate_b_training_called=false`.
+
+No valid Gate-B OOF has been produced by any of these infrastructure attempts. The one-shot scientific-result boundary therefore remains unconsumed.
+
+## Expanded-runtime infra-only retry boundary
+
+The next `[gate-b-run]` is authorized as an **infrastructure-only retry of the same frozen Gate-B scientific execution**. It must attach:
+
+- exact checkpoint dataset version `1` with checkpoint manifest `c9ba8f77cc0ec84800a8d3508c15939396353772189c573c597bdcf223eaafc0`;
+- exact runtime dataset version `1` with runtime manifest `8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933`.
+
+Before training, the kernel must verify the runtime lineage plus every expanded runtime file's SHA256/size and rebuild the exact runtime manifest. No dataset create/version operation is permitted in the scientific execution path.
+
+The first complete valid 2699-row Gate-B OOF bundle produced under this authorization must be consumed exactly once. A bad scientific score is not a retry reason.
