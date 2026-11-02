@@ -25,7 +25,9 @@ def test_gate_b_checkpoint_workflow_is_exact_private_transport_only():
 def test_gate_b_checkpoint_workflow_installs_kaggle_runtime_dependency_six():
     text = WORKFLOW.read_text(encoding="utf-8")
     install_line = next(
-        line for line in text.splitlines() if "pip install -r requirements.txt" in line
+        line
+        for line in text.splitlines()
+        if "pip install -r requirements.txt" in line and "kaggle==2.2.5" in line
     )
     assert "six" in install_line.split()
 
