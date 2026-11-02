@@ -23,6 +23,7 @@ def test_gate_b_workflow_requires_dedicated_run_marker_for_heavy_job():
 
 
 def test_gate_b_kernel_title_resolves_to_declared_kernel_id():
+    # Regression guard for Kaggle SaveKernel: title slug must resolve to id slug.
     text = _workflow_text()
     ref_match = re.search(r'KERNEL_REF="\$\{USERNAME\}/([^"]+)"', text)
     title_match = re.search(r'"title": "([^"]+)"', text)
