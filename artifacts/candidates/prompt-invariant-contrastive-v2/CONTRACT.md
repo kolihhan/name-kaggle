@@ -133,10 +133,10 @@ All official-OOF promotion conditions are frozen before the paired transfer resu
 
 - v2 primary plain OOF BA must exceed v1 `0.5467611235396471`;
 - v2 must win at least `3/5` folds against v1;
-- 5,000-resample paired prompt-group bootstrap lower 95% CI for `v2-v1` must be positive;
+- 5,000-resample paired **prompt-group** bootstrap with seed `20261101` must have lower 95% CI for `v2-v1` greater than `0`;
 - class-regression safety veto uses the exact v1 Gate-B rule: for any label where **v1 recall is at least `0.25`**, if **v1 recall minus v2 recall is greater than `0.15`**, the candidate is vetoed.
 
-The safety thresholds above are not tunable after any v2 official OOF prediction is observed.
+The safety thresholds and bootstrap seed above are not tunable after any v2 official OOF prediction is observed.
 
 ## Deployment / Kaggle rule
 
