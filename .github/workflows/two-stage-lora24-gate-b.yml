@@ -1,0 +1,324 @@
+name: Two-stage LoRA24 Gate B
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/two-stage-lora24-gate-b.yml
+      - scripts/run_two_stage_lora24_gate_b.py
+      - scripts/run_two_stage_lora24_gate_b_gpu.py
+      - tests/test_two_stage_lora24_gate_b.py
+      - tests/test_two_stage_lora24_gate_b_gpu_contract.py
+      - tests/test_two_stage_lora24_gate_b_workflow.py
+      - artifacts/candidates/two-stage-lora24-v1/CONTRACT.md
+      - artifacts/candidates/two-stage-lora24-v1/GATE_B_CHECKPOINT_LOCK.md
+      - artifacts/candidates/two-stage-lora24-v1/GATE_B_RUN_AUTHORIZATION.md
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight Gate B dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Compile Gate B modules
+        run: >-
+          python -m py_compile
+          scripts/run_two_stage_lora24_gate_b.py
+          scripts/run_two_stage_lora24_gate_b_gpu.py
+      - name: Run frozen Gate B contract tests
+        run: >-
+          python -m pytest -q
+          tests/test_two_stage_lora24_gate_b.py
+          tests/test_two_stage_lora24_gate_b_gpu_contract.py
+          tests/test_two_stage_lora24_gate_b_workflow.py
+
+  kaggle-gpu:
+    if: contains(github.event.head_commit.message, '[gate-b-run]')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle and verification dependencies
+        run: pip install -r requirements.txt 'kaggle==2.2.5' kagglehub six
+
+      - name: Verify locked checkpoint dataset remains ready version 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          status_json="$(kaggle datasets status "$DATASET_REF" --format json)"
+          echo "$status_json"
+          STATUS_JSON="$status_json" python - <<'PY'
+          import json
+          import os
+          status = json.loads(os.environ['STATUS_JSON'])
+          assert status['status'] == 'ready', status
+          assert int(status['current_version_number']) == 1, status
+          PY
+
+      - name: Build private official-OOF-only Kaggle kernel
+        id: kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          USERNAME="$(python - <<'PY'
+          import kagglehub
+          print(kagglehub.whoami(verbose=False)["username"])
+          PY
+          )"
+          KERNEL_REF="${USERNAME}/name-that-llm-two-stage-lora24-gate-b"
+          KERNEL_DIR=".kaggle/two-stage-lora24-gate-b"
+          rm -rf "$KERNEL_DIR"
+          mkdir -p "$KERNEL_DIR"
+
+          python - "$KERNEL_DIR/kernel_main.py" <<'PY'
+          import base64
+          import io
+          import pathlib
+          import sys
+          import zipfile
+
+          payload_paths = [
+              path
+              for path in sorted(pathlib.Path("scripts").rglob("*.py"))
+              if "__pycache__" not in path.parts
+          ] + [
+              pathlib.Path("data/train.csv"),
+              pathlib.Path("artifacts/phase1/folds.csv"),
+          ]
+          for path in payload_paths:
+              if not path.is_file():
+                  raise FileNotFoundError(path)
+
+          payload_buffer = io.BytesIO()
+          with zipfile.ZipFile(payload_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in payload_paths:
+                  archive.write(path, path.as_posix())
+
+          payload = base64.b64encode(payload_buffer.getvalue()).decode("ascii")
+          bootstrap = f'''import base64
+          import io
+          import pathlib
+          import subprocess
+          import sys
+          import zipfile
+
+          PAYLOAD = {payload!r}
+          package_root = pathlib.Path("/kaggle/working/gate_b_pkg")
+          package_root.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(io.BytesIO(base64.b64decode(PAYLOAD))) as archive:
+              archive.extractall(package_root)
+          sys.path.insert(0, str(package_root))
+
+          subprocess.check_call([
+              sys.executable,
+              "-m",
+              "pip",
+              "install",
+              "-q",
+              "transformers==4.57.1",
+              "peft==0.17.1",
+              "safetensors",
+          ])
+
+          from scripts.run_two_stage_lora24_gate_b_gpu import main
+
+          sys.argv = [
+              "run_two_stage_lora24_gate_b_gpu",
+              "--orchestrate",
+              "--train",
+              str(package_root / "data/train.csv"),
+              "--folds",
+              str(package_root / "artifacts/phase1/folds.csv"),
+              "--output-dir",
+              "/kaggle/working/gate_b_output",
+          ]
+          main()
+          '''
+          output = pathlib.Path(sys.argv[1])
+          output.write_text(bootstrap, encoding="utf-8")
+          print("embedded_paths:", len(payload_paths))
+          print("kernel_main_bytes:", output.stat().st_size)
+          PY
+
+          python -m py_compile "$KERNEL_DIR/kernel_main.py"
+          python - "$KERNEL_DIR/kernel-metadata.json" "$KERNEL_REF" <<'PY'
+          import json
+          import sys
+
+          path, kernel_ref = sys.argv[1:]
+          payload = {
+              "id": kernel_ref,
+              "title": "Name That LLM LoRA24 Gate B OOF",
+              "code_file": "kernel_main.py",
+              "language": "python",
+              "kernel_type": "script",
+              "is_private": True,
+              "enable_internet": True,
+              "machine_shape": "NvidiaTeslaT4",
+              "competition_sources": [],
+              "dataset_sources": ["kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint"],
+              "kernel_sources": [],
+              "model_sources": [],
+          }
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2)
+          PY
+          echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
+          cat "$KERNEL_DIR/kernel-metadata.json"
+
+      - name: Push frozen Gate B kernel to Kaggle GPU
+        run: >-
+          kaggle kernels push
+          -p .kaggle/two-stage-lora24-gate-b
+          --accelerator NvidiaTeslaT4
+          --timeout 18000
+
+      - name: Poll kernel until terminal state
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          complete=0
+          for _ in $(seq 1 900); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "$status"
+            if grep -Eqi 'complete|successful' <<<"$status"; then
+              complete=1
+              break
+            fi
+            if grep -Eqi 'error|failed|cancel' <<<"$status"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 30
+          done
+          if [[ "$complete" != "1" ]]; then
+            echo "Kaggle Gate B kernel did not reach a successful terminal state"
+            kaggle kernels logs "$KERNEL_REF" || true
+            exit 1
+          fi
+
+      - name: Download Gate B OOF evidence
+        shell: bash
+        env:
+          KERNEL_REF: ${{ steps.kernel.outputs.kernel_ref }}
+        run: |
+          set -euo pipefail
+          rm -rf gate-b-download
+          mkdir -p gate-b-download
+          kaggle kernels output "$KERNEL_REF" -p gate-b-download -o
+          test -n "$(find gate-b-download -name gate_b_candidate.json -print -quit)"
+          test -n "$(find gate-b-download -name gate_b_candidate_oof.csv -print -quit)"
+
+      - name: Verify complete candidate OOF and locked lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import pandas as pd
+          from scripts.run_strong_sparse_anchor import load_train
+
+          root = Path('gate-b-download')
+          report_path = next(root.rglob('gate_b_candidate.json'))
+          oof_path = next(root.rglob('gate_b_candidate_oof.csv'))
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+          oof = pd.read_csv(oof_path)
+          train = load_train(Path('data/train.csv'), Path('artifacts/phase1/folds.csv'))
+
+          assert report['candidate'] == 'two-stage-lora24-v1'
+          assert report['scope'] == 'gate_b_official_oof'
+          assert report['official_oof_rows_expected'] == 2699
+          assert report['public_stage1_rows_mixed_into_stage2'] == 0
+          assert report['competition_test_rows_used'] == 0
+          assert report['public_lb_tuning'] is False
+          assert report['kaggle_submission_authorized'] is False
+          assert report['model']['id'] == 'Qwen/Qwen3-8B-Base'
+          assert report['model']['revision'] == '49e3418fbbbca6ecbdf9608b4d22e5a407081db4'
+          assert report['model']['transformers'] == '4.57.1'
+          assert report['model']['peft'] == '0.17.1'
+          assert report['validation']['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
+          assert report['validation']['primary_head'] == 'plain'
+          assert report['validation']['centered_head_role'] == 'diagnostic_only'
+
+          checkpoint = report['checkpoint']
+          assert checkpoint['dataset_ref'] == 'kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint'
+          assert checkpoint['dataset_version'] == 1
+          assert checkpoint['manifest_sha256'] == 'c9ba8f77cc0ec84800a8d3508c15939396353772189c573c597bdcf223eaafc0'
+          assert checkpoint['source_artifact_id'] == 13094069155
+          assert checkpoint['source_artifact_digest'] == 'sha256:a2c4dca4ca5de2b283e5e6806526485f0d92377584d7e621b35a717770c95e66'
+
+          assert len(oof) == 2699
+          assert oof['id'].is_unique
+          assert oof['plain_prediction'].notna().all()
+          assert oof['centered_prediction'].notna().all()
+          labels = set(train['model'].astype(str))
+          assert set(oof['plain_prediction'].astype(str)) <= labels
+          assert set(oof['centered_prediction'].astype(str)) <= labels
+
+          keys = ['id', 'prompt_id', 'model', 'fold_id']
+          expected = train[keys].sort_values('id').reset_index(drop=True).astype(
+              {'id': str, 'prompt_id': str, 'model': str, 'fold_id': int}
+          )
+          observed = oof[keys].sort_values('id').reset_index(drop=True).astype(
+              {'id': str, 'prompt_id': str, 'model': str, 'fold_id': int}
+          )
+          assert expected.equals(observed)
+
+          fold_reports = report['fold_reports']
+          assert set(fold_reports) == {'0', '1', '2', '3', '4'}
+          fold_json_names = ['fold_0.json', 'fold_1.json', 'fold_2.json', 'fold_3.json', 'fold_4.json']
+          fold_prediction_names = [
+              'fold_0_predictions.csv',
+              'fold_1_predictions.csv',
+              'fold_2_predictions.csv',
+              'fold_3_predictions.csv',
+              'fold_4_predictions.csv',
+          ]
+          available_names = {path.name for path in root.rglob('*') if path.is_file()}
+          assert set(fold_json_names) <= available_names
+          assert set(fold_prediction_names) <= available_names
+
+          for fold in range(5):
+              fold_report = fold_reports[str(fold)]
+              assert fold_report['fold'] == fold
+              assert fold_report['checkpoint']['manifest_sha256'] == checkpoint['manifest_sha256']
+              assert fold_report['checkpoint']['source_artifact_id'] == 13094069155
+              assert fold_report['competition_test_rows_used'] == 0
+              assert fold_report['public_lb_tuning'] is False
+              assert fold_report['kaggle_submission_authorized'] is False
+              assert fold_report['invariants']['fresh_stage1_checkpoint_loaded_for_worker'] is True
+              assert fold_report['invariants']['validation_used_for_training'] is False
+              assert fold_report['invariants']['post_stage2_checkpoint_saved'] is False
+
+          print('OOF_ROWS', len(oof))
+          print('PLAIN_BA', report['candidate_oof']['plain_balanced_accuracy'])
+          print('CENTERED_BA_DIAGNOSTIC', report['candidate_oof']['centered_balanced_accuracy'])
+          PY
+
+      - name: Upload Gate B candidate OOF evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-b-evidence
+          path: gate-b-download
+          retention-days: 90
