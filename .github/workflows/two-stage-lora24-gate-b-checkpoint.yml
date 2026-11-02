@@ -47,7 +47,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install materialization dependencies
-        run: pip install -r requirements.txt 'kaggle==2.2.5' pytest
+        run: pip install -r requirements.txt 'kaggle==2.2.5' six pytest
 
       - name: Download exact Gate-A A1 checkpoint artifact
         uses: actions/download-artifact@v4
