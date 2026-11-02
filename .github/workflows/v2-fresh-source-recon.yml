@@ -1,0 +1,75 @@
+name: V2 Fresh Source Recon
+
+on:
+  push:
+    branches:
+      - exp/prompt-invariant-contrastive-v2
+    paths:
+      - .github/workflows/v2-fresh-source-recon.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      FRESH_DATASET: arxitekton/ntl-claude-gen-v2
+      V1_POOL_DATASET: nishantdahal/ntl-handwriting-blend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/prompt-invariant-contrastive-v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5' six
+
+      - name: Download predeclared fresh source and exact v1 pool file
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/v2-fresh-recon
+          mkdir -p /tmp/v2-fresh-recon/candidate /tmp/v2-fresh-recon/v1-pool
+          kaggle datasets files "$FRESH_DATASET" -v > /tmp/v2-fresh-recon/candidate-files.txt
+          kaggle datasets download -d "$FRESH_DATASET" -p /tmp/v2-fresh-recon/candidate --unzip
+          kaggle datasets download -d "$V1_POOL_DATASET" -f pool_v4.parquet -p /tmp/v2-fresh-recon/v1-pool --unzip
+          test -f /tmp/v2-fresh-recon/v1-pool/pool_v4.parquet
+
+      - name: Freeze byte manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('/tmp/v2-fresh-recon')
+          files=[]
+          for p in sorted(x for x in root.rglob('*') if x.is_file()):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for chunk in iter(lambda:f.read(1024*1024),b''):
+                      h.update(chunk)
+              files.append({'path':p.relative_to(root).as_posix(),'size':p.stat().st_size,'sha256':h.hexdigest()})
+          payload={
+              'fresh_dataset':'arxitekton/ntl-claude-gen-v2',
+              'v1_pool_dataset':'nishantdahal/ntl-handwriting-blend',
+              'files':files,
+          }
+          (root/'byte-manifest.json').write_text(json.dumps(payload,indent=2,sort_keys=True),encoding='utf-8')
+          print(json.dumps(payload,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload immutable recon evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-fresh-source-recon
+          path: /tmp/v2-fresh-recon
+          if-no-files-found: error
+          retention-days: 30
