@@ -30,7 +30,7 @@ def test_metadata_uses_offline_kaggle_model_source(tmp_path):
     assert meta["model_sources"] == [MODEL_SOURCE]
     assert meta["dataset_sources"] == [
         "kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint",
-        "kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime",
+        "kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2",
     ]
     py_compile.compile(str(tmp_path / meta["code_file"]), doraise=True)
 
@@ -46,9 +46,12 @@ def test_kernel_finds_qwen_model_and_uses_plain_final_fit(tmp_path):
     assert "kaggle-model-source:qwen-lm/qwen-3/transformers/8b-base/1" in text
 
 
-def test_offline_pip_is_index_free():
+def test_offline_pip_is_index_free_and_compatible():
     args = offline_pip_args("/runtime")
     assert "--no-index" in args
     assert "--find-links" in args
+    assert "--no-deps" in args
     assert "transformers==4.57.1" in args
     assert "peft==0.17.1" in args
+    assert "tokenizers==0.22.1" in args
+    assert "huggingface-hub==0.36.0" in args
