@@ -70,3 +70,16 @@ def test_gate_b_checkpoint_recovery_attaches_to_existing_dataset_without_recreat
     assert "pending" in recovery
     assert "ready" in recovery
     assert "error" in recovery
+
+
+def test_gate_b_checkpoint_recovery_downloads_existing_dataset_and_recomputes_manifest():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    recovery = text.split("recover-existing-checkpoint-dataset:", 1)[1]
+    assert "kaggle datasets download" in recovery
+    assert "a1-checkpoint/adapter/adapter_model.safetensors" in recovery
+    assert "a1-checkpoint/heads.safetensors" in recovery
+    assert "a1-checkpoint/meta.json" in recovery
+    assert "a1-checkpoint/tokenizer" in recovery
+    assert "observed_manifest_sha256" in recovery
+    assert "FILE_MANIFEST_SHA256" in recovery
+    assert "observed_manifest_sha256 != expected_manifest_sha256" in recovery
