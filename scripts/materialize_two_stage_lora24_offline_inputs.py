@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Sequence
 
 MODEL_ID = "Qwen/Qwen3-8B-Base"
 MODEL_REVISION = "49e3418fbbbca6ecbdf9608b4d22e5a407081db4"
@@ -99,9 +100,7 @@ def validate_flat_package(package_dir: Path) -> None:
         if path.is_file() and path.parent != package_dir
     ]
     if nested:
-        raise RuntimeError(
-            f"nested payload files are not allowed for Kaggle create: {nested[:5]}"
-        )
+        raise RuntimeError(f"nested payload files are not allowed for Kaggle create: {nested[:5]}")
 
 
 def _dataset_metadata(dataset_ref: str, title: str) -> dict[str, object]:
@@ -124,12 +123,7 @@ def prepare_base_package(package_dir: Path) -> dict[str, object]:
         repo_id=MODEL_ID,
         revision=MODEL_REVISION,
         local_dir=str(package_dir),
-        allow_patterns=[
-            "config.json",
-            "model.safetensors",
-            "model.safetensors.index.json",
-            "model-*.safetensors",
-        ],
+        allow_patterns=["config.json", "model.safetensors", "model.safetensors.index.json", "model-*.safetensors"],
     )
     shutil.rmtree(package_dir / ".cache", ignore_errors=True)
     validate_flat_package(package_dir)
@@ -140,9 +134,7 @@ def prepare_base_package(package_dir: Path) -> dict[str, object]:
     )
     (package_dir / "dataset-metadata.json").write_text(
         json.dumps(
-            _dataset_metadata(
-                BASE_DATASET_REF, "Name That LLM Qwen3 8B Base frozen revision"
-            ),
+            _dataset_metadata(BASE_DATASET_REF, "Name That LLM Qwen3 8B Base frozen revision"),
             indent=2,
         ),
         encoding="utf-8",
@@ -182,9 +174,7 @@ def prepare_runtime_package(package_dir: Path) -> dict[str, object]:
     )
     (package_dir / "dataset-metadata.json").write_text(
         json.dumps(
-            _dataset_metadata(
-                RUNTIME_DATASET_REF, "Name That LLM LoRA24 v1 offline runtime"
-            ),
+            _dataset_metadata(RUNTIME_DATASET_REF, "Name That LLM LoRA24 v1 offline runtime"),
             indent=2,
         ),
         encoding="utf-8",
