@@ -1,0 +1,113 @@
+name: V2 Paired Transfer
+
+on:
+  push:
+    branches:
+      - exp/prompt-invariant-contrastive-v2
+    paths:
+      - .github/workflows/v2-paired-transfer.yml
+
+permissions:
+  contents: read
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/name-that-llm-v2-transfer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/prompt-invariant-contrastive-v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install orchestration tooling
+        run: python -m pip install -q 'kaggle==2.2.5' six
+      - name: Build and statically verify frozen kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v2-transfer-kernel
+          python scripts/build_prompt_invariant_v2_transfer_kernel.py \
+            --output-dir /tmp/v2-transfer-kernel \
+            --repo-root .
+          python -m py_compile /tmp/v2-transfer-kernel/kernel_main.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('/tmp/v2-transfer-kernel/kernel-metadata.json').read_text())
+          assert m['is_private'] is True
+          assert m['enable_internet'] is False
+          assert m['machine_shape']=='NvidiaTeslaT4'
+          assert m['competition_sources']==[]
+          assert m['dataset_sources']==[
+              'nishantdahal/ntl-handwriting-blend',
+              'kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2',
+          ]
+          assert m['model_sources']==['qwen-lm/qwen-3/transformers/8b-base/1']
+          src=Path('/tmp/v2-transfer-kernel/kernel_main.py').read_text()
+          assert 'competition_test' not in src.lower()
+          assert 'competitions submit' not in src.lower()
+          assert 'EXPECTED_HOLDOUT_SOURCES' in src
+          print('STATIC_GATE_PASS')
+          PY
+      - name: Push one frozen paired-transfer kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle kernels push -p /tmp/v2-transfer-kernel
+      - name: Poll existing scientific execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          complete=0
+          for i in $(seq 1 700); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "poll=$i $status"
+            if grep -Eqi '(^|[^a-z])(complete|completed|success|successful|succeeded)([^a-z]|$)' <<<"$status"; then
+              complete=1
+              break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled|canceled)([^a-z]|$)' <<<"$status"; then
+              exit 1
+            fi
+            sleep 30
+          done
+          test "$complete" = 1
+      - name: Download and verify paired result
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v2-transfer-output && mkdir -p /tmp/v2-transfer-output
+          kaggle kernels output "$KERNEL_REF" -p /tmp/v2-transfer-output -o
+          test -f /tmp/v2-transfer-output/paired_transfer_result.json
+          test -f /tmp/v2-transfer-output/paired_transfer_predictions.csv
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('/tmp/v2-transfer-output/paired_transfer_result.json').read_text())
+          assert p['candidate']=='prompt-invariant-contrastive-v2'
+          assert p['scope']=='paired_external_source_transfer_no_official_rows_no_public_lb'
+          assert p['pool_sha256']=='37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec'
+          assert p['holdout_sources']==['lucasboesen','jadkutbi','maniceet']
+          assert p['official_rows_scored']==0
+          assert p['public_lb_tuning'] is False
+          print(json.dumps(p['transfer_gate'],indent=2,sort_keys=True))
+          print('DECISION',p['decision'])
+          PY
+      - name: Upload paired transfer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-paired-transfer-evidence
+          path: |
+            /tmp/v2-transfer-output/paired_transfer_result.json
+            /tmp/v2-transfer-output/paired_transfer_predictions.csv
+            /tmp/v2-transfer-output/v1_worker.json
+            /tmp/v2-transfer-output/v2_worker.json
+          if-no-files-found: warn
+          retention-days: 30
