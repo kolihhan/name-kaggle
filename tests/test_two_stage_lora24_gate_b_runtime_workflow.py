@@ -17,6 +17,21 @@ def test_runtime_workflow_materializes_one_private_immutable_version1_dataset():
     assert "Refuse to overwrite or version an existing runtime dataset" in text
 
 
+def test_runtime_recovery_is_attach_only_and_locks_created_version1_bytes():
+    text = RUNTIME_WORKFLOW.read_text(encoding="utf-8")
+    assert "[gate-b-runtime-recover]" in text
+    assert "recover-existing-runtime:" in text
+    recovery = text.split("recover-existing-runtime:", 1)[1]
+    assert "kaggle datasets create" not in recovery
+    assert "kaggle datasets version" not in recovery
+    assert "1d466f4c756394aea4b57f056238ff457f9f0852" in recovery
+    assert "8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933" in recovery
+    assert "f818750300838089f3610347074da52a8340d74a57f54b698ce6c65ea68c3785" in recovery
+    assert "dataset_create_called': False" in recovery
+    assert "dataset_version_called': False" in recovery
+    assert "gate_b_training_called': False" in recovery
+
+
 def test_runtime_dataset_contains_only_frozen_gate_b_runtime_inputs():
     text = RUNTIME_WORKFLOW.read_text(encoding="utf-8")
     required = [
@@ -65,5 +80,5 @@ def test_gate_b_kernel_fails_closed_before_push_if_source_reaches_kaggle_limit()
 def test_gate_b_still_attaches_exact_checkpoint_dataset_without_versioning_it():
     text = GATE_B_WORKFLOW.read_text(encoding="utf-8")
     assert "name-that-llm-two-stage-lora24-v1-a1-checkpoint" in text
-    assert "current_version_number'] == 1" in text or "current_version_number\']) == 1" in text
+    assert "current_version_number']) == 1" in text
     assert "kaggle datasets version" not in text
