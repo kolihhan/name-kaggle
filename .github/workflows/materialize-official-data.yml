@@ -12,8 +12,19 @@ permissions:
 jobs:
   materialize:
     runs-on: ubuntu-latest
+    env:
+      REPO_PRIVATE: ${{ github.event.repository.private }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Require private repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${REPO_PRIVATE:-false}" != "true" ]]; then
+            echo "::error::Refusing to materialize or commit Kaggle Competition Data in a public repository. Read PUBLIC_VISIBILITY.md."
+            exit 3
+          fi
 
       - name: Download byte-identical train and test files
         shell: bash
