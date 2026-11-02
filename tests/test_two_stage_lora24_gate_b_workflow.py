@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -10,11 +11,24 @@ def _workflow_text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
+def _kaggle_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
 def test_gate_b_workflow_requires_dedicated_run_marker_for_heavy_job():
     text = _workflow_text()
     assert "[gate-b-run]" in text
     assert "contains(github.event.head_commit.message, '[gate-b-run]')" in text
     assert "kaggle-gpu:" in text
+
+
+def test_gate_b_kernel_title_resolves_to_declared_kernel_id():
+    text = _workflow_text()
+    ref_match = re.search(r'KERNEL_REF="\$\{USERNAME\}/([^"]+)"', text)
+    title_match = re.search(r'"title": "([^"]+)"', text)
+    assert ref_match is not None
+    assert title_match is not None
+    assert _kaggle_slug(title_match.group(1)) == ref_match.group(1)
 
 
 def test_gate_b_workflow_attaches_only_locked_checkpoint_dataset_and_no_competition_source():
