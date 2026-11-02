@@ -165,7 +165,7 @@ jobs:
           path, kernel_ref = sys.argv[1:]
           payload = {
               "id": kernel_ref,
-              "title": "Name That LLM LoRA24 Gate B OOF",
+              "title": "Name That LLM Two-stage LoRA24 Gate B",
               "code_file": "kernel_main.py",
               "language": "python",
               "kernel_type": "script",
