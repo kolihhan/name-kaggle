@@ -55,3 +55,18 @@ def test_gate_b_checkpoint_workflow_fails_closed_if_dataset_slug_already_exists(
     assert "Refuse to overwrite or version an existing checkpoint dataset" in text
     assert "kaggle datasets list" in text
     assert "exit 1" in text
+
+
+def test_gate_b_checkpoint_recovery_attaches_to_existing_dataset_without_recreating():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "[gate-b-checkpoint-recover]" in text
+    assert "recover-existing-checkpoint-dataset:" in text
+    recovery = text.split("recover-existing-checkpoint-dataset:", 1)[1]
+    assert "kaggle datasets status" in recovery
+    assert "kaggle datasets files" in recovery
+    assert "kaggle datasets create" not in recovery
+    assert "kaggle datasets version" not in recovery
+    assert "kaggle kernels push" not in recovery
+    assert "pending" in recovery
+    assert "ready" in recovery
+    assert "error" in recovery
