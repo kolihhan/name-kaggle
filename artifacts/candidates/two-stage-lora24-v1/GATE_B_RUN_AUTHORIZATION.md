@@ -121,6 +121,32 @@ A valid Gate-B result must be consumed exactly once and evaluated mechanically a
 
 An infrastructure-only retry is permissible **only** if the failed attempt produced no valid scientific OOF result, and only if the repair leaves all scientific data, checkpoint bytes, model configuration, fold membership, seeds, training hyperparameters, evaluation logic, and PASS thresholds unchanged. Any valid scientific result closes the one-shot authorization even if downstream orchestration fails.
 
-## Execution trigger
+## First trigger attempt — infrastructure failure before scientific execution
 
-The authorization preflight above passed. This record is now used as the **single trigger-only scientific launch**. The trigger commit changes documentation only; it does not modify scientific code, checkpoint bytes, data, folds, model settings, evaluation logic, or decision thresholds.
+The first trigger-only commit was `8f1199f08e45ce7ee7b616714048da76a05cc1c1`; Actions run `41380075106` reached the Gate-B GPU job but failed at `kaggle kernels push` before Kaggle accepted or created the kernel.
+
+Exact failure:
+
+- Kaggle `SaveKernel` returned HTTP `400 Bad Request`;
+- error: `Your kernel title does not resolve to the specified id`;
+- the failure happened before the poll/download/evidence steps;
+- those downstream steps were skipped;
+- no fold-local Stage-2 fit started;
+- no candidate OOF row was produced;
+- no valid scientific Gate-B result exists from this attempt.
+
+Therefore this attempt does **not** consume the one-shot scientific result boundary and qualifies for the already-authorized infrastructure-only retry.
+
+Root cause was metadata-only: the kernel id slug was `name-that-llm-two-stage-lora24-gate-b`, while the title slug resolved to `name-that-llm-lora24-gate-b-oof`.
+
+The repair changed only the Kaggle kernel title to `Name That LLM Two-stage LoRA24 Gate B`, so its slug exactly matches the pre-existing kernel id. No scientific code, data, checkpoint bytes, folds, model configuration, hyperparameters, evaluation logic, or PASS thresholds changed.
+
+Repair / verification lineage:
+
+- failing regression test commit: `273431674d5a3d5e7f3406fba46ef74335780a62`; focused run `41380262020` reproduced exactly `1 failed, 36 passed` on the slug mismatch;
+- metadata-only fix commit: `442cb2f84370a34da4171210519320c42fef0ba6`; focused run `41380385290` succeeded and `kaggle-gpu` was skipped;
+- regression-guard verification head: `b0b78bf7301c0611aff18d220710486c3c653873`;
+- focused Gate-B run `41381901207` succeeded and `kaggle-gpu` was skipped;
+- full repository verification run `41381901250`: `205 passed in 251.01s (0:04:11)`.
+
+The next `[gate-b-run]` trigger is therefore an **infra-only retry of the same frozen scientific execution**, not a second scientific experiment.
