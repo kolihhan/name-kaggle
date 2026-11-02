@@ -82,3 +82,5 @@ jobs:
       - name: Show resulting submission state
         if: always()
         run: kaggle competitions submissions name-that-llm -v || true
+
+# trigger: submit existing frozen kernel v2 only
