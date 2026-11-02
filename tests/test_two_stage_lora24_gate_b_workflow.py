@@ -33,18 +33,19 @@ def test_gate_b_kernel_title_resolves_to_declared_kernel_id():
     assert _kaggle_slug(title_match.group(1)) == ref_match.group(1)
 
 
-def test_gate_b_workflow_attaches_only_locked_checkpoint_dataset_and_no_competition_source():
+def test_gate_b_workflow_attaches_only_locked_runtime_and_checkpoint_datasets():
     text = _workflow_text()
     assert '"competition_sources": []' in text
-    assert '"dataset_sources": ["kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint"]' in text
+    assert '"kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint"' in text
+    assert '"kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime"' in text
     assert "nishantdahal/ntl-handwriting-blend" not in text
     assert "pool_v4.parquet" not in text
 
 
-def test_gate_b_workflow_embeds_only_official_train_and_permanent_folds_not_test_data():
+def test_gate_b_workflow_uses_runtime_transport_not_competition_test_data():
     text = _workflow_text()
-    assert 'pathlib.Path("data/train.csv")' in text
-    assert 'pathlib.Path("artifacts/phase1/folds.csv")' in text
+    assert "gate-b-runtime.tar.gz" in text
+    assert "runtime_lineage.json" in text
     assert "data/test.csv" not in text
     assert "sample_submission" not in text
 
