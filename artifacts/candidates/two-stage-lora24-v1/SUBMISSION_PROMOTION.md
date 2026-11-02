@@ -4,125 +4,96 @@ Date: 2026-11-02 (MYT)
 
 ## Status
 
-**BLOCKED — IMPLEMENTATION READY, EXTERNAL PREFLIGHT PENDING**
+**COMPLETE — SUBMITTED CHAMPION**
 
-Kaggle competition submission is **NOT AUTHORIZED**.
+- Kaggle submission: `57908683`
+- Description: `two-stage-lora24-v1 plain final fit`
+- Public LB: **`0.520`**
+- Exact submission record: `artifacts/submission/THIRD_SUBMISSION.md`
 
-Gate A and Gate B passed, and the direct final-fit/offline-kernel implementation is now locally verified. However, the exact offline base-model dataset and offline runtime/wheel dataset have not yet been materialized and re-verified on Kaggle, and the internet-disabled GPU preflight kernel has not yet completed. Code readiness is not equivalent to submission readiness.
+The promotion gate is closed. Do not rerun v1 because of score and do not use Public `0.520` for post-hoc threshold/blend tuning.
 
-## Frozen candidate being promoted
+## Frozen candidate
 
 - candidate: `two-stage-lora24-v1`
-- exact base: `Qwen/Qwen3-8B-Base@49e3418fbbbca6ecbdf9608b4d22e5a407081db4`
-- exact Stage-1 checkpoint dataset: `kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint`, version `1`
+- base identity: `Qwen/Qwen3-8B-Base@49e3418fbbbca6ecbdf9608b4d22e5a407081db4`
+- Kaggle model source used for the final offline kernel: `qwen-lm/qwen-3/transformers/8b-base/1`
+- Stage-1 checkpoint dataset: `kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint`, version `1`
 - checkpoint manifest: `c9ba8f77cc0ec84800a8d3508c15939396353772189c573c597bdcf223eaafc0`
-- exact official train SHA-256: `40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707`
-- final Stage-2 fit: all `2699` official rows, exactly `2` epochs, frozen Gate-B optimizer/objective/seed
+- official train SHA-256: `40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707`
+- official train rows: `2699`
+- final Stage-2 fit: all official rows, exactly `2` epochs
 - competition prediction: **plain head only**
-- centered head role: diagnostic only; not used for submission
-- Public-LB tuning: forbidden
+- centered head used for submission: `false`
+- competition-test rows used for training: `0`
+- competition-test rows used for model selection: `0`
+- Public-LB tuning: `false`
 
-## Implementation
+## Gate evidence
 
-Implemented without changing Gate-B scientific primitives:
+### Gate A
 
-- `scripts/two_stage_lora24_submission.py`
-  - validates the exact official-train SHA before CSV loading/training;
-  - uses all 2,699 official rows as the final-fit partition;
-  - reuses Gate-B `load_exact_stage1_checkpoint(...)` and `train_two_stage2_epochs(...)`;
-  - tokenizes/reads test for inference only after the two-epoch training call returns;
-  - predicts with the plain head only;
-  - writes `submission.parquet` and `submission_lineage.json`.
-- `scripts/materialize_two_stage_lora24_offline_inputs.py`
-  - prepares the exact Hugging Face base revision as a byte-manifested private Kaggle dataset;
-  - prepares a byte-manifested offline wheel/runtime dataset;
-  - refuses silent overwrite/versioning of the fixed refs;
-  - requires a flat dataset payload because the Kaggle CLI `datasets create` default directory mode skips nested directories.
-- `scripts/build_two_stage_lora24_kaggle_kernel.py`
-  - builds a private T4 script kernel;
-  - `enable_internet=false`;
-  - exact dataset inputs are checkpoint + base snapshot + offline runtime;
-  - offline pip uses `--no-index` and local wheels only;
-  - embeds the frozen Gate-B runtime modules plus the final-fit module;
-  - contains no Kaggle competition-submit side effect.
+- A0 held-out BA: `0.3942430082`
+- A1 LoRA held-out BA: `0.4657129266`
+- delta: `+0.0714699184`
+- all three held-out-source deltas positive
 
-## Fresh local verification
+### Gate B
 
-Focused tests after the final review fixes:
+- plain-head OOF BA: `0.5467611235396471`
+- Phase-7 OOF reference: `0.3700521998508576`
+- delta: `+0.17670892368878954`
+- 5 / 5 folds won
+- paired prompt-bootstrap 95% CI: `[+0.15743723589361175, +0.19594425801640553]`
+- no class-recall safety veto
 
-```text
-15 passed in 0.06s
-```
+### Kaggle transfer
 
-Covered behaviors include:
+- Public LB: `0.520`
+- Public minus frozen OOF: `-0.0267611235396471`
+- previous Phase-7 Public champion: `0.369`
+- Public improvement vs Phase 7: `+0.151`
 
-- official train/test schema and ID boundaries;
-- exact official-train SHA fail-closed behavior;
-- all-official-row final-fit boundary;
-- plain-head-only submission frame and allowed labels;
-- contamination/selection flags in lineage;
-- deterministic byte manifests;
-- fixed model/revision/dataset refs;
-- refuse-existing dataset semantics;
-- flat Kaggle payload enforcement;
-- private/offline/T4 kernel metadata;
-- local-wheel-only pip arguments;
-- no submit side effect.
+The modest OOF-to-Public drop is materially healthier than the Phase-15 failure and validates two-stage LoRA as the submitted anchor.
 
-A real kernel bundle was then built using the actual runtime modules preserved from the successful Gate-B evidence, not test sentinel modules:
+## Final execution
 
-```text
-kernel_main_bytes = 111202
-kernel_main_under_1MB = true
-python compile = PASS
-metadata enable_internet = false
-metadata machine_shape = NvidiaTeslaT4
-metadata competition_sources = [name-that-llm]
-metadata dataset_sources = [
-  kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint,
-  kolihhan/name-that-llm-qwen3-8b-base-49e3418f,
-  kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime
-]
-has_no_submit_command = true
-has_no_index = true
-has_frozen_train_sha = true
-```
+Kaggle kernel:
 
-The three new production scripts also pass `python -m py_compile`.
+- ref: `kolihhan/name-that-llm-lora24-v1-final`
+- successful version: `2`
+- accelerator: T4
+- internet: disabled
 
-## Review fixes before promotion record
+Offline runtime:
 
-Two real preflight defects were found and fixed before this record:
+- dataset: `kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2`
+- manifest: `2ede08586490ab65e52d57bc95ea95580a6c3ea0c7b269d57bef6fe117b39275`
+- `transformers==4.57.1`
+- `peft==0.17.1`
+- `tokenizers==0.22.1`
+- `huggingface-hub==0.36.0`
 
-1. **Official-train byte drift:** the first implementation only recorded the train SHA in lineage. It now rejects any `train.csv` whose SHA-256 differs from the frozen `40a22c...` digest before final fitting.
-2. **Kaggle nested dataset payload risk:** the first materializer placed model/wheel files in subdirectories even though the Kaggle CLI create path defaults to skipping directories. Payloads are now flat-root and nested files are rejected before dataset creation; the kernel verifies the flat payload bytes against lineage manifests.
+Training evidence:
 
-## Not yet verified
+- epoch 1 mean loss: `2.9026665187047587`
+- epoch 2 mean loss: `1.630542965978384`
+- optimizer steps: `300`
+- skipped scaler steps: `0`
+- training seconds: `3226.4846546649933`
 
-The following are **UNKNOWN / pending external preflight**, not implied by local tests:
+Submission artifact:
 
-- `kolihhan/name-that-llm-qwen3-8b-base-49e3418f` has not yet been created, downloaded back, and byte-verified on Kaggle;
-- `kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime` has not yet been created, downloaded back, and byte-verified on Kaggle;
-- no internet-disabled Kaggle GPU preflight has yet run the final full-data two-epoch Stage-2 fit;
-- no hidden competition-test `submission.parquet` from this candidate has yet been verified;
-- no submission version has been authorized or sent to the competition.
+- rows: `3`
+- columns: `id, model`
+- SHA-256: `6e8b2a61d98c415c39e09815fe83482407ce7ff27bd64f1c617003d9e51b3ab4`
 
-A current-head full repository pytest suite was not run in this takeover because the working container does not contain a full repository checkout. The new focused tests and real generated-kernel compile are verified; do not generalize them into a current-head full-suite claim.
+## Operational correction
 
-## Promotion gate
+The first post-training workflow incorrectly asserted `len(submission) > 3`. The official test has exactly three rows. This was a verifier/orchestration defect, not a scientific failure. The successful kernel-v2 output was re-verified by its frozen SHA and lineage and then submitted without retraining.
 
-Submission remains blocked until one clean external preflight establishes all of:
+Later same-description submissions created by orchestration retries are operational duplicates, not independent experiments. Do not use them as additional scientific evidence and do not create further identical retries.
 
-1. exact base dataset is ready version 1 and downloaded bytes match its frozen manifest;
-2. exact runtime dataset is ready version 1 and downloaded wheel bytes match its frozen manifest;
-3. existing Stage-1 checkpoint remains ready version 1 and exact locked manifest;
-4. internet-disabled private Kaggle GPU kernel completes final fitting with the frozen two-epoch configuration;
-5. `submission_lineage.json` reports the exact official train SHA, exact model/checkpoint/runtime identities, `primary_head=plain`, zero test rows used for training/model selection, and `public_lb_tuning=false`;
-6. `submission.parquet` has exactly the competition test IDs once each, exactly columns `id, model`, no nulls, and only official labels;
-7. no scientific code/config change occurs after this preflight result.
+## Next promotion boundary
 
-Only then may a separate explicit record change the state to `AUTHORIZED`.
-
-## Next single action
-
-**Materialize and byte-verify the two fixed private Kaggle offline datasets (exact Qwen base + offline runtime), then run exactly one internet-disabled submission-preflight kernel. Do not submit the result yet.**
+v1 is closed. A future v2 must be a genuinely distinct, pre-frozen candidate. The highest-value next direction is complementarity using existing plain/centered/sparse disagreement evidence, with a rule fixed before another leaderboard result and a non-Public transfer check where possible.
