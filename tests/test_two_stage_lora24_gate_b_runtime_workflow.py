@@ -32,6 +32,17 @@ def test_runtime_recovery_is_attach_only_and_locks_created_version1_bytes():
     assert "gate_b_training_called': False" in recovery
 
 
+def test_runtime_recovery_verifies_kaggle_expanded_files_not_uploaded_tar_container():
+    text = RUNTIME_WORKFLOW.read_text(encoding="utf-8")
+    recovery = text.split("recover-existing-runtime:", 1)[1]
+    assert "rglob('runtime_lineage.json')" in recovery
+    assert "observed_manifest" in recovery
+    assert "EXPECTED_FILE_MANIFEST_SHA256" in recovery
+    assert "gate-b-runtime.tar.gz" not in recovery
+    assert "archive_path" not in recovery
+    assert "tarfile.open" not in recovery
+
+
 def test_runtime_dataset_contains_only_frozen_gate_b_runtime_inputs():
     text = RUNTIME_WORKFLOW.read_text(encoding="utf-8")
     required = [
@@ -61,13 +72,16 @@ def test_runtime_dataset_locks_official_hashes_and_source_commit():
     assert "transport_sha256" in text
 
 
-def test_gate_b_kernel_uses_runtime_dataset_instead_of_embedding_official_csvs():
+def test_gate_b_kernel_uses_expanded_runtime_dataset_instead_of_embedding_official_csvs():
     text = GATE_B_WORKFLOW.read_text(encoding="utf-8")
     assert "name-that-llm-two-stage-lora24-v1-gate-b-runtime" in text
     assert 'pathlib.Path("data/train.csv")' not in text
     assert 'pathlib.Path("artifacts/phase1/folds.csv")' not in text
-    assert "gate-b-runtime.tar.gz" in text
-    assert "runtime_lineage.json" in text
+    assert "rglob(\"runtime_lineage.json\")" in text
+    assert "EXPECTED_RUNTIME_FILES" in text
+    assert "gate-b-runtime.tar.gz" not in text
+    assert "runtime_archive" not in text
+    assert "tarfile.open" not in text
 
 
 def test_gate_b_kernel_fails_closed_before_push_if_source_reaches_kaggle_limit():
