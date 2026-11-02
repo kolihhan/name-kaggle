@@ -1,0 +1,246 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Mapping
+
+from scripts.materialize_two_stage_lora24_offline_inputs import (
+    BASE_DATASET_REF,
+    RUNTIME_DATASET_REF,
+)
+from scripts.two_stage_lora24_submission import CHECKPOINT_DATASET_REF
+
+KERNEL_REF = "kolihhan/name-that-llm-two-stage-lora24-v1-submission-preflight"
+KERNEL_TITLE = "Name That LLM Two-stage LoRA24 v1 Submission Preflight"
+COMPETITION = "name-that-llm"
+CODE_FILE = "kernel_main.py"
+REQUIRED_SOURCE_PATHS = (
+    "scripts/__init__.py",
+    "scripts/run_style_baseline.py",
+    "scripts/run_strong_sparse_anchor.py",
+    "scripts/run_two_stage_lora24_gate_a.py",
+    "scripts/run_two_stage_lora24_gate_b.py",
+    "scripts/run_two_stage_lora24_gate_b_gpu.py",
+    "scripts/two_stage_lora24_submission.py",
+)
+
+
+def offline_pip_args(wheelhouse: str) -> list[str]:
+    return [
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--no-index",
+        "--find-links",
+        str(wheelhouse),
+        "--no-deps",
+        "transformers==4.57.1",
+        "peft==0.17.1",
+        "safetensors",
+    ]
+
+
+def _kernel_source(source_texts: Mapping[str, str]) -> str:
+    missing = sorted(set(REQUIRED_SOURCE_PATHS) - set(source_texts))
+    extra = sorted(set(source_texts) - set(REQUIRED_SOURCE_PATHS))
+    if missing or extra:
+        raise RuntimeError(f"runtime source set mismatch: missing={missing} extra={extra}")
+    sources_literal = repr(dict(source_texts))
+    pip_tail_literal = repr(offline_pip_args("__WHEELHOUSE__"))
+    return f'''from pathlib import Path
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+
+SOURCES = {sources_literal}
+PIP_ARGS_TEMPLATE = {pip_tail_literal}
+EXPECTED_BASE_REF = {BASE_DATASET_REF!r}
+EXPECTED_RUNTIME_REF = {RUNTIME_DATASET_REF!r}
+EXPECTED_CHECKPOINT_REF = {CHECKPOINT_DATASET_REF!r}
+EXPECTED_MODEL_ID = "Qwen/Qwen3-8B-Base"
+EXPECTED_MODEL_REVISION = "49e3418fbbbca6ecbdf9608b4d22e5a407081db4"
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_manifest(root, declared_files, expected_manifest):
+    root = Path(root)
+    observed = []
+    for entry in declared_files:
+        path = root / entry["path"]
+        if not path.is_file():
+            raise RuntimeError(f"missing locked input file: {{path}}")
+        digest = sha256_file(path)
+        size = path.stat().st_size
+        if digest != entry["sha256"] or size != int(entry["size"]):
+            raise RuntimeError(f"locked input byte drift: {{entry['path']}}")
+        observed.append({{"path": entry["path"], "sha256": digest, "size": size}})
+    encoded = json.dumps(observed, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    manifest = hashlib.sha256(encoded).hexdigest()
+    if manifest != expected_manifest:
+        raise RuntimeError(f"locked input manifest drift: {{manifest}} != {{expected_manifest}}")
+    return manifest
+
+
+def exactly_one(pattern):
+    matches = sorted(Path("/kaggle/input").glob(pattern))
+    if len(matches) != 1:
+        raise RuntimeError(f"expected exactly one Kaggle input for {{pattern}}; found {{matches}}")
+    return matches[0]
+
+
+def first_existing(paths):
+    for value in paths:
+        path = Path(value)
+        if path.is_file():
+            return path
+    raise FileNotFoundError("none of the expected competition input paths exist")
+
+
+# 1) Verify exact offline base bytes before importing ML runtime.
+base_lineage_path = exactly_one("**/base_lineage.json")
+base_lineage = json.loads(base_lineage_path.read_text(encoding="utf-8"))
+for key, expected in {{
+    "dataset_ref": EXPECTED_BASE_REF,
+    "dataset_version_expected": 1,
+    "model_id": EXPECTED_MODEL_ID,
+    "model_revision": EXPECTED_MODEL_REVISION,
+    "competition_train_rows_included": 0,
+    "competition_test_rows_included": 0,
+}}.items():
+    if base_lineage.get(key) != expected:
+        raise RuntimeError(f"base lineage drift for {{key}}: {{base_lineage.get(key)!r}} != {{expected!r}}")
+base_root = base_lineage_path.parent / "model"
+base_manifest = verify_manifest(
+    base_root,
+    base_lineage["files"],
+    base_lineage["file_manifest_sha256"],
+)
+
+# 2) Verify exact offline wheel bytes, then install without an index/network.
+runtime_lineage_path = exactly_one("**/runtime_lineage.json")
+runtime_lineage = json.loads(runtime_lineage_path.read_text(encoding="utf-8"))
+for key, expected in {{
+    "dataset_ref": EXPECTED_RUNTIME_REF,
+    "dataset_version_expected": 1,
+    "competition_train_rows_included": 0,
+    "competition_test_rows_included": 0,
+}}.items():
+    if runtime_lineage.get(key) != expected:
+        raise RuntimeError(f"runtime lineage drift for {{key}}: {{runtime_lineage.get(key)!r}} != {{expected!r}}")
+wheelhouse = runtime_lineage_path.parent / "wheelhouse"
+runtime_manifest = verify_manifest(
+    wheelhouse,
+    runtime_lineage["files"],
+    runtime_lineage["file_manifest_sha256"],
+)
+pip_args = [value if value != "__WHEELHOUSE__" else str(wheelhouse) for value in PIP_ARGS_TEMPLATE]
+subprocess.check_call([sys.executable, *pip_args])
+
+# 3) Materialize the audited repo runtime embedded in this kernel bundle.
+package_root = Path("/kaggle/working/lora24_submission_pkg")
+if package_root.exists():
+    shutil.rmtree(package_root)
+for rel, content in SOURCES.items():
+    target = package_root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+sys.path.insert(0, str(package_root))
+
+# 4) Locate exact checkpoint and official competition files.
+checkpoint_meta = exactly_one("**/a1-checkpoint/meta.json")
+checkpoint_dir = checkpoint_meta.parent
+train_path = first_existing([
+    "/kaggle/input/name-that-llm/train.csv",
+    "/kaggle/input/competitions/name-that-llm/train.csv",
+])
+test_path = first_existing([
+    "/kaggle/input/name-that-llm/test.csv",
+    "/kaggle/input/competitions/name-that-llm/test.csv",
+])
+
+# 5) Final fit uses all official train rows; test inference happens only after training returns.
+from scripts.two_stage_lora24_submission import run_final_fit
+
+output_dir = Path("/kaggle/working")
+lineage = run_final_fit(
+    train_path=train_path,
+    test_path=test_path,
+    checkpoint_dir=checkpoint_dir,
+    snapshot_path=base_root,
+    output_dir=output_dir,
+    base_manifest_sha256=base_manifest,
+    runtime_manifest_sha256=runtime_manifest,
+)
+
+submission_path = Path("/kaggle/working/submission.parquet")
+lineage_path = Path("/kaggle/working/submission_lineage.json")
+if not submission_path.is_file() or not lineage_path.is_file():
+    raise RuntimeError("final fit did not produce required submission outputs")
+print(json.dumps(lineage, indent=2, sort_keys=True))
+'''
+
+
+def write_kernel_bundle(
+    output_dir: Path,
+    *,
+    source_texts: Mapping[str, str] | None = None,
+    repo_root: Path = Path("."),
+) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if source_texts is None:
+        source_texts = {
+            rel: (Path(repo_root) / rel).read_text(encoding="utf-8")
+            for rel in REQUIRED_SOURCE_PATHS
+        }
+    source = _kernel_source(source_texts)
+    (output_dir / CODE_FILE).write_text(source, encoding="utf-8")
+    metadata = {
+        "id": KERNEL_REF,
+        "title": KERNEL_TITLE,
+        "code_file": CODE_FILE,
+        "language": "python",
+        "kernel_type": "script",
+        "is_private": True,
+        "enable_internet": False,
+        "machine_shape": "NvidiaTeslaT4",
+        "competition_sources": [COMPETITION],
+        "dataset_sources": [
+            CHECKPOINT_DATASET_REF,
+            BASE_DATASET_REF,
+            RUNTIME_DATASET_REF,
+        ],
+        "kernel_sources": [],
+        "model_sources": [],
+    }
+    (output_dir / "kernel-metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build offline LoRA24 v1 submission-preflight kernel")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    write_kernel_bundle(args.output_dir, repo_root=args.repo_root)
+    print(f"built offline preflight kernel: {KERNEL_REF}")
+
+
+if __name__ == "__main__":
+    main()
