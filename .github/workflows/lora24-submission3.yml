@@ -119,7 +119,7 @@ jobs:
           }
           (root/'runtime_lineage.json').write_text(json.dumps(lineage,indent=2,sort_keys=True))
           metadata={
-            'title':'Name That LLM LoRA24 v1 offline runtime CPython 3.13',
+            'title':'NTL LoRA24 offline runtime py313',
             'id':'kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime',
             'licenses':[{'name':'other'}],
             'isPrivate':True,
