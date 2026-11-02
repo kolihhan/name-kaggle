@@ -15,6 +15,7 @@ MODEL_REVISION = "49e3418fbbbca6ecbdf9608b4d22e5a407081db4"
 TRANSFORMERS_VERSION = "4.57.1"
 PEFT_VERSION = "0.17.1"
 EXPECTED_OFFICIAL_ROWS = 2699
+EXPECTED_TRAIN_SHA256 = "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
 EXPECTED_LABELS = 18
 STAGE2_EPOCHS = 2
 SEED = 20261101
@@ -130,6 +131,15 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_official_train_sha256(observed_sha256: str) -> str:
+    observed_sha256 = str(observed_sha256)
+    if observed_sha256 != EXPECTED_TRAIN_SHA256:
+        raise RuntimeError(
+            f"official train SHA drift: {observed_sha256} != {EXPECTED_TRAIN_SHA256}"
+        )
+    return observed_sha256
+
+
 def _infer_plain_test(
     *,
     test: pd.DataFrame,
@@ -196,6 +206,7 @@ def run_final_fit(
     if not torch.cuda.is_available():
         raise RuntimeError("two-stage LoRA24 final fit requires CUDA")
 
+    official_train_sha256 = validate_official_train_sha256(_sha256_file(train_path))
     train = pd.read_csv(train_path).reset_index(drop=True)
     test = pd.read_csv(test_path).reset_index(drop=True)
     fit_idx, labels = validate_final_fit_frames(train, test)
@@ -278,7 +289,7 @@ def run_final_fit(
     submission_path = output_dir / "submission.parquet"
     submission.to_parquet(submission_path, index=False)
     lineage = build_submission_lineage(
-        official_train_sha256=_sha256_file(train_path),
+        official_train_sha256=official_train_sha256,
         test_rows=len(test),
         base_manifest_sha256=base_manifest_sha256,
         runtime_manifest_sha256=runtime_manifest_sha256,
