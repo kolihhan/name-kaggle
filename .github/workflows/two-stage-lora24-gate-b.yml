@@ -101,11 +101,13 @@ jobs:
           import shutil
           import subprocess
           import sys
-          import tarfile
 
           CANDIDATE = "two-stage-lora24-v1"
           EXPECTED_TRAIN_SHA256 = "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
           EXPECTED_FOLD_FINGERPRINT = "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+          EXPECTED_RUNTIME_SOURCE_COMMIT = "1d466f4c756394aea4b57f056238ff457f9f0852"
+          EXPECTED_RUNTIME_FILE_MANIFEST_SHA256 = "8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933"
+          EXPECTED_RUNTIME_TRANSPORT_SHA256 = "f818750300838089f3610347074da52a8340d74a57f54b698ce6c65ea68c3785"
           RUNTIME_PURPOSE = "gate_b_official_oof_runtime_transport_only"
           EXPECTED_RUNTIME_FILES = {
               "data/train.csv",
@@ -119,23 +121,23 @@ jobs:
           }
 
           input_root = pathlib.Path("/kaggle/input")
-          runtime_archives = sorted(input_root.glob("**/gate-b-runtime.tar.gz"))
-          if len(runtime_archives) != 1:
+          lineage_paths = sorted(input_root.rglob("runtime_lineage.json"))
+          if len(lineage_paths) != 1:
               raise RuntimeError(
-                  f"expected exactly one mounted Gate-B runtime archive; found {runtime_archives}"
+                  f"expected exactly one mounted Gate-B runtime lineage; found {lineage_paths}"
               )
-          runtime_archive = runtime_archives[0]
-          runtime_lineage_path = runtime_archive.parent / "runtime_lineage.json"
-          if not runtime_lineage_path.is_file():
-              raise FileNotFoundError(runtime_lineage_path)
+          runtime_lineage_path = lineage_paths[0]
           lineage = json.loads(runtime_lineage_path.read_text(encoding="utf-8"))
 
           exact_lineage = {
               "candidate": CANDIDATE,
               "purpose": RUNTIME_PURPOSE,
+              "source_commit": EXPECTED_RUNTIME_SOURCE_COMMIT,
               "official_train_sha256": EXPECTED_TRAIN_SHA256,
               "fold_fingerprint": EXPECTED_FOLD_FINGERPRINT,
               "official_rows": 2699,
+              "file_manifest_sha256": EXPECTED_RUNTIME_FILE_MANIFEST_SHA256,
+              "transport_sha256": EXPECTED_RUNTIME_TRANSPORT_SHA256,
               "competition_test_rows_included": 0,
               "public_stage1_rows_included": 0,
               "scientific_configuration_changed": False,
@@ -145,15 +147,10 @@ jobs:
                   raise RuntimeError(
                       f"runtime lineage drift for {key}: {lineage.get(key)!r} != {expected!r}"
                   )
-          transport_sha256 = hashlib.sha256(runtime_archive.read_bytes()).hexdigest()
-          if transport_sha256 != lineage.get("transport_sha256"):
-              raise RuntimeError(
-                  f"runtime transport SHA drift: {transport_sha256} != "
-                  f"{lineage.get('transport_sha256')}"
-              )
+
           files = lineage.get("files")
-          if not isinstance(files, list):
-              raise RuntimeError("runtime lineage files missing")
+          if not isinstance(files, list) or len(files) != 8:
+              raise RuntimeError(f"runtime lineage files missing or unexpected: {files}")
           declared_paths = {str(entry.get("path")) for entry in files}
           if declared_paths != EXPECTED_RUNTIME_FILES:
               raise RuntimeError(
@@ -161,21 +158,33 @@ jobs:
                   f"{sorted(EXPECTED_RUNTIME_FILES)}"
               )
 
-          package_root = pathlib.Path("/kaggle/working/gate_b_pkg")
-          if package_root.exists():
-              shutil.rmtree(package_root)
-          package_root.mkdir(parents=True, exist_ok=True)
-          with tarfile.open(runtime_archive, mode="r:gz") as archive:
-              archive.extractall(package_root)
+          first_rel = pathlib.PurePosixPath(str(files[0]["path"]))
+          candidate_roots = set()
+          for match in runtime_lineage_path.parent.rglob(first_rel.name):
+              if not match.as_posix().endswith("/" + first_rel.as_posix()):
+                  continue
+              root = match
+              for _ in first_rel.parts:
+                  root = root.parent
+              candidate_roots.add(root)
+          runtime_roots = [
+              root
+              for root in candidate_roots
+              if all(
+                  root.joinpath(*pathlib.PurePosixPath(str(entry["path"])).parts).is_file()
+                  for entry in files
+              )
+          ]
+          if len(runtime_roots) != 1:
+              raise RuntimeError(f"expected one expanded Gate-B runtime root; found {runtime_roots}")
+          runtime_root = runtime_roots[0]
 
           observed_files = []
           for entry in files:
               rel = pathlib.PurePosixPath(str(entry["path"]))
-              path = package_root.joinpath(*rel.parts)
-              if not path.is_file():
-                  raise FileNotFoundError(path)
-              observed_sha = hashlib.sha256(path.read_bytes()).hexdigest()
-              observed_size = path.stat().st_size
+              source_path = runtime_root.joinpath(*rel.parts)
+              observed_sha = hashlib.sha256(source_path.read_bytes()).hexdigest()
+              observed_size = source_path.stat().st_size
               if observed_sha != entry.get("sha256") or observed_size != int(entry.get("size", -1)):
                   raise RuntimeError(f"runtime file byte drift: {rel.as_posix()}")
               observed_files.append({
@@ -187,11 +196,22 @@ jobs:
               observed_files, sort_keys=True, separators=(",", ":")
           ).encode("utf-8")
           observed_manifest = hashlib.sha256(manifest_bytes).hexdigest()
-          if observed_manifest != lineage.get("file_manifest_sha256"):
+          if observed_manifest != EXPECTED_RUNTIME_FILE_MANIFEST_SHA256:
               raise RuntimeError(
                   f"runtime manifest SHA drift: {observed_manifest} != "
-                  f"{lineage.get('file_manifest_sha256')}"
+                  f"{EXPECTED_RUNTIME_FILE_MANIFEST_SHA256}"
               )
+
+          package_root = pathlib.Path("/kaggle/working/gate_b_pkg")
+          if package_root.exists():
+              shutil.rmtree(package_root)
+          package_root.mkdir(parents=True, exist_ok=True)
+          for entry in files:
+              rel = pathlib.PurePosixPath(str(entry["path"]))
+              source_path = runtime_root.joinpath(*rel.parts)
+              target_path = package_root.joinpath(*rel.parts)
+              target_path.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(source_path, target_path)
 
           train_path = package_root / "data" / "train.csv"
           folds_path = package_root / "artifacts" / "phase1" / "folds.csv"
@@ -340,9 +360,12 @@ jobs:
 
           assert runtime_lineage['candidate'] == 'two-stage-lora24-v1'
           assert runtime_lineage['purpose'] == 'gate_b_official_oof_runtime_transport_only'
+          assert runtime_lineage['source_commit'] == '1d466f4c756394aea4b57f056238ff457f9f0852'
           assert runtime_lineage['official_train_sha256'] == '40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
           assert runtime_lineage['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
           assert runtime_lineage['official_rows'] == 2699
+          assert runtime_lineage['file_manifest_sha256'] == '8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933'
+          assert runtime_lineage['transport_sha256'] == 'f818750300838089f3610347074da52a8340d74a57f54b698ce6c65ea68c3785'
           assert runtime_lineage['competition_test_rows_included'] == 0
           assert runtime_lineage['public_stage1_rows_included'] == 0
           assert runtime_lineage['scientific_configuration_changed'] is False
