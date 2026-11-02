@@ -1,0 +1,102 @@
+name: LoRA24 public model probe
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/lora24-public-model-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/name-that-llm-qwen3-8b-base-probe
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle CLI
+        run: |
+          python -m pip install -q 'kaggle==2.2.5'
+
+      - name: Build probe kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/probe-kernel
+          mkdir -p /tmp/probe-kernel
+          cat > /tmp/probe-kernel/kernel_main.py <<'PY'
+          from pathlib import Path
+          import json
+          import os
+          import transformers
+          import torch
+
+          root = Path('/kaggle/input')
+          print('torch', torch.__version__)
+          print('transformers', transformers.__version__)
+          configs = sorted(root.rglob('config.json'))
+          print('config_count', len(configs))
+          for p in configs[:20]:
+              print('CONFIG', p)
+              try:
+                  d = json.loads(p.read_text())
+                  print('  model_type=', d.get('model_type'), 'hidden=', d.get('hidden_size'), 'layers=', d.get('num_hidden_layers'))
+              except Exception as e:
+                  print('  parse_error', repr(e))
+          shards = sorted(root.rglob('model-00001-of-00004.safetensors'))
+          print('shard1_count', len(shards))
+          for p in shards[:10]:
+              print('SHARD1', p, p.stat().st_size)
+          print('top_inputs', [str(p) for p in sorted(root.iterdir())[:50]])
+          PY
+          cat > /tmp/probe-kernel/kernel-metadata.json <<'JSON'
+          {
+            "id": "kolihhan/name-that-llm-qwen3-8b-base-probe",
+            "title": "Name That LLM Qwen3 8B Base Probe",
+            "code_file": "kernel_main.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_internet": false,
+            "machine_shape": "",
+            "dataset_sources": [],
+            "competition_sources": [],
+            "kernel_sources": [],
+            "model_sources": ["qwen-lm/qwen-3/transformers/8b-base/1"]
+          }
+          JSON
+          cat /tmp/probe-kernel/kernel-metadata.json
+
+      - name: Push probe kernel
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/probe-kernel --timeout 3600
+
+      - name: Poll and print probe logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 120); do
+            s="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "[$i] $s"
+            if grep -Eqi 'complete|successful' <<<"$s"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 0
+            fi
+            if grep -Eqi 'error|failed|cancel' <<<"$s"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 15
+          done
+          kaggle kernels logs "$KERNEL_REF" || true
+          exit 1
