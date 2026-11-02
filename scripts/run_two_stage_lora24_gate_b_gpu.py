@@ -5,7 +5,10 @@ import gc
 import hashlib
 import json
 import math
+import os
 import random
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any, Sequence
@@ -24,6 +27,7 @@ from scripts.run_two_stage_lora24_gate_a import (
     truncate_qwen_layers,
 )
 from scripts.run_two_stage_lora24_gate_b import (
+    EXPECTED_FOLD_FINGERPRINT,
     gate_b_training_spec,
     split_official_fold,
     validate_gate_a_checkpoint_meta,
@@ -40,11 +44,14 @@ CHECKPOINT_DATASET_VERSION = 1
 CHECKPOINT_MANIFEST_SHA256 = "c9ba8f77cc0ec84800a8d3508c15939396353772189c573c597bdcf223eaafc0"
 SOURCE_ARTIFACT_ID = 13094069155
 SOURCE_ARTIFACT_DIGEST = "sha256:a2c4dca4ca5de2b283e5e6806526485f0d92377584d7e621b35a717770c95e66"
+FOLDS = (0, 1, 2, 3, 4)
+EXPECTED_OFFICIAL_ROWS = 2699
 
 
 def execution_scope() -> dict[str, object]:
     return {
-        "scope": "gate_b_official_oof_fold_worker",
+        "scope": "gate_b_official_oof",
+        "official_oof_rows_expected": EXPECTED_OFFICIAL_ROWS,
         "public_stage1_rows_mixed_into_stage2": 0,
         "competition_test_rows_used": 0,
         "public_lb_tuning": False,
@@ -145,6 +152,39 @@ def validate_fold_predictions(
         outside = sorted(set(predictions[column].astype(str)) - allowed)
         if outside:
             raise RuntimeError(f"{column} contains predictions outside label set: {outside}")
+
+
+def combine_fold_predictions(
+    train: pd.DataFrame,
+    fold_predictions: dict[int, pd.DataFrame],
+) -> pd.DataFrame:
+    if set(fold_predictions) != set(FOLDS):
+        raise RuntimeError(
+            f"Gate B fold set mismatch: {sorted(fold_predictions)} != {list(FOLDS)}"
+        )
+    labels = sorted(train["model"].astype(str).unique().tolist())
+    parts: list[pd.DataFrame] = []
+    for fold in FOLDS:
+        valid = train.loc[train["fold_id"].astype(int) == fold].copy()
+        predictions = fold_predictions[fold].copy()
+        validate_fold_predictions(valid, predictions, labels=labels, fold=fold)
+        parts.append(predictions)
+
+    combined = pd.concat(parts, ignore_index=True)
+    if len(combined) != len(train) or combined["id"].duplicated().any():
+        raise RuntimeError("each official OOF id must appear exactly once")
+    if set(combined["id"].astype(str)) != set(train["id"].astype(str)):
+        raise RuntimeError("each official OOF id must appear exactly once")
+    keys = ["id", "prompt_id", "model", "fold_id"]
+    expected = train[keys].sort_values("id").reset_index(drop=True).astype(
+        {"id": str, "prompt_id": str, "model": str, "fold_id": int}
+    )
+    observed = combined[keys].sort_values("id").reset_index(drop=True).astype(
+        {"id": str, "prompt_id": str, "model": str, "fold_id": int}
+    )
+    if not expected.equals(observed):
+        raise RuntimeError("combined Gate B OOF alignment mismatch")
+    return combined.sort_values("id").reset_index(drop=True)
 
 
 def load_exact_stage1_checkpoint(
@@ -252,7 +292,9 @@ def load_exact_stage1_checkpoint(
         str(checkpoint_dir / "adapter"),
         is_trainable=True,
     )
-    trainable_names = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    trainable_names = [
+        name for name, parameter in model.named_parameters() if parameter.requires_grad
+    ]
     if not trainable_names or any("lora_" not in name for name in trainable_names):
         raise RuntimeError(f"unexpected trainable backbone parameters: {trainable_names[:10]}")
     for parameter in model.parameters():
@@ -301,7 +343,12 @@ def load_exact_stage1_checkpoint(
     }
 
 
-def _tokenize_official(frame: pd.DataFrame, tokenizer: Any, *, max_length_before_eos: int) -> list[list[int]]:
+def _tokenize_official(
+    frame: pd.DataFrame,
+    tokenizer: Any,
+    *,
+    max_length_before_eos: int,
+) -> list[list[int]]:
     token_lists = tokenizer(
         frame["text"].fillna("").astype(str).tolist(),
         add_special_tokens=False,
@@ -385,8 +432,14 @@ def train_two_stage2_epochs(
     total_steps = int(accounting["optimizer_steps_total"])
     warmup_steps = max(1, int(float(spec["warmup_fraction"]) * total_steps))
 
-    adapter_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    head_parameters = list(norms.parameters()) + list(plain.parameters()) + list(centered.parameters())
+    adapter_parameters = [
+        parameter for parameter in model.parameters() if parameter.requires_grad
+    ]
+    head_parameters = (
+        list(norms.parameters())
+        + list(plain.parameters())
+        + list(centered.parameters())
+    )
     if not adapter_parameters:
         raise RuntimeError("Stage-2 has no trainable LoRA parameters")
     optimizer = torch.optim.AdamW(
@@ -446,7 +499,8 @@ def train_two_stage2_epochs(
                 )
                 if not bool(torch.isfinite(loss)):
                     raise RuntimeError(
-                        f"non-finite Stage-2 loss at epoch={epoch}: {float(loss.detach())}"
+                        f"non-finite Stage-2 loss at epoch={epoch}: "
+                        f"{float(loss.detach())}"
                     )
                 scaler.scale(loss / group_size).backward()
                 observed_loss = float(loss.detach().cpu())
@@ -470,21 +524,26 @@ def train_two_stage2_epochs(
 
         if epoch_loss_count != len(triplets):
             raise RuntimeError(
-                f"Stage-2 epoch {epoch} consumed {epoch_loss_count} triplets; expected {len(triplets)}"
+                f"Stage-2 epoch {epoch} consumed {epoch_loss_count} triplets; "
+                f"expected {len(triplets)}"
             )
         per_epoch_loss.append(epoch_loss_sum / epoch_loss_count)
         print(
             f"stage2 epoch={epoch + 1}/{int(spec['epochs'])} "
-            f"mean_loss={per_epoch_loss[-1]:.6f} optimizer_steps={optimizer_steps}/{total_steps}",
+            f"mean_loss={per_epoch_loss[-1]:.6f} "
+            f"optimizer_steps={optimizer_steps}/{total_steps}",
             flush=True,
         )
 
     if loss_count != int(accounting["triplet_microbatches_total"]):
         raise RuntimeError(
-            f"Stage-2 two-epoch triplet mismatch: {loss_count} != {accounting['triplet_microbatches_total']}"
+            f"Stage-2 two-epoch triplet mismatch: {loss_count} != "
+            f"{accounting['triplet_microbatches_total']}"
         )
     if optimizer_steps != total_steps:
-        raise RuntimeError(f"Stage-2 optimizer step mismatch: {optimizer_steps} != {total_steps}")
+        raise RuntimeError(
+            f"Stage-2 optimizer step mismatch: {optimizer_steps} != {total_steps}"
+        )
 
     return {
         **accounting,
@@ -526,7 +585,9 @@ def _infer_validation(
     with torch.inference_mode():
         for rows in valid_triplets:
             if np.any(plain_indices[rows] >= 0) or np.any(centered_indices[rows] >= 0):
-                raise RuntimeError("validation row encountered more than once during inference")
+                raise RuntimeError(
+                    "validation row encountered more than once during inference"
+                )
             encoding = _make_encoding(tokenizer, tokens, rows, device)
             z = _representation(
                 model=model,
@@ -536,14 +597,20 @@ def _infer_validation(
                 torch=torch,
             )
             plain_indices[rows] = plain(z).argmax(1).detach().cpu().numpy()
-            centered_indices[rows] = centered(center_triplet(z)).argmax(1).detach().cpu().numpy()
+            centered_indices[rows] = (
+                centered(center_triplet(z)).argmax(1).detach().cpu().numpy()
+            )
 
     if np.any(plain_indices[valid_idx] < 0) or np.any(centered_indices[valid_idx] < 0):
         raise RuntimeError("one or more validation rows were not predicted exactly once")
 
     result = frame.iloc[valid_idx][["id", "prompt_id", "model", "fold_id"]].copy()
-    result["plain_prediction"] = [labels[int(index)] for index in plain_indices[valid_idx]]
-    result["centered_prediction"] = [labels[int(index)] for index in centered_indices[valid_idx]]
+    result["plain_prediction"] = [
+        labels[int(index)] for index in plain_indices[valid_idx]
+    ]
+    result["centered_prediction"] = [
+        labels[int(index)] for index in centered_indices[valid_idx]
+    ]
     return result.reset_index(drop=True)
 
 
@@ -651,7 +718,9 @@ def run_fold_worker(
         balanced_accuracy_score(predictions["model"], predictions["plain_prediction"])
     )
     centered_ba = float(
-        balanced_accuracy_score(predictions["model"], predictions["centered_prediction"])
+        balanced_accuracy_score(
+            predictions["model"], predictions["centered_prediction"]
+        )
     )
     fit_prompts = set(fit_frame["prompt_id"].astype(str))
     valid_prompts = set(valid_frame["prompt_id"].astype(str))
@@ -691,7 +760,9 @@ def run_fold_worker(
             "predictions": {
                 "rows": int(len(predictions)),
                 "plain_rows": int(predictions["plain_prediction"].notna().sum()),
-                "centered_rows": int(predictions["centered_prediction"].notna().sum()),
+                "centered_rows": int(
+                    predictions["centered_prediction"].notna().sum()
+                ),
                 "plain_fold_balanced_accuracy": plain_ba,
                 "centered_fold_balanced_accuracy": centered_ba,
             },
@@ -715,25 +786,320 @@ def run_fold_worker(
     torch.cuda.empty_cache()
 
 
+def fold_worker_command(
+    *,
+    fold: int,
+    train_path: Path,
+    folds_path: Path,
+    checkpoint_dir: Path,
+    snapshot_path: Path,
+    output_dir: Path,
+) -> list[str]:
+    if fold not in FOLDS:
+        raise ValueError(f"unexpected fold: {fold}")
+    return [
+        sys.executable,
+        "-m",
+        "scripts.run_two_stage_lora24_gate_b_gpu",
+        "--worker",
+        "--fold",
+        str(fold),
+        "--train",
+        str(train_path),
+        "--folds",
+        str(folds_path),
+        "--checkpoint-dir",
+        str(checkpoint_dir),
+        "--snapshot-path",
+        str(snapshot_path),
+        "--output-dir",
+        str(output_dir),
+    ]
+
+
+def _worker_environment(gpu_index: int) -> dict[str, str]:
+    env = dict(os.environ)
+    env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+    package_root = str(Path(__file__).resolve().parents[1])
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = package_root if not existing else package_root + os.pathsep + existing
+    env["TOKENIZERS_PARALLELISM"] = "false"
+    return env
+
+
+def _find_checkpoint_dir() -> Path:
+    candidates = sorted(Path("/kaggle/input").glob("**/a1-checkpoint/meta.json"))
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "expected exactly one locked a1-checkpoint/meta.json under /kaggle/input; "
+            f"found {len(candidates)}: {candidates}"
+        )
+    checkpoint_dir = candidates[0].parent
+    observed = checkpoint_manifest_sha256(checkpoint_dir)
+    if observed != CHECKPOINT_MANIFEST_SHA256:
+        raise RuntimeError(
+            f"mounted checkpoint manifest drift: {observed} != {CHECKPOINT_MANIFEST_SHA256}"
+        )
+    return checkpoint_dir
+
+
+def _run_fold_processes(
+    *,
+    train_path: Path,
+    folds_path: Path,
+    checkpoint_dir: Path,
+    snapshot_path: Path,
+    fold_output_dir: Path,
+    gpu_count: int,
+) -> None:
+    if gpu_count <= 0:
+        raise RuntimeError("Gate B orchestrator found no CUDA devices")
+    pending = list(FOLDS)
+    active: dict[int, tuple[subprocess.Popen[Any], int, Any, Path]] = {}
+    available_gpus = list(range(gpu_count))
+
+    while pending or active:
+        while pending and available_gpus:
+            fold = pending.pop(0)
+            gpu_index = available_gpus.pop(0)
+            log_path = fold_output_dir / f"fold_{fold}.log"
+            log_handle = log_path.open("w", encoding="utf-8")
+            proc = subprocess.Popen(
+                fold_worker_command(
+                    fold=fold,
+                    train_path=train_path,
+                    folds_path=folds_path,
+                    checkpoint_dir=checkpoint_dir,
+                    snapshot_path=snapshot_path,
+                    output_dir=fold_output_dir,
+                ),
+                env=_worker_environment(gpu_index),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            active[fold] = (proc, gpu_index, log_handle, log_path)
+            print(f"launched fold={fold} gpu={gpu_index}", flush=True)
+
+        completed_any = False
+        for fold, (proc, gpu_index, log_handle, log_path) in list(active.items()):
+            return_code = proc.poll()
+            if return_code is None:
+                continue
+            completed_any = True
+            log_handle.close()
+            print(f"===== fold={fold} worker rc={return_code} =====", flush=True)
+            print(log_path.read_text(encoding="utf-8", errors="replace")[-12000:], flush=True)
+            del active[fold]
+            available_gpus.append(gpu_index)
+            available_gpus.sort()
+            if return_code != 0:
+                for running_proc, _, running_handle, _ in active.values():
+                    running_proc.terminate()
+                    running_handle.close()
+                raise RuntimeError(f"Gate B fold worker failed: fold={fold}")
+        if active and not completed_any:
+            time.sleep(5)
+
+
+def run_orchestrator(
+    *,
+    train_path: Path,
+    folds_path: Path,
+    output_dir: Path,
+) -> None:
+    import torch
+    from huggingface_hub import snapshot_download
+
+    started = time.time()
+    if not torch.cuda.is_available():
+        raise RuntimeError("Gate B orchestrator requires CUDA")
+    gpu_count = int(torch.cuda.device_count())
+    if gpu_count < 1:
+        raise RuntimeError("Gate B orchestrator found no CUDA devices")
+
+    train = load_train(train_path, folds_path).reset_index(drop=True)
+    if len(train) != EXPECTED_OFFICIAL_ROWS:
+        raise RuntimeError(
+            f"official row mismatch: {len(train)} != {EXPECTED_OFFICIAL_ROWS}"
+        )
+    labels = sorted(train["model"].astype(str).unique().tolist())
+    if len(labels) != 18:
+        raise RuntimeError(f"expected 18 official labels, found {len(labels)}")
+
+    checkpoint_dir = _find_checkpoint_dir()
+    print(
+        f"using locked checkpoint dataset={CHECKPOINT_DATASET_REF} "
+        f"version={CHECKPOINT_DATASET_VERSION} manifest={CHECKPOINT_MANIFEST_SHA256}",
+        flush=True,
+    )
+    print(f"downloading pinned model {MODEL_ID}@{MODEL_REVISION}", flush=True)
+    snapshot_path = Path(snapshot_download(repo_id=MODEL_ID, revision=MODEL_REVISION))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fold_output_dir = output_dir / "folds"
+    fold_output_dir.mkdir(parents=True, exist_ok=True)
+    _run_fold_processes(
+        train_path=train_path,
+        folds_path=folds_path,
+        checkpoint_dir=checkpoint_dir,
+        snapshot_path=snapshot_path,
+        fold_output_dir=fold_output_dir,
+        gpu_count=gpu_count,
+    )
+
+    fold_results: dict[int, dict[str, Any]] = {}
+    fold_predictions: dict[int, pd.DataFrame] = {}
+    for fold in FOLDS:
+        report_path = fold_output_dir / f"fold_{fold}.json"
+        prediction_path = fold_output_dir / f"fold_{fold}_predictions.csv"
+        if not report_path.is_file() or not prediction_path.is_file():
+            raise RuntimeError(f"missing Gate B fold output: fold={fold}")
+        fold_results[fold] = json.loads(report_path.read_text(encoding="utf-8"))
+        fold_predictions[fold] = pd.read_csv(prediction_path)
+    if set(fold_results) != set(FOLDS):
+        raise RuntimeError(f"incomplete Gate B fold results: {sorted(fold_results)}")
+
+    for fold, report in fold_results.items():
+        if report.get("candidate") != CANDIDATE or int(report.get("fold", -1)) != fold:
+            raise RuntimeError(f"fold report identity mismatch: fold={fold}")
+        checkpoint = report.get("checkpoint", {})
+        if (
+            checkpoint.get("dataset_ref") != CHECKPOINT_DATASET_REF
+            or int(checkpoint.get("dataset_version", -1)) != CHECKPOINT_DATASET_VERSION
+            or checkpoint.get("manifest_sha256") != CHECKPOINT_MANIFEST_SHA256
+            or int(checkpoint.get("source_artifact_id", -1)) != SOURCE_ARTIFACT_ID
+            or checkpoint.get("source_artifact_digest") != SOURCE_ARTIFACT_DIGEST
+        ):
+            raise RuntimeError(f"fold checkpoint lineage mismatch: fold={fold}")
+        if report.get("competition_test_rows_used") != 0:
+            raise RuntimeError(f"fold used competition test rows: fold={fold}")
+        if report.get("public_lb_tuning") is not False:
+            raise RuntimeError(f"fold reports Public-LB tuning: fold={fold}")
+        if report.get("kaggle_submission_authorized") is not False:
+            raise RuntimeError(f"fold reports submission authorization: fold={fold}")
+
+    combined = combine_fold_predictions(train, fold_predictions)
+    plain_ba = float(
+        balanced_accuracy_score(combined["model"], combined["plain_prediction"])
+    )
+    centered_ba = float(
+        balanced_accuracy_score(combined["model"], combined["centered_prediction"])
+    )
+    combined.to_csv(output_dir / "gate_b_candidate_oof.csv", index=False)
+
+    report: dict[str, Any] = execution_scope()
+    report.update(
+        {
+            "candidate": CANDIDATE,
+            "model": {
+                "id": MODEL_ID,
+                "revision": MODEL_REVISION,
+                "transformers": TRANSFORMERS_VERSION,
+                "peft": PEFT_VERSION,
+            },
+            "validation": {
+                "folds": 5,
+                "group_key": "prompt_id",
+                "fold_fingerprint": EXPECTED_FOLD_FINGERPRINT,
+                "primary_head": "plain",
+                "centered_head_role": "diagnostic_only",
+            },
+            "checkpoint": {
+                "dataset_ref": CHECKPOINT_DATASET_REF,
+                "dataset_version": CHECKPOINT_DATASET_VERSION,
+                "manifest_sha256": CHECKPOINT_MANIFEST_SHA256,
+                "source_artifact_id": SOURCE_ARTIFACT_ID,
+                "source_artifact_digest": SOURCE_ARTIFACT_DIGEST,
+            },
+            "data": {
+                "official_rows": int(len(train)),
+                "official_prompts": int(train["prompt_id"].nunique()),
+                "labels": labels,
+            },
+            "candidate_oof": {
+                "rows": int(len(combined)),
+                "plain_balanced_accuracy": plain_ba,
+                "centered_balanced_accuracy": centered_ba,
+                "plain_fold_balanced_accuracy": [
+                    float(
+                        fold_results[fold]["predictions"][
+                            "plain_fold_balanced_accuracy"
+                        ]
+                    )
+                    for fold in FOLDS
+                ],
+                "centered_fold_balanced_accuracy": [
+                    float(
+                        fold_results[fold]["predictions"][
+                            "centered_fold_balanced_accuracy"
+                        ]
+                    )
+                    for fold in FOLDS
+                ],
+            },
+            "fold_reports": {str(fold): fold_results[fold] for fold in FOLDS},
+            "invariants": {
+                "all_five_folds_completed": True,
+                "fresh_subprocess_per_fold": True,
+                "fresh_stage1_checkpoint_per_fold": True,
+                "official_validation_rows_used_for_training": False,
+                "post_stage2_checkpoints_saved": False,
+                "candidate_oof_complete": True,
+            },
+            "seconds": float(time.time() - started),
+        }
+    )
+    _write_json(output_dir / "gate_b_candidate.json", report)
+    print(json.dumps(report, indent=2, sort_keys=True), flush=True)
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Frozen two-stage-lora24-v1 Gate B fold worker")
-    parser.add_argument("--fold", type=int, required=True)
+    parser = argparse.ArgumentParser(
+        description="Frozen two-stage-lora24-v1 Gate B worker/orchestrator"
+    )
+    parser.add_argument("--worker", action="store_true")
+    parser.add_argument("--orchestrate", action="store_true")
+    parser.add_argument("--fold", type=int, default=None)
     parser.add_argument("--train", type=Path, default=Path("data/train.csv"))
-    parser.add_argument("--folds", type=Path, default=Path("artifacts/phase1/folds.csv"))
-    parser.add_argument("--checkpoint-dir", type=Path, required=True)
-    parser.add_argument("--snapshot-path", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--folds", type=Path, default=Path("artifacts/phase1/folds.csv")
+    )
+    parser.add_argument("--checkpoint-dir", type=Path, default=None)
+    parser.add_argument("--snapshot-path", type=Path, default=None)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("/kaggle/working/gate-b-output"),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    run_fold_worker(
-        fold=args.fold,
+    if args.worker == args.orchestrate:
+        raise SystemExit("choose exactly one of --worker or --orchestrate")
+    if args.worker:
+        if args.fold is None or args.checkpoint_dir is None or args.snapshot_path is None:
+            raise SystemExit(
+                "--worker requires --fold, --checkpoint-dir, and --snapshot-path"
+            )
+        run_fold_worker(
+            fold=args.fold,
+            train_path=args.train,
+            folds_path=args.folds,
+            checkpoint_dir=args.checkpoint_dir,
+            snapshot_path=args.snapshot_path,
+            output_dir=args.output_dir,
+        )
+        return
+    if args.fold is not None or args.checkpoint_dir is not None or args.snapshot_path is not None:
+        raise SystemExit(
+            "--orchestrate does not accept --fold, --checkpoint-dir, or --snapshot-path"
+        )
+    run_orchestrator(
         train_path=args.train,
         folds_path=args.folds,
-        checkpoint_dir=args.checkpoint_dir,
-        snapshot_path=args.snapshot_path,
         output_dir=args.output_dir,
     )
 
