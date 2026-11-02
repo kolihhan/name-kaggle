@@ -1,0 +1,54 @@
+name: V2 Open Pool Provenance
+
+on:
+  push:
+    branches:
+      - exp/prompt-invariant-contrastive-v2
+    paths:
+      - .github/workflows/v2-open-pool-provenance.yml
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: crtproduction/name-that-llm-open-pool
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/prompt-invariant-contrastive-v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5' six
+      - name: Fetch metadata and prompt-bank provenance files
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/open-pool-prov && mkdir -p /tmp/open-pool-prov/data
+          kaggle datasets files "$DATASET_REF" -v > /tmp/open-pool-prov/files.txt
+          # Download README and prompt-bank files only; never score any model here.
+          kaggle datasets download -d "$DATASET_REF" -f README.md -p /tmp/open-pool-prov/data --unzip || true
+          kaggle datasets download -d "$DATASET_REF" -f prompts.parquet -p /tmp/open-pool-prov/data --unzip || true
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/open-pool-prov')
+          files=[]
+          for p in sorted(x for x in root.rglob('*') if x.is_file()):
+              files.append({'path':p.relative_to(root).as_posix(),'size':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          (root/'manifest.json').write_text(json.dumps({'dataset':'crtproduction/name-that-llm-open-pool','files':files},indent=2,sort_keys=True))
+          print((root/'manifest.json').read_text())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2-open-pool-provenance
+          path: /tmp/open-pool-prov
+          if-no-files-found: error
+          retention-days: 30
