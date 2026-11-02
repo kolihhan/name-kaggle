@@ -1,0 +1,58 @@
+name: V2 Open Pool Provenance Detail
+
+on:
+  push:
+    branches:
+      - exp/prompt-invariant-contrastive-v2
+    paths:
+      - .github/workflows/v2-open-pool-provenance-detail.yml
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: crtproduction/name-that-llm-open-pool
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/prompt-invariant-contrastive-v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install tooling
+        run: python -m pip install -q 'kaggle==2.2.5' six pandas pyarrow
+      - name: Fetch provenance summaries only
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/open-pool-detail && mkdir -p /tmp/open-pool-detail
+          for f in sources.csv removal_summary.csv v11_append_log.csv style_gap.csv typography_match.csv dataq4_paired.csv dataq4_runs.csv dataq_results.csv prompts.parquet; do
+            kaggle datasets download -d "$DATASET_REF" -f "$f" -p /tmp/open-pool-detail --unzip || true
+          done
+          python - <<'PY'
+          import json, pandas as pd
+          from pathlib import Path
+          root=Path('/tmp/open-pool-detail')
+          out={}
+          for p in sorted(root.iterdir()):
+              if p.suffix=='.csv':
+                  df=pd.read_csv(p)
+                  out[p.name]={'rows':len(df),'columns':list(df.columns),'head':df.head(20).fillna('').astype(str).to_dict(orient='records')}
+              elif p.suffix=='.parquet':
+                  df=pd.read_parquet(p)
+                  out[p.name]={'rows':len(df),'columns':list(df.columns),'nunique':{c:int(df[c].nunique(dropna=False)) for c in df.columns},'head':df.head(20).fillna('').astype(str).to_dict(orient='records')}
+          (root/'provenance-summary.json').write_text(json.dumps(out,indent=2,sort_keys=True),encoding='utf-8')
+          print((root/'provenance-summary.json').read_text())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2-open-pool-provenance-detail
+          path: /tmp/open-pool-detail
+          if-no-files-found: error
+          retention-days: 30
