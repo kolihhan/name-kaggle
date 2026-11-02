@@ -142,7 +142,7 @@ jobs:
           import json
           from pathlib import Path
           payload = {
-              'title': 'Name That LLM two-stage-lora24-v1 exact A1 checkpoint',
+              'title': 'Name That LLM LoRA24 v1 A1 checkpoint',
               'id': 'kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint',
               'licenses': [{'name': 'other'}],
           }
