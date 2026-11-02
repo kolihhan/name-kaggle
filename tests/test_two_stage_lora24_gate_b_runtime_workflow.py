@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Recovery trigger is intentionally test-only; it must not create/version the dataset.
+# Attach-only expanded-layout recovery trigger; never create/version the dataset.
 RUNTIME_WORKFLOW = Path(".github/workflows/two-stage-lora24-gate-b-runtime.yml")
 GATE_B_WORKFLOW = Path(".github/workflows/two-stage-lora24-gate-b.yml")
 
