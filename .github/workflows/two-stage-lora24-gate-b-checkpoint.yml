@@ -226,41 +226,100 @@ jobs:
           done
           test "$status" = ready
 
-      - name: Verify existing dataset files and write recovery evidence
+      - name: Verify existing dataset bytes and write recovery evidence
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p gate-b-checkpoint/recovery
+          mkdir -p gate-b-checkpoint/recovery/download
           status_json="$(kaggle datasets status "$DATASET_REF" --format json)"
           files_csv="$(kaggle datasets files "$DATASET_REF" --csv)"
           echo "$status_json"
           echo "$files_csv"
-          grep -Fq 'a1-checkpoint.tar.gz' <<<"$files_csv"
+          grep -Fq 'a1-checkpoint/adapter/adapter_model.safetensors' <<<"$files_csv"
+          grep -Fq 'a1-checkpoint/heads.safetensors' <<<"$files_csv"
+          grep -Fq 'a1-checkpoint/meta.json' <<<"$files_csv"
+          grep -Fq 'a1-checkpoint/tokenizer/' <<<"$files_csv"
           grep -Fq 'checkpoint_lineage.json' <<<"$files_csv"
+
+          kaggle datasets download "$DATASET_REF" -p gate-b-checkpoint/recovery/download --unzip
+
           STATUS_JSON="$status_json" FILES_CSV="$files_csv" python - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
 
+          root = Path('gate-b-checkpoint/recovery/download/a1-checkpoint')
+          if not root.is_dir():
+              raise RuntimeError(f'missing downloaded checkpoint root: {root}')
+          required = [
+              root / 'adapter' / 'adapter_model.safetensors',
+              root / 'heads.safetensors',
+              root / 'meta.json',
+              root / 'tokenizer',
+          ]
+          for path in required:
+              if not path.exists():
+                  raise RuntimeError(f'missing downloaded checkpoint path: {path}')
+
+          files = []
+          for path in sorted(p for p in root.rglob('*') if p.is_file()):
+              rel = path.relative_to(root).as_posix()
+              files.append(
+                  {
+                      'path': rel,
+                      'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                      'size': path.stat().st_size,
+                  }
+              )
+          manifest_bytes = json.dumps(files, sort_keys=True, separators=(',', ':')).encode('utf-8')
+          observed_manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+          expected_manifest_sha256 = os.environ['FILE_MANIFEST_SHA256']
+          if observed_manifest_sha256 != expected_manifest_sha256:
+              raise RuntimeError(
+                  f'checkpoint manifest drift: {observed_manifest_sha256} != {expected_manifest_sha256}'
+              )
+
+          lineage_path = Path('gate-b-checkpoint/recovery/download/checkpoint_lineage.json')
+          lineage = json.loads(lineage_path.read_text(encoding='utf-8'))
+          if lineage.get('file_manifest_sha256') != expected_manifest_sha256:
+              raise RuntimeError('downloaded lineage manifest digest mismatch')
+          if int(lineage.get('source_run_id', -1)) != int(os.environ['SOURCE_RUN_ID']):
+              raise RuntimeError('downloaded lineage source run mismatch')
+          if int(lineage.get('source_artifact_id', -1)) != int(os.environ['SOURCE_ARTIFACT_ID']):
+              raise RuntimeError('downloaded lineage source artifact mismatch')
+          if lineage.get('source_artifact_digest') != os.environ['SOURCE_ARTIFACT_DIGEST']:
+              raise RuntimeError('downloaded lineage source artifact digest mismatch')
+
+          status = json.loads(os.environ['STATUS_JSON'])
+          if status.get('status') != 'ready':
+              raise RuntimeError(f'unexpected terminal dataset status: {status}')
+          if int(status.get('current_version_number', -1)) != 1:
+              raise RuntimeError(f'unexpected dataset version: {status}')
+
           payload = {
               'candidate': 'two-stage-lora24-v1',
               'dataset_ref': os.environ['DATASET_REF'],
+              'dataset_version': 1,
               'creation_run_id': int(os.environ['CREATION_RUN_ID']),
               'source_run_id': int(os.environ['SOURCE_RUN_ID']),
               'source_artifact_id': int(os.environ['SOURCE_ARTIFACT_ID']),
               'source_artifact_digest': os.environ['SOURCE_ARTIFACT_DIGEST'],
-              'file_manifest_sha256': os.environ['FILE_MANIFEST_SHA256'],
+              'file_manifest_sha256': expected_manifest_sha256,
+              'observed_manifest_sha256': observed_manifest_sha256,
               'transport_sha256': os.environ['TRANSPORT_SHA256'],
-              'status': json.loads(os.environ['STATUS_JSON']),
+              'checkpoint_file_count': len(files),
+              'status': status,
               'files_csv': os.environ['FILES_CSV'],
               'attach_only_recovery': True,
               'dataset_create_called': False,
               'dataset_version_called': False,
               'gate_b_training_called': False,
           }
-          Path('gate-b-checkpoint/recovery/checkpoint_dataset_recovery.json').write_text(
-              json.dumps(payload, indent=2, sort_keys=True), encoding='utf-8'
-          )
+          out = Path('gate-b-checkpoint/recovery/checkpoint_dataset_recovery.json')
+          out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding='utf-8')
+          print('observed_manifest_sha256', observed_manifest_sha256)
+          print('checkpoint_file_count', len(files))
           PY
 
       - name: Upload attach-only recovery evidence
