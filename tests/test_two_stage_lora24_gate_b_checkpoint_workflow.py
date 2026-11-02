@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -30,6 +31,13 @@ def test_gate_b_checkpoint_workflow_installs_kaggle_runtime_dependency_six():
         if "pip install -r requirements.txt" in line and "kaggle==2.2.5" in line
     )
     assert "six" in install_line.split()
+
+
+def test_gate_b_checkpoint_dataset_title_meets_kaggle_length_contract():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    match = re.search(r"'title': '([^']+)'", text)
+    assert match is not None
+    assert 6 <= len(match.group(1)) <= 50
 
 
 def test_gate_b_checkpoint_workflow_verifies_lineage_before_dataset_create():
