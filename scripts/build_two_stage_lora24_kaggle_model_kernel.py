@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Mapping
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.materialize_two_stage_lora24_offline_inputs import RUNTIME_DATASET_REF
 from scripts.two_stage_lora24_submission import CHECKPOINT_DATASET_REF
