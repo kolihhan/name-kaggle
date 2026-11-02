@@ -48,12 +48,29 @@ Read-only analysis of the existing honest Phase-14 OOF against Gate-B OOF found 
 
 Public-method research already in the repo independently supports the same broad complementarity pattern: historical Qwen3-8B and Qwen3-14B two-stage LoRAs were each reported around `0.569` grouped CV while disagreeing on about 22% of passages; the public 8B+14B+n-gram+centered/balancing ensemble was reported around `0.593`. See `artifacts/research/public-two-stage-lora-audit-2026-11-01.md`.
 
+## Submission #3 preflight state
+
+- **Status: BLOCKED — IMPLEMENTATION READY, EXTERNAL PREFLIGHT PENDING.**
+- Exact record: `artifacts/candidates/two-stage-lora24-v1/SUBMISSION_PROMOTION.md`.
+- `scripts/two_stage_lora24_submission.py` implements the deployment analogue of Gate B: exact Stage-1 checkpoint → frozen two-epoch Stage-2 training on all 2,699 official rows → plain-head-only competition-test inference.
+- The final-fit entry point now fails closed unless official `train.csv` SHA-256 equals `40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707`.
+- `scripts/materialize_two_stage_lora24_offline_inputs.py` defines two fixed immutable/private Kaggle inputs: exact Qwen base snapshot `kolihhan/name-that-llm-qwen3-8b-base-49e3418f` and offline runtime `kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime`; it refuses silent overwrite/versioning.
+- Offline payloads are deliberately flat-root and reject nested files before dataset creation, avoiding Kaggle CLI directory-skipping behavior.
+- `scripts/build_two_stage_lora24_kaggle_kernel.py` builds a private `NvidiaTeslaT4` kernel with `enable_internet=false`, competition source `name-that-llm`, exact three dataset inputs (checkpoint/base/runtime), offline `pip --no-index`, and no competition-submit command.
+- Fresh focused verification after final review fixes: **`15 passed in 0.06s`**.
+- Real generated kernel built from the actual successful Gate-B runtime modules: **111,202 bytes**, below 1 MB; `python -m py_compile` PASS; metadata is private/T4/internet-off; no submit command; frozen train SHA is embedded.
+- The three new production scripts pass `python -m py_compile`.
+- Two review defects were caught before this status: first implementation recorded but did not enforce official-train SHA; first offline-input layout used nested payloads that could be skipped by Kaggle dataset creation. Both were fixed and covered by tests.
+- **Still not externally verified:** the exact base/runtime private datasets have not yet been materialized and downloaded back for byte verification; no internet-disabled Kaggle GPU final-fit preflight has completed; no v1 hidden-test `submission.parquet` has been validated.
+- A current-head full repository pytest suite was not run because the working container does not contain a full repo checkout. Do not generalize the 15 focused passes into a full-suite claim.
+- **Kaggle submission remains NOT AUTHORIZED.**
+
 ## Current execution policy
 
 - **Do not use GitHub Actions for new work** until the user changes this instruction; quota is exhausted. Reading already-existing run/artifact evidence is allowed.
 - Repository visibility is currently **private**. `PUBLIC_VISIBILITY.md` remains a separate historical/public-safety cleanup record and must not be treated as evidence that past exposure was erased.
-- Do not create another Kaggle submission until the submission promotion/preflight for `two-stage-lora24-v1` is frozen and verified.
+- Do not create another Kaggle submission until the submission promotion/preflight for `two-stage-lora24-v1` is externally verified and explicitly authorized.
 
 ## Next single action
 
-Build and verify a **direct, non-GitHub-Actions submission preflight/final-fit path for `two-stage-lora24-v1`**, preserving the frozen Gate-B Stage-2 configuration and plain-head-only v1 inference. Do not submit until that preflight is complete and submission is explicitly authorized.
+**Materialize and byte-verify the two fixed private Kaggle offline datasets (exact Qwen base + offline runtime), then run exactly one internet-disabled submission-preflight kernel. Do not submit the result yet.**
