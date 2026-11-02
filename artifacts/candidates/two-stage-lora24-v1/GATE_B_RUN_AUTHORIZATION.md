@@ -101,6 +101,7 @@ A real CPU regeneration of the frozen Phase-7 row-level pipeline completed befor
 - exact result: `204 passed in 233.47s (0:03:53)`
 - earlier Gate-B focused workflow at implementation commit `bf765e438eb3e169033e2778dcc73be8b04c7b18`: run `41378046450`, contract tests succeeded and `kaggle-gpu` was skipped
 - checkpoint contract workflow at the same implementation commit: run `41378046514`, contract tests succeeded; both materialization/recovery jobs were skipped
+- authorization verification: Actions run `41379951873`, Gate-B contract test job succeeded and `kaggle-gpu` was skipped
 - scientific-drift review from plan commit `b39bb4b721441f016ecd18f8d6eb2deba6fc3011` through the verified implementation found no change to the frozen backbone, LoRA configuration, representation, Stage-2 epochs/LRs, fold frame, seed, fit-only class weights, primary head, bootstrap settings, or four Gate-B PASS conditions
 
 ## One-shot execution boundary
@@ -119,3 +120,7 @@ It does **not** authorize:
 A valid Gate-B result must be consumed exactly once and evaluated mechanically against the frozen rules above.
 
 An infrastructure-only retry is permissible **only** if the failed attempt produced no valid scientific OOF result, and only if the repair leaves all scientific data, checkpoint bytes, model configuration, fold membership, seeds, training hyperparameters, evaluation logic, and PASS thresholds unchanged. Any valid scientific result closes the one-shot authorization even if downstream orchestration fails.
+
+## Execution trigger
+
+The authorization preflight above passed. This record is now used as the **single trigger-only scientific launch**. The trigger commit changes documentation only; it does not modify scientific code, checkpoint bytes, data, folds, model settings, evaluation logic, or decision thresholds.
