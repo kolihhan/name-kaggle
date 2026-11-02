@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -90,6 +91,19 @@ def assert_dataset_ref_absent(listing_csv: str, dataset_ref: str) -> None:
         )
 
 
+def validate_flat_package(package_dir: Path) -> None:
+    package_dir = Path(package_dir)
+    nested = [
+        path.relative_to(package_dir).as_posix()
+        for path in package_dir.rglob("*")
+        if path.is_file() and path.parent != package_dir
+    ]
+    if nested:
+        raise RuntimeError(
+            f"nested payload files are not allowed for Kaggle create: {nested[:5]}"
+        )
+
+
 def _dataset_metadata(dataset_ref: str, title: str) -> dict[str, object]:
     return {
         "title": title,
@@ -103,23 +117,32 @@ def prepare_base_package(package_dir: Path) -> dict[str, object]:
     from huggingface_hub import snapshot_download
 
     package_dir = Path(package_dir)
-    model_dir = package_dir / "model"
     package_dir.mkdir(parents=True, exist_ok=True)
     if any(package_dir.iterdir()):
         raise RuntimeError(f"base package directory must be empty: {package_dir}")
     snapshot_download(
         repo_id=MODEL_ID,
         revision=MODEL_REVISION,
-        local_dir=str(model_dir),
+        local_dir=str(package_dir),
+        allow_patterns=[
+            "config.json",
+            "model.safetensors",
+            "model.safetensors.index.json",
+            "model-*.safetensors",
+        ],
     )
-    files, manifest_sha256 = build_file_manifest(model_dir)
+    shutil.rmtree(package_dir / ".cache", ignore_errors=True)
+    validate_flat_package(package_dir)
+    files, manifest_sha256 = build_file_manifest(package_dir)
     lineage = build_base_lineage(files=files, manifest_sha256=manifest_sha256)
     (package_dir / "base_lineage.json").write_text(
         json.dumps(lineage, indent=2, sort_keys=True), encoding="utf-8"
     )
     (package_dir / "dataset-metadata.json").write_text(
         json.dumps(
-            _dataset_metadata(BASE_DATASET_REF, "Name That LLM Qwen3 8B Base frozen revision"),
+            _dataset_metadata(
+                BASE_DATASET_REF, "Name That LLM Qwen3 8B Base frozen revision"
+            ),
             indent=2,
         ),
         encoding="utf-8",
@@ -129,11 +152,9 @@ def prepare_base_package(package_dir: Path) -> dict[str, object]:
 
 def prepare_runtime_package(package_dir: Path) -> dict[str, object]:
     package_dir = Path(package_dir)
-    wheelhouse = package_dir / "wheelhouse"
     package_dir.mkdir(parents=True, exist_ok=True)
     if any(package_dir.iterdir()):
         raise RuntimeError(f"runtime package directory must be empty: {package_dir}")
-    wheelhouse.mkdir(parents=True)
     subprocess.check_call(
         [
             sys.executable,
@@ -141,7 +162,7 @@ def prepare_runtime_package(package_dir: Path) -> dict[str, object]:
             "pip",
             "download",
             "--dest",
-            str(wheelhouse),
+            str(package_dir),
             "--no-deps",
             "--only-binary=:all:",
             "--platform",
@@ -153,14 +174,17 @@ def prepare_runtime_package(package_dir: Path) -> dict[str, object]:
             *WHEEL_SPECS,
         ]
     )
-    files, manifest_sha256 = build_file_manifest(wheelhouse)
+    validate_flat_package(package_dir)
+    files, manifest_sha256 = build_file_manifest(package_dir)
     lineage = build_runtime_lineage(files=files, manifest_sha256=manifest_sha256)
     (package_dir / "runtime_lineage.json").write_text(
         json.dumps(lineage, indent=2, sort_keys=True), encoding="utf-8"
     )
     (package_dir / "dataset-metadata.json").write_text(
         json.dumps(
-            _dataset_metadata(RUNTIME_DATASET_REF, "Name That LLM LoRA24 v1 offline runtime"),
+            _dataset_metadata(
+                RUNTIME_DATASET_REF, "Name That LLM LoRA24 v1 offline runtime"
+            ),
             indent=2,
         ),
         encoding="utf-8",
@@ -169,6 +193,7 @@ def prepare_runtime_package(package_dir: Path) -> dict[str, object]:
 
 
 def create_private_dataset(package_dir: Path, dataset_ref: str) -> None:
+    validate_flat_package(package_dir)
     slug = dataset_ref.split("/", 1)[1]
     listing = subprocess.run(
         ["kaggle", "datasets", "list", "-s", slug, "--csv"],
