@@ -1,10 +1,24 @@
 # Public Visibility Gate
 
-**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC. RETURN TO PRIVATE BEFORE CONTINUING PUBLIC-SAFE CLEANUP.**
+**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC UNDER A TEMPORARY USER-AUTHORIZED EXECUTION EXCEPTION. RETURN TO PRIVATE AFTER THE SUBMISSION PREFLIGHT/TRAINING RUN.**
 
 Last verified: 2026-11-02.
 
 This is a repository-wide safety gate. It is independent of Gate B, candidate selection, and Kaggle submission authorization.
+
+## Temporary execution exception
+
+On 2026-11-02 the user explicitly authorized temporarily changing `kolihhan/name-kaggle` to `public` so the direct non-GitHub-Actions submission-preflight/training path can be executed, with the instruction to return the repository to `private` after training/preflight completes.
+
+This exception does **not** mean the repository is public-safe and does not erase the prior exposure incident. While this exception is active:
+
+- do not use GitHub Actions for new work;
+- do not broaden public exposure beyond what is necessary for the direct execution path;
+- do not publish secrets, credentials, private Kaggle datasets, or new competition artifacts to GitHub;
+- keep Kaggle submission unauthorized until the frozen preflight gate passes;
+- return the repository to `private` after the external preflight/training run completes or if the execution attempt is abandoned.
+
+Current direct execution implementation lives on `exp/first-kaggle-submission` and uses `scripts/two_stage_lora24_direct_preflight.py`. It materializes the fixed private Kaggle base/runtime inputs, launches the private internet-disabled T4 preflight kernel, verifies the resulting submission artifacts, and does **not** submit to the competition.
 
 ## Immediate incident state
 
@@ -14,7 +28,7 @@ On 2026-11-02 the repository was verified as `public` while official competition
 - `data/test.csv`
 - `data/sample_submission.parquet`
 
-**Immediate required action:** change repository visibility back to `private` before continuing cleanup. Making the repository private again stops continuing exposure while cleanup is performed, but does not erase the period during which tracked files were public.
+Making the repository private again stops continuing exposure while cleanup is performed, but does not erase the period during which tracked files were public.
 
 ## Why public visibility is unsafe
 
@@ -58,9 +72,10 @@ The repository may be marked `READY` for public visibility only after all of the
 If your task involves repository visibility, GitHub Actions billing, data handling, or public sharing:
 
 1. read this file first;
-2. treat `UNSAFE` as a hard stop on further public exposure;
+2. treat `UNSAFE` as a hard stop on further public exposure unless a current explicit user instruction authorizes a narrowly scoped exception;
 3. do not claim this repository is public-safe;
 4. do not rewrite Git history or delete competition evidence unless the user explicitly authorizes that destructive cleanup;
-5. keep this infrastructure cleanup separate from Gate B and the scientific evaluation process.
+5. keep infrastructure cleanup separate from Gate B and the scientific evaluation process;
+6. during the temporary exception above, prioritize the direct Kaggle preflight only and return the repository to `private` afterward.
 
-Saving GitHub Actions minutes is not sufficient reason to bypass this gate.
+Saving GitHub Actions minutes by itself is not sufficient reason to bypass this gate.
