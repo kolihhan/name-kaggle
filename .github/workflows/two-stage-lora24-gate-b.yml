@@ -6,13 +6,16 @@ on:
       - exp/first-kaggle-submission
     paths:
       - .github/workflows/two-stage-lora24-gate-b.yml
+      - .github/workflows/two-stage-lora24-gate-b-runtime.yml
       - scripts/run_two_stage_lora24_gate_b.py
       - scripts/run_two_stage_lora24_gate_b_gpu.py
       - tests/test_two_stage_lora24_gate_b.py
       - tests/test_two_stage_lora24_gate_b_gpu_contract.py
       - tests/test_two_stage_lora24_gate_b_workflow.py
+      - tests/test_two_stage_lora24_gate_b_runtime_workflow.py
       - artifacts/candidates/two-stage-lora24-v1/CONTRACT.md
       - artifacts/candidates/two-stage-lora24-v1/GATE_B_CHECKPOINT_LOCK.md
+      - artifacts/candidates/two-stage-lora24-v1/GATE_B_RUNTIME_LOCK.md
       - artifacts/candidates/two-stage-lora24-v1/GATE_B_RUN_AUTHORIZATION.md
 
 permissions:
@@ -39,6 +42,7 @@ jobs:
           tests/test_two_stage_lora24_gate_b.py
           tests/test_two_stage_lora24_gate_b_gpu_contract.py
           tests/test_two_stage_lora24_gate_b_workflow.py
+          tests/test_two_stage_lora24_gate_b_runtime_workflow.py
 
   kaggle-gpu:
     if: contains(github.event.head_commit.message, '[gate-b-run]')
@@ -48,6 +52,7 @@ jobs:
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       DATASET_REF: kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint
+      RUNTIME_DATASET_REF: kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -57,20 +62,22 @@ jobs:
       - name: Install Kaggle and verification dependencies
         run: pip install -r requirements.txt 'kaggle==2.2.5' kagglehub six
 
-      - name: Verify locked checkpoint dataset remains ready version 1
+      - name: Verify locked checkpoint and runtime datasets remain ready version 1
         shell: bash
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          status_json="$(kaggle datasets status "$DATASET_REF" --format json)"
-          echo "$status_json"
-          STATUS_JSON="$status_json" python - <<'PY'
+          for ref in "$DATASET_REF" "$RUNTIME_DATASET_REF"; do
+            status_json="$(kaggle datasets status "$ref" --format json)"
+            echo "$ref $status_json"
+            STATUS_JSON="$status_json" python - <<'PY'
           import json
           import os
           status = json.loads(os.environ['STATUS_JSON'])
           assert status['status'] == 'ready', status
           assert int(status['current_version_number']) == 1, status
           PY
+          done
 
       - name: Build private official-OOF-only Kaggle kernel
         id: kernel
@@ -87,45 +94,111 @@ jobs:
           rm -rf "$KERNEL_DIR"
           mkdir -p "$KERNEL_DIR"
 
-          python - "$KERNEL_DIR/kernel_main.py" <<'PY'
-          import base64
-          import io
+          cat > "$KERNEL_DIR/kernel_main.py" <<'PY'
+          import hashlib
+          import json
           import pathlib
-          import sys
-          import zipfile
-
-          payload_paths = [
-              path
-              for path in sorted(pathlib.Path("scripts").rglob("*.py"))
-              if "__pycache__" not in path.parts
-          ] + [
-              pathlib.Path("data/train.csv"),
-              pathlib.Path("artifacts/phase1/folds.csv"),
-          ]
-          for path in payload_paths:
-              if not path.is_file():
-                  raise FileNotFoundError(path)
-
-          payload_buffer = io.BytesIO()
-          with zipfile.ZipFile(payload_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-              for path in payload_paths:
-                  archive.write(path, path.as_posix())
-
-          payload = base64.b64encode(payload_buffer.getvalue()).decode("ascii")
-          bootstrap = f'''import base64
-          import io
-          import pathlib
+          import shutil
           import subprocess
           import sys
-          import zipfile
+          import tarfile
 
-          PAYLOAD = {payload!r}
+          CANDIDATE = "two-stage-lora24-v1"
+          EXPECTED_TRAIN_SHA256 = "40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
+          EXPECTED_FOLD_FINGERPRINT = "bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d"
+          RUNTIME_PURPOSE = "gate_b_official_oof_runtime_transport_only"
+          EXPECTED_RUNTIME_FILES = {
+              "data/train.csv",
+              "artifacts/phase1/folds.csv",
+              "scripts/__init__.py",
+              "scripts/run_two_stage_lora24_gate_b_gpu.py",
+              "scripts/run_two_stage_lora24_gate_b.py",
+              "scripts/run_two_stage_lora24_gate_a.py",
+              "scripts/run_style_baseline.py",
+              "scripts/run_strong_sparse_anchor.py",
+          }
+
+          input_root = pathlib.Path("/kaggle/input")
+          runtime_archives = sorted(input_root.glob("**/gate-b-runtime.tar.gz"))
+          if len(runtime_archives) != 1:
+              raise RuntimeError(
+                  f"expected exactly one mounted Gate-B runtime archive; found {runtime_archives}"
+              )
+          runtime_archive = runtime_archives[0]
+          runtime_lineage_path = runtime_archive.parent / "runtime_lineage.json"
+          if not runtime_lineage_path.is_file():
+              raise FileNotFoundError(runtime_lineage_path)
+          lineage = json.loads(runtime_lineage_path.read_text(encoding="utf-8"))
+
+          exact_lineage = {
+              "candidate": CANDIDATE,
+              "purpose": RUNTIME_PURPOSE,
+              "official_train_sha256": EXPECTED_TRAIN_SHA256,
+              "fold_fingerprint": EXPECTED_FOLD_FINGERPRINT,
+              "official_rows": 2699,
+              "competition_test_rows_included": 0,
+              "public_stage1_rows_included": 0,
+              "scientific_configuration_changed": False,
+          }
+          for key, expected in exact_lineage.items():
+              if lineage.get(key) != expected:
+                  raise RuntimeError(
+                      f"runtime lineage drift for {key}: {lineage.get(key)!r} != {expected!r}"
+                  )
+          transport_sha256 = hashlib.sha256(runtime_archive.read_bytes()).hexdigest()
+          if transport_sha256 != lineage.get("transport_sha256"):
+              raise RuntimeError(
+                  f"runtime transport SHA drift: {transport_sha256} != "
+                  f"{lineage.get('transport_sha256')}"
+              )
+          files = lineage.get("files")
+          if not isinstance(files, list):
+              raise RuntimeError("runtime lineage files missing")
+          declared_paths = {str(entry.get("path")) for entry in files}
+          if declared_paths != EXPECTED_RUNTIME_FILES:
+              raise RuntimeError(
+                  f"runtime file set drift: {sorted(declared_paths)} != "
+                  f"{sorted(EXPECTED_RUNTIME_FILES)}"
+              )
+
           package_root = pathlib.Path("/kaggle/working/gate_b_pkg")
+          if package_root.exists():
+              shutil.rmtree(package_root)
           package_root.mkdir(parents=True, exist_ok=True)
-          with zipfile.ZipFile(io.BytesIO(base64.b64decode(PAYLOAD))) as archive:
+          with tarfile.open(runtime_archive, mode="r:gz") as archive:
               archive.extractall(package_root)
-          sys.path.insert(0, str(package_root))
 
+          observed_files = []
+          for entry in files:
+              rel = pathlib.PurePosixPath(str(entry["path"]))
+              path = package_root.joinpath(*rel.parts)
+              if not path.is_file():
+                  raise FileNotFoundError(path)
+              observed_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+              observed_size = path.stat().st_size
+              if observed_sha != entry.get("sha256") or observed_size != int(entry.get("size", -1)):
+                  raise RuntimeError(f"runtime file byte drift: {rel.as_posix()}")
+              observed_files.append({
+                  "path": rel.as_posix(),
+                  "sha256": observed_sha,
+                  "size": observed_size,
+              })
+          manifest_bytes = json.dumps(
+              observed_files, sort_keys=True, separators=(",", ":")
+          ).encode("utf-8")
+          observed_manifest = hashlib.sha256(manifest_bytes).hexdigest()
+          if observed_manifest != lineage.get("file_manifest_sha256"):
+              raise RuntimeError(
+                  f"runtime manifest SHA drift: {observed_manifest} != "
+                  f"{lineage.get('file_manifest_sha256')}"
+              )
+
+          train_path = package_root / "data" / "train.csv"
+          folds_path = package_root / "artifacts" / "phase1" / "folds.csv"
+          if hashlib.sha256(train_path.read_bytes()).hexdigest() != EXPECTED_TRAIN_SHA256:
+              raise RuntimeError("mounted official train SHA drift")
+
+          sys.path.insert(0, str(package_root))
           subprocess.check_call([
               sys.executable,
               "-m",
@@ -137,27 +210,40 @@ jobs:
               "safetensors",
           ])
 
+          from scripts.run_strong_sparse_anchor import load_train
+          from scripts.run_style_baseline import fold_fingerprint
           from scripts.run_two_stage_lora24_gate_b_gpu import main
 
+          train = load_train(train_path, folds_path)
+          if len(train) != 2699:
+              raise RuntimeError(f"mounted official row drift: {len(train)} != 2699")
+          if fold_fingerprint(train) != EXPECTED_FOLD_FINGERPRINT:
+              raise RuntimeError("mounted permanent fold fingerprint drift")
+
+          output_dir = pathlib.Path("/kaggle/working/gate_b_output")
           sys.argv = [
               "run_two_stage_lora24_gate_b_gpu",
               "--orchestrate",
               "--train",
-              str(package_root / "data/train.csv"),
+              str(train_path),
               "--folds",
-              str(package_root / "artifacts/phase1/folds.csv"),
+              str(folds_path),
               "--output-dir",
-              "/kaggle/working/gate_b_output",
+              str(output_dir),
           ]
           main()
-          '''
-          output = pathlib.Path(sys.argv[1])
-          output.write_text(bootstrap, encoding="utf-8")
-          print("embedded_paths:", len(payload_paths))
-          print("kernel_main_bytes:", output.stat().st_size)
+          output_dir.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(runtime_lineage_path, output_dir / "runtime_lineage.json")
           PY
 
           python -m py_compile "$KERNEL_DIR/kernel_main.py"
+          kernel_main_bytes="$(wc -c < "$KERNEL_DIR/kernel_main.py")"
+          echo "kernel_main_bytes: $kernel_main_bytes"
+          if (( kernel_main_bytes >= 1000000 )); then
+            echo "Kaggle kernel source must stay below 1,000,000 bytes"
+            exit 1
+          fi
+
           python - "$KERNEL_DIR/kernel-metadata.json" "$KERNEL_REF" <<'PY'
           import json
           import sys
@@ -173,7 +259,10 @@ jobs:
               "enable_internet": True,
               "machine_shape": "NvidiaTeslaT4",
               "competition_sources": [],
-              "dataset_sources": ["kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint"],
+              "dataset_sources": [
+                  "kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint",
+                  "kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime",
+              ],
               "kernel_sources": [],
               "model_sources": [],
           }
@@ -227,6 +316,7 @@ jobs:
           kaggle kernels output "$KERNEL_REF" -p gate-b-download -o
           test -n "$(find gate-b-download -name gate_b_candidate.json -print -quit)"
           test -n "$(find gate-b-download -name gate_b_candidate_oof.csv -print -quit)"
+          test -n "$(find gate-b-download -name runtime_lineage.json -print -quit)"
 
       - name: Verify complete candidate OOF and locked lineage
         shell: bash
@@ -242,9 +332,20 @@ jobs:
           root = Path('gate-b-download')
           report_path = next(root.rglob('gate_b_candidate.json'))
           oof_path = next(root.rglob('gate_b_candidate_oof.csv'))
+          runtime_lineage_path = next(root.rglob('runtime_lineage.json'))
           report = json.loads(report_path.read_text(encoding='utf-8'))
+          runtime_lineage = json.loads(runtime_lineage_path.read_text(encoding='utf-8'))
           oof = pd.read_csv(oof_path)
           train = load_train(Path('data/train.csv'), Path('artifacts/phase1/folds.csv'))
+
+          assert runtime_lineage['candidate'] == 'two-stage-lora24-v1'
+          assert runtime_lineage['purpose'] == 'gate_b_official_oof_runtime_transport_only'
+          assert runtime_lineage['official_train_sha256'] == '40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
+          assert runtime_lineage['fold_fingerprint'] == 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d'
+          assert runtime_lineage['official_rows'] == 2699
+          assert runtime_lineage['competition_test_rows_included'] == 0
+          assert runtime_lineage['public_stage1_rows_included'] == 0
+          assert runtime_lineage['scientific_configuration_changed'] is False
 
           assert report['candidate'] == 'two-stage-lora24-v1'
           assert report['scope'] == 'gate_b_official_oof'
@@ -314,6 +415,8 @@ jobs:
           print('OOF_ROWS', len(oof))
           print('PLAIN_BA', report['candidate_oof']['plain_balanced_accuracy'])
           print('CENTERED_BA_DIAGNOSTIC', report['candidate_oof']['centered_balanced_accuracy'])
+          print('RUNTIME_MANIFEST_SHA256', runtime_lineage['file_manifest_sha256'])
+          print('RUNTIME_TRANSPORT_SHA256', runtime_lineage['transport_sha256'])
           PY
 
       - name: Upload Gate B candidate OOF evidence only
