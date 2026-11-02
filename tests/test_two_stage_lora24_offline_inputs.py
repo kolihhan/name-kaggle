@@ -10,6 +10,7 @@ from scripts.materialize_two_stage_lora24_offline_inputs import (
     build_base_lineage,
     build_file_manifest,
     build_runtime_lineage,
+    validate_flat_package,
 )
 
 
@@ -51,3 +52,13 @@ def test_refuse_existing_dataset_ref_is_fail_closed():
     with pytest.raises(RuntimeError, match="refusing overwrite/version"):
         assert_dataset_ref_absent(csv, BASE_DATASET_REF)
     assert_dataset_ref_absent("ref,title\nother/x,y\n", BASE_DATASET_REF)
+
+
+def test_dataset_package_refuses_nested_payload_files(tmp_path):
+    (tmp_path / "root.whl").write_text("ok", encoding="utf-8")
+    validate_flat_package(tmp_path)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "hidden.bin").write_bytes(b"x")
+    with pytest.raises(RuntimeError, match="nested payload"):
+        validate_flat_package(tmp_path)
