@@ -6,6 +6,8 @@ import pandas as pd
 import pytest
 
 from scripts.run_two_stage_lora24_gate_b import (
+    PHASE7_METRIC_ATOL,
+    PHASE7_SEED,
     evaluate_gate_b,
     regenerate_phase7_oof,
     validate_phase7_reference,
@@ -55,6 +57,11 @@ def _frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
         }
     }
     return train, phase7_oof, candidate_oof, phase7_report
+
+
+def test_phase7_preflight_constants_are_frozen():
+    assert PHASE7_SEED == 20261031
+    assert PHASE7_METRIC_ATOL == 1e-12
 
 
 def test_regenerate_phase7_oof_uses_frozen_pipeline_not_aggregate_inference():
