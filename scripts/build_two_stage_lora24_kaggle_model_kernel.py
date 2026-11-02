@@ -9,7 +9,6 @@ from typing import Mapping
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.materialize_two_stage_lora24_offline_inputs import RUNTIME_DATASET_REF
 from scripts.two_stage_lora24_submission import CHECKPOINT_DATASET_REF
 
 KERNEL_REF = "kolihhan/name-that-llm-lora24-v1-final"
@@ -17,6 +16,7 @@ KERNEL_TITLE = "Name That LLM LoRA24 v1 Final"
 COMPETITION = "name-that-llm"
 MODEL_SOURCE = "qwen-lm/qwen-3/transformers/8b-base/1"
 BASE_IDENTITY = f"kaggle-model-source:{MODEL_SOURCE}"
+RUNTIME_DATASET_REF = "kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2"
 CODE_FILE = "kernel_main.py"
 REQUIRED_SOURCE_PATHS = (
     "scripts/__init__.py",
@@ -31,8 +31,19 @@ REQUIRED_SOURCE_PATHS = (
 
 def offline_pip_args(wheelhouse: str) -> list[str]:
     return [
-        "-m", "pip", "install", "-q", "--no-index", "--find-links", str(wheelhouse),
-        "--no-deps", "transformers==4.57.1", "peft==0.17.1", "safetensors",
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "--no-index",
+        "--find-links",
+        str(wheelhouse),
+        "--no-deps",
+        "transformers==4.57.1",
+        "peft==0.17.1",
+        "safetensors",
+        "tokenizers==0.22.1",
+        "huggingface-hub==0.36.0",
     ]
 
 
@@ -183,11 +194,19 @@ print(json.dumps(lineage, indent=2, sort_keys=True))
 '''
 
 
-def write_kernel_bundle(output_dir: Path, *, source_texts: Mapping[str, str] | None = None, repo_root: Path = Path(".")) -> None:
+def write_kernel_bundle(
+    output_dir: Path,
+    *,
+    source_texts: Mapping[str, str] | None = None,
+    repo_root: Path = Path("."),
+) -> None:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     if source_texts is None:
-        source_texts = {rel: (Path(repo_root) / rel).read_text(encoding="utf-8") for rel in REQUIRED_SOURCE_PATHS}
+        source_texts = {
+            rel: (Path(repo_root) / rel).read_text(encoding="utf-8")
+            for rel in REQUIRED_SOURCE_PATHS
+        }
     (output_dir / CODE_FILE).write_text(_kernel_source(source_texts), encoding="utf-8")
     metadata = {
         "id": KERNEL_REF,
@@ -203,11 +222,15 @@ def write_kernel_bundle(output_dir: Path, *, source_texts: Mapping[str, str] | N
         "kernel_sources": [],
         "model_sources": [MODEL_SOURCE],
     }
-    (output_dir / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    (output_dir / "kernel-metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build offline LoRA24 v1 kernel using Kaggle Qwen3-8B Base model source")
+    parser = argparse.ArgumentParser(
+        description="Build offline LoRA24 v1 kernel using Kaggle Qwen3-8B Base model source"
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     return parser.parse_args()
