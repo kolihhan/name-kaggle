@@ -28,6 +28,7 @@ def test_gate_b_kernel_title_resolves_to_declared_kernel_id():
     title_match = re.search(r'"title": "([^"]+)"', text)
     assert ref_match is not None
     assert title_match is not None
+    assert title_match.group(1) == "Name That LLM Two-stage LoRA24 Gate B"
     assert _kaggle_slug(title_match.group(1)) == ref_match.group(1)
 
 
