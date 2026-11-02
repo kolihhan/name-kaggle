@@ -71,3 +71,7 @@ Any Gate-B scientific execution must:
 8. never recreate or version the runtime dataset inside the Gate-B execution path.
 
 A different runtime dataset version, changed file manifest, changed official train bytes/folds, or a recreated runtime is not an equivalent substitute for this lock.
+
+## Scientific infra-only retry trigger
+
+This documentation-only update triggers the already-authorized `[gate-b-run]` infrastructure retry. It changes no scientific code, data, folds, checkpoint bytes, model configuration, training hyperparameters, evaluator, bootstrap rule, or PASS threshold. The first valid complete Gate-B OOF produced by this retry consumes the one-shot scientific-result boundary and must be evaluated exactly once.
