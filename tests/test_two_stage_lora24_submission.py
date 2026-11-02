@@ -4,10 +4,12 @@ import pytest
 
 from scripts.two_stage_lora24_submission import (
     EXPECTED_OFFICIAL_ROWS,
+    EXPECTED_TRAIN_SHA256,
     build_submission_frame,
     build_submission_lineage,
     plain_test_batches,
     validate_final_fit_frames,
+    validate_official_train_sha256,
 )
 
 
@@ -94,3 +96,9 @@ def test_build_submission_lineage_is_plain_only_and_contamination_free():
     assert payload["official_train_sha256"] == "abc"
     assert payload["base_manifest_sha256"] == "base-manifest"
     assert payload["runtime_manifest_sha256"] == "runtime-manifest"
+
+
+def test_official_train_sha_is_fail_closed():
+    assert validate_official_train_sha256(EXPECTED_TRAIN_SHA256) == EXPECTED_TRAIN_SHA256
+    with pytest.raises(RuntimeError, match="official train SHA drift"):
+        validate_official_train_sha256("0" * 64)
