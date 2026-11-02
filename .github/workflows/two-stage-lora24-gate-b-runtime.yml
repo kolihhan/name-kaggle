@@ -1,0 +1,271 @@
+name: Two-stage LoRA24 Gate B runtime
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/two-stage-lora24-gate-b-runtime.yml
+      - tests/test_two_stage_lora24_gate_b_runtime_workflow.py
+      - scripts/run_two_stage_lora24_gate_b_gpu.py
+      - scripts/run_two_stage_lora24_gate_b.py
+      - scripts/run_two_stage_lora24_gate_a.py
+      - scripts/run_style_baseline.py
+      - scripts/run_strong_sparse_anchor.py
+      - data/train.csv
+      - artifacts/phase1/folds.csv
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime-contract test dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run Gate B runtime transport contract tests
+        run: python -m pytest -q tests/test_two_stage_lora24_gate_b_runtime_workflow.py tests/test_two_stage_lora24_gate_b_workflow.py
+
+  materialize-private-runtime:
+    if: contains(github.event.head_commit.message, '[gate-b-runtime]')
+    needs: contract-test
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime
+      EXPECTED_TRAIN_SHA256: 40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707
+      EXPECTED_FOLD_FINGERPRINT: bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install runtime materialization dependencies
+        run: pip install -r requirements.txt 'kaggle==2.2.5' six
+
+      - name: Verify frozen official inputs and build deterministic runtime transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf gate-b-runtime
+          mkdir -p gate-b-runtime/package
+
+          python - <<'PY'
+          import gzip
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import tarfile
+
+          from scripts.run_strong_sparse_anchor import load_train
+          from scripts.run_style_baseline import fold_fingerprint, sha256_file
+
+          required = [
+              Path('data/train.csv'),
+              Path('artifacts/phase1/folds.csv'),
+              Path('scripts/__init__.py'),
+              Path('scripts/run_two_stage_lora24_gate_b_gpu.py'),
+              Path('scripts/run_two_stage_lora24_gate_b.py'),
+              Path('scripts/run_two_stage_lora24_gate_a.py'),
+              Path('scripts/run_style_baseline.py'),
+              Path('scripts/run_strong_sparse_anchor.py'),
+          ]
+          for path in required:
+              if not path.is_file():
+                  raise FileNotFoundError(path)
+
+          train_path = Path('data/train.csv')
+          folds_path = Path('artifacts/phase1/folds.csv')
+          observed_train_sha = sha256_file(train_path)
+          expected_train_sha = os.environ['EXPECTED_TRAIN_SHA256']
+          if observed_train_sha != expected_train_sha:
+              raise RuntimeError(
+                  f'official train SHA drift: {observed_train_sha} != {expected_train_sha}'
+              )
+          train = load_train(train_path, folds_path)
+          observed_fold_fingerprint = fold_fingerprint(train)
+          expected_fold_fingerprint = os.environ['EXPECTED_FOLD_FINGERPRINT']
+          if observed_fold_fingerprint != expected_fold_fingerprint:
+              raise RuntimeError(
+                  'permanent fold fingerprint drift: '
+                  f'{observed_fold_fingerprint} != {expected_fold_fingerprint}'
+              )
+          if len(train) != 2699:
+              raise RuntimeError(f'official row count drift: {len(train)} != 2699')
+
+          files = []
+          for path in required:
+              files.append({
+                  'path': path.as_posix(),
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'size': path.stat().st_size,
+              })
+          manifest_bytes = json.dumps(
+              files, sort_keys=True, separators=(',', ':')
+          ).encode('utf-8')
+          file_manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+
+          package = Path('gate-b-runtime/package')
+          transport = package / 'gate-b-runtime.tar.gz'
+          with transport.open('wb') as raw:
+              with gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=0) as gz:
+                  with tarfile.open(fileobj=gz, mode='w') as archive:
+                      for path in required:
+                          info = archive.gettarinfo(str(path), arcname=path.as_posix())
+                          info.mtime = 0
+                          info.uid = 0
+                          info.gid = 0
+                          info.uname = ''
+                          info.gname = ''
+                          with path.open('rb') as handle:
+                              archive.addfile(info, handle)
+          transport_sha256 = hashlib.sha256(transport.read_bytes()).hexdigest()
+
+          lineage = {
+              'candidate': 'two-stage-lora24-v1',
+              'purpose': 'gate_b_official_oof_runtime_transport_only',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'official_train_sha256': observed_train_sha,
+              'fold_fingerprint': observed_fold_fingerprint,
+              'official_rows': int(len(train)),
+              'files': files,
+              'file_manifest_sha256': file_manifest_sha256,
+              'transport_sha256': transport_sha256,
+              'competition_test_rows_included': 0,
+              'public_stage1_rows_included': 0,
+              'scientific_configuration_changed': False,
+          }
+          (package / 'runtime_lineage.json').write_text(
+              json.dumps(lineage, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          metadata = {
+              'title': 'Name That LLM Two-stage LoRA24 v1 Gate B Runtime',
+              'id': 'kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime',
+              'licenses': [{'name': 'other'}],
+          }
+          (package / 'dataset-metadata.json').write_text(
+              json.dumps(metadata, indent=2), encoding='utf-8'
+          )
+          print('source_commit', lineage['source_commit'])
+          print('file_manifest_sha256', file_manifest_sha256)
+          print('transport_sha256', transport_sha256)
+          print('transport_bytes', transport.stat().st_size)
+          print('runtime_file_count', len(files))
+          PY
+
+      - name: Refuse to overwrite or version an existing runtime dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing="$(kaggle datasets list -s 'name-that-llm-two-stage-lora24-v1-gate-b-runtime' --csv 2>/dev/null || true)"
+          if grep -Fq "$DATASET_REF" <<<"$existing"; then
+            echo "Runtime dataset already exists; refusing overwrite/version: $DATASET_REF"
+            exit 1
+          fi
+
+      - name: Create private immutable Gate B runtime dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle datasets create -p gate-b-runtime/package
+          echo "DATASET_REF $DATASET_REF"
+
+      - name: Wait for runtime dataset ready version 1 and verify uploaded bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=''
+          for attempt in $(seq 1 60); do
+            status_json="$(kaggle datasets status "$DATASET_REF" --format json 2>/dev/null || true)"
+            echo "dataset_status attempt=${attempt} ${status_json}"
+            status="$(STATUS_JSON="$status_json" python - <<'PY'
+          import json, os
+          raw = os.environ.get('STATUS_JSON', '').strip()
+          if not raw:
+              print('')
+          else:
+              print(json.loads(raw).get('status', ''))
+          PY
+            )"
+            if [[ "$status" == "ready" ]]; then
+              break
+            fi
+            if [[ "$status" == "error" ]]; then
+              echo "Runtime dataset entered error state"
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$status" = ready
+
+          status_json="$(kaggle datasets status "$DATASET_REF" --format json)"
+          STATUS_JSON="$status_json" python - <<'PY'
+          import json, os
+          status = json.loads(os.environ['STATUS_JSON'])
+          assert status['status'] == 'ready', status
+          assert int(status['current_version_number']) == 1, status
+          PY
+
+          rm -rf gate-b-runtime/download
+          mkdir -p gate-b-runtime/download
+          kaggle datasets download "$DATASET_REF" -p gate-b-runtime/download --unzip
+          test -s gate-b-runtime/download/gate-b-runtime.tar.gz
+          test -s gate-b-runtime/download/runtime_lineage.json
+
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          local = Path('gate-b-runtime/package')
+          downloaded = Path('gate-b-runtime/download')
+          local_lineage = json.loads((local / 'runtime_lineage.json').read_text(encoding='utf-8'))
+          downloaded_lineage = json.loads(
+              (downloaded / 'runtime_lineage.json').read_text(encoding='utf-8')
+          )
+          if local_lineage != downloaded_lineage:
+              raise RuntimeError('downloaded runtime lineage differs from uploaded lineage')
+          observed_transport = hashlib.sha256(
+              (downloaded / 'gate-b-runtime.tar.gz').read_bytes()
+          ).hexdigest()
+          if observed_transport != local_lineage['transport_sha256']:
+              raise RuntimeError(
+                  f"runtime transport SHA drift: {observed_transport} != "
+                  f"{local_lineage['transport_sha256']}"
+              )
+          verification = {
+              **local_lineage,
+              'dataset_ref': 'kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime',
+              'dataset_version': 1,
+              'dataset_status': 'ready',
+              'downloaded_transport_sha256': observed_transport,
+              'upload_download_byte_identity': True,
+              'dataset_create_called': True,
+              'dataset_version_called': False,
+              'gate_b_training_called': False,
+          }
+          (local / 'runtime_verification.json').write_text(
+              json.dumps(verification, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          print('RUNTIME_DATASET_VERSION', verification['dataset_version'])
+          print('RUNTIME_FILE_MANIFEST_SHA256', verification['file_manifest_sha256'])
+          print('RUNTIME_TRANSPORT_SHA256', verification['transport_sha256'])
+          PY
+
+      - name: Upload runtime lineage evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-b-runtime-lineage
+          path: |
+            gate-b-runtime/package/runtime_lineage.json
+            gate-b-runtime/package/runtime_verification.json
+          retention-days: 90
