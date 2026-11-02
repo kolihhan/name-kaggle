@@ -42,10 +42,11 @@ def test_gate_b_workflow_attaches_only_locked_runtime_and_checkpoint_datasets():
     assert "pool_v4.parquet" not in text
 
 
-def test_gate_b_workflow_uses_runtime_transport_not_competition_test_data():
+def test_gate_b_workflow_uses_expanded_runtime_files_not_competition_test_data():
     text = _workflow_text()
-    assert "gate-b-runtime.tar.gz" in text
     assert "runtime_lineage.json" in text
+    assert "EXPECTED_RUNTIME_FILES" in text
+    assert "gate-b-runtime.tar.gz" not in text
     assert "data/test.csv" not in text
     assert "sample_submission" not in text
 
