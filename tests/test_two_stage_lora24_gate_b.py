@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from scripts.run_two_stage_lora24_gate_a import gate_a_training_spec
 from scripts.run_two_stage_lora24_gate_b import (
     EXPECTED_FOLD_FINGERPRINT,
     EXPECTED_TRAIN_SHA256,
@@ -25,12 +26,15 @@ def _checkpoint_meta() -> dict:
         "model_id": "Qwen/Qwen3-8B-Base",
         "model_revision": MODEL_REVISION,
         "labels": [f"m{i:02d}" for i in range(18)],
-        "training_spec": {"seed": 20261101},
+        "training_spec": gate_a_training_spec(),
         "implementation_invariants": {
             "stock_qwen_final_norm_retained": True,
             "triplet_padding": False,
             "exact_one_epoch": True,
         },
+        "holdout_sources": ["abdullah", "zakir", "semenoff"],
+        "prompt_id_overlap": 0,
+        "prompt_key_overlap": 0,
     }
 
 
@@ -51,6 +55,8 @@ def test_gate_b_training_spec_matches_frozen_contract():
     assert spec["replay_same_triplet_order_each_epoch"] is True
     assert spec["primary_head"] == "plain"
     assert spec["centered_head_role"] == "diagnostic_only"
+    assert spec["bootstrap_resamples"] == 5000
+    assert spec["bootstrap_seed"] == 20261101
 
 
 def test_gate_b_pins_official_train_and_fold_fingerprints():
@@ -69,9 +75,11 @@ def test_checkpoint_meta_accepts_exact_gate_a_a1_lineage():
         ("condition", "A0"),
         ("model_id", "Qwen/Qwen3-14B-Base"),
         ("model_revision", "wrong-revision"),
+        ("prompt_id_overlap", 1),
+        ("prompt_key_overlap", 1),
     ],
 )
-def test_checkpoint_meta_rejects_substitution(field: str, bad_value: str):
+def test_checkpoint_meta_rejects_substitution(field: str, bad_value: object):
     meta = _checkpoint_meta()
     meta[field] = bad_value
     with pytest.raises(ValueError):
@@ -85,34 +93,59 @@ def test_checkpoint_meta_rejects_missing_gate_a_runtime_invariant():
         validate_gate_a_checkpoint_meta(meta)
 
 
+def test_checkpoint_meta_rejects_training_spec_drift():
+    meta = _checkpoint_meta()
+    meta["training_spec"] = {**meta["training_spec"], "keep_layers": 23}
+    with pytest.raises(ValueError, match="training spec"):
+        validate_gate_a_checkpoint_meta(meta)
+
+
+def test_checkpoint_meta_requires_sorted_unique_18_label_order():
+    meta = _checkpoint_meta()
+    meta["labels"] = list(reversed(meta["labels"]))
+    with pytest.raises(ValueError, match="label"):
+        validate_gate_a_checkpoint_meta(meta)
+
+
+def _complete_fold_frame() -> pd.DataFrame:
+    rows = []
+    row_id = 0
+    for fold in range(5):
+        for label in ("a", "b"):
+            rows.append(
+                {
+                    "id": row_id,
+                    "prompt_id": f"p{fold}",
+                    "model": label,
+                    "fold_id": fold,
+                }
+            )
+            row_id += 1
+    return pd.DataFrame(rows)
+
+
 def test_split_official_fold_is_prompt_isolated():
-    frame = pd.DataFrame(
-        {
-            "id": [1, 2, 3, 4, 5, 6],
-            "prompt_id": ["p0", "p0", "p1", "p1", "p2", "p2"],
-            "model": ["a", "b", "a", "b", "a", "b"],
-            "fold_id": [0, 0, 1, 1, 2, 2],
-        }
-    )
+    frame = _complete_fold_frame()
     fit_idx, valid_idx = split_official_fold(frame, 1)
     assert valid_idx.tolist() == [2, 3]
-    assert fit_idx.tolist() == [0, 1, 4, 5]
+    assert fit_idx.tolist() == [0, 1, 4, 5, 6, 7, 8, 9]
     assert set(frame.iloc[fit_idx]["prompt_id"]).isdisjoint(
         set(frame.iloc[valid_idx]["prompt_id"])
     )
 
 
 def test_split_official_fold_rejects_prompt_leakage():
-    frame = pd.DataFrame(
-        {
-            "id": [1, 2, 3],
-            "prompt_id": ["shared", "shared", "other"],
-            "model": ["a", "b", "a"],
-            "fold_id": [0, 1, 1],
-        }
-    )
+    frame = _complete_fold_frame()
+    frame.loc[2, "prompt_id"] = frame.loc[0, "prompt_id"]
     with pytest.raises(RuntimeError, match="prompt leakage"):
         split_official_fold(frame, 0)
+
+
+def test_split_official_fold_rejects_incomplete_permanent_fold_map():
+    frame = _complete_fold_frame()
+    incomplete = frame[frame["fold_id"] != 4].copy()
+    with pytest.raises(RuntimeError, match="fold ids"):
+        split_official_fold(incomplete, 0)
 
 
 def test_paired_prompt_bootstrap_is_deterministic_and_prompt_grouped():
