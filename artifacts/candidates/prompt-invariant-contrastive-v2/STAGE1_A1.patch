@@ -1,0 +1,122 @@
+--- a/scripts/run_two_stage_lora24_gate_a_gpu.py
++++ b/scripts/run_prompt_invariant_contrastive_v2_gate_a_gpu.py
+@@
+ from scripts.run_phase14_public_sparse import (
+@@
+     build_conservative_subset,
+ )
++from scripts.cross_prompt_prototype import CrossPromptPrototypeBank
++from scripts.prototype_training_integration import (
++    CONTRASTIVE_TAU,
++    CONTRASTIVE_WEIGHT,
++    PROMPT_BUCKET_SEED,
++    PrototypeStepBuffer,
++    commit_prototypes_after_scaler_step,
++)
+@@
+-CANDIDATE = "two-stage-lora24-v1"
++CANDIDATE = "prompt-invariant-contrastive-v2"
+@@
+     layers = [int(value) for value in spec["pooled_layers"]]
+     hidden_size = int(config.hidden_size)
++    representation_dim = hidden_size * len(layers)
+     norms = nn.ModuleList([nn.LayerNorm(hidden_size) for _ in layers]).to(device).float()
+-    plain = nn.Linear(hidden_size * len(layers), len(labels)).to(device).float()
+-    centered = nn.Linear(hidden_size * len(layers), len(labels)).to(device).float()
++    plain = nn.Linear(representation_dim, len(labels)).to(device).float()
++    centered = nn.Linear(representation_dim, len(labels)).to(device).float()
+     dropout = nn.Dropout(float(spec["head_dropout"]))
++
++    # v2's only scientific change: Stage-1 prompt-invariant prototype loss.
++    # The existing same-prompt triplets, their order, CE losses, optimizer,
++    # scheduler, and Stage-2 recipe remain unchanged.
++    prototype_bank = (
++        CrossPromptPrototypeBank(len(labels), representation_dim, device=device)
++        if condition == "A1"
++        else None
++    )
+@@
+     loss_sum = 0.0
+     loss_count = 0
++    contrastive_loss_sum = 0.0
++    contrastive_eligible_anchors = 0
++    contrastive_total_anchors = 0
+     skipped_steps = 0
+     optimizer_steps = 0
+     for rows_group in step_groups:
+         optimizer.zero_grad(set_to_none=True)
++        prototype_step_buffer = PrototypeStepBuffer()
+         group_size = len(rows_group)
+@@
+         for rows in rows_group:
+             enc = make_encoding(rows)
+             z = representation(enc)
+             target = torch.as_tensor(y[rows], dtype=torch.long, device=device)
++            prompt_ids = frame.iloc[rows]["prompt_id"].astype(str).tolist()
+             plain_logits = plain(dropout(z))
+             centered_logits = centered(dropout(center_triplet(z)))
+-            loss = F.cross_entropy(
++            plain_loss = F.cross_entropy(
+                 plain_logits, target, weight=class_weights
+-            ) + F.cross_entropy(
++            )
++            centered_loss = F.cross_entropy(
+                 centered_logits, target, weight=class_weights
+             )
++            if prototype_bank is None:
++                prototype_loss = z.sum() * 0.0
++            else:
++                prototype_result = prototype_bank.loss(
++                    z,
++                    target,
++                    prompt_ids,
++                    tau=CONTRASTIVE_TAU,
++                    seed=PROMPT_BUCKET_SEED,
++                )
++                prototype_loss = prototype_result.loss
++                prototype_step_buffer.append(z, target, prompt_ids)
++                contrastive_loss_sum += float(prototype_loss.detach().cpu())
++                contrastive_eligible_anchors += int(prototype_result.eligible_anchors)
++                contrastive_total_anchors += int(prototype_result.total_anchors)
++            loss = plain_loss + centered_loss + CONTRASTIVE_WEIGHT * prototype_loss
+             if not bool(torch.isfinite(loss)):
+@@
+         previous_scale = float(scaler.get_scale())
+         scaler.step(optimizer)
+         scaler.update()
+-        if float(scaler.get_scale()) < previous_scale:
++        current_scale = float(scaler.get_scale())
++        step_skipped = current_scale < previous_scale
++        if step_skipped:
+             skipped_steps += 1
++        if prototype_bank is not None:
++            commit_prototypes_after_scaler_step(
++                prototype_bank,
++                prototype_step_buffer,
++                previous_scale=previous_scale,
++                current_scale=current_scale,
++                seed=PROMPT_BUCKET_SEED,
++            )
+         scheduler.step()
+@@
+         "train": {
+@@
+             "mean_training_loss": float(loss_sum / max(1, loss_count)),
++            "prompt_invariant_contrastive": {
++                "weight": CONTRASTIVE_WEIGHT,
++                "temperature": CONTRASTIVE_TAU,
++                "prompt_bucket_seed": PROMPT_BUCKET_SEED,
++                "prototype_buckets": 2,
++                "eligible_anchors": int(contrastive_eligible_anchors),
++                "total_anchors": int(contrastive_total_anchors),
++                "coverage": float(
++                    contrastive_eligible_anchors / max(1, contrastive_total_anchors)
++                ),
++                "mean_loss_per_triplet": float(
++                    contrastive_loss_sum / max(1, loss_count)
++                ),
++                "updates_only_after_successful_optimizer_step": True,
++                "extra_backbone_forwards": 0,
++            },
+             "seconds": float(time.time() - started),
+         },
