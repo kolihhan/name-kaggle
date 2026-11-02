@@ -66,10 +66,6 @@ def test_generated_kernel_has_no_submission_side_effect(tmp_path):
     write_kernel_bundle(out, source_texts=sources)
     source = (out / "kernel_main.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    string_literals = [
-        node.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    ]
+    string_literals = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
     assert not any("kaggle competitions submit" in value for value in string_literals)
     assert "/kaggle/working/submission.parquet" in source
