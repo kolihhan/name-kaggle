@@ -18,7 +18,7 @@ jobs:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       CHECKPOINT_REF: kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint
       RUNTIME_REF: kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime
-      KERNEL_REF: kolihhan/name-that-llm-two-stage-lora24-v1-submission-preflight
+      KERNEL_REF: kolihhan/name-that-llm-lora24-v1-final
     steps:
       - uses: actions/checkout@v4
         with:
@@ -159,7 +159,7 @@ jobs:
           root=Path('/tmp/lora24-kernel')
           meta=json.loads((root/'kernel-metadata.json').read_text())
           source=(root/'kernel_main.py').read_text()
-          assert meta['id']=='kolihhan/name-that-llm-two-stage-lora24-v1-submission-preflight'
+          assert meta['id']=='kolihhan/name-that-llm-lora24-v1-final'
           assert meta['is_private'] is True
           assert meta['enable_internet'] is False
           assert meta['machine_shape']=='NvidiaTeslaT4'
