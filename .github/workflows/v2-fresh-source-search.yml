@@ -1,0 +1,51 @@
+name: V2 Fresh Source Search
+
+on:
+  push:
+    branches:
+      - exp/prompt-invariant-contrastive-v2
+    paths:
+      - .github/workflows/v2-fresh-source-search.yml
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/prompt-invariant-contrastive-v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5' six
+      - name: Search external corpora without scoring models
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/v2-source-search && mkdir -p /tmp/v2-source-search
+          for q in \
+            'name that llm' \
+            'ntl generations' \
+            'llm generations' \
+            'llm response corpus' \
+            'openrouter generations'; do
+            slug="$(tr ' /' '__' <<<"$q")"
+            echo "### QUERY: $q" > "/tmp/v2-source-search/${slug}.txt"
+            kaggle datasets list -s "$q" -v >> "/tmp/v2-source-search/${slug}.txt" || true
+          done
+          cat /tmp/v2-source-search/*.txt
+      - name: Upload search evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-fresh-source-search
+          path: /tmp/v2-source-search
+          if-no-files-found: error
+          retention-days: 30
