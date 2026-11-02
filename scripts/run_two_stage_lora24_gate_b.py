@@ -31,6 +31,8 @@ def gate_b_training_spec() -> dict[str, object]:
             "replay_same_triplet_order_each_epoch": True,
             "primary_head": "plain",
             "centered_head_role": "diagnostic_only",
+            "bootstrap_resamples": BOOTSTRAP_RESAMPLES,
+            "bootstrap_seed": GATE_B_SEED,
         }
     )
     return spec
@@ -43,6 +45,8 @@ def validate_gate_a_checkpoint_meta(meta: dict) -> None:
         "condition": "A1",
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
+        "prompt_id_overlap": 0,
+        "prompt_key_overlap": 0,
     }
     for field, expected in exact.items():
         if meta.get(field) != expected:
@@ -51,12 +55,15 @@ def validate_gate_a_checkpoint_meta(meta: dict) -> None:
             )
 
     labels = [str(value) for value in meta.get("labels", [])]
-    if len(labels) != 18 or len(set(labels)) != 18:
-        raise ValueError("Gate-A checkpoint must contain exactly 18 unique labels")
+    if len(labels) != 18 or len(set(labels)) != 18 or labels != sorted(labels):
+        raise ValueError(
+            "Gate-A checkpoint label order must contain exactly 18 unique sorted labels"
+        )
 
     training_spec = meta.get("training_spec")
-    if not isinstance(training_spec, dict) or training_spec.get("seed") != GATE_B_SEED:
-        raise ValueError("Gate-A checkpoint seed mismatch")
+    expected_training_spec = gate_a_training_spec()
+    if training_spec != expected_training_spec:
+        raise ValueError("Gate-A checkpoint training spec mismatch")
 
     invariants = meta.get("implementation_invariants")
     expected_invariants = {
@@ -85,6 +92,12 @@ def split_official_fold(
     missing = sorted(required - set(train.columns))
     if missing:
         raise ValueError(f"official frame missing columns: {missing}")
+
+    observed_folds = set(int(value) for value in train["fold_id"].unique().tolist())
+    if observed_folds != set(range(5)):
+        raise RuntimeError(
+            f"official fold ids mismatch: {sorted(observed_folds)} != [0, 1, 2, 3, 4]"
+        )
 
     fold_values = train["fold_id"].to_numpy()
     fit_idx = np.flatnonzero(fold_values != fold)
