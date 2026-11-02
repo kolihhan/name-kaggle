@@ -270,3 +270,160 @@ jobs:
             gate-b-runtime/package/runtime_lineage.json
             gate-b-runtime/package/runtime_verification.json
           retention-days: 90
+
+  recover-existing-runtime:
+    if: contains(github.event.head_commit.message, '[gate-b-runtime-recover]')
+    needs: contract-test
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime
+      EXPECTED_SOURCE_COMMIT: 1d466f4c756394aea4b57f056238ff457f9f0852
+      EXPECTED_FILE_MANIFEST_SHA256: 8d6c05d5ec29841d4a25cbf7c903c5d0414d3bf754b4bdd80b1cfdba64c1a933
+      EXPECTED_TRANSPORT_SHA256: f818750300838089f3610347074da52a8340d74a57f54b698ce6c65ea68c3785
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install attach-only recovery dependencies
+        run: pip install 'kaggle==2.2.5' six
+
+      - name: Attach to existing ready version-1 runtime dataset and download with retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+
+          status_json="$(kaggle datasets status "$DATASET_REF" --format json)"
+          echo "$status_json"
+          STATUS_JSON="$status_json" python - <<'PY'
+          import json, os
+          status = json.loads(os.environ['STATUS_JSON'])
+          assert status['status'] == 'ready', status
+          assert int(status['current_version_number']) == 1, status
+          PY
+
+          downloaded=0
+          for attempt in $(seq 1 60); do
+            echo "runtime_download attempt=$attempt"
+            rm -rf gate-b-runtime-recovery/download
+            mkdir -p gate-b-runtime-recovery/download
+            if kaggle datasets download "$DATASET_REF" -p gate-b-runtime-recovery/download --unzip; then
+              if [[ -s gate-b-runtime-recovery/download/gate-b-runtime.tar.gz && -s gate-b-runtime-recovery/download/runtime_lineage.json ]]; then
+                downloaded=1
+                break
+              fi
+            fi
+            sleep 10
+          done
+          if [[ "$downloaded" != "1" ]]; then
+            echo "Existing runtime dataset never became downloadable"
+            exit 1
+          fi
+
+      - name: Verify recovered runtime bytes and immutable lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import tarfile
+          import tempfile
+
+          root = Path('gate-b-runtime-recovery/download')
+          archive_path = root / 'gate-b-runtime.tar.gz'
+          lineage_path = root / 'runtime_lineage.json'
+          lineage = json.loads(lineage_path.read_text(encoding='utf-8'))
+
+          expected = {
+              'candidate': 'two-stage-lora24-v1',
+              'purpose': 'gate_b_official_oof_runtime_transport_only',
+              'source_commit': os.environ['EXPECTED_SOURCE_COMMIT'],
+              'official_train_sha256': '40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707',
+              'fold_fingerprint': 'bf6f47bfaeebdf817a1f7972b54deabbe5e54fb087c77753b6361970d0c9ee0d',
+              'official_rows': 2699,
+              'file_manifest_sha256': os.environ['EXPECTED_FILE_MANIFEST_SHA256'],
+              'transport_sha256': os.environ['EXPECTED_TRANSPORT_SHA256'],
+              'competition_test_rows_included': 0,
+              'public_stage1_rows_included': 0,
+              'scientific_configuration_changed': False,
+          }
+          for key, value in expected.items():
+              if lineage.get(key) != value:
+                  raise RuntimeError(
+                      f"recovered runtime lineage drift for {key}: "
+                      f"{lineage.get(key)!r} != {value!r}"
+                  )
+
+          observed_transport = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+          if observed_transport != os.environ['EXPECTED_TRANSPORT_SHA256']:
+              raise RuntimeError(
+                  f"recovered transport SHA drift: {observed_transport} != "
+                  f"{os.environ['EXPECTED_TRANSPORT_SHA256']}"
+              )
+
+          files = lineage.get('files')
+          if not isinstance(files, list) or len(files) != 8:
+              raise RuntimeError(f"unexpected recovered runtime file manifest: {files}")
+          with tempfile.TemporaryDirectory() as tmp:
+              tmp_root = Path(tmp)
+              with tarfile.open(archive_path, mode='r:gz') as archive:
+                  archive.extractall(tmp_root)
+              observed_files = []
+              for entry in files:
+                  path = tmp_root / entry['path']
+                  if not path.is_file():
+                      raise FileNotFoundError(path)
+                  observed_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+                  observed_size = path.stat().st_size
+                  if observed_sha != entry['sha256'] or observed_size != int(entry['size']):
+                      raise RuntimeError(f"recovered runtime file drift: {entry['path']}")
+                  observed_files.append({
+                      'path': entry['path'],
+                      'sha256': observed_sha,
+                      'size': observed_size,
+                  })
+          manifest_bytes = json.dumps(
+              observed_files, sort_keys=True, separators=(',', ':')
+          ).encode('utf-8')
+          observed_manifest = hashlib.sha256(manifest_bytes).hexdigest()
+          if observed_manifest != os.environ['EXPECTED_FILE_MANIFEST_SHA256']:
+              raise RuntimeError(
+                  f"recovered file manifest SHA drift: {observed_manifest} != "
+                  f"{os.environ['EXPECTED_FILE_MANIFEST_SHA256']}"
+              )
+
+          recovery = {
+              **lineage,
+              'dataset_ref': 'kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime',
+              'dataset_version': 1,
+              'dataset_status': 'ready',
+              'downloaded_transport_sha256': observed_transport,
+              'upload_download_byte_identity': True,
+              'attach_only_recovery': True,
+              'dataset_create_called': False,
+              'dataset_version_called': False,
+              'gate_b_training_called': False,
+          }
+          out = Path('gate-b-runtime-recovery/runtime_recovery.json')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(recovery, indent=2, sort_keys=True), encoding='utf-8')
+          print('RUNTIME_DATASET_VERSION', recovery['dataset_version'])
+          print('RUNTIME_FILE_MANIFEST_SHA256', recovery['file_manifest_sha256'])
+          print('RUNTIME_TRANSPORT_SHA256', recovery['transport_sha256'])
+          print('ATTACH_ONLY_RECOVERY', recovery['attach_only_recovery'])
+          PY
+
+      - name: Upload attach-only runtime recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-b-runtime-recovery
+          path: |
+            gate-b-runtime-recovery/download/runtime_lineage.json
+            gate-b-runtime-recovery/runtime_recovery.json
+          retention-days: 90
