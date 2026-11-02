@@ -1,0 +1,101 @@
+name: two-stage-lora24-gate-b-phase7-preflight
+
+on:
+  push:
+    branches:
+      - exp/first-kaggle-submission
+    paths:
+      - .github/workflows/two-stage-lora24-gate-b-phase7-preflight.yml
+      - scripts/run_two_stage_lora24_gate_b.py
+      - scripts/run_gated_specialist.py
+      - scripts/run_strong_sparse_anchor.py
+      - data/train.csv
+      - data/external/gpt_gemini_generations.parquet
+      - artifacts/phase1/folds.csv
+      - artifacts/phase7/gated_specialist.json
+      - tests/test_two_stage_lora24_gate_b_phase7_preflight_workflow.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate-phase7:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install frozen sparse-pipeline dependencies
+        run: pip install -r requirements.txt
+
+      - name: Regenerate Phase7 row OOF and verify frozen metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf gate-b-phase7-preflight
+          mkdir -p gate-b-phase7-preflight
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import pandas as pd
+
+          from scripts.run_strong_sparse_anchor import load_train
+          from scripts.run_two_stage_lora24_gate_b import regenerate_phase7_oof
+
+          train = load_train(
+              Path('data/train.csv'),
+              Path('artifacts/phase1/folds.csv'),
+          )
+          external = pd.read_parquet(
+              Path('data/external/gpt_gemini_generations.parquet')
+          )
+          frozen = json.loads(
+              Path('artifacts/phase7/gated_specialist.json').read_text(encoding='utf-8')
+          )
+          phase7_oof, regenerated_report = regenerate_phase7_oof(
+              train,
+              external,
+              frozen,
+          )
+
+          out = Path('gate-b-phase7-preflight')
+          phase7_oof.to_csv(out / 'phase7_regenerated_oof.csv', index=False)
+          (out / 'phase7_regenerated_report.json').write_text(
+              json.dumps(regenerated_report, indent=2, sort_keys=True),
+              encoding='utf-8',
+          )
+          result = regenerated_report['ensemble']['result']
+          summary = {
+              'candidate': 'two-stage-lora24-v1',
+              'reference': 'phase7-gated-specialist',
+              'rows': int(len(phase7_oof)),
+              'balanced_accuracy': float(result['balanced_accuracy']),
+              'folds': [float(value) for value in result['folds']],
+              'per_model_recall': {
+                  str(label): float(value)
+                  for label, value in result['per_model_recall'].items()
+              },
+              'metric_tolerance': 1e-12,
+              'row_level_oof_regenerated': True,
+              'frozen_reference_match': True,
+          }
+          (out / 'phase7_preflight.json').write_text(
+              json.dumps(summary, indent=2, sort_keys=True),
+              encoding='utf-8',
+          )
+          print('PHASE7_ROWS', len(phase7_oof))
+          print('PHASE7_BA', result['balanced_accuracy'])
+          print('PHASE7_FOLDS', result['folds'])
+          PY
+
+      - name: Upload frozen Phase7 preflight evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-b-phase7-preflight
+          path: gate-b-phase7-preflight
+          retention-days: 90
