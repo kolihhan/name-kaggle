@@ -175,3 +175,97 @@ jobs:
           name: two-stage-lora24-gate-b-checkpoint-lineage
           path: gate-b-checkpoint/package/checkpoint_lineage.json
           retention-days: 90
+
+  recover-existing-checkpoint-dataset:
+    if: contains(github.event.head_commit.message, '[gate-b-checkpoint-recover]')
+    needs: contract-test
+    runs-on: ubuntu-latest
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DATASET_REF: kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint
+      CREATION_RUN_ID: '41373243039'
+      SOURCE_RUN_ID: '41333631967'
+      SOURCE_ARTIFACT_ID: '13094069155'
+      SOURCE_ARTIFACT_DIGEST: sha256:a2c4dca4ca5de2b283e5e6806526485f0d92377584d7e621b35a717770c95e66
+      FILE_MANIFEST_SHA256: c9ba8f77cc0ec84800a8d3508c15939396353772189c573c597bdcf223eaafc0
+      TRANSPORT_SHA256: 8f3c6dabe6a3d910b80b6acafce6155ae6350dafb28b1b987f7cdb7eff7bf32a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install recovery dependencies
+        run: pip install 'kaggle==2.2.5' six
+
+      - name: Poll existing dataset until terminal status
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          status=''
+          for attempt in $(seq 1 60); do
+            status="$(kaggle datasets status "$DATASET_REF" 2>&1 | tail -n 1 | tr '[:upper:]' '[:lower:]' | xargs)"
+            echo "dataset_status attempt=${attempt} status=${status}"
+            case "$status" in
+              ready)
+                break
+                ;;
+              pending)
+                sleep 10
+                ;;
+              error)
+                echo "Kaggle dataset entered error state"
+                exit 1
+                ;;
+              *)
+                echo "Unexpected Kaggle dataset status: $status"
+                exit 1
+                ;;
+            esac
+          done
+          test "$status" = ready
+
+      - name: Verify existing dataset files and write recovery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p gate-b-checkpoint/recovery
+          status_json="$(kaggle datasets status "$DATASET_REF" --format json)"
+          files_csv="$(kaggle datasets files "$DATASET_REF" --csv)"
+          echo "$status_json"
+          echo "$files_csv"
+          grep -Fq 'a1-checkpoint.tar.gz' <<<"$files_csv"
+          grep -Fq 'checkpoint_lineage.json' <<<"$files_csv"
+          STATUS_JSON="$status_json" FILES_CSV="$files_csv" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              'candidate': 'two-stage-lora24-v1',
+              'dataset_ref': os.environ['DATASET_REF'],
+              'creation_run_id': int(os.environ['CREATION_RUN_ID']),
+              'source_run_id': int(os.environ['SOURCE_RUN_ID']),
+              'source_artifact_id': int(os.environ['SOURCE_ARTIFACT_ID']),
+              'source_artifact_digest': os.environ['SOURCE_ARTIFACT_DIGEST'],
+              'file_manifest_sha256': os.environ['FILE_MANIFEST_SHA256'],
+              'transport_sha256': os.environ['TRANSPORT_SHA256'],
+              'status': json.loads(os.environ['STATUS_JSON']),
+              'files_csv': os.environ['FILES_CSV'],
+              'attach_only_recovery': True,
+              'dataset_create_called': False,
+              'dataset_version_called': False,
+              'gate_b_training_called': False,
+          }
+          Path('gate-b-checkpoint/recovery/checkpoint_dataset_recovery.json').write_text(
+              json.dumps(payload, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          PY
+
+      - name: Upload attach-only recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-lora24-gate-b-checkpoint-recovery
+          path: gate-b-checkpoint/recovery/checkpoint_dataset_recovery.json
+          retention-days: 90
