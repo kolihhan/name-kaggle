@@ -147,6 +147,11 @@ Repair / verification lineage:
 - metadata-only fix commit: `442cb2f84370a34da4171210519320c42fef0ba6`; focused run `41380385290` succeeded and `kaggle-gpu` was skipped;
 - regression-guard verification head: `b0b78bf7301c0611aff18d220710486c3c653873`;
 - focused Gate-B run `41381901207` succeeded and `kaggle-gpu` was skipped;
-- full repository verification run `41381901250`: `205 passed in 251.01s (0:04:11)`.
+- full repository verification run `41381901250`: `205 passed in 251.01s (0:04:11)`;
+- infra-failure record commit: `a2eb9582143903fe42dea3a25a730e1cab9955d4`; focused run `41382504229` succeeded and `kaggle-gpu` was skipped.
 
 The next `[gate-b-run]` trigger is therefore an **infra-only retry of the same frozen scientific execution**, not a second scientific experiment.
+
+## Infra-only retry trigger
+
+This documentation-only change is the retry trigger. It does not modify scientific code, official data, folds, checkpoint bytes, model configuration, training hyperparameters, evaluation logic, or PASS thresholds. The retry must use the same locked checkpoint dataset version `1` and the same one-shot Gate-B OOF contract.
