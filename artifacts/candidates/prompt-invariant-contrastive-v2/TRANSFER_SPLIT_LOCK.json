@@ -1,0 +1,41 @@
+{
+  "eligible_heldout_rows": 10723,
+  "eligible_label_count": 11,
+  "eligible_labels": [
+    "gemini-3.1-pro-preview",
+    "gemini-3.6-flash",
+    "gemini-3.8-flash",
+    "glm-5.3",
+    "glm-5.3-flash",
+    "gpt-5.5",
+    "gpt-5.6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-6-astra",
+    "kimi-k3"
+  ],
+  "heldout_rows": 10745,
+  "holdout_sources": [
+    "lucasboesen",
+    "jadkutbi",
+    "maniceet"
+  ],
+  "phase14_prompt_ids": 3736,
+  "phase14_rows": 43781,
+  "prompt_id_overlap": 0,
+  "prompt_key_overlap": 0,
+  "salt": "ntl-prompt-invariant-v2-transfer-holdout-v1",
+  "source_eligible_rows": {
+    "jadkutbi": 585,
+    "lucasboesen": 2596,
+    "maniceet": 7542
+  },
+  "train_rows": 24099,
+  "valid_for_transfer_gate": true,
+  "source_artifact": {
+    "workflow_run": 41483084101,
+    "artifact_id": 13160876528,
+    "artifact_digest": "sha256:299011073f2e54b11754bab07eb77234e0381599df76726ad9e868e910a2341d",
+    "pool_sha256": "37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec"
+  }
+}
