@@ -230,9 +230,7 @@ def write_kernel_bundle(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Build offline LoRA24 v1 submission-preflight kernel"
-    )
+    parser = argparse.ArgumentParser(description="Build offline LoRA24 v1 submission-preflight kernel")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     return parser.parse_args()
