@@ -12,8 +12,8 @@ if __package__ in (None, ""):
 from scripts.materialize_two_stage_lora24_offline_inputs import RUNTIME_DATASET_REF
 from scripts.two_stage_lora24_submission import CHECKPOINT_DATASET_REF
 
-KERNEL_REF = "kolihhan/name-that-llm-two-stage-lora24-v1-submission-preflight"
-KERNEL_TITLE = "Name That LLM Two-stage LoRA24 v1 Submission Preflight"
+KERNEL_REF = "kolihhan/name-that-llm-lora24-v1-final"
+KERNEL_TITLE = "Name That LLM LoRA24 v1 Final"
 COMPETITION = "name-that-llm"
 MODEL_SOURCE = "qwen-lm/qwen-3/transformers/8b-base/1"
 BASE_IDENTITY = f"kaggle-model-source:{MODEL_SOURCE}"
