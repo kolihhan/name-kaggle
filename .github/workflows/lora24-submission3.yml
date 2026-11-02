@@ -17,7 +17,7 @@ jobs:
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       CHECKPOINT_REF: kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint
-      RUNTIME_REF: kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime
+      RUNTIME_REF: kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2
       KERNEL_REF: kolihhan/name-that-llm-lora24-v1-final
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
           assert int(p['current_version_number'])==1, p
           PY
 
-      - name: Create frozen CPython 3.13 offline runtime dataset if absent
+      - name: Create frozen CPython 3.13 offline runtime v2 if absent
         shell: bash
         run: |
           set -euo pipefail
@@ -77,27 +77,33 @@ jobs:
           from pathlib import Path
           root=Path('/tmp/runtime-existing')
           lineage=json.loads((root/'runtime_lineage.json').read_text())
-          assert lineage['dataset_ref']=='kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime'
+          assert lineage['dataset_ref']=='kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2'
           assert lineage.get('python_abi')=='cp313', lineage
           assert lineage['dataset_version_expected']==1
+          expected=['transformers==4.57.1','peft==0.17.1','safetensors','tokenizers==0.22.1','huggingface-hub==0.36.0']
+          assert lineage['wheel_specs']==expected, lineage
           print('existing runtime manifest', lineage['file_manifest_sha256'])
           PY
           else
             cat /tmp/runtime-status.err || true
-            rm -rf /tmp/lora24-runtime
-            mkdir -p /tmp/lora24-runtime
+            rm -rf /tmp/lora24-runtime-v2
+            mkdir -p /tmp/lora24-runtime-v2
             python -m pip download \
-              --dest /tmp/lora24-runtime \
+              --dest /tmp/lora24-runtime-v2 \
               --no-deps \
               --only-binary=:all: \
               --platform manylinux2014_x86_64 \
               --python-version 313 \
               --implementation cp \
-              'transformers==4.57.1' 'peft==0.17.1' safetensors
+              'transformers==4.57.1' \
+              'peft==0.17.1' \
+              safetensors \
+              'tokenizers==0.22.1' \
+              'huggingface-hub==0.36.0'
             python - <<'PY'
           import hashlib, json
           from pathlib import Path
-          root=Path('/tmp/lora24-runtime')
+          root=Path('/tmp/lora24-runtime-v2')
           files=[]
           for path in sorted(p for p in root.iterdir() if p.is_file()):
               data=path.read_bytes()
@@ -105,13 +111,14 @@ jobs:
           assert files
           encoded=json.dumps(files,sort_keys=True,separators=(',',':')).encode()
           manifest=hashlib.sha256(encoded).hexdigest()
+          specs=['transformers==4.57.1','peft==0.17.1','safetensors','tokenizers==0.22.1','huggingface-hub==0.36.0']
           lineage={
-            'purpose':'two_stage_lora24_v1_offline_wheelhouse',
-            'dataset_ref':'kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime',
+            'purpose':'two_stage_lora24_v1_offline_wheelhouse_runtime_v2',
+            'dataset_ref':'kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2',
             'dataset_version_expected':1,
             'python_abi':'cp313',
             'kaggle_observed_python':'3.13',
-            'wheel_specs':['transformers==4.57.1','peft==0.17.1','safetensors'],
+            'wheel_specs':specs,
             'files':files,
             'file_manifest_sha256':manifest,
             'competition_train_rows_included':0,
@@ -119,15 +126,15 @@ jobs:
           }
           (root/'runtime_lineage.json').write_text(json.dumps(lineage,indent=2,sort_keys=True))
           metadata={
-            'title':'NTL LoRA24 offline runtime py313',
-            'id':'kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime',
+            'title':'NTL LoRA24 runtime py313 v2',
+            'id':'kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2',
             'licenses':[{'name':'other'}],
             'isPrivate':True,
           }
           (root/'dataset-metadata.json').write_text(json.dumps(metadata,indent=2))
           print(json.dumps(lineage,indent=2))
           PY
-            kaggle datasets create -p /tmp/lora24-runtime
+            kaggle datasets create -p /tmp/lora24-runtime-v2
             ready=0
             for i in $(seq 1 90); do
               status_json="$(kaggle datasets status "$RUNTIME_REF" --format json 2>/dev/null || true)"
@@ -166,7 +173,7 @@ jobs:
           assert meta['competition_sources']==['name-that-llm']
           assert meta['dataset_sources']==[
             'kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint',
-            'kolihhan/name-that-llm-two-stage-lora24-v1-offline-runtime',
+            'kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2',
           ]
           assert meta['model_sources']==['qwen-lm/qwen-3/transformers/8b-base/1']
           assert 'kaggle competitions submit' not in source
