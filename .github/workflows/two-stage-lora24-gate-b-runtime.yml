@@ -1,3 +1,4 @@
+# One-shot immutable runtime transport materialization; no Gate-B training.
 name: Two-stage LoRA24 Gate B runtime
 
 on:
