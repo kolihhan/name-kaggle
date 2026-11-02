@@ -219,37 +219,70 @@ jobs:
           rm -rf gate-b-runtime/download
           mkdir -p gate-b-runtime/download
           kaggle datasets download "$DATASET_REF" -p gate-b-runtime/download --unzip
-          test -s gate-b-runtime/download/gate-b-runtime.tar.gz
-          test -s gate-b-runtime/download/runtime_lineage.json
+          find gate-b-runtime/download -type f -print | sort
 
           python - <<'PY'
           import hashlib
           import json
-          from pathlib import Path
+          from pathlib import Path, PurePosixPath
 
           local = Path('gate-b-runtime/package')
           downloaded = Path('gate-b-runtime/download')
           local_lineage = json.loads((local / 'runtime_lineage.json').read_text(encoding='utf-8'))
-          downloaded_lineage = json.loads(
-              (downloaded / 'runtime_lineage.json').read_text(encoding='utf-8')
-          )
+          lineage_paths = sorted(downloaded.rglob('runtime_lineage.json'))
+          if len(lineage_paths) != 1:
+              raise RuntimeError(f'unexpected downloaded runtime lineage paths: {lineage_paths}')
+          downloaded_lineage = json.loads(lineage_paths[0].read_text(encoding='utf-8'))
           if local_lineage != downloaded_lineage:
               raise RuntimeError('downloaded runtime lineage differs from uploaded lineage')
-          observed_transport = hashlib.sha256(
-              (downloaded / 'gate-b-runtime.tar.gz').read_bytes()
-          ).hexdigest()
-          if observed_transport != local_lineage['transport_sha256']:
+
+          files = downloaded_lineage['files']
+          first_rel = PurePosixPath(files[0]['path'])
+          candidate_roots = set()
+          for match in downloaded.rglob(first_rel.name):
+              if not match.as_posix().endswith('/' + first_rel.as_posix()):
+                  continue
+              root = match
+              for _ in first_rel.parts:
+                  root = root.parent
+              candidate_roots.add(root)
+          valid_roots = [
+              root for root in candidate_roots
+              if all(root.joinpath(*PurePosixPath(entry['path']).parts).is_file() for entry in files)
+          ]
+          if len(valid_roots) != 1:
+              raise RuntimeError(f'unexpected expanded runtime roots: {valid_roots}')
+          expanded_root = valid_roots[0]
+
+          observed_files = []
+          for entry in files:
+              path = expanded_root.joinpath(*PurePosixPath(entry['path']).parts)
+              observed_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+              observed_size = path.stat().st_size
+              if observed_sha != entry['sha256'] or observed_size != int(entry['size']):
+                  raise RuntimeError(f"downloaded runtime file drift: {entry['path']}")
+              observed_files.append({
+                  'path': entry['path'],
+                  'sha256': observed_sha,
+                  'size': observed_size,
+              })
+          manifest_bytes = json.dumps(
+              observed_files, sort_keys=True, separators=(',', ':')
+          ).encode('utf-8')
+          observed_manifest = hashlib.sha256(manifest_bytes).hexdigest()
+          if observed_manifest != local_lineage['file_manifest_sha256']:
               raise RuntimeError(
-                  f"runtime transport SHA drift: {observed_transport} != "
-                  f"{local_lineage['transport_sha256']}"
+                  f"downloaded file manifest SHA drift: {observed_manifest} != "
+                  f"{local_lineage['file_manifest_sha256']}"
               )
+
           verification = {
               **local_lineage,
               'dataset_ref': 'kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime',
               'dataset_version': 1,
               'dataset_status': 'ready',
-              'downloaded_transport_sha256': observed_transport,
-              'upload_download_byte_identity': True,
+              'expanded_file_manifest_sha256': observed_manifest,
+              'expanded_file_manifest_verified': True,
               'dataset_create_called': True,
               'dataset_version_called': False,
               'gate_b_training_called': False,
@@ -290,7 +323,7 @@ jobs:
       - name: Install attach-only recovery dependencies
         run: pip install 'kaggle==2.2.5' six
 
-      - name: Attach to existing ready version-1 runtime dataset and download with retry
+      - name: Attach to existing ready version-1 runtime dataset and download expanded files
         shell: bash
         run: |
           set -euo pipefail
@@ -305,25 +338,13 @@ jobs:
           assert int(status['current_version_number']) == 1, status
           PY
 
-          downloaded=0
-          for attempt in $(seq 1 60); do
-            echo "runtime_download attempt=$attempt"
-            rm -rf gate-b-runtime-recovery/download
-            mkdir -p gate-b-runtime-recovery/download
-            if kaggle datasets download "$DATASET_REF" -p gate-b-runtime-recovery/download --unzip; then
-              if [[ -s gate-b-runtime-recovery/download/gate-b-runtime.tar.gz && -s gate-b-runtime-recovery/download/runtime_lineage.json ]]; then
-                downloaded=1
-                break
-              fi
-            fi
-            sleep 10
-          done
-          if [[ "$downloaded" != "1" ]]; then
-            echo "Existing runtime dataset never became downloadable"
-            exit 1
-          fi
+          rm -rf gate-b-runtime-recovery/download
+          mkdir -p gate-b-runtime-recovery/download
+          kaggle datasets download "$DATASET_REF" -p gate-b-runtime-recovery/download --unzip
+          find gate-b-runtime-recovery/download -type f -print | sort
+          test -n "$(find gate-b-runtime-recovery/download -name runtime_lineage.json -print -quit)"
 
-      - name: Verify recovered runtime bytes and immutable lineage
+      - name: Verify recovered expanded runtime bytes and immutable lineage
         shell: bash
         run: |
           set -euo pipefail
@@ -331,13 +352,13 @@ jobs:
           import hashlib
           import json
           import os
-          from pathlib import Path
-          import tarfile
-          import tempfile
+          from pathlib import Path, PurePosixPath
 
           root = Path('gate-b-runtime-recovery/download')
-          archive_path = root / 'gate-b-runtime.tar.gz'
-          lineage_path = root / 'runtime_lineage.json'
+          lineage_paths = sorted(root.rglob('runtime_lineage.json'))
+          if len(lineage_paths) != 1:
+              raise RuntimeError(f'unexpected recovered runtime lineage paths: {lineage_paths}')
+          lineage_path = lineage_paths[0]
           lineage = json.loads(lineage_path.read_text(encoding='utf-8'))
 
           expected = {
@@ -360,34 +381,43 @@ jobs:
                       f"{lineage.get(key)!r} != {value!r}"
                   )
 
-          observed_transport = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-          if observed_transport != os.environ['EXPECTED_TRANSPORT_SHA256']:
-              raise RuntimeError(
-                  f"recovered transport SHA drift: {observed_transport} != "
-                  f"{os.environ['EXPECTED_TRANSPORT_SHA256']}"
-              )
-
           files = lineage.get('files')
           if not isinstance(files, list) or len(files) != 8:
               raise RuntimeError(f"unexpected recovered runtime file manifest: {files}")
-          with tempfile.TemporaryDirectory() as tmp:
-              tmp_root = Path(tmp)
-              with tarfile.open(archive_path, mode='r:gz') as archive:
-                  archive.extractall(tmp_root)
-              observed_files = []
-              for entry in files:
-                  path = tmp_root / entry['path']
-                  if not path.is_file():
-                      raise FileNotFoundError(path)
-                  observed_sha = hashlib.sha256(path.read_bytes()).hexdigest()
-                  observed_size = path.stat().st_size
-                  if observed_sha != entry['sha256'] or observed_size != int(entry['size']):
-                      raise RuntimeError(f"recovered runtime file drift: {entry['path']}")
-                  observed_files.append({
-                      'path': entry['path'],
-                      'sha256': observed_sha,
-                      'size': observed_size,
-                  })
+
+          first_rel = PurePosixPath(files[0]['path'])
+          candidate_roots = set()
+          for match in root.rglob(first_rel.name):
+              if not match.as_posix().endswith('/' + first_rel.as_posix()):
+                  continue
+              candidate_root = match
+              for _ in first_rel.parts:
+                  candidate_root = candidate_root.parent
+              candidate_roots.add(candidate_root)
+          valid_roots = [
+              candidate_root
+              for candidate_root in candidate_roots
+              if all(
+                  candidate_root.joinpath(*PurePosixPath(entry['path']).parts).is_file()
+                  for entry in files
+              )
+          ]
+          if len(valid_roots) != 1:
+              raise RuntimeError(f'unexpected expanded runtime roots: {valid_roots}')
+          expanded_root = valid_roots[0]
+
+          observed_files = []
+          for entry in files:
+              path = expanded_root.joinpath(*PurePosixPath(entry['path']).parts)
+              observed_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+              observed_size = path.stat().st_size
+              if observed_sha != entry['sha256'] or observed_size != int(entry['size']):
+                  raise RuntimeError(f"recovered runtime file drift: {entry['path']}")
+              observed_files.append({
+                  'path': entry['path'],
+                  'sha256': observed_sha,
+                  'size': observed_size,
+              })
           manifest_bytes = json.dumps(
               observed_files, sort_keys=True, separators=(',', ':')
           ).encode('utf-8')
@@ -403,8 +433,8 @@ jobs:
               'dataset_ref': 'kolihhan/name-that-llm-two-stage-lora24-v1-gate-b-runtime',
               'dataset_version': 1,
               'dataset_status': 'ready',
-              'downloaded_transport_sha256': observed_transport,
-              'upload_download_byte_identity': True,
+              'expanded_file_manifest_sha256': observed_manifest,
+              'expanded_file_manifest_verified': True,
               'attach_only_recovery': True,
               'dataset_create_called': False,
               'dataset_version_called': False,
@@ -424,6 +454,6 @@ jobs:
         with:
           name: two-stage-lora24-gate-b-runtime-recovery
           path: |
-            gate-b-runtime-recovery/download/runtime_lineage.json
+            gate-b-runtime-recovery/download/**/runtime_lineage.json
             gate-b-runtime-recovery/runtime_recovery.json
           retention-days: 90
