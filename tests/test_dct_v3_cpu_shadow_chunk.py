@@ -3,6 +3,7 @@ import pytest
 from scripts.dct_v3_cpu_shadow_chunk import (
     build_lineage_fingerprint,
     initial_progress,
+    persist_microbatch_checkpoint,
     prepare_head_features,
     scientific_scope,
     validate_progress,
@@ -66,6 +67,34 @@ def test_head_features_cross_autocast_boundary_as_float32():
     tensor = FakeTensor()
     assert prepare_head_features(tensor) is sentinel
     assert tensor.float_called is True
+
+
+def test_persist_microbatch_checkpoint_saves_current_progress(tmp_path):
+    calls = []
+    progress = initial_progress()
+    progress["microbatch_index"] = 1
+    progress["loss_count"] = 1
+
+    def fake_save(path, **kwargs):
+        calls.append((path, kwargs))
+
+    checkpoint = tmp_path / "shadow.pt"
+    persist_microbatch_checkpoint(
+        save_checkpoint=fake_save,
+        output_checkpoint=checkpoint,
+        lineage_fingerprint="lineage",
+        modules={"model": object()},
+        optimizer=object(),
+        scheduler=object(),
+        progress=progress,
+    )
+
+    assert len(calls) == 1
+    path, kwargs = calls[0]
+    assert path == checkpoint
+    assert kwargs["lineage_fingerprint"] == "lineage"
+    assert kwargs["progress"]["microbatch_index"] == 1
+    assert kwargs["progress"]["loss_count"] == 1
 
 
 def test_progress_validation_allows_partial_group():
