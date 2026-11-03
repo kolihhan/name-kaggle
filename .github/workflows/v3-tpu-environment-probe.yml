@@ -1,0 +1,149 @@
+name: V3 TPU Environment Probe
+
+on:
+  push:
+    branches:
+      - infra/v3-tpu-feasibility
+    paths:
+      - '.github/workflows/v3-tpu-environment-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KERNEL_REF: kolihhan/ntl-v3-tpu-env-probe
+  KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: infra/v3-tpu-feasibility
+          clean: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Kaggle orchestration tooling
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q six 'kaggle==2.2.5'
+          kaggle --version
+
+      - name: Build and statically verify zero-scoring TPU probe
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v3-tpu-env-probe
+          python scripts/build_v3_tpu_environment_probe.py \
+            --output-dir /tmp/v3-tpu-env-probe
+          python -m py_compile /tmp/v3-tpu-env-probe/kernel_main.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('/tmp/v3-tpu-env-probe')
+          meta = json.loads((root / 'kernel-metadata.json').read_text())
+          assert meta['id'] == 'kolihhan/ntl-v3-tpu-env-probe', meta
+          assert meta['is_private'] is True, meta
+          assert meta['enable_internet'] is False, meta
+          assert meta['machine_shape'] == 'TpuV5E8', meta
+          assert meta['competition_sources'] == [], meta
+          assert meta['dataset_sources'] == [], meta
+          assert meta['kernel_sources'] == [], meta
+          assert meta['model_sources'] == [], meta
+          src = (root / 'kernel_main.py').read_text()
+          lowered = src.lower()
+          assert 'torch_xla' in src
+          assert "device_type == 'TPU'" in src
+          assert 'qwen' not in lowered
+          assert 'parquet' not in lowered
+          assert 'balanced_accuracy' not in lowered
+          assert 'competitions submit' not in lowered
+          print('STATIC_GATE_PASS')
+          PY
+
+      - name: Push exactly one environment-only TPU probe
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle kernels push -p /tmp/v3-tpu-env-probe --accelerator TpuV5E8
+
+      - name: Poll probe execution without hiding accelerator-allocation failure
+        id: poll
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-tpu-env-output
+          terminal=''
+          for i in $(seq 1 60); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "poll=$i $status"
+            if grep -Eqi '(^|[^a-z])(complete|completed|success|successful|succeeded)([^a-z]|$)' <<<"$status"; then
+              terminal='success'
+              break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled|canceled)([^a-z]|$)' <<<"$status"; then
+              terminal='failure'
+              break
+            fi
+            sleep 15
+          done
+          echo "terminal=$terminal" | tee /tmp/v3-tpu-env-output/poll_status.txt
+          test -n "$terminal"
+
+      - name: Download probe output and logs
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p /tmp/v3-tpu-env-output
+          kaggle kernels output "$KERNEL_REF" -p /tmp/v3-tpu-env-output -o
+          kaggle kernels logs "$KERNEL_REF" > /tmp/v3-tpu-env-output/kernel.log 2>&1
+          find /tmp/v3-tpu-env-output -maxdepth 2 -type f -print
+          if [ -f /tmp/v3-tpu-env-output/environment_probe.json ]; then
+            cat /tmp/v3-tpu-env-output/environment_probe.json
+          fi
+          tail -n 300 /tmp/v3-tpu-env-output/kernel.log 2>/dev/null || true
+          exit 0
+
+      - name: Preserve environment identity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-tpu-environment-probe-${{ github.run_id }}
+          path: |
+            /tmp/v3-tpu-env-output/environment_probe.json
+            /tmp/v3-tpu-env-output/kernel.log
+            /tmp/v3-tpu-env-output/poll_status.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce actual TPU Gate 0
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f /tmp/v3-tpu-env-output/environment_probe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('/tmp/v3-tpu-env-output/environment_probe.json').read_text())
+          exact = {
+              'candidate': 'dct-temporal-fingerprint-v3',
+              'scope': 'tpu_environment_identity_no_model_no_scoring',
+              'official_rows_scored': 0,
+              'firewall_rows_scored': 0,
+              'competition_test_rows_used': 0,
+              'public_lb_tuning': False,
+              'submission_authorized': False,
+          }
+          for key, expected in exact.items():
+              assert payload.get(key) == expected, (key, payload.get(key), expected)
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          assert payload.get('device_type') == 'TPU', payload
+          assert payload.get('gate0_pass') is True, payload
+          print('TPU_GATE0_PASS')
+          PY
