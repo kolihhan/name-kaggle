@@ -17,18 +17,38 @@ def test_scope_is_shadow_only():
     assert scope["frozen_cuda_v3_gate_authorized"] is False
 
 
-def test_lineage_changes_when_representation_changes():
-    common = dict(
+def _common_lineage():
+    return dict(
         model_revision="rev",
         training_spec={"seed": 7, "accumulation": 6},
         holdout_sources=["a", "b", "c"],
         labels=["m1", "m2"],
         triplets=[[1, 2, 3], [4]],
     )
-    mean = build_lineage_fingerprint(representation="mean", **common)
-    dct = build_lineage_fingerprint(representation="dct", **common)
+
+
+def test_lineage_changes_when_representation_changes():
+    common = _common_lineage()
+    mean = build_lineage_fingerprint(representation="mean", backend="fp16", **common)
+    dct = build_lineage_fingerprint(representation="dct", backend="fp16", **common)
     assert mean != dct
-    assert mean == build_lineage_fingerprint(representation="mean", **common)
+    assert mean == build_lineage_fingerprint(
+        representation="mean", backend="fp16", **common
+    )
+
+
+def test_lineage_changes_when_backend_changes():
+    common = _common_lineage()
+    fp16 = build_lineage_fingerprint(representation="dct", backend="fp16", **common)
+    bf16 = build_lineage_fingerprint(representation="dct", backend="bf16", **common)
+    assert fp16 != bf16
+
+
+def test_unknown_backend_fails_closed_in_lineage():
+    with pytest.raises(ValueError, match="unsupported CPU shadow backend"):
+        build_lineage_fingerprint(
+            representation="dct", backend="int8", **_common_lineage()
+        )
 
 
 def test_progress_validation_allows_partial_group():
