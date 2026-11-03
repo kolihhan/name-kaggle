@@ -1,6 +1,11 @@
 name: V3 DCT Self-Hosted GPU Transfer
 
 on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/v3-self-hosted-gpu-transfer.yml
   workflow_dispatch:
 
 permissions:
