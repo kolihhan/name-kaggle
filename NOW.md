@@ -1,104 +1,118 @@
 # NOW
 
-Updated: 2026-11-02
+Updated: 2026-11-03 MYT
 
-## Competition state
+## Competition anchor
 
 - **Current submitted champion: `two-stage-lora24-v1` — Public LB `0.520`, submission `57908683`.**
-- Previous champion: Phase 7 gated specialist — Public LB `0.369`, submission `57838845`.
-- Phase 15 remains rejected — OOF `0.4053218990802883`, Public LB `0.357`, submission `57861337`.
-- Absolute Public-LB gain of v1 over Phase 7: **`+0.151`**.
-- Exact submission record: `artifacts/submission/THIRD_SUBMISSION.md`.
+- Gate-B primary plain OOF BA: `0.5467611235396471`.
+- Previous Phase-7 Public LB: `0.369`.
+- Do not rerun/retrain or resubmit identical v1.
+- Public LB is external evidence only, not a tuning loop.
 
-## `two-stage-lora24-v1` evidence
+## Rejected v2
 
-### Gate A
+Candidate: `prompt-invariant-contrastive-v2`.
 
-- A0 held-out public-source BA: `0.3942430082`
-- A1 LoRA BA: `0.4657129266`
-- delta: `+0.0714699184`
-- all three held-out-source deltas positive
+Frozen paired source-transfer result:
 
-### Gate B
+- v1 BA: `0.41027732627916647`
+- v2 BA: `0.4129626992051072`
+- delta: `+0.002685372925940732`
+- 5,000 prompt-group bootstrap 95% CI: `[-0.0006323911599452988, +0.0069285212171021765]`
+- mean source delta: `+0.003746631276755267`
+- negative sources: `0 / 3`
+- class safety veto: none
+- frozen gate decision: **FAIL** because the bootstrap lower bound was not positive.
 
-- primary plain-head OOF BA: **`0.5467611235396471`**
-- centered diagnostic OOF: `0.5478498632861049`
-- Phase-7 reference OOF: `0.3700521998508576`
-- delta vs Phase 7: `+0.17670892368878954`
-- fold wins: **5 / 5**
-- frozen 5,000-resample prompt-bootstrap 95% CI for candidate-minus-Phase7: `[+0.15743723589361175, +0.19594425801640553]`
-- class-recall safety veto: not triggered
-- exact Gate-B result: `artifacts/candidates/two-stage-lora24-v1/GATE_B_RESULT.md`
+Do not rescue v2 by tuning contrastive weight/temperature, changing source holdout, or running official OOF.
 
-### Kaggle transfer
+## Current candidate: DCT temporal fingerprint v3
 
-- Public LB: **`0.520`**
-- Gate-B OOF: `0.5467611235396471`
-- Public minus OOF: **`-0.0267611235396471`**
+Branch: `exp/dct-temporal-fingerprint-v3`.
 
-This is a materially better transfer pattern than Phase 15 and promotes two-stage LoRA to the competition anchor. Do **not** reinterpret Public `0.520` as permission to tune thresholds/blends directly against Public LB.
+Scientific change only:
 
-## Frozen submission lineage
+- control: exact v1 Stage-1 A1 mean pooling;
+- treatment: fixed two-mode length-normalized DCT-II `[DC0(mean), AC1]` at the same pooled layers;
+- DCT modes fixed to `[0,1]`;
+- all other Stage-1 data/model/LoRA/optimizer/seed/epoch settings remain v1;
+- no contrastive-v2, attention pooling, top-k, blend, router, second backbone, or Public-LB tuning.
 
-- candidate: `two-stage-lora24-v1`
-- base: `Qwen/Qwen3-8B-Base@49e3418fbbbca6ecbdf9608b4d22e5a407081db4`
-- Kaggle model source: `qwen-lm/qwen-3/transformers/8b-base/1`
-- Stage-1 checkpoint dataset: `kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint`, version `1`
-- checkpoint manifest: `c9ba8f77cc0ec84800a8d3508c15939396353772189c573c597bdcf223eaafc0`
-- official train rows: `2699`
-- official train SHA-256: `40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707`
-- Stage-2 final fit: exactly `2` epochs
-- primary submission head: `plain`
-- centered head used for submission: `false`
-- test rows used for training: `0`
-- test rows used for model selection: `0`
-- Public-LB tuning: `false`
+Frozen contract: `artifacts/candidates/dct-temporal-fingerprint-v3/CONTRACT.md`.
 
-## Final Kaggle execution
+### Fresh source-transfer lock
 
-- kernel: `kolihhan/name-that-llm-lora24-v1-final`
-- successful kernel version: `2`
-- T4, internet disabled
-- runtime dataset: `kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2`
-- runtime manifest: `2ede08586490ab65e52d57bc95ea95580a6c3ea0c7b269d57bef6fe117b39275`
-- epoch-1 mean loss: `2.9026665187047587`
-- epoch-2 mean loss: `1.630542965978384`
-- optimizer steps: `300`
-- skipped scaler steps: `0`
-- generated submission rows: `3`
-- submission artifact SHA-256: `6e8b2a61d98c415c39e09815fe83482407ce7ff27bd64f1c617003d9e51b3ab4`
+Selection occurred before any v1-v3 score and explicitly excluded all v1/v2 consumed holdout sources.
 
-The first post-training verifier incorrectly asserted `len(submission) > 3`; the official competition test contains exactly three rows. The successful kernel output was subsequently re-verified by SHA and lineage and submitted **without retraining**.
+- sources: `alperen`, `hailey`, `willrice`
+- heldout rows: `14,506`
+- eligible rows: `14,506`
+- eligible labels: `17`
+- training rows after prompt-bank leakage removal: `14,502`
+- prompt-id overlap: `0`
+- prompt-key overlap: `0`
+- model scores used for selection: `false`
+- split artifact: `13200551511`
+- artifact digest: `sha256:6072697bbbcb8d9cd26431c4aa599c48e8de9a0e1ffafe4777f4bd4e55d92080`
 
-## Duplicate-submission note
+Lock: `artifacts/candidates/dct-temporal-fingerprint-v3/TRANSFER_SPLIT_LOCK.json`.
 
-Orchestration retries produced later submissions with the same `two-stage-lora24-v1 plain final fit` description that were still `PENDING` when the completed result was checked. These are duplicate operational retries, **not new scientific experiments**. Do not create more submissions to probe Public LB.
+### Implementation verification
 
-## Post-Gate-B optimization evidence
+Frozen v3 focused static suite completed successfully:
 
-Existing read-only error-overlap diagnostics show substantial complementary signal:
+- GitHub run `41569836280`
+- **19 passed in 2.76s**
+- materialized v3 worker compiled
+- frozen private internet-off T4 kernel compiled
+- no competition submission command in kernel
 
-- Phase-14 four-view SVC OOF BA: `0.4178100919711658`
-- plain LoRA vs Phase14 hard-prediction disagreement: `0.5602074842534271`
-- LoRA-only correct rows: `641`
-- Phase14-only correct rows: `293`
-- either-component oracle BA: `0.6552970420084514`
-- plain vs centered disagreement: `0.4201556131900704`
-- two-head oracle BA: `0.6775466070096942`
-- adaptive diagnostic three-way hard majority (`plain`, `centered`, Phase14 SVC; all-distinct tie -> plain): `0.5674869500372856`, +`0.020725826497638433` over plain, 5/5 folds improved, same-OOF prompt-bootstrap CI `[+0.01111111, +0.03037037]`
+A direct no-Actions runner now exists:
 
-**This majority is adaptive diagnostic evidence only.** It was examined after v1 OOF was visible and must not be silently promoted or submitted as if independently validated.
+- `scripts/dct_v3_direct_transfer.py`
+- `tests/test_dct_v3_direct_transfer.py`
+- local TDD result: **5 passed**
+- catches Kaggle GPU-quota push failures even when Kaggle CLI returns exit code `0`
+- validates exact frozen lineage/result before reporting gate decision
+- performs no competition submission
 
-Public-method research already in the repo supports the broader complementarity direction: strong public systems combine two-stage LoRA representations with additional classifiers/backbones rather than relying on one 8B plain head alone. See `artifacts/research/public-two-stage-lora-audit-2026-11-01.md`.
+No new GitHub Actions runs were triggered by the direct-runner `[skip ci]` commits.
 
-## Current execution policy
+## Current blocker
 
-- `two-stage-lora24-v1` is the submitted anchor. **Do not rerun/retrain v1 merely because the score is known.**
-- Do not spend another Kaggle submission on an identical v1 retry.
-- Do not tune directly against Public `0.520`.
-- GitHub Actions should return to a minimal/read-only role; the one-shot training/submission/status workflows were operational scaffolding, not the scientific workflow.
-- Repository was temporarily made public by explicit user authorization for execution. Training/submission are now complete, so it should be returned to **private**. Current connector permissions do not expose repository-visibility mutation; do not falsely claim it was changed.
+**Kaggle weekly GPU quota is exhausted: `Maximum weekly GPU quota of 30.00 hours reached.`**
+
+Attempted scientific workflow: `41569982605`.
+
+The frozen kernel passed static verification, but Kaggle rejected the kernel push before execution. Therefore:
+
+- v3 scientific transfer gate = **UNRUN / UNKNOWN**;
+- no v1/v3 Stage-1 training ran in this attempt;
+- no v3 predictions or checkpoint were produced;
+- no official rows were scored;
+- no Public LB was consumed;
+- no competition submission occurred.
+
+Exact status record: `artifacts/candidates/dct-temporal-fingerprint-v3/RESULT.md`.
+
+## Execution policy
+
+- Do **not** mark v3 FAIL because of the GPU-quota block.
+- Do **not** redesign/tune v3 while blocked.
+- Do **not** rerun GitHub Actions to probe quota; Actions should remain minimal/read-only.
+- When Kaggle GPU execution is available, run the exact frozen experiment once via:
+
+  `python scripts/dct_v3_direct_transfer.py --work-dir .v3-dct-transfer --repo-root .`
+
+- If transfer FAILs: stop v3 permanently; no official OOF, no Kaggle submission.
+- If transfer PASSes: only then implement/run the already-predeclared official five-fold OOF gate. A PASS does not automatically authorize a competition submission.
+- Only if both transfer and official OOF gates PASS may v3 proceed to one frozen final-fit/preflight and at most one competition-facing submission.
+
+## Repository visibility
+
+The repository is still public under the user's temporary execution exception. It is **not public-safe by default** because competition files are tracked. The user requested returning it to private after the training/execution work is complete. Current surfaced GitHub connector permissions do not expose repository visibility mutation; do not claim it was changed.
 
 ## Next single action
 
-**Freeze a new v2 complementarity candidate rather than retraining v1.** Start from the already-observed plain/centered/sparse diversity, define one simple combination rule before another Kaggle result, seek a non-Public transfer check where possible, and spend at most one next submission on the frozen v2 candidate.
+**No further scientific tuning now. Preserve the frozen v3 state. The next executable scientific action is the exact direct v3 paired-transfer run when Kaggle GPU quota permits it.**
