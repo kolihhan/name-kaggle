@@ -4,9 +4,11 @@ Date: 2026-11-03 MYT
 
 ## Status
 
-**BLOCKED_BY_KAGGLE_GPU_QUOTA — SCIENTIFIC TRANSFER GATE UNRUN.**
+**WAITING_FOR_SELF_HOSTED_GPU_RUNNER — SCIENTIFIC TRANSFER GATE UNRUN.**
 
 This is **not** a scientific FAIL. The frozen v1-vs-v3 paired source-transfer experiment has not produced any model score.
+
+The original Kaggle execution backend is no longer required for this gate. After Kaggle rejected the frozen kernel because the weekly GPU quota was exhausted, the execution backend was changed to GitHub Actions orchestration with a dedicated self-hosted CUDA runner. The scientific contract is unchanged.
 
 ## Frozen experiment identity
 
@@ -27,72 +29,87 @@ This is **not** a scientific FAIL. The frozen v1-vs-v3 paired source-transfer ex
 
 ## Implementation verification
 
-GitHub Actions run `41569836280` (`V3 Static Tests`) completed successfully before the scientific execution attempt.
+### Original frozen v3 suite
 
-Focused suite:
+GitHub Actions run `41569836280` (`V3 Static Tests`): **19 passed in 2.76s**.
 
-- `tests/test_dct_v3_transfer_split.py`
-- `tests/test_dct_temporal_pool.py`
-- `tests/test_materialize_dct_v3_worker.py`
-- `tests/test_dct_v3_source_eval.py`
-- `tests/test_build_dct_v3_transfer_kernel.py`
+Verified:
 
-Result: **19 passed in 2.76s**.
+- materialized v3 Stage-1 worker compiled;
+- frozen paired-transfer kernel compiled;
+- exact transfer sources were embedded;
+- no competition submission command was present.
 
-Additional static verification:
+### Local / self-hosted CUDA execution path
 
-- materialized v3 Stage-1 worker compiled successfully;
-- frozen paired-transfer kernel compiled successfully;
-- kernel metadata was verified as private, internet-disabled, T4, with no competition source and no submission command;
-- frozen holdout sources were embedded exactly as `['alperen', 'hailey', 'willrice']`.
+A local CUDA executor was added at `scripts/dct_v3_local_transfer.py` and is covered by `tests/test_dct_v3_local_transfer.py`.
 
-A direct no-Actions runner was then added at `scripts/dct_v3_direct_transfer.py` with focused tests at `tests/test_dct_v3_direct_transfer.py`.
+GitHub-hosted CPU verification run `41580519705` completed successfully:
 
-Direct-runner TDD result: **5 passed** locally. The runner explicitly treats Kaggle's `Kernel push error: Maximum weekly GPU quota ... reached` text as a failed push even when the Kaggle CLI returns process exit code `0`; it therefore never polls a nonexistent kernel after quota rejection. It also verifies the exact candidate/split lineage, 14,506 prediction rows, preserved v3 Stage-1 checkpoint, and absence of official-row/Public-LB contamination before reporting a PASS/FAIL decision. These `[skip ci]` commits triggered no new GitHub Actions runs.
+- **24 passed in 3.62s**;
+- local CUDA executor imports and compiles;
+- generated v3 worker compiles;
+- exact pool SHA / model identity / source split / contamination guards are checked;
+- the result validator cannot authorize a competition submission.
 
-## Execution attempt
+The executor runs the exact v1 A1 control and v3 A1 treatment sequentially on the same CUDA host, captures aligned heldout predictions, applies the already-frozen `dct_v3_source_eval.py` gate, preserves only the v3 Stage-1 checkpoint, and uses no official competition rows or Public-LB feedback.
 
-Workflow run: `41569982605` (`V3 DCT Paired Transfer`)
+## Kaggle infrastructure attempt — historical
 
-The workflow completed all static checks and reached the one intended Kaggle kernel push. Kaggle rejected the push immediately with:
+Workflow run `41569982605` (`V3 DCT Paired Transfer`) reached the intended Kaggle kernel push. Kaggle rejected the push immediately with:
 
 `Maximum weekly GPU quota of 30.00 hours reached.`
 
-Because the push was rejected:
+Therefore no scientific model run occurred on Kaggle.
 
-- no Kaggle v3 scientific kernel execution was created;
-- no v1 or v3 Stage-1 training ran;
-- no heldout predictions were produced;
-- no bootstrap interval was computed;
-- no v3 Stage-1 checkpoint exists from this attempt;
-- no official competition rows were scored;
-- no competition test rows were used;
-- no Public LB result was consumed;
-- no Kaggle submission occurred.
+## GitHub Actions self-hosted execution
 
-The following status lookup returned 404 only because the scientific kernel did not exist after the rejected push. It is not an experiment failure.
+Workflow: `.github/workflows/v3-self-hosted-gpu-transfer.yml`.
+
+It is restricted to a matching runner:
+
+`[self-hosted, linux, x64, gpu]`
+
+and does not trigger from pull requests. The actual Qwen3-8B LoRA compute is intentionally **not** sent to a GitHub-hosted CPU runner, because doing so would not provide the CUDA environment required by the frozen worker.
+
+Current queued scientific run:
+
+- run ID: `41580819667`
+- head SHA: `2d0a86fffa880709ad25c8ee9153f2b2838617a8`
+- job: `transfer`
+- status: **queued**
+
+A real queued job exists, so workflow parsing/registration is valid. It is waiting for a self-hosted Linux x64 runner carrying the custom `gpu` label.
+
+The queued run will:
+
+1. verify CUDA and >=15 GiB VRAM;
+2. preserve the host CUDA-enabled PyTorch runtime while pinning `transformers==4.57.1` and `peft==0.17.1`;
+3. rerun the frozen v3 focused tests on the GPU host;
+4. run exactly one paired v1-vs-v3 external-source transfer experiment;
+5. apply the predeclared gate;
+6. upload the exact evidence plus v3 Stage-1 checkpoint;
+7. perform no competition submission.
 
 ## Scientific decision
 
 **UNRUN / UNKNOWN.**
 
-Do not mark v3 PASS or FAIL until the exact frozen paired source-transfer execution completes and `dct_v3_source_eval.py` applies the predeclared gate.
+Do not mark v3 PASS or FAIL until run `41580819667` obtains a matching GPU runner, completes the paired experiment, and `dct_v3_source_eval.py` applies the predeclared gate.
 
 ## Resume rule
 
-When GPU quota is available again, execute the **same frozen experiment once**:
+Bring online a dedicated self-hosted Linux x64 CUDA runner with custom label `gpu`. Do not create a replacement scientific run while `41580819667` remains queued.
 
-- same branch/contract;
-- same transfer lock;
-- same v1 control;
-- same two-mode DCT treatment;
-- same seed/triplet order/hyperparameters;
-- same source gate and bootstrap thresholds.
+Do **not** change:
 
-Do **not** change modes, weights, layers, sources, model, training settings, thresholds, or label subsets in response to this infrastructure block.
+- DCT modes or pooling weights;
+- source holdout or labels;
+- Qwen model/revision;
+- seed/triplet order;
+- LoRA/training settings;
+- transfer thresholds;
+- official folds;
+- Public-LB policy.
 
-Do not rerun the existing GitHub Actions workflow merely to probe quota. Prefer the direct authenticated Kaggle runner:
-
-`python scripts/dct_v3_direct_transfer.py --work-dir .v3-dct-transfer --repo-root .`
-
-It pushes the exact frozen kernel once, attaches to that exact ref, downloads the paired evidence, validates lineage, and performs **no competition submission**. A transfer PASS only unlocks the separately frozen official-OOF stage; it does not submit anything by itself.
+If the transfer decision is FAIL, stop v3 permanently. If it is PASS, only then proceed to the separately predeclared official-OOF gate.
