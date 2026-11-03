@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _named_parameters(modules: Mapping[str, nn.Module]) -> dict[str, nn.Parameter]:
@@ -39,11 +39,30 @@ def _parameter_contract(named: Mapping[str, nn.Parameter]) -> dict[str, dict[str
     }
 
 
-def _clone_module_state(module: nn.Module) -> dict[str, torch.Tensor]:
+def _optimizer_parameter_ids(optimizer: torch.optim.Optimizer) -> set[int]:
     return {
-        name: tensor.detach().cpu().clone()
-        for name, tensor in module.state_dict().items()
+        id(parameter)
+        for group in optimizer.param_groups
+        for parameter in group["params"]
     }
+
+
+def _validate_optimizer_covers_trainables(
+    named: Mapping[str, nn.Parameter], optimizer: torch.optim.Optimizer
+) -> None:
+    trainable_ids = {id(parameter) for parameter in named.values() if parameter.requires_grad}
+    optimizer_ids = _optimizer_parameter_ids(optimizer)
+    if optimizer_ids != trainable_ids:
+        missing = sorted(
+            name
+            for name, parameter in named.items()
+            if parameter.requires_grad and id(parameter) not in optimizer_ids
+        )
+        unexpected = sum(1 for parameter_id in optimizer_ids if parameter_id not in trainable_ids)
+        raise RuntimeError(
+            "optimizer/trainable parameter contract drift: "
+            f"missing={missing[:10]} unexpected_count={unexpected}"
+        )
 
 
 def _validate_progress(*, cursor: int, accumulation_position: int, accumulation_size: int) -> None:
@@ -62,6 +81,7 @@ def capture_resume_state(
     modules: Mapping[str, nn.Module],
     optimizer: torch.optim.Optimizer,
     scheduler: Any | None,
+    scaler: Any | None = None,
     cursor: int,
     accumulation_position: int,
     accumulation_size: int,
@@ -73,6 +93,12 @@ def capture_resume_state(
         accumulation_size=accumulation_size,
     )
     named = _named_parameters(modules)
+    _validate_optimizer_covers_trainables(named, optimizer)
+    trainable_parameters = {
+        name: parameter.detach().cpu().clone()
+        for name, parameter in named.items()
+        if parameter.requires_grad
+    }
     gradients = {
         name: parameter.grad.detach().cpu().clone()
         for name, parameter in named.items()
@@ -86,14 +112,14 @@ def capture_resume_state(
             "accumulation_position": int(accumulation_position),
             "accumulation_size": int(accumulation_size),
         },
+        # Keep the full parameter contract to detect base-model or module drift,
+        # but persist values only for parameters that training can mutate.
         "parameter_contract": _parameter_contract(named),
-        "modules": {
-            name: _clone_module_state(module)
-            for name, module in modules.items()
-        },
+        "trainable_parameters": trainable_parameters,
         "gradients": gradients,
         "optimizer": optimizer.state_dict(),
         "scheduler": None if scheduler is None else scheduler.state_dict(),
+        "scaler": None if scaler is None else scaler.state_dict(),
         "rng": {
             "python": random.getstate(),
             "numpy": np.random.get_state(),
@@ -126,6 +152,7 @@ def restore_resume_state(
     modules: Mapping[str, nn.Module],
     optimizer: torch.optim.Optimizer,
     scheduler: Any | None,
+    scaler: Any | None = None,
     expected_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if int(state.get("schema_version", -1)) != SCHEMA_VERSION:
@@ -154,16 +181,26 @@ def restore_resume_state(
     )
 
     named = _named_parameters(modules)
+    _validate_optimizer_covers_trainables(named, optimizer)
     expected_contract = state.get("parameter_contract")
     observed_contract = _parameter_contract(named)
     if expected_contract != observed_contract:
         raise RuntimeError("parameter contract drift")
 
-    saved_modules = state.get("modules")
-    if not isinstance(saved_modules, dict) or set(saved_modules) != set(modules):
-        raise RuntimeError("module contract drift")
-    for name, module in modules.items():
-        module.load_state_dict(saved_modules[name], strict=True)
+    saved_trainable = state.get("trainable_parameters")
+    if not isinstance(saved_trainable, dict):
+        raise RuntimeError("checkpoint trainable parameter state is missing")
+    expected_trainable_names = {
+        name for name, parameter in named.items() if parameter.requires_grad
+    }
+    if set(saved_trainable) != expected_trainable_names:
+        raise RuntimeError("trainable parameter state contract drift")
+    with torch.no_grad():
+        for name, tensor in saved_trainable.items():
+            parameter = named[name]
+            if list(tensor.shape) != list(parameter.shape):
+                raise RuntimeError(f"trainable parameter shape drift for {name}")
+            parameter.copy_(tensor.to(device=parameter.device, dtype=parameter.dtype))
 
     optimizer.load_state_dict(state["optimizer"])
     saved_scheduler = state.get("scheduler")
@@ -174,6 +211,15 @@ def restore_resume_state(
         if saved_scheduler is None:
             raise RuntimeError("checkpoint is missing scheduler state")
         scheduler.load_state_dict(saved_scheduler)
+
+    saved_scaler = state.get("scaler")
+    if scaler is None:
+        if saved_scaler is not None:
+            raise RuntimeError("checkpoint contains scaler state but no scaler was supplied")
+    else:
+        if saved_scaler is None:
+            raise RuntimeError("checkpoint is missing scaler state")
+        scaler.load_state_dict(saved_scaler)
 
     for parameter in named.values():
         parameter.grad = None
@@ -209,4 +255,6 @@ def restore_resume_state(
         "accumulation_size": accumulation_size,
         "metadata": dict(metadata),
         "restored_gradient_count": len(saved_gradients),
+        "restored_trainable_parameter_count": len(saved_trainable),
+        "scaler_restored": scaler is not None,
     }
