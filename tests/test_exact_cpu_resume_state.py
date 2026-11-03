@@ -158,3 +158,65 @@ def test_capture_rejects_invalid_accumulation_position():
             accumulation_size=6,
             metadata={"candidate": "synthetic"},
         )
+
+
+def test_checkpoint_payload_stores_only_trainable_parameter_values():
+    torch.manual_seed(5)
+    model = nn.Sequential(nn.Linear(4, 5), nn.Tanh(), nn.Linear(5, 3))
+    for parameter in model[0].parameters():
+        parameter.requires_grad = False
+    optimizer = torch.optim.AdamW(
+        [parameter for parameter in model.parameters() if parameter.requires_grad], lr=1e-2
+    )
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda step: 1.0)
+
+    state = capture_resume_state(
+        modules={"model": model},
+        optimizer=optimizer,
+        scheduler=scheduler,
+        cursor=0,
+        accumulation_position=0,
+        accumulation_size=6,
+        metadata={"candidate": "synthetic"},
+    )
+
+    assert "trainable_parameters" in state
+    assert "modules" not in state
+    assert sorted(state["trainable_parameters"]) == ["model.2.bias", "model.2.weight"]
+    assert "model.0.weight" in state["parameter_contract"]
+    assert state["parameter_contract"]["model.0.weight"]["requires_grad"] is False
+
+
+def test_round_trip_preserves_cpu_grad_scaler_state():
+    model, optimizer, scheduler = _build()
+    scaler = torch.amp.GradScaler("cpu", init_scale=256.0)
+    x = torch.tensor([[0.1, 0.2, -0.3, 0.4], [0.5, -0.6, 0.7, 0.8]])
+    y = torch.tensor([1, 2])
+    with torch.autocast(device_type="cpu", dtype=torch.float16):
+        loss = torch.nn.functional.cross_entropy(model(x), y)
+    scaler.scale(loss).backward()
+
+    state = capture_resume_state(
+        modules={"model": model},
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        cursor=1,
+        accumulation_position=1,
+        accumulation_size=6,
+        metadata={"candidate": "synthetic", "amp": "cpu-fp16"},
+    )
+
+    restored_model, restored_optimizer, restored_scheduler = _build(seed=999)
+    restored_scaler = torch.amp.GradScaler("cpu", init_scale=1.0)
+    restore_resume_state(
+        state,
+        modules={"model": restored_model},
+        optimizer=restored_optimizer,
+        scheduler=restored_scheduler,
+        scaler=restored_scaler,
+        expected_metadata={"candidate": "synthetic", "amp": "cpu-fp16"},
+    )
+
+    _assert_nested_equal(scaler.state_dict(), restored_scaler.state_dict())
+    assert restored_scaler.get_scale() == 256.0
