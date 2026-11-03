@@ -1,0 +1,276 @@
+name: V3 CPU Shadow
+
+on:
+  push:
+    branches:
+      - infra/v3-cpu-shadow-resume
+    paths:
+      - scripts/cpu_shadow_backend.py
+      - tests/test_cpu_shadow_backend.py
+      - scripts/cpu_shadow_resume.py
+      - tests/test_cpu_shadow_resume.py
+      - scripts/dct_v3_cpu_shadow_chunk.py
+      - tests/test_dct_v3_cpu_shadow_chunk.py
+      - artifacts/research/V3_CPU_SHADOW_TRIGGER.txt
+      - .github/workflows/v3-cpu-shadow-chunk.yml
+  workflow_dispatch:
+    inputs:
+      representation:
+        description: CPU shadow representation
+        required: true
+        type: choice
+        options:
+          - dct
+          - mean
+        default: dct
+      backend:
+        description: CPU shadow numerical backend
+        required: true
+        type: choice
+        options:
+          - fp16
+          - bf16
+        default: fp16
+      parent_run_id:
+        description: Prior successful CPU-shadow run ID to resume from; blank starts fresh
+        required: false
+        type: string
+        default: ''
+      max_microbatches:
+        description: Number of microbatches to execute in this bounded chunk
+        required: true
+        type: string
+        default: '1'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install static-test runtime
+        run: python -m pip install -q pytest numpy
+      - name: Verify CPU shadow static contracts
+        run: |
+          PYTHONPATH=. pytest -q \
+            tests/test_cpu_shadow_backend.py \
+            tests/test_dct_v3_cpu_shadow_chunk.py
+
+  chunk:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[cpu-chunk]') || contains(github.event.head_commit.message, '[cpu-chunk-bf16]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve bounded chunk inputs and runner paths
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          representation='${{ github.event.inputs.representation }}'
+          backend='${{ github.event.inputs.backend }}'
+          parent_run_id='${{ github.event.inputs.parent_run_id }}'
+          max_microbatches='${{ github.event.inputs.max_microbatches }}'
+
+          if [ "$EVENT_NAME" = 'push' ] && [ -f artifacts/research/V3_CPU_SHADOW_TRIGGER.txt ]; then
+            trigger_parent_run_id="$(sed -n 's/^parent_run_id=\([0-9][0-9]*\)$/\1/p' artifacts/research/V3_CPU_SHADOW_TRIGGER.txt | tail -n 1)"
+            if [ -n "$trigger_parent_run_id" ]; then
+              parent_run_id="$trigger_parent_run_id"
+            fi
+          fi
+
+          if [ -z "$representation" ]; then representation='dct'; fi
+          if [ -z "$backend" ]; then
+            if [[ "${COMMIT_MESSAGE:-}" == *"[cpu-chunk-bf16]"* ]]; then
+              backend='bf16'
+            else
+              backend='fp16'
+            fi
+          fi
+          if [ -z "$max_microbatches" ]; then max_microbatches='1'; fi
+          if ! [[ "$max_microbatches" =~ ^[1-9][0-9]*$ ]]; then
+            echo "max_microbatches must be a positive integer" >&2
+            exit 1
+          fi
+          if [ -n "$parent_run_id" ] && ! [[ "$parent_run_id" =~ ^[0-9]+$ ]]; then
+            echo "parent_run_id must be numeric" >&2
+            exit 1
+          fi
+          echo "REPRESENTATION=$representation" >> "$GITHUB_ENV"
+          echo "BACKEND=$backend" >> "$GITHUB_ENV"
+          echo "PARENT_RUN_ID=$parent_run_id" >> "$GITHUB_ENV"
+          echo "MAX_MICROBATCHES=$max_microbatches" >> "$GITHUB_ENV"
+          echo "HF_HOME=$RUNNER_TEMP/hf-home" >> "$GITHUB_ENV"
+
+      - name: Remove official competition data from runner workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f data/train.csv data/test.csv data/sample_submission.parquet
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test ! -e data/sample_submission.parquet
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Free ephemeral runner disk
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo rm -rf /usr/local/lib/node_modules || true
+          sudo apt-get clean
+          df -h /
+          free -h
+
+      - name: Install pinned CPU runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip install -q --upgrade pip
+          python -m pip install -q 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q \
+            'transformers==4.57.1' \
+            'peft==0.17.1' \
+            'tokenizers==0.22.1' \
+            'huggingface-hub==0.36.0' \
+            safetensors accelerate pytest numpy scipy pandas scikit-learn pyarrow
+
+      - name: Verify CPU shadow infrastructure
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. pytest -q \
+            tests/test_cpu_shadow_backend.py \
+            tests/test_cpu_shadow_resume.py \
+            tests/test_dct_v3_cpu_shadow_chunk.py
+          python -m py_compile \
+            scripts/cpu_shadow_backend.py \
+            scripts/cpu_shadow_resume.py \
+            scripts/dct_v3_cpu_shadow_chunk.py
+
+      - name: Download immutable external Phase14 safe subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-cpu-shadow/phase14
+          gh api /repos/kolihhan/name-kaggle/actions/artifacts/13067907516/zip > /tmp/v3-cpu-shadow/phase14.zip
+          unzip -q /tmp/v3-cpu-shadow/phase14.zip -d /tmp/v3-cpu-shadow/phase14
+          test -f /tmp/v3-cpu-shadow/phase14/conservative_public_subset.parquet
+
+      - name: Download pinned truncated Qwen snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-cpu-shadow/model
+          PYTHONPATH=. python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.dct_v3_cpu_feasibility import _download_truncated_snapshot
+
+          root, meta = _download_truncated_snapshot(Path('/tmp/v3-cpu-shadow/model'))
+          Path('/tmp/v3-cpu-shadow/model-root.txt').write_text(str(root), encoding='utf-8')
+          Path('/tmp/v3-cpu-shadow/model-meta.json').write_text(
+              json.dumps(meta, indent=2, sort_keys=True), encoding='utf-8'
+          )
+          print(json.dumps(meta, indent=2, sort_keys=True))
+          PY
+          df -h /
+          free -h
+
+      - name: Restore prior CPU shadow checkpoint
+        if: env.PARENT_RUN_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-cpu-shadow/parent
+          gh run download "$PARENT_RUN_ID" \
+            --repo kolihhan/name-kaggle \
+            --dir /tmp/v3-cpu-shadow/parent
+          resume_path="$(find /tmp/v3-cpu-shadow/parent -type f -name shadow.pt -print -quit)"
+          test -n "$resume_path"
+          mkdir -p /tmp/v3-cpu-shadow/out
+          cp "$resume_path" /tmp/v3-cpu-shadow/out/shadow.pt
+          echo "RESUME_PATH=$resume_path" >> "$GITHUB_ENV"
+
+      - name: Initialize first-chunk paths
+        if: env.PARENT_RUN_ID == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-cpu-shadow/out
+          echo "RESUME_PATH=" >> "$GITHUB_ENV"
+
+      - name: Run bounded CPU shadow chunk
+        id: chunk
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          model_root="$(cat /tmp/v3-cpu-shadow/model-root.txt)"
+          resume_args=()
+          if [ -n "$RESUME_PATH" ]; then
+            resume_args=(--resume-checkpoint "$RESUME_PATH")
+          fi
+          timeout --signal=TERM --kill-after=30s 270m \
+            env PYTHONPATH=. python scripts/dct_v3_cpu_shadow_chunk.py \
+              --representation "$REPRESENTATION" \
+              --backend "$BACKEND" \
+              --safe-path /tmp/v3-cpu-shadow/phase14/conservative_public_subset.parquet \
+              --snapshot-path "$model_root" \
+              --output-checkpoint /tmp/v3-cpu-shadow/out/shadow.pt \
+              --result-json /tmp/v3-cpu-shadow/out/result.json \
+              --max-microbatches "$MAX_MICROBATCHES" \
+              "${resume_args[@]}"
+
+      - name: Print CPU shadow evidence
+        if: always()
+        shell: bash
+        run: |
+          set -x
+          free -h || true
+          df -h / || true
+          if [ -f /tmp/v3-cpu-shadow/out/result.json ]; then
+            cat /tmp/v3-cpu-shadow/out/result.json
+          fi
+          if [ -f /tmp/v3-cpu-shadow/out/shadow.pt ]; then
+            du -h /tmp/v3-cpu-shadow/out/shadow.pt
+          fi
+
+      - name: Upload bounded CPU shadow checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-cpu-shadow-${{ github.run_id }}
+          path: |
+            /tmp/v3-cpu-shadow/out/shadow.pt
+            /tmp/v3-cpu-shadow/out/result.json
+            /tmp/v3-cpu-shadow/model-meta.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail only after evidence upload
+        if: steps.chunk.outcome != 'success'
+        shell: bash
+        run: |
+          echo 'CPU shadow chunk did not finish cleanly; any prior checkpoint was preserved when available.'
+          exit 1
