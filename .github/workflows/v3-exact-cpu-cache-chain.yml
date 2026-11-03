@@ -1,0 +1,114 @@
+name: V3 Exact CPU Rolling Cache Proof
+
+on:
+  push:
+    branches:
+      - infra/v3-exact-cpu-resume
+    paths:
+      - '.github/workflows/v3-exact-cpu-cache-chain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  CACHE_KEY: v3-exact-cpu-proof-${{ github.run_id }}-g0
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deterministic CPU runtime
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q numpy
+      - name: Produce mid-accumulation state
+        run: |
+          mkdir -p "$RUNNER_TEMP/v3-cache-state"
+          PYTHONPATH=. python scripts/exact_cpu_resume_artifact_chain.py start \
+            --output-dir "$RUNNER_TEMP/v3-cache-state"
+          sha256sum "$RUNNER_TEMP/v3-cache-state/resume.pt"
+          cat "$RUNNER_TEMP/v3-cache-state/manifest.json"
+      - name: Save exact predecessor cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/v3-cache-state
+          key: ${{ env.CACHE_KEY }}
+
+  resume:
+    needs: produce
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deterministic CPU runtime
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q numpy
+      - name: Restore exact predecessor cache only
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/v3-cache-state
+          key: ${{ env.CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Reject non-exact restore
+        run: |
+          set -euxo pipefail
+          test "${{ steps.restore.outputs.cache-hit }}" = 'true'
+          test "${{ steps.restore.outputs.cache-primary-key }}" = "$CACHE_KEY"
+          find "$RUNNER_TEMP/v3-cache-state" -maxdepth 2 -type f -print
+      - name: Resume and verify trajectory on fresh runner
+        run: |
+          mkdir -p "$RUNNER_TEMP/v3-cache-result"
+          PYTHONPATH=. python scripts/exact_cpu_resume_artifact_chain.py finish \
+            --state "$RUNNER_TEMP/v3-cache-state/resume.pt" \
+            --manifest "$RUNNER_TEMP/v3-cache-state/manifest.json" \
+            --output-dir "$RUNNER_TEMP/v3-cache-result"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads((Path(os.environ['RUNNER_TEMP']) / 'v3-cache-result' / 'result.json').read_text())
+          assert payload['all_equal'] is True
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+      - name: Upload small proof only
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-exact-cpu-cache-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/v3-cache-result/result.json
+          if-no-files-found: error
+          retention-days: 1
+
+  cleanup:
+    needs: resume
+    if: always() && needs.resume.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Confirm cache exists
+        run: |
+          set -euxo pipefail
+          gh cache list --repo "$GITHUB_REPOSITORY" --key "$CACHE_KEY" --json id,key,sizeInBytes
+      - name: Delete predecessor cache after successor proof
+        run: |
+          set -euxo pipefail
+          gh cache delete "$CACHE_KEY" --repo "$GITHUB_REPOSITORY" --confirm
+      - name: Confirm cache key is gone
+        run: |
+          set -euxo pipefail
+          count="$(gh cache list --repo "$GITHUB_REPOSITORY" --key "$CACHE_KEY" --json key --jq 'length')"
+          test "$count" = '0'
