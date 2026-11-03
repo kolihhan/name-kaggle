@@ -1,0 +1,27 @@
+name: V3 GPU runner bootstrap static test
+
+on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - scripts/bootstrap_ephemeral_gpu_runner.sh
+      - tests/test_ephemeral_gpu_runner_bootstrap.py
+      - .github/workflows/v3-runner-bootstrap-static.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pytest
+        run: python -m pip install -q pytest
+      - name: Verify one-shot runner bootstrap contract
+        run: python -m pytest -q tests/test_ephemeral_gpu_runner_bootstrap.py
