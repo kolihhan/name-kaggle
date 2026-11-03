@@ -32,7 +32,8 @@ Allowed under this exception:
 - the immutable external Phase14 artifact `13067907516` (`conservative_public_subset.parquet`);
 - the public pinned Qwen model revision already used by the frozen experiment;
 - upload of trainable-only CPU checkpoints and execution metadata;
-- unit/static verification for the CPU training infrastructure.
+- unit/static verification for the CPU training infrastructure;
+- the one-shot workflow `.github/workflows/v3-cpu-shadow-resume-once.yml`, hard-bound to parent run `41604738508`, which may dispatch exactly one resumed BF16 DCT microbatch only if that parent completes successfully.
 
 Required safeguards:
 
@@ -42,6 +43,7 @@ Required safeguards:
 - do not use Kaggle credentials or private competition datasets for the CPU lane;
 - keep each heavy chunk explicitly bounded and checkpointed; do not create an unlimited automatic chain;
 - only resume after the previous chunk produced a valid checkpoint and finite training evidence;
+- the one-shot listener must not dispatch from any parent other than `41604738508` and must not recursively continue beyond its single child;
 - do not authorize a Kaggle submission;
 - do not relabel CPU evidence as the frozen CUDA v3 transfer gate.
 
