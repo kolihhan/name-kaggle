@@ -1,0 +1,98 @@
+name: V3 Kaggle GPU Quota Probe
+
+on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/v3-kaggle-gpu-quota-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl-v3-gpu-quota-probe
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5' six
+
+      - name: Build private GPU-only probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          rm -rf /tmp/kaggle-gpu-probe
+          mkdir -p /tmp/kaggle-gpu-probe
+          cat > /tmp/kaggle-gpu-probe/kernel_main.py <<'PY'
+          import json
+          import subprocess
+          import torch
+
+          payload = {
+              'cuda_available': bool(torch.cuda.is_available()),
+              'torch_cuda': torch.version.cuda,
+          }
+          if torch.cuda.is_available():
+              payload['device_name'] = torch.cuda.get_device_name(0)
+              payload['vram_gib'] = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 2)
+          print(json.dumps(payload, sort_keys=True))
+          subprocess.run(['nvidia-smi'], check=False)
+          if not torch.cuda.is_available():
+              raise SystemExit('GPU_QUOTA_PROBE_NO_CUDA')
+          print('KAGGLE_GPU_QUOTA_PROBE_PASS')
+          PY
+          cat > /tmp/kaggle-gpu-probe/kernel-metadata.json <<'JSON'
+          {
+            "id": "kolihhan/ntl-v3-gpu-quota-probe",
+            "title": "NTL V3 GPU Quota Probe",
+            "code_file": "kernel_main.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_internet": false,
+            "machine_shape": "NvidiaTeslaT4",
+            "competition_sources": [],
+            "dataset_sources": [],
+            "kernel_sources": [],
+            "model_sources": []
+          }
+          JSON
+
+      - name: Push quota-only T4 kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/kaggle-gpu-probe
+
+      - name: Poll quota-only execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "poll=$i $status"
+            if grep -Eqi '(^|[^a-z])(complete|completed|success|successful|succeeded)([^a-z]|$)' <<<"$status"; then
+              echo 'KAGGLE_GPU_QUOTA_AVAILABLE=1'
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 0
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled|canceled)([^a-z]|$)' <<<"$status"; then
+              echo 'KAGGLE_GPU_QUOTA_AVAILABLE=0'
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 10
+          done
+          echo 'KAGGLE_GPU_QUOTA_UNKNOWN=1'
+          kaggle kernels logs "$KERNEL_REF" || true
+          exit 2
