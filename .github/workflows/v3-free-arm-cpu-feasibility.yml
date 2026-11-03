@@ -1,0 +1,132 @@
+# Execution-only architecture comparison; no scientific scoring.
+name: V3 Free ARM CPU Feasibility
+
+on:
+  push:
+    branches:
+      - infra/v3-exact-cpu-resume
+    paths:
+      - .github/workflows/v3-free-arm-cpu-feasibility.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-free-arm-cpu-feasibility
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 330
+    env:
+      TOKENIZERS_PARALLELISM: 'false'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Same execution-only source commit used by the x64 feasibility run.
+          ref: 6dbb7539df0f86190c6ebc279b0038c5d7c33c98
+          clean: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Show free ARM runner resources
+        run: |
+          set -euxo pipefail
+          uname -a
+          uname -m
+          nproc
+          lscpu || true
+          free -h
+          df -h /
+
+      - name: Define ephemeral cache path
+        run: |
+          echo "HF_HOME=${RUNNER_TEMP}/hf-home" >> "$GITHUB_ENV"
+
+      - name: Free ephemeral runner disk
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo rm -rf /usr/local/lib/node_modules || true
+          sudo apt-get clean
+          df -h /
+
+      - name: Install exact probe runtime
+        run: |
+          set -euxo pipefail
+          python -m pip install -q --upgrade pip
+          python -m pip install -q \
+            'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q \
+            'transformers==4.57.1' \
+            'peft==0.17.1' \
+            'tokenizers==0.22.1' \
+            'huggingface-hub==0.36.0' \
+            safetensors accelerate pytest numpy scipy pandas scikit-learn pyarrow
+          python - <<'PY'
+          import platform, torch, transformers, peft
+          print('machine', platform.machine())
+          print('torch', torch.__version__)
+          print('transformers', transformers.__version__)
+          print('peft', peft.__version__)
+          print('cuda_available', torch.cuda.is_available())
+          assert platform.machine() in {'aarch64', 'arm64'}
+          assert not torch.cuda.is_available()
+          assert transformers.__version__ == '4.57.1'
+          assert peft.__version__ == '0.17.1'
+          PY
+          df -h /
+          free -h
+
+      - name: Verify CPU feasibility contract
+        run: |
+          PYTHONPATH=. pytest -q tests/test_dct_v3_cpu_feasibility.py
+          python -m py_compile scripts/dct_v3_cpu_feasibility.py
+
+      - name: Run one exact-architecture ARM CPU backward probe
+        id: probe
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/v3-arm-cpu-probe"
+          /usr/bin/time -v \
+            env PYTHONPATH=. python scripts/dct_v3_cpu_feasibility.py \
+              --work-dir "$RUNNER_TEMP/v3-arm-cpu-probe/work" \
+              --output "$RUNNER_TEMP/v3-arm-cpu-probe/cpu_feasibility.json" \
+            2>&1 | tee "$RUNNER_TEMP/v3-arm-cpu-probe/probe.log"
+
+      - name: Print feasibility evidence
+        if: always()
+        run: |
+          set -x
+          free -h || true
+          df -h / || true
+          if [ -f "$RUNNER_TEMP/v3-arm-cpu-probe/cpu_feasibility.json" ]; then
+            cat "$RUNNER_TEMP/v3-arm-cpu-probe/cpu_feasibility.json"
+          fi
+          tail -n 200 "$RUNNER_TEMP/v3-arm-cpu-probe/probe.log" 2>/dev/null || true
+
+      - name: Preserve ARM feasibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-free-arm-cpu-feasibility-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/v3-arm-cpu-probe/cpu_feasibility.json
+            ${{ runner.temp }}/v3-arm-cpu-probe/probe.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail workflow only after evidence is preserved
+        if: steps.probe.outcome != 'success'
+        run: |
+          echo 'ARM CPU feasibility probe did not complete one backward step; see preserved evidence.'
+          exit 1
