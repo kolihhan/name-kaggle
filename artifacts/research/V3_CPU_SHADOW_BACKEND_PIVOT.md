@@ -8,47 +8,34 @@ This document tracks CPU execution/training evidence only. It does not alter the
 
 ## User execution priority
 
-On 2026-11-03 the user explicitly chose **CPU-first training** despite the expected slowness.
+On 2026-11-03 the user explicitly chose **CPU-first training**.
 
 Operational consequence:
 
-- continue the CPU lineage first;
-- use bounded, resumable chunks with trainable-only checkpoints;
-- do not require GPU execution before making CPU training progress;
-- keep CPU evidence scientifically isolated from the frozen CUDA v3 transfer gate.
+- make useful CPU training progress before requiring GPU;
+- keep every CPU lane bounded and checkpointable;
+- keep CPU evidence scientifically isolated from the frozen CUDA v3 transfer gate;
+- do not score official competition rows, use Public LB, or submit from the CPU lane.
 
-This supersedes the earlier operational recommendation to reject sustained CPU training purely on estimated wall-clock cost.
+## Exact LoRA CPU evidence
 
-## FP16 anchor
+### FP16 anchor
 
 - run: `41598304633`
 - representation: `dct`
 - backend: CPU float16, no autocast, no GradScaler
 - max microbatches: `1`
-- status at latest check: **IN PROGRESS**
-- it has not completed one real DCT microbatch yet
 - official rows scored: `0`
-- Public LB tuning: `false`
-- submission authorization: `false`
 
-## BF16 pivot history
+### BF16 history
 
-The CPU-fp16 restriction was reopened under `RESEARCH_DOCTRINE.md` because the existing worst-case CPU probe and first resumable chunk were operationally slow.
-
-TDD evidence:
-
-- RED run `41601227520`: `scripts.cpu_shadow_backend` absent.
-- GREEN run `41601409082`: explicit fp16/bf16 backend contract passed.
-- chunk-lineage RED run `41601539263`: backend-aware lineage not yet implemented.
-- corrected GREEN run `41601753518`: backend + chunk-lineage static contracts passed; heavy job skipped.
-
-First BF16 benchmark `41602080074` did **not** complete a microbatch. It reached the readout quickly, then failed at the BF16 -> FP32 linear boundary with:
+First BF16 run `41602080074` reached the readout and failed at the BF16 -> FP32 classifier boundary:
 
 `RuntimeError: mat1 and mat2 must have the same dtype, but got BFloat16 and Float`
 
-That run produced no training checkpoint/result and must not be treated as throughput or scientific evidence.
+The forward/readout path reached that failure roughly ten seconds after the model had loaded, so the dominant multi-hour cost is not the forward pass.
 
-The readout boundary was then fixed by promoting representation features back to FP32 before the frozen FP32 classifier heads. The fix has a dedicated static contract in `tests/test_dct_v3_cpu_shadow_chunk.py`.
+The readout boundary was fixed by promoting representation features back to FP32 before the FP32 classifier heads.
 
 Corrected BF16 run:
 
@@ -56,40 +43,53 @@ Corrected BF16 run:
 - representation: `dct`
 - backend: CPU bfloat16 + CPU autocast, no GradScaler
 - max microbatches: `1`
-- separate lineage fingerprint from FP16
-- status at latest check: **IN PROGRESS** in the first real bounded training microbatch
+- status at the 2026-11-03 19:55 MYT check: **IN PROGRESS** in the first real bounded training microbatch after more than three hours
+- artifact/checkpoint at that check: **none yet**
 - official rows scored: `0`
 - Public LB tuning: `false`
 - submission authorization: `false`
 
-## CPU training decision
+### Backward root-cause evidence
 
-**STATUS: CPU-FIRST TRAINING ACTIVE.**
+The separate exact-architecture CPU feasibility probe `41581953208` entered the real backward path and was cancelled after roughly 1h27m without completing. At cancellation the runner reported about `11 GiB` RAM used and `1.5 GiB` swap used on a 4-vCPU / 15-GiB hosted runner.
+
+Together with the earlier BF16 run reaching the classifier readout in seconds, this localizes the operational bottleneck to **backpropagation through the 24-layer Qwen backbone with LoRA**, not model download or ordinary forward inference.
+
+## CPU-first decision after root-cause investigation
+
+**CPU-FIRST remains active, but automatic continuation of the exact LoRA path is stopped.**
 
 WHY:
 
-- the user explicitly prefers making CPU training progress before using GPU;
-- the resumable checkpoint path already preserves trainable LoRA/head/norm parameters, optimizer, scheduler, partial gradients, RNG, and progress;
-- each chunk can be bounded so a failed or timed-out run does not redefine the scientific candidate.
+- one exact LoRA microbatch has demonstrated multi-hour backward cost on the hosted CPU;
+- automatically chaining another identical microbatch would spend hours without first changing the execution bottleneck;
+- the user asked for CPU training first, not for blind repetition of a path that has not produced one checkpoint.
 
-CURRENT EVIDENCE / COST WARNING:
+The one-shot workflow that would have automatically resumed exact BF16 LoRA from `41604738508` was removed in commit `193d3dbcbaae54a96c74de8cb25be629489e6b74`.
 
-- frozen transfer training has `14,502` rows;
-- prompt triplets contain at most three rows, so a full epoch requires at least `4,834` microbatches;
-- both FP16 and corrected BF16 hosted-CPU runs are very slow so far.
+## Practical CPU training lane
 
-This makes full completion potentially expensive in wall-clock time, but it is now an explicit user-priority tradeoff rather than a hard method-class rejection.
+The next CPU lane should train only the DCT readout path while the Qwen backbone is frozen:
+
+- same pinned truncated Qwen backbone;
+- same DCT representation definition and selected layers;
+- backbone forward under inference/no-grad;
+- trainable LayerNorm/readout heads only;
+- training rows only for development; do **not** consume the frozen v3 heldout sources while the exact LoRA transfer gate is unresolved;
+- separate lineage and explicit label such as `head-only CPU proxy`; never relabel it as v3 LoRA;
+- bounded resumable chunks.
+
+Purpose: make real CPU training progress and test the usefulness/behavior of the DCT representation without paying the prohibitive LoRA backward cost.
 
 ## Continuation rule
 
-1. Let corrected BF16 run `41604738508` finish its first real microbatch.
-2. Continue from BF16 only if it produces a finite loss and a valid checkpoint.
-3. Resume sequentially from that checkpoint in deliberately bounded chunks.
-4. Do not mix FP16 and BF16 checkpoints.
-5. Do not create an unlimited automatic chain; every continuation must remain bounded and recoverable.
-6. Do not score official competition rows, consume Public LB, or submit from the CPU lane.
-7. CPU progress does not authorize the frozen CUDA v3 transfer gate or official OOF.
+1. Let already-running exact BF16 `41604738508` finish or time out; do not auto-chain it.
+2. If it unexpectedly produces a valid checkpoint, preserve it as exact-LoRA evidence but do not automatically launch another identical chunk.
+3. Build and benchmark the frozen-backbone head-only DCT CPU proxy on training rows only.
+4. Continue that proxy only if it demonstrates checkpointed progress at practical wall-clock cost.
+5. Keep exact LoRA, head-only proxy, FP16, and BF16 checkpoints in separate lineages.
+6. Do not use CPU proxy evidence to authorize the frozen CUDA v3 gate, official OOF, or submission.
 
 ## Pivot trigger
 
-Reconsider the CPU execution method if a completed BF16 microbatch shows an operationally extreme cost or if repeated chunks fail to make checkpointed progress. Any optimization must preserve the frozen candidate and maintain explicit lineage separation.
+Reopen sustained exact-LoRA CPU continuation only if an execution change materially reduces backward cost while preserving the candidate and lineage. Otherwise CPU-first progress should come from the explicitly labeled frozen-backbone proxy rather than repeated multi-hour exact-LoRA microbatches.
