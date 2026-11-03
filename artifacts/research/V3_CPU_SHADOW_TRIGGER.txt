@@ -3,12 +3,14 @@ Date: 2026-11-03 MYT
 
 Purpose: continue exactly one bounded DCT Stage-1 CPU BF16 microbatch from the latest verified checkpoint.
 
-parent_run_id=41632686348
+parent_run_id=41634045628
 
 Verified parent state:
 - lineage_fingerprint: 7980e40d6bf3b2d1d2570ffabf5f9f6dab6a7458ad46868621629b0382b12589
-- progress: group_index=0, microbatch_index=2, optimizer_steps=0
-- loss_count=2
+- progress: group_index=0, microbatch_index=3, optimizer_steps=0
+- loss_count=3
+- mean_training_loss_so_far=5.6217803955078125
+- checkpoint artifact: 13230450784
 - official rows scored: 0
 - competition test rows used: 0
 - Public LB tuning: false
