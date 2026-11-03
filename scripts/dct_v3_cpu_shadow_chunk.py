@@ -106,6 +106,11 @@ def _seed_all(seed: int, torch: Any) -> None:
     torch.manual_seed(seed)
 
 
+def prepare_head_features(z: Any) -> Any:
+    """Cross the CPU-autocast boundary into the frozen FP32 readout path."""
+    return z.float()
+
+
 def _representation(
     *,
     representation: str,
@@ -381,6 +386,7 @@ def run_cpu_shadow_chunk(
                 encoding=encoding,
                 torch=torch,
             )
+        z = prepare_head_features(z)
         target = torch.as_tensor(y[rows], dtype=torch.long)
         plain_logits = plain(dropout(z))
         centered_logits = centered(dropout(center_triplet(z)))
