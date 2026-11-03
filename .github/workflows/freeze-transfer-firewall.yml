@@ -1,0 +1,78 @@
+name: Freeze transfer firewall
+
+on:
+  push:
+    branches:
+      - research/v1-mechanism-audit-2026-11-03
+    paths:
+      - scripts/freeze_transfer_firewall.py
+      - tests/test_freeze_transfer_firewall.py
+      - .github/workflows/freeze-transfer-firewall.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Run focused tests
+        run: python -m pytest -q tests/test_freeze_transfer_firewall.py
+
+      - name: Download immutable Phase14 evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/phase14
+          gh api /repos/kolihhan/name-kaggle/actions/artifacts/13067907516/zip > /tmp/phase14.zip
+          unzip -q /tmp/phase14.zip -d /tmp/phase14
+          test -f /tmp/phase14/conservative_public_subset.parquet
+
+      - name: Build source firewall lock
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/research/firewall-run
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          from scripts.freeze_transfer_firewall import build_firewall_lock
+
+          consumed = {
+              'abdullah', 'semenoff', 'zakir',
+              'jadkutbi', 'lucasboesen', 'maniceet',
+              'alperen', 'hailey', 'willrice',
+          }
+          pool = pd.read_parquet('/tmp/phase14/conservative_public_subset.parquet')
+          lock = build_firewall_lock(pool, consumed_sources=consumed, min_label_rows=20)
+          assert lock['prompt_id_overlap_after_removal'] == 0
+          assert lock['prompt_key_overlap_after_removal'] == 0
+          assert lock['model_scores_used_for_selection'] is False
+          assert set(lock['consumed_sources']).isdisjoint(lock['firewall_sources'])
+          assert set(lock['all_sources']) == set(lock['consumed_sources']) | set(lock['firewall_sources'])
+          out = Path('artifacts/research/firewall-run/transfer_firewall_lock.json')
+          out.write_text(json.dumps(lock, indent=2, sort_keys=True), encoding='utf-8')
+          print(json.dumps(lock, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload immutable lock evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: transfer-firewall-lock
+          path: artifacts/research/firewall-run/transfer_firewall_lock.json
+          if-no-files-found: error
+          retention-days: 90
