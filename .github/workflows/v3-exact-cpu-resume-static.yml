@@ -9,6 +9,7 @@ on:
       - 'scripts/exact_cpu_resume_equivalence.py'
       - 'scripts/dct_v3_cpu_chunk.py'
       - 'tests/test_exact_cpu_resume_state.py'
+      - 'tests/test_exact_cpu_resume_equivalence.py'
       - 'tests/test_dct_v3_cpu_chunk.py'
       - '.github/workflows/v3-exact-cpu-resume-static.yml'
   workflow_dispatch:
@@ -32,7 +33,7 @@ jobs:
           python -m pip install -q pytest numpy
       - name: Run exact-resume tests
         run: |
-          PYTHONPATH=. pytest -q tests/test_exact_cpu_resume_state.py
+          PYTHONPATH=. pytest -q tests/test_exact_cpu_resume_state.py tests/test_exact_cpu_resume_equivalence.py
           if [ -f tests/test_dct_v3_cpu_chunk.py ]; then
             PYTHONPATH=. pytest -q tests/test_dct_v3_cpu_chunk.py
           fi
