@@ -1,0 +1,86 @@
+name: V1 mechanism audit
+
+on:
+  push:
+    branches:
+      - research/v1-mechanism-audit-2026-11-03
+    paths:
+      - scripts/analyze_v1_mechanism.py
+      - tests/test_analyze_v1_mechanism.py
+      - .github/workflows/v1-mechanism-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GATE_B_ARTIFACT_ID: '13125872633'
+      PHASE14_ARTIFACT_ID: '13067907516'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Run focused tests
+        run: python -m pytest tests/test_analyze_v1_mechanism.py -q
+
+      - name: Download immutable evidence artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-b /tmp/phase14
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${GATE_B_ARTIFACT_ID}/zip" > /tmp/gate-b.zip
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${PHASE14_ARTIFACT_ID}/zip" > /tmp/phase14.zip
+          unzip -q /tmp/gate-b.zip -d /tmp/gate-b
+          unzip -q /tmp/phase14.zip -d /tmp/phase14
+          test -f /tmp/gate-b/gate_b_pkg/data/train.csv
+          test -f /tmp/gate-b/gate_b_output/gate_b_candidate_oof.csv
+          test -f /tmp/phase14/public_sparse_oof.csv
+
+      - name: Run post-hoc mechanism audit
+        run: |
+          python scripts/analyze_v1_mechanism.py \
+            --train /tmp/gate-b/gate_b_pkg/data/train.csv \
+            --gate-b-oof /tmp/gate-b/gate_b_output/gate_b_candidate_oof.csv \
+            --sparse-oof /tmp/phase14/public_sparse_oof.csv \
+            --json-out mechanism-audit/v1_mechanism_audit.json \
+            --markdown-out mechanism-audit/v1_mechanism_audit.md
+
+      - name: Verify immutable reference metrics
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('mechanism-audit/v1_mechanism_audit.json').read_text())
+          assert r['status'] == 'POST-HOC DIAGNOSTIC ONLY'
+          assert r['rows'] == 2699
+          assert abs(r['balanced_accuracy']['plain'] - 0.5467611235396471) < 1e-12
+          assert abs(r['balanced_accuracy']['centered'] - 0.5478498632861049) < 1e-12
+          assert abs(r['balanced_accuracy']['sparse'] - 0.4178100919711658) < 1e-12
+          print(json.dumps({
+              'plain_errors': r['plain_errors'],
+              'within_model_median': {k: v for k, v in r['length']['within_model_median'].items() if k != 'per_model'},
+              'complementarity': r['complementarity'],
+              'agreement_patterns': r['agreement_patterns'],
+              'top_plain_confusions': r['top_plain_confusions'][:5],
+          }, indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v1-mechanism-audit
+          path: mechanism-audit/
+          if-no-files-found: error
