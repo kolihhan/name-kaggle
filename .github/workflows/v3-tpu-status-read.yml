@@ -27,10 +27,15 @@ jobs:
         run: |
           python -m pip install -q --upgrade pip
           python -m pip install -q six 'kaggle==2.2.5'
-      - name: Read current kernel status only
+      - name: Discover my probe kernel and read quota
         run: |
-          set -euo pipefail
+          set -u
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          kaggle kernels status "$KERNEL_REF"
+          echo '--- mine/search ---'
+          kaggle kernels list --mine --search 'NTL V3 TPU Environment Probe' --page-size 20 -v || true
+          echo '--- mine/recent ---'
+          kaggle kernels list --mine --page-size 20 -v --sort-by dateRun || true
+          echo '--- direct status (may fail for private kernels) ---'
+          kaggle kernels status "$KERNEL_REF" || true
           echo '--- quota ---'
           kaggle quota --format json
