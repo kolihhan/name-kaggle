@@ -22,15 +22,20 @@ jobs:
     timeout-minutes: 1440
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-      V3_WORK_DIR: ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}
-      V3_CHECKPOINT_DIR: ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/v3_stage1_checkpoint
-      V3_VENV: ${{ runner.temp }}/dct-v3-venv-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           clean: true
+
+      - name: Define per-run paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "V3_WORK_DIR=${RUNNER_TEMP}/dct-v3-transfer-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "V3_CHECKPOINT_DIR=${RUNNER_TEMP}/dct-v3-transfer-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/v3_stage1_checkpoint" >> "$GITHUB_ENV"
+          echo "V3_VENV=${RUNNER_TEMP}/dct-v3-venv-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
 
       - name: Verify dedicated CUDA runner
         shell: bash
@@ -122,10 +127,10 @@ jobs:
         with:
           name: v3-dct-self-hosted-transfer-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ env.V3_WORK_DIR }}/paired_transfer_result.json
-            ${{ env.V3_WORK_DIR }}/paired_transfer_predictions.csv
-            ${{ env.V3_WORK_DIR }}/v1_worker.json
-            ${{ env.V3_WORK_DIR }}/v3_worker.json
-            ${{ env.V3_CHECKPOINT_DIR }}/**
+            ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/paired_transfer_result.json
+            ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/paired_transfer_predictions.csv
+            ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/v1_worker.json
+            ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/v3_worker.json
+            ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/v3_stage1_checkpoint/**
           if-no-files-found: warn
           retention-days: 30
