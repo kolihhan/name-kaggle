@@ -78,12 +78,21 @@ jobs:
         shell: bash
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           representation='${{ github.event.inputs.representation }}'
           backend='${{ github.event.inputs.backend }}'
           parent_run_id='${{ github.event.inputs.parent_run_id }}'
           max_microbatches='${{ github.event.inputs.max_microbatches }}'
+
+          if [ "$EVENT_NAME" = 'push' ] && [ -f artifacts/research/V3_CPU_SHADOW_TRIGGER.txt ]; then
+            trigger_parent_run_id="$(sed -n 's/^parent_run_id=\([0-9][0-9]*\)$/\1/p' artifacts/research/V3_CPU_SHADOW_TRIGGER.txt | tail -n 1)"
+            if [ -n "$trigger_parent_run_id" ]; then
+              parent_run_id="$trigger_parent_run_id"
+            fi
+          fi
+
           if [ -z "$representation" ]; then representation='dct'; fi
           if [ -z "$backend" ]; then
             if [[ "${COMMIT_MESSAGE:-}" == *"[cpu-chunk-bf16]"* ]]; then
@@ -95,6 +104,10 @@ jobs:
           if [ -z "$max_microbatches" ]; then max_microbatches='1'; fi
           if ! [[ "$max_microbatches" =~ ^[1-9][0-9]*$ ]]; then
             echo "max_microbatches must be a positive integer" >&2
+            exit 1
+          fi
+          if [ -n "$parent_run_id" ] && ! [[ "$parent_run_id" =~ ^[0-9]+$ ]]; then
+            echo "parent_run_id must be numeric" >&2
             exit 1
           fi
           echo "REPRESENTATION=$representation" >> "$GITHUB_ENV"
