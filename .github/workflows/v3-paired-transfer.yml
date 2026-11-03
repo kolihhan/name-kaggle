@@ -1,0 +1,129 @@
+name: V3 DCT Paired Transfer
+
+on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/v3-paired-transfer.yml
+
+permissions:
+  contents: read
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl-v3-dct-transfer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/dct-temporal-fingerprint-v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install orchestration tooling
+        run: python -m pip install -q 'kaggle==2.2.5' six
+
+      - name: Build and statically verify frozen kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v3-transfer-kernel
+          python scripts/build_dct_v3_transfer_kernel.py \
+            --output-dir /tmp/v3-transfer-kernel \
+            --repo-root .
+          python -m py_compile /tmp/v3-transfer-kernel/kernel_main.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('/tmp/v3-transfer-kernel/kernel-metadata.json').read_text())
+          assert m['id']=='kolihhan/ntl-v3-dct-transfer', m
+          assert m['title']=='NTL V3 DCT Transfer', m
+          assert m['is_private'] is True
+          assert m['enable_internet'] is False
+          assert m['machine_shape']=='NvidiaTeslaT4'
+          assert m['competition_sources']==[]
+          assert m['dataset_sources']==[
+              'nishantdahal/ntl-handwriting-blend',
+              'kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2',
+          ]
+          assert m['model_sources']==['qwen-lm/qwen-3/transformers/8b-base/1']
+          src=Path('/tmp/v3-transfer-kernel/kernel_main.py').read_text()
+          assert 'competitions submit' not in src.lower()
+          assert "['alperen', 'hailey', 'willrice']" in src
+          assert 'v3_stage1_checkpoint' in src
+          assert 'public_lb_tuning' in src
+          print('STATIC_GATE_PASS')
+          PY
+
+      - name: Push exactly one frozen scientific kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle kernels push -p /tmp/v3-transfer-kernel
+
+      - name: Poll that exact scientific execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          complete=0
+          for i in $(seq 1 700); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "poll=$i $status"
+            if grep -Eqi '(^|[^a-z])(complete|completed|success|successful|succeeded)([^a-z]|$)' <<<"$status"; then
+              complete=1
+              break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled|canceled)([^a-z]|$)' <<<"$status"; then
+              kaggle kernels logs "$KERNEL_REF" || true
+              exit 1
+            fi
+            sleep 30
+          done
+          test "$complete" = 1
+
+      - name: Download and verify frozen paired result
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v3-transfer-output && mkdir -p /tmp/v3-transfer-output
+          kaggle kernels output "$KERNEL_REF" -p /tmp/v3-transfer-output -o
+          test -f /tmp/v3-transfer-output/paired_transfer_result.json
+          test -f /tmp/v3-transfer-output/paired_transfer_predictions.csv
+          test -d /tmp/v3-transfer-output/v3_stage1_checkpoint
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('/tmp/v3-transfer-output/paired_transfer_result.json').read_text())
+          assert p['candidate']=='dct-temporal-fingerprint-v3', p
+          assert p['scope']=='paired_external_source_transfer_no_official_rows_no_public_lb', p
+          assert p['pool_sha256']=='37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec', p
+          assert p['holdout_sources']==['alperen','hailey','willrice'], p
+          assert p['official_rows_scored']==0, p
+          assert p['competition_test_rows_used']==0, p
+          assert p['public_lb_tuning'] is False, p
+          assert p['v3_stage1_checkpoint_preserved'] is True, p
+          print(json.dumps(p['transfer_gate'],indent=2,sort_keys=True))
+          print('DECISION',p['decision'])
+          PY
+          sha256sum /tmp/v3-transfer-output/paired_transfer_result.json \
+                    /tmp/v3-transfer-output/paired_transfer_predictions.csv
+
+      - name: Preserve paired transfer evidence and exact v3 Stage-1 checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-dct-paired-transfer-evidence
+          path: |
+            /tmp/v3-transfer-output/paired_transfer_result.json
+            /tmp/v3-transfer-output/paired_transfer_predictions.csv
+            /tmp/v3-transfer-output/v1_worker.json
+            /tmp/v3-transfer-output/v3_worker.json
+            /tmp/v3-transfer-output/v3_stage1_checkpoint/**
+          if-no-files-found: warn
+          retention-days: 30
