@@ -1,4 +1,4 @@
-name: V3 Exact CPU Rolling Cache Proof
+name: V3 Exact ARM CPU Rolling Cache Proof
 
 on:
   push:
@@ -13,17 +13,23 @@ permissions:
   actions: write
 
 env:
-  CACHE_KEY: v3-exact-cpu-proof-${{ github.run_id }}-g0
+  CACHE_KEY: v3-exact-arm-cpu-proof-${{ github.run_id }}-g0
+  STALE_X64_CACHE_KEY: v3-exact-cpu-proof-41594606406-g0
 
 jobs:
   produce:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Show ARM execution identity
+        run: |
+          uname -a
+          uname -m
+          lscpu
       - name: Install deterministic CPU runtime
         run: |
           python -m pip install -q --upgrade pip
@@ -44,13 +50,18 @@ jobs:
 
   resume:
     needs: produce
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Show ARM execution identity
+        run: |
+          uname -a
+          uname -m
+          lscpu
       - name: Install deterministic CPU runtime
         run: |
           python -m pip install -q --upgrade pip
@@ -86,29 +97,31 @@ jobs:
       - name: Upload small proof only
         uses: actions/upload-artifact@v4
         with:
-          name: v3-exact-cpu-cache-proof-${{ github.run_id }}
+          name: v3-exact-arm-cpu-cache-proof-${{ github.run_id }}
           path: ${{ runner.temp }}/v3-cache-result/result.json
           if-no-files-found: error
           retention-days: 1
 
   cleanup:
-    needs: resume
-    if: always() && needs.resume.result == 'success'
+    needs: [produce, resume]
+    if: ${{ always() && needs.produce.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Confirm cache exists
+      - name: Delete current proof cache
         run: |
           set -euxo pipefail
-          gh cache list --repo "$GITHUB_REPOSITORY" --key "$CACHE_KEY" --json id,key,sizeInBytes
-      - name: Delete predecessor cache after successor proof
+          gh cache delete "$CACHE_KEY" --repo "$GITHUB_REPOSITORY" --confirm || true
+      - name: Remove stale failed x64 proof cache
         run: |
           set -euxo pipefail
-          gh cache delete "$CACHE_KEY" --repo "$GITHUB_REPOSITORY" --confirm
-      - name: Confirm cache key is gone
+          gh cache delete "$STALE_X64_CACHE_KEY" --repo "$GITHUB_REPOSITORY" --confirm || true
+      - name: Confirm both proof keys are gone
         run: |
           set -euxo pipefail
-          count="$(gh cache list --repo "$GITHUB_REPOSITORY" --key "$CACHE_KEY" --json key --jq 'length')"
-          test "$count" = '0'
+          current="$(gh cache list --repo "$GITHUB_REPOSITORY" --key "$CACHE_KEY" --json key --jq 'length')"
+          stale="$(gh cache list --repo "$GITHUB_REPOSITORY" --key "$STALE_X64_CACHE_KEY" --json key --jq 'length')"
+          test "$current" = '0'
+          test "$stale" = '0'
