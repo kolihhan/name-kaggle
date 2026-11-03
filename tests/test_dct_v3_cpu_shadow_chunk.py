@@ -3,6 +3,7 @@ import pytest
 from scripts.dct_v3_cpu_shadow_chunk import (
     build_lineage_fingerprint,
     initial_progress,
+    prepare_head_features,
     scientific_scope,
     validate_progress,
 )
@@ -49,6 +50,22 @@ def test_unknown_backend_fails_closed_in_lineage():
         build_lineage_fingerprint(
             representation="dct", backend="int8", **_common_lineage()
         )
+
+
+def test_head_features_cross_autocast_boundary_as_float32():
+    sentinel = object()
+
+    class FakeTensor:
+        def __init__(self):
+            self.float_called = False
+
+        def float(self):
+            self.float_called = True
+            return sentinel
+
+    tensor = FakeTensor()
+    assert prepare_head_features(tensor) is sentinel
+    assert tensor.float_called is True
 
 
 def test_progress_validation_allows_partial_group():
