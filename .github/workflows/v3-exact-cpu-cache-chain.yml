@@ -113,11 +113,11 @@ jobs:
       - name: Delete current proof cache
         run: |
           set -euxo pipefail
-          gh cache delete "$CACHE_KEY" --repo "$GITHUB_REPOSITORY" --confirm || true
+          gh cache delete "$CACHE_KEY" --repo "$GITHUB_REPOSITORY" || true
       - name: Remove stale failed x64 proof cache
         run: |
           set -euxo pipefail
-          gh cache delete "$STALE_X64_CACHE_KEY" --repo "$GITHUB_REPOSITORY" --confirm || true
+          gh cache delete "$STALE_X64_CACHE_KEY" --repo "$GITHUB_REPOSITORY" || true
       - name: Confirm both proof keys are gone
         run: |
           set -euxo pipefail
