@@ -11,6 +11,7 @@ on:
       - tests/test_cpu_shadow_resume.py
       - scripts/dct_v3_cpu_shadow_chunk.py
       - tests/test_dct_v3_cpu_shadow_chunk.py
+      - artifacts/research/V3_CPU_SHADOW_TRIGGER.txt
       - .github/workflows/v3-cpu-shadow-chunk.yml
   workflow_dispatch:
     inputs:
@@ -63,7 +64,7 @@ jobs:
             tests/test_dct_v3_cpu_shadow_chunk.py
 
   chunk:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[cpu-chunk]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[cpu-chunk]') || contains(github.event.head_commit.message, '[cpu-chunk-bf16]')
     runs-on: ubuntu-latest
     timeout-minutes: 330
     env:
@@ -75,6 +76,8 @@ jobs:
 
       - name: Resolve bounded chunk inputs and runner paths
         shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           representation='${{ github.event.inputs.representation }}'
@@ -82,7 +85,13 @@ jobs:
           parent_run_id='${{ github.event.inputs.parent_run_id }}'
           max_microbatches='${{ github.event.inputs.max_microbatches }}'
           if [ -z "$representation" ]; then representation='dct'; fi
-          if [ -z "$backend" ]; then backend='fp16'; fi
+          if [ -z "$backend" ]; then
+            if [[ "${COMMIT_MESSAGE:-}" == *"[cpu-chunk-bf16]"* ]]; then
+              backend='bf16'
+            else
+              backend='fp16'
+            fi
+          fi
           if [ -z "$max_microbatches" ]; then max_microbatches='1'; fi
           if ! [[ "$max_microbatches" =~ ^[1-9][0-9]*$ ]]; then
             echo "max_microbatches must be a positive integer" >&2
