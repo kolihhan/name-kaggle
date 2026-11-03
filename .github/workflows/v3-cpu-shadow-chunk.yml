@@ -56,8 +56,11 @@ jobs:
           python-version: '3.11'
       - name: Install static-test runtime
         run: python -m pip install -q pytest
-      - name: Verify backend contract
-        run: PYTHONPATH=. pytest -q tests/test_cpu_shadow_backend.py
+      - name: Verify CPU shadow static contracts
+        run: |
+          PYTHONPATH=. pytest -q \
+            tests/test_cpu_shadow_backend.py \
+            tests/test_dct_v3_cpu_shadow_chunk.py
 
   chunk:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[cpu-chunk]')
