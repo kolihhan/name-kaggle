@@ -1,8 +1,8 @@
 # Public Visibility Gate
 
-**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC UNDER A TEMPORARY USER-AUTHORIZED EXECUTION EXCEPTION. RETURN TO PRIVATE AFTER THE SUBMISSION PREFLIGHT/TRAINING RUN.**
+**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC UNDER TEMPORARY USER-AUTHORIZED EXECUTION EXCEPTIONS. RETURN TO PRIVATE AFTER THE AUTHORIZED EXECUTION WORK.**
 
-Last verified: 2026-11-02.
+Last verified: 2026-11-03.
 
 This is a repository-wide safety gate. It is independent of Gate B, candidate selection, and Kaggle submission authorization.
 
@@ -12,13 +12,38 @@ On 2026-11-02 the user explicitly authorized temporarily changing `kolihhan/name
 
 This exception does **not** mean the repository is public-safe and does not erase the prior exposure incident. While this exception is active:
 
-- do not use GitHub Actions for new work;
-- do not broaden public exposure beyond what is necessary for the direct execution path;
+- do not broaden public exposure beyond what is necessary for the authorized execution path;
 - do not publish secrets, credentials, private Kaggle datasets, or new competition artifacts to GitHub;
 - keep Kaggle submission unauthorized until the frozen preflight gate passes;
-- return the repository to `private` after the external preflight/training run completes or if the execution attempt is abandoned.
+- return the repository to `private` after the authorized external work completes or is abandoned.
 
 Current direct execution implementation lives on `exp/first-kaggle-submission` and uses `scripts/two_stage_lora24_direct_preflight.py`. It materializes the fixed private Kaggle base/runtime inputs, launches the private internet-disabled T4 preflight kernel, verifies the resulting submission artifacts, and does **not** submit to the competition.
+
+## 2026-11-03 narrow free-CPU shadow Actions exception
+
+The user explicitly authorized proceeding with a slow free-CPU fallback for the current DCT-v3 work.
+
+This authorization is narrow. It applies only to the `infra/v3-cpu-shadow-resume` CPU-shadow path and does **not** make the repository public-safe generally.
+
+Allowed under this exception:
+
+- a manually bounded GitHub-hosted CPU shadow workflow on `infra/v3-cpu-shadow-resume`;
+- the immutable external Phase14 artifact `13067907516` (`conservative_public_subset.parquet`);
+- the public pinned Qwen model revision already used by the frozen experiment;
+- upload of trainable-only CPU-shadow checkpoints and execution metadata;
+- unit/static verification for the CPU-shadow infrastructure.
+
+Required safeguards:
+
+- immediately delete `data/train.csv`, `data/test.csv`, and `data/sample_submission.parquet` from the runner workspace after checkout and assert they are absent before shadow training;
+- do not materialize or score official competition rows;
+- do not use Public LB;
+- do not use Kaggle credentials or private competition datasets for the CPU-shadow lane;
+- do not auto-chain unlimited runs; each heavy chunk must be deliberately bounded;
+- do not authorize a Kaggle submission;
+- do not relabel CPU-shadow evidence as the frozen CUDA v3 transfer gate.
+
+The original instruction against new GitHub Actions remains in force for all other new workflows not covered by this narrow exception.
 
 ## Immediate incident state
 
@@ -76,6 +101,6 @@ If your task involves repository visibility, GitHub Actions billing, data handli
 3. do not claim this repository is public-safe;
 4. do not rewrite Git history or delete competition evidence unless the user explicitly authorizes that destructive cleanup;
 5. keep infrastructure cleanup separate from Gate B and the scientific evaluation process;
-6. during the temporary exception above, prioritize the direct Kaggle preflight only and return the repository to `private` afterward.
+6. only the explicitly recorded exceptions above may use their specified execution paths.
 
 Saving GitHub Actions minutes by itself is not sufficient reason to bypass this gate.
