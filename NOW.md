@@ -60,59 +60,64 @@ Lock: `artifacts/candidates/dct-temporal-fingerprint-v3/TRANSFER_SPLIT_LOCK.json
 
 ### Implementation verification
 
-Frozen v3 focused static suite completed successfully:
+The frozen v3 implementation now has two verified execution layers:
 
-- GitHub run `41569836280`
-- **19 passed in 2.76s**
-- materialized v3 worker compiled
-- frozen private internet-off T4 kernel compiled
-- no competition submission command in kernel
+1. Original focused suite: GitHub run `41569836280` — **19 passed in 2.76s**.
+2. Local/self-hosted CUDA executor suite: GitHub run `41580519705` — **24 passed in 3.62s**.
 
-A direct no-Actions runner now exists:
+Verified in the second run:
 
-- `scripts/dct_v3_direct_transfer.py`
-- `tests/test_dct_v3_direct_transfer.py`
-- local TDD result: **5 passed**
-- catches Kaggle GPU-quota push failures even when Kaggle CLI returns exit code `0`
-- validates exact frozen lineage/result before reporting gate decision
-- performs no competition submission
+- `scripts/dct_v3_local_transfer.py` imports and compiles;
+- frozen transfer split / DCT pooling / worker materialization / source evaluator tests pass;
+- materialized v3 GPU worker compiles;
+- local executor preserves exact pool SHA, model revision, source lock, no official-row scoring, no Public-LB tuning, and no submission authorization.
 
-No new GitHub Actions runs were triggered by the direct-runner `[skip ci]` commits.
+## Execution backend change — infrastructure only
 
-## Current blocker
+Kaggle weekly GPU quota is exhausted, so the scientific contract is **not** being changed. Only the execution backend changes.
 
-**Kaggle weekly GPU quota is exhausted: `Maximum weekly GPU quota of 30.00 hours reached.`**
+GitHub-hosted free runners are CPU-only and cannot execute the frozen Qwen3-8B LoRA recipe. The prepared training route is therefore:
 
-Attempted scientific workflow: `41569982605`.
+- GitHub Actions for orchestration/evidence;
+- a dedicated self-hosted Linux x64 CUDA runner with custom label `gpu` for the actual model compute;
+- same v1 control and same frozen v3 treatment;
+- same external source holdout, seed, triplet order, optimizer, LoRA settings, and gate;
+- no Kaggle GPU compute;
+- Kaggle CLI is used only to obtain the already-frozen public external pool if it is not cached locally.
 
-The frozen kernel passed static verification, but Kaggle rejected the kernel push before execution. Therefore:
+Workflow: `.github/workflows/v3-self-hosted-gpu-transfer.yml`.
 
-- v3 scientific transfer gate = **UNRUN / UNKNOWN**;
-- no v1/v3 Stage-1 training ran in this attempt;
-- no v3 predictions or checkpoint were produced;
+Local executor: `scripts/dct_v3_local_transfer.py`.
+
+## Current execution state
+
+GitHub Actions run `41580819667` is **QUEUED** with job `transfer`.
+
+Head: `2d0a86fffa880709ad25c8ee9153f2b2838617a8`.
+
+The workflow is valid and has a real queued job. It is waiting for a matching runner:
+
+`[self-hosted, linux, x64, gpu]`
+
+No scientific model score has been produced yet, so:
+
+- v3 transfer gate remains **UNRUN / UNKNOWN**;
+- v3 is neither PASS nor FAIL;
+- no v3 checkpoint exists from this self-hosted run yet;
 - no official rows were scored;
 - no Public LB was consumed;
 - no competition submission occurred.
 
-Exact status record: `artifacts/candidates/dct-temporal-fingerprint-v3/RESULT.md`.
-
 ## Execution policy
 
-- Do **not** mark v3 FAIL because of the GPU-quota block.
-- Do **not** redesign/tune v3 while blocked.
-- Do **not** rerun GitHub Actions to probe quota; Actions should remain minimal/read-only.
-- When Kaggle GPU execution is available, run the exact frozen experiment once via:
-
-  `python scripts/dct_v3_direct_transfer.py --work-dir .v3-dct-transfer --repo-root .`
-
+- Do **not** mark v3 FAIL while the Actions job is waiting for compute.
+- Do **not** change DCT modes, weights, layers, source lock, model, seed, thresholds, or training parameters.
+- Do **not** substitute the GitHub-hosted CPU runner, a smaller model, QLoRA, or another approximation; those would change the frozen experiment.
+- Bring online exactly one suitable self-hosted CUDA runner labelled `gpu`; the already-queued run should claim it.
 - If transfer FAILs: stop v3 permanently; no official OOF, no Kaggle submission.
-- If transfer PASSes: only then implement/run the already-predeclared official five-fold OOF gate. A PASS does not automatically authorize a competition submission.
-- Only if both transfer and official OOF gates PASS may v3 proceed to one frozen final-fit/preflight and at most one competition-facing submission.
-
-## Repository visibility
-
-The repository is still public under the user's temporary execution exception. It is **not public-safe by default** because competition files are tracked. The user requested returning it to private after the training/execution work is complete. Current surfaced GitHub connector permissions do not expose repository visibility mutation; do not claim it was changed.
+- If transfer PASSes: only then run the predeclared official five-fold OOF gate.
+- Only if both transfer and official OOF gates PASS may v3 proceed to final fit and at most one competition-facing submission.
 
 ## Next single action
 
-**No further scientific tuning now. Preserve the frozen v3 state. The next executable scientific action is the exact direct v3 paired-transfer run when Kaggle GPU quota permits it.**
+**Bring the dedicated Linux CUDA self-hosted GitHub Actions runner online with custom label `gpu`. Do not create a new scientific run. The already-queued run is `41580819667`.**
