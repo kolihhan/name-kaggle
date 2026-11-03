@@ -1,0 +1,39 @@
+name: Kaggle Accelerator Quota Probe
+
+on:
+  push:
+    branches:
+      - infra/v3-exact-cpu-resume
+    paths:
+      - '.github/workflows/kaggle-accelerator-quota-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quota:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install current Kaggle CLI
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q 'kaggle>=2.2.1,<3'
+          kaggle --version
+      - name: Read accelerator quota only
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          kaggle quota --format json | tee /tmp/kaggle-quota.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('/tmp/kaggle-quota.json').read_text())
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
