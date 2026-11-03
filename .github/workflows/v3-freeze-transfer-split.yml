@@ -29,7 +29,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install tooling
-        run: python -m pip install -q 'kaggle==2.2.5' six pandas pyarrow numpy pytest
+        run: python -m pip install -q 'kaggle==2.2.5' six pandas pyarrow numpy scipy scikit-learn pytest
 
       - name: Verify split contract tests
         run: PYTHONPATH=. pytest -q tests/test_dct_v3_transfer_split.py
