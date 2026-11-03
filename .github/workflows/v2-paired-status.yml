@@ -13,11 +13,10 @@ permissions:
 jobs:
   status:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-      # The second paired-transfer attempt already pushed this scientific kernel.
-      # Attach/read only: do not push or retrain.
+      # Existing scientific execution only. This workflow must never push/retrain.
       KERNEL_REF: kolihhan/ntl-v2-transfer-a-b
     steps:
       - uses: actions/setup-python@v5
@@ -25,11 +24,49 @@ jobs:
           python-version: '3.13'
       - name: Install Kaggle CLI
         run: python -m pip install -q 'kaggle==2.2.5' six
-      - name: Read existing kernel only
+      - name: Recover existing paired-transfer evidence only
         shell: bash
         run: |
           set -euo pipefail
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          kaggle kernels status "$KERNEL_REF" || true
-          echo '--- latest logs ---'
-          kaggle kernels logs "$KERNEL_REF" || true
+          status="$(kaggle kernels status "$KERNEL_REF" 2>&1)"
+          echo "$status"
+          grep -Eqi '(^|[^a-z])(complete|completed|success|successful|succeeded)([^a-z]|$)' <<<"$status"
+          rm -rf /tmp/v2-paired-existing
+          mkdir -p /tmp/v2-paired-existing
+          kaggle kernels output "$KERNEL_REF" -p /tmp/v2-paired-existing -o
+          test -f /tmp/v2-paired-existing/paired_transfer_result.json
+          test -f /tmp/v2-paired-existing/paired_transfer_predictions.csv
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('/tmp/v2-paired-existing/paired_transfer_result.json').read_text())
+          assert p['candidate']=='prompt-invariant-contrastive-v2', p
+          assert p['scope']=='paired_external_source_transfer_no_official_rows_no_public_lb', p
+          assert p['official_rows_scored']==0, p
+          assert p['public_lb_tuning'] is False, p
+          assert p['decision']=='fail', p
+          d=p['transfer_gate']['decision']
+          print(json.dumps({
+              'decision': p['decision'],
+              'v1_balanced_accuracy': d['v1_balanced_accuracy'],
+              'v2_balanced_accuracy': d['v2_balanced_accuracy'],
+              'delta': d['delta'],
+              'bootstrap_ci_lower': d['bootstrap_ci_lower'],
+              'bootstrap_ci_upper': d['bootstrap_ci_upper'],
+              'mean_source_delta': d['mean_source_delta'],
+              'negative_source_count': d['negative_source_count'],
+              'reasons': d['reasons'],
+              'safety_veto_labels': d['safety_veto_labels'],
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum /tmp/v2-paired-existing/paired_transfer_result.json /tmp/v2-paired-existing/paired_transfer_predictions.csv
+      - name: Preserve immutable evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-paired-transfer-existing-evidence
+          path: |
+            /tmp/v2-paired-existing/paired_transfer_result.json
+            /tmp/v2-paired-existing/paired_transfer_predictions.csv
+          if-no-files-found: error
+          retention-days: 30
