@@ -60,64 +60,167 @@ Lock: `artifacts/candidates/dct-temporal-fingerprint-v3/TRANSFER_SPLIT_LOCK.json
 
 ### Implementation verification
 
-The frozen v3 implementation now has two verified execution layers:
+The frozen v3 implementation has two verified execution layers:
 
-1. Original focused suite: GitHub run `41569836280` — **19 passed in 2.76s**.
-2. Local/self-hosted CUDA executor suite: GitHub run `41580519705` — **24 passed in 3.62s**.
+1. Original focused suite: GitHub run `41569836280` — **19 passed**.
+2. Local/self-hosted CUDA executor suite: GitHub run `41580519705` — **24 passed**.
 
-Verified in the second run:
+Verified:
 
 - `scripts/dct_v3_local_transfer.py` imports and compiles;
 - frozen transfer split / DCT pooling / worker materialization / source evaluator tests pass;
 - materialized v3 GPU worker compiles;
 - local executor preserves exact pool SHA, model revision, source lock, no official-row scoring, no Public-LB tuning, and no submission authorization.
 
-## Execution backend change — infrastructure only
+## Current scientific execution state
 
-Kaggle weekly GPU quota is exhausted, so the scientific contract is **not** being changed. Only the execution backend changes.
+GitHub Actions run `41580819667` is still **QUEUED** with job `transfer`.
 
-GitHub-hosted free runners are CPU-only and cannot execute the frozen Qwen3-8B LoRA recipe. The prepared training route is therefore:
+Frozen run head: `2d0a86fffa880709ad25c8ee9153f2b2838617a8`.
 
-- GitHub Actions for orchestration/evidence;
-- a dedicated self-hosted Linux x64 CUDA runner with custom label `gpu` for the actual model compute;
-- same v1 control and same frozen v3 treatment;
-- same external source holdout, seed, triplet order, optimizer, LoRA settings, and gate;
-- no Kaggle GPU compute;
-- Kaggle CLI is used only to obtain the already-frozen public external pool if it is not cached locally.
-
-Workflow: `.github/workflows/v3-self-hosted-gpu-transfer.yml`.
-
-Local executor: `scripts/dct_v3_local_transfer.py`.
-
-## Current execution state
-
-GitHub Actions run `41580819667` is **QUEUED** with job `transfer`.
-
-Head: `2d0a86fffa880709ad25c8ee9153f2b2838617a8`.
-
-The workflow is valid and has a real queued job. It is waiting for a matching runner:
+It is waiting for a matching runner:
 
 `[self-hosted, linux, x64, gpu]`
 
-No scientific model score has been produced yet, so:
+No scientific score exists yet:
 
-- v3 transfer gate remains **UNRUN / UNKNOWN**;
+- v3 transfer gate: **UNRUN / UNKNOWN**;
 - v3 is neither PASS nor FAIL;
-- no v3 checkpoint exists from this self-hosted run yet;
+- no v3 Stage-1 checkpoint from this run exists yet;
 - no official rows were scored;
 - no Public LB was consumed;
 - no competition submission occurred.
 
+Do not create a second v3 scientific transfer execution while this run is queued.
+
+## GPU runner path — infrastructure only
+
+Kaggle weekly GPU quota is exhausted. The scientific contract remains unchanged; only execution infrastructure is being prepared.
+
+Workflow: `.github/workflows/v3-self-hosted-gpu-transfer.yml`.
+
+A one-job public-repo-safe helper now exists:
+
+`scripts/bootstrap_ephemeral_gpu_runner.sh`
+
+It requires:
+
+- Linux x86_64;
+- working CUDA/PyTorch;
+- at least 15 GiB VRAM;
+- a short-lived GitHub runner registration token supplied only through `RUNNER_TOKEN`;
+- custom label `gpu`.
+
+It registers the runner with `--ephemeral`, so the runner accepts one matching job and then deregisters. Do not keep a long-lived self-hosted runner attached to this public repository.
+
+Static bootstrap verification followed TDD:
+
+- RED: run `41590447418` before the helper existed;
+- GREEN: run `41590510236`, bootstrap contract passed.
+
+This infrastructure work does not alter the queued scientific run or its frozen head.
+
+## Free GitHub-hosted CPU path
+
+Run `41581953208` is an execution-only feasibility probe. It performs **one exact-architecture CPU backward step**, not a model-selection experiment.
+
+At the latest verified check, that single backward probe had remained in progress for more than 90 minutes. Therefore GitHub-hosted free CPU is treated as **operationally non-viable for the full paired v1-vs-v3 transfer experiment**, even if the single-step probe eventually finishes.
+
+Policy:
+
+- do not launch a CPU scientific approximation;
+- do not shrink the model, switch to QLoRA, reduce layers, or otherwise change the frozen v3 experiment to fit free CPU;
+- retain the CPU probe only as infrastructure feasibility evidence.
+
+## Validation-budget firewall after v3
+
+Independent research branch:
+
+`research/v1-mechanism-audit-2026-11-03`
+
+A final source-shift firewall was frozen and verified by GitHub run `41590073872`, evidence artifact `13209726705`, digest `sha256:7de14265ac8490511b134a11832ab427d1e15a75077376b3d4e305a58ec2f190`.
+
+The firewall is every remaining admissible Phase14 source not already consumed as fresh v1/v2/v3 transfer evidence:
+
+- `abhinav`
+- `dophuchung`
+- `kaplinskiy`
+- `keshav`
+- `prvsiyan`
+- `prvsiyan_v1`
+- `seyit`
+- `zbigniew`
+
+Accounting:
+
+- firewall rows: `15,206`;
+- eligible firewall rows: `14,013`;
+- eligible labels: `17 / 18`;
+- missing eligible label: `claude-fable-5`;
+- leakage-clean development rows: `10,359`;
+- prompt-id overlap after cleanup: `0`;
+- prompt-key overlap after cleanup: `0`.
+
+Do **not** now change firewall source membership to recover the eighteenth label. That would be post-hoc validation design.
+
+This firewall does not modify v3 and must not replace v3's already-frozen `alperen / hailey / willrice` transfer gate.
+
+## Fallback research — not an active candidate
+
+If v3 fails, the strongest currently supported fallback hypothesis is **centered-to-plain privileged-information distillation**.
+
+Rationale from the verified v1 mechanism audit:
+
+- centered view rescues `353` plain errors;
+- centered view breaks `350` plain-correct rows;
+- centered is therefore complementary, not a universally stronger teacher;
+- same-prompt centering is privileged context unavailable at competition inference.
+
+Research-only work on branch `research/v1-mechanism-audit-2026-11-03` now contains:
+
+- `artifacts/research/PRIVILEGED_CENTERED_DISTILLATION_DOSSIER.md`;
+- `scripts/research_privileged_distillation_loss.py`;
+- synthetic-only tests for selective imperfect-teacher distillation.
+
+TDD verification:
+
+- RED: run `41591144258` (`ModuleNotFoundError` before implementation);
+- GREEN: run `41591267999`, all synthetic tests passed.
+
+This is **not v4 yet**. It has not consumed:
+
+- final transfer firewall predictions;
+- official OOF;
+- Kaggle Public LB;
+- any new scientific training run.
+
+Do not activate/freeze v4 while v3 remains unresolved.
+
+## v3 PASS path
+
+The scientific contract is ready, but v3-specific official-OOF implementation is intentionally not built yet.
+
+Only after transfer PASS:
+
+1. preserve the exact passing v3 Stage-1 checkpoint lineage;
+2. adapt the existing v1 Gate-B worker to frozen DC0+AC1 representation;
+3. keep v1 official folds, Stage-2 epochs/LRs/optimizer/seed/class weighting/triplet isolation unchanged;
+4. run the predeclared five-fold official OOF gate once;
+5. require plain BA > `0.5467611235396471`, at least 3/5 fold wins, positive 5,000-group-bootstrap lower bound, and the class-recall safety veto;
+6. only if that passes may final fit and at most one Kaggle submission occur.
+
+Do not pre-run official OOF while transfer is unresolved.
+
 ## Execution policy
 
-- Do **not** mark v3 FAIL while the Actions job is waiting for compute.
+- Do **not** mark v3 FAIL while the queued Actions job is waiting for compute.
 - Do **not** change DCT modes, weights, layers, source lock, model, seed, thresholds, or training parameters.
-- Do **not** substitute the GitHub-hosted CPU runner, a smaller model, QLoRA, or another approximation; those would change the frozen experiment.
-- Bring online exactly one suitable self-hosted CUDA runner labelled `gpu`; the already-queued run should claim it.
+- Do **not** substitute a smaller/cheaper approximation and call it v3.
+- Do **not** create a replacement scientific transfer run while `41580819667` remains queued.
 - If transfer FAILs: stop v3 permanently; no official OOF, no Kaggle submission.
-- If transfer PASSes: only then run the predeclared official five-fold OOF gate.
-- Only if both transfer and official OOF gates PASS may v3 proceed to final fit and at most one competition-facing submission.
+- If transfer PASSes: execute the predeclared v3 official OOF path.
+- If v3 FAILs and a v4 is later activated, freeze its complete contract before touching the final firewall.
 
 ## Next single action
 
-**Bring the dedicated Linux CUDA self-hosted GitHub Actions runner online with custom label `gpu`. Do not create a new scientific run. The already-queued run is `41580819667`.**
+**Bring exactly one suitable ephemeral Linux CUDA self-hosted GitHub Actions runner online with custom label `gpu`. The already-queued scientific run `41580819667` should claim it. Do not create a new scientific run.**
