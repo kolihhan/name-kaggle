@@ -1,0 +1,16 @@
+V3 CPU shadow BF16 benchmark trigger
+Date: 2026-11-03 MYT
+
+Purpose: execute exactly one DCT Stage-1 CPU-shadow microbatch using the BF16 backend and measure operational wall-clock feasibility.
+
+Comparison anchor: FP16 one-microbatch CPU-shadow run 41598304633.
+
+Scientific scope:
+- external Phase14 transfer-training data only
+- official rows scored: 0
+- competition test rows used: 0
+- Public LB tuning: false
+- Kaggle submission authorized: false
+- frozen CUDA v3 gate authorized: false
+
+This benchmark starts a separate BF16 lineage. It must never resume from or be merged into an FP16 checkpoint.
