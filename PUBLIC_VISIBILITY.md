@@ -1,10 +1,37 @@
 # Public Visibility Gate
 
-**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC. RETURN TO PRIVATE BEFORE CONTINUING PUBLIC-SAFE CLEANUP.**
+**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC UNDER A NARROW USER-AUTHORIZED CPU-TRAINING EXCEPTION. RETURN TO PRIVATE AFTER THE AUTHORIZED EXECUTION WORK.**
 
-Last verified: 2026-11-02.
+Last verified: 2026-11-03.
 
 This is a repository-wide safety gate. It is independent of Gate B, candidate selection, and Kaggle submission authorization.
+
+## Narrow 2026-11-03 CPU-first exception
+
+The user explicitly authorized continuing the current DCT-v3 work with CPU training first, even if slow.
+
+This exception is limited to the `infra/v3-cpu-shadow-resume` lineage and the minimum default-branch dispatcher definitions required for GitHub `workflow_run` / `workflow_dispatch` to operate correctly.
+
+Allowed:
+
+- bounded GitHub-hosted CPU training chunks for the existing CPU lineage;
+- sequential resume only from a verified prior CPU checkpoint;
+- default-branch workflow definitions whose only purpose is to dispatch that bounded infra-branch CPU job;
+- the immutable external Phase14 safe artifact and public pinned Qwen revision already used by the experiment;
+- trainable-only CPU checkpoints and execution metadata.
+
+Required safeguards:
+
+- remove `data/train.csv`, `data/test.csv`, and `data/sample_submission.parquet` from every CPU runner workspace before training and assert they are absent;
+- do not materialize or score official competition rows;
+- do not use Public LB, Kaggle credentials, or private competition datasets in the CPU lane;
+- each heavy chunk must be explicitly bounded and checkpointed;
+- no unlimited automatic chain;
+- resume only after the previous chunk produced valid finite training evidence;
+- do not authorize a Kaggle submission;
+- do not represent CPU evidence as the frozen CUDA-v3 transfer gate.
+
+This exception does **not** make the repository public-safe and does not authorize unrelated workflows or broader exposure.
 
 ## Immediate incident state
 
@@ -14,7 +41,7 @@ On 2026-11-02 the repository was verified as `public` while official competition
 - `data/test.csv`
 - `data/sample_submission.parquet`
 
-**Immediate required action:** change repository visibility back to `private` before continuing cleanup. Making the repository private again stops continuing exposure while cleanup is performed, but does not erase the period during which tracked files were public.
+Making the repository private again stops continuing exposure while cleanup is performed, but does not erase the period during which tracked files were public.
 
 ## Why public visibility is unsafe
 
@@ -58,9 +85,8 @@ The repository may be marked `READY` for public visibility only after all of the
 If your task involves repository visibility, GitHub Actions billing, data handling, or public sharing:
 
 1. read this file first;
-2. treat `UNSAFE` as a hard stop on further public exposure;
+2. treat `UNSAFE` as a hard stop on further public exposure except for the explicit narrow CPU-first exception above;
 3. do not claim this repository is public-safe;
 4. do not rewrite Git history or delete competition evidence unless the user explicitly authorizes that destructive cleanup;
-5. keep this infrastructure cleanup separate from Gate B and the scientific evaluation process.
-
-Saving GitHub Actions minutes is not sufficient reason to bypass this gate.
+5. keep infrastructure cleanup separate from Gate B and scientific evaluation;
+6. do not broaden the CPU-first exception beyond its stated scope.
