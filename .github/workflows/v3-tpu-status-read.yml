@@ -13,7 +13,7 @@ permissions:
 
 env:
   KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-  KERNEL_REF: kolihhan/ntl-v3-tpu-env-probe
+  KERNEL_REF: kolihhan/ntl-v3-tpu-environment-probe
 
 jobs:
   status:
@@ -27,15 +27,23 @@ jobs:
         run: |
           python -m pip install -q --upgrade pip
           python -m pip install -q six 'kaggle==2.2.5'
-      - name: Discover my probe kernel and read quota
+      - name: Read actual probe status, outputs and quota
         run: |
           set -u
           : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
-          echo '--- mine/search ---'
-          kaggle kernels list --mine --search 'NTL V3 TPU Environment Probe' --page-size 20 -v || true
-          echo '--- mine/recent ---'
-          kaggle kernels list --mine --page-size 20 -v --sort-by dateRun || true
-          echo '--- direct status (may fail for private kernels) ---'
+          echo '--- direct status ---'
           kaggle kernels status "$KERNEL_REF" || true
+          echo '--- output files ---'
+          kaggle kernels files "$KERNEL_REF" -v || true
+          echo '--- output download ---'
+          rm -rf /tmp/tpu-status-output
+          mkdir -p /tmp/tpu-status-output
+          kaggle kernels output "$KERNEL_REF" -p /tmp/tpu-status-output -o || true
+          find /tmp/tpu-status-output -maxdepth 2 -type f -print || true
+          if [ -f /tmp/tpu-status-output/environment_probe.json ]; then
+            cat /tmp/tpu-status-output/environment_probe.json
+          fi
+          echo '--- logs ---'
+          kaggle kernels logs "$KERNEL_REF" | tail -n 300 || true
           echo '--- quota ---'
           kaggle quota --format json
