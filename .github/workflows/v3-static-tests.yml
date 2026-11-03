@@ -13,7 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,7 +21,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Install builder RED-test dependencies
-        run: python -m pip install -q pytest
-      - name: Verify transfer-builder test is RED before implementation
-        run: PYTHONPATH=. pytest -q tests/test_build_dct_v3_transfer_kernel.py
+      - name: Install focused-test dependencies
+        run: |
+          python -m pip install -q pandas numpy scipy scikit-learn pytest
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run full frozen v3 focused suite
+        run: |
+          PYTHONPATH=. pytest -q \
+            tests/test_dct_v3_transfer_split.py \
+            tests/test_dct_temporal_pool.py \
+            tests/test_materialize_dct_v3_worker.py \
+            tests/test_dct_v3_source_eval.py \
+            tests/test_build_dct_v3_transfer_kernel.py
+      - name: Compile generated runtime sources
+        run: |
+          rm -rf /tmp/v3-static
+          python scripts/materialize_dct_v3_worker.py \
+            --source scripts/run_two_stage_lora24_gate_a_gpu.py \
+            --output /tmp/v3-static/run_dct_v3_gate_a_gpu.py
+          python -m py_compile /tmp/v3-static/run_dct_v3_gate_a_gpu.py
+          python scripts/build_dct_v3_transfer_kernel.py --output-dir /tmp/v3-static/kernel --repo-root .
+          python -m py_compile /tmp/v3-static/kernel/kernel_main.py
