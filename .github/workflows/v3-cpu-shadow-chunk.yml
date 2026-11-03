@@ -1,10 +1,16 @@
-name: V3 CPU Shadow Chunk
+name: V3 CPU Shadow
 
 on:
   push:
     branches:
       - infra/v3-cpu-shadow-resume
     paths:
+      - scripts/cpu_shadow_backend.py
+      - tests/test_cpu_shadow_backend.py
+      - scripts/cpu_shadow_resume.py
+      - tests/test_cpu_shadow_resume.py
+      - scripts/dct_v3_cpu_shadow_chunk.py
+      - tests/test_dct_v3_cpu_shadow_chunk.py
       - .github/workflows/v3-cpu-shadow-chunk.yml
   workflow_dispatch:
     inputs:
@@ -16,6 +22,14 @@ on:
           - dct
           - mean
         default: dct
+      backend:
+        description: CPU shadow numerical backend
+        required: true
+        type: choice
+        options:
+          - fp16
+          - bf16
+        default: fp16
       parent_run_id:
         description: Prior successful CPU-shadow run ID to resume from; blank starts fresh
         required: false
@@ -31,12 +45,22 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: v3-cpu-shadow-${{ github.event.inputs.representation || 'dct' }}
-  cancel-in-progress: false
-
 jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install static-test runtime
+        run: python -m pip install -q pytest
+      - name: Verify backend contract
+        run: PYTHONPATH=. pytest -q tests/test_cpu_shadow_backend.py
+
   chunk:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[cpu-chunk]')
     runs-on: ubuntu-latest
     timeout-minutes: 330
     env:
@@ -51,15 +75,18 @@ jobs:
         run: |
           set -euo pipefail
           representation='${{ github.event.inputs.representation }}'
+          backend='${{ github.event.inputs.backend }}'
           parent_run_id='${{ github.event.inputs.parent_run_id }}'
           max_microbatches='${{ github.event.inputs.max_microbatches }}'
           if [ -z "$representation" ]; then representation='dct'; fi
+          if [ -z "$backend" ]; then backend='fp16'; fi
           if [ -z "$max_microbatches" ]; then max_microbatches='1'; fi
           if ! [[ "$max_microbatches" =~ ^[1-9][0-9]*$ ]]; then
             echo "max_microbatches must be a positive integer" >&2
             exit 1
           fi
           echo "REPRESENTATION=$representation" >> "$GITHUB_ENV"
+          echo "BACKEND=$backend" >> "$GITHUB_ENV"
           echo "PARENT_RUN_ID=$parent_run_id" >> "$GITHUB_ENV"
           echo "MAX_MICROBATCHES=$max_microbatches" >> "$GITHUB_ENV"
           echo "HF_HOME=$RUNNER_TEMP/hf-home" >> "$GITHUB_ENV"
@@ -108,9 +135,11 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=. pytest -q \
+            tests/test_cpu_shadow_backend.py \
             tests/test_cpu_shadow_resume.py \
             tests/test_dct_v3_cpu_shadow_chunk.py
           python -m py_compile \
+            scripts/cpu_shadow_backend.py \
             scripts/cpu_shadow_resume.py \
             scripts/dct_v3_cpu_shadow_chunk.py
 
@@ -180,6 +209,7 @@ jobs:
           timeout --signal=TERM --kill-after=30s 270m \
             env PYTHONPATH=. python scripts/dct_v3_cpu_shadow_chunk.py \
               --representation "$REPRESENTATION" \
+              --backend "$BACKEND" \
               --safe-path /tmp/v3-cpu-shadow/phase14/conservative_public_subset.parquet \
               --snapshot-path "$model_root" \
               --output-checkpoint /tmp/v3-cpu-shadow/out/shadow.pt \
