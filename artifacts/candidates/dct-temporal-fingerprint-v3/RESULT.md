@@ -46,6 +46,10 @@ Additional static verification:
 - kernel metadata was verified as private, internet-disabled, T4, with no competition source and no submission command;
 - frozen holdout sources were embedded exactly as `['alperen', 'hailey', 'willrice']`.
 
+A direct no-Actions runner was then added at `scripts/dct_v3_direct_transfer.py` with focused tests at `tests/test_dct_v3_direct_transfer.py`.
+
+Direct-runner TDD result: **5 passed** locally. The runner explicitly treats Kaggle's `Kernel push error: Maximum weekly GPU quota ... reached` text as a failed push even when the Kaggle CLI returns process exit code `0`; it therefore never polls a nonexistent kernel after quota rejection. It also verifies the exact candidate/split lineage, 14,506 prediction rows, preserved v3 Stage-1 checkpoint, and absence of official-row/Public-LB contamination before reporting a PASS/FAIL decision. These `[skip ci]` commits triggered no new GitHub Actions runs.
+
 ## Execution attempt
 
 Workflow run: `41569982605` (`V3 DCT Paired Transfer`)
@@ -87,4 +91,8 @@ When GPU quota is available again, execute the **same frozen experiment once**:
 
 Do **not** change modes, weights, layers, sources, model, training settings, thresholds, or label subsets in response to this infrastructure block.
 
-Do not rerun the existing GitHub Actions workflow merely to probe quota. Prefer direct authenticated Kaggle execution when available; if orchestration is used later, it must push exactly this frozen kernel once and then attach to that execution rather than retraining on polling/recovery failures.
+Do not rerun the existing GitHub Actions workflow merely to probe quota. Prefer the direct authenticated Kaggle runner:
+
+`python scripts/dct_v3_direct_transfer.py --work-dir .v3-dct-transfer --repo-root .`
+
+It pushes the exact frozen kernel once, attaches to that exact ref, downloads the paired evidence, validates lineage, and performs **no competition submission**. A transfer PASS only unlocks the separately frozen official-OOF stage; it does not submit anything by itself.
