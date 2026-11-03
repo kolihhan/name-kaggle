@@ -1,0 +1,126 @@
+name: V3 DCT Self-Hosted GPU Transfer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-dct-self-hosted-gpu-transfer
+  cancel-in-progress: false
+
+jobs:
+  transfer:
+    if: github.ref == 'refs/heads/exp/dct-temporal-fingerprint-v3'
+    runs-on: [self-hosted, linux, x64, gpu]
+    timeout-minutes: 1440
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      V3_WORK_DIR: ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}
+      V3_CHECKPOINT_DIR: ${{ runner.temp }}/dct-v3-transfer-${{ github.run_id }}-${{ github.run_attempt }}/v3_stage1_checkpoint
+      V3_VENV: ${{ runner.temp }}/dct-v3-venv-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+
+      - name: Verify dedicated CUDA runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          nvidia-smi
+          python3 - <<'PY'
+          import torch
+          if not torch.cuda.is_available():
+              raise SystemExit('CUDA is not available on this self-hosted runner')
+          p=torch.cuda.get_device_properties(0)
+          gib=p.total_memory/(1024**3)
+          print('torch',torch.__version__)
+          print('torch_cuda',torch.version.cuda)
+          print('gpu',p.name)
+          print('compute_capability',f'{p.major}.{p.minor}')
+          print('vram_gib',f'{gib:.2f}')
+          if gib < 15.0:
+              raise SystemExit(f'need >=15 GiB VRAM for frozen v3 recipe, found {gib:.2f}')
+          PY
+
+      - name: Create isolated Python environment while preserving CUDA torch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$V3_VENV"
+          python3 -m venv --system-site-packages "$V3_VENV"
+          source "$V3_VENV/bin/activate"
+          python -m pip install -q --upgrade pip
+          python -m pip install -q \
+            'transformers==4.57.1' \
+            'peft==0.17.1' \
+            'tokenizers==0.22.1' \
+            'huggingface-hub==0.36.0' \
+            safetensors pandas numpy scipy scikit-learn pyarrow \
+            'kaggle==2.2.5' six pytest
+          python - <<'PY'
+          import torch, transformers, peft
+          assert torch.cuda.is_available(), 'CUDA torch disappeared inside venv'
+          assert transformers.__version__ == '4.57.1'
+          assert peft.__version__ == '0.17.1'
+          print('runtime_lock_ok', torch.__version__, transformers.__version__, peft.__version__)
+          PY
+
+      - name: Re-verify frozen v3 contract on the GPU host
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$V3_VENV/bin/activate"
+          PYTHONPATH=. pytest -q \
+            tests/test_dct_v3_transfer_split.py \
+            tests/test_dct_temporal_pool.py \
+            tests/test_materialize_dct_v3_worker.py \
+            tests/test_dct_v3_source_eval.py \
+            tests/test_dct_v3_local_transfer.py
+
+      - name: Run exactly one frozen paired v1-vs-v3 transfer experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is not available}"
+          source "$V3_VENV/bin/activate"
+          rm -rf "$V3_WORK_DIR"
+          mkdir -p "$V3_WORK_DIR"
+          PYTHONPATH=. python scripts/dct_v3_local_transfer.py \
+            --work-dir "$V3_WORK_DIR" \
+            --checkpoint-dir "$V3_CHECKPOINT_DIR"
+
+      - name: Verify scientific result lineage without promoting or submitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$V3_VENV/bin/activate"
+          PYTHONPATH=. python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from scripts.dct_v3_local_transfer import validate_local_result_payload
+          work=Path(os.environ['V3_WORK_DIR'])
+          payload=json.loads((work/'paired_transfer_result.json').read_text(encoding='utf-8'))
+          summary=validate_local_result_payload(payload)
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          print('SCIENTIFIC_DECISION',summary['decision'])
+          print('KAGGLE_SUBMISSION_AUTHORIZED',summary['submission_authorized'])
+          PY
+
+      - name: Preserve exact transfer evidence and v3 Stage-1 checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-dct-self-hosted-transfer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.V3_WORK_DIR }}/paired_transfer_result.json
+            ${{ env.V3_WORK_DIR }}/paired_transfer_predictions.csv
+            ${{ env.V3_WORK_DIR }}/v1_worker.json
+            ${{ env.V3_WORK_DIR }}/v3_worker.json
+            ${{ env.V3_CHECKPOINT_DIR }}/**
+          if-no-files-found: warn
+          retention-days: 30
