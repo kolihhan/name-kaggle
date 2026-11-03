@@ -1,0 +1,28 @@
+name: V3 TPU Environment Probe Static
+
+on:
+  push:
+    branches:
+      - infra/v3-tpu-feasibility
+    paths:
+      - 'scripts/build_v3_tpu_environment_probe.py'
+      - 'tests/test_build_v3_tpu_environment_probe.py'
+      - '.github/workflows/v3-tpu-environment-probe-static.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test runtime
+        run: python -m pip install -q pytest
+      - name: Run TPU probe builder tests
+        run: PYTHONPATH=. pytest -q tests/test_build_v3_tpu_environment_probe.py
