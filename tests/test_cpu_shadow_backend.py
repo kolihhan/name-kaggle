@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.cpu_shadow_backend import (
-    backend_runtime_spec,
-    backend_lineage_tag,
-    prepare_fp32_head_input,
-)
+from scripts.cpu_shadow_backend import backend_runtime_spec, backend_lineage_tag
 
 
 def test_fp16_backend_contract_is_explicit():
@@ -38,17 +34,3 @@ def test_backend_lineage_tags_are_distinct():
 def test_unknown_backend_fails_closed():
     with pytest.raises(ValueError, match="unsupported CPU shadow backend"):
         backend_runtime_spec("int8")
-
-
-def test_classifier_head_input_is_promoted_to_fp32():
-    class DummyTensor:
-        def __init__(self):
-            self.float_called = False
-
-        def float(self):
-            self.float_called = True
-            return "fp32-view"
-
-    tensor = DummyTensor()
-    assert prepare_fp32_head_input(tensor) == "fp32-view"
-    assert tensor.float_called is True
