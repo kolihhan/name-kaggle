@@ -1,0 +1,82 @@
+name: V3 Exact CPU Artifact Chain
+
+on:
+  push:
+    branches:
+      - infra/v3-exact-cpu-resume
+    paths:
+      - 'scripts/exact_cpu_resume_state.py'
+      - 'scripts/exact_cpu_resume_equivalence.py'
+      - 'scripts/exact_cpu_resume_artifact_chain.py'
+      - '.github/workflows/v3-exact-cpu-artifact-chain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deterministic CPU runtime
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q numpy
+      - name: Produce mid-accumulation resume state
+        run: |
+          mkdir -p "$RUNNER_TEMP/exact-resume-produced"
+          PYTHONPATH=. python scripts/exact_cpu_resume_artifact_chain.py start \
+            --output-dir "$RUNNER_TEMP/exact-resume-produced"
+          sha256sum "$RUNNER_TEMP/exact-resume-produced/resume.pt"
+          cat "$RUNNER_TEMP/exact-resume-produced/manifest.json"
+      - name: Upload exact resume state
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-cpu-resume-midstate
+          path: |
+            ${{ runner.temp }}/exact-resume-produced/resume.pt
+            ${{ runner.temp }}/exact-resume-produced/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  resume:
+    needs: produce
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deterministic CPU runtime
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q numpy
+      - name: Download predecessor state from prior job
+        uses: actions/download-artifact@v4
+        with:
+          name: exact-cpu-resume-midstate
+          path: ${{ runner.temp }}/exact-resume-input
+      - name: Verify artifact and resume on fresh runner
+        run: |
+          find "$RUNNER_TEMP/exact-resume-input" -maxdepth 2 -type f -print
+          mkdir -p "$RUNNER_TEMP/exact-resume-result"
+          PYTHONPATH=. python scripts/exact_cpu_resume_artifact_chain.py finish \
+            --state "$RUNNER_TEMP/exact-resume-input/resume.pt" \
+            --manifest "$RUNNER_TEMP/exact-resume-input/manifest.json" \
+            --output-dir "$RUNNER_TEMP/exact-resume-result"
+          cat "$RUNNER_TEMP/exact-resume-result/result.json"
+      - name: Upload cross-job equivalence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-cpu-resume-chain-result
+          path: ${{ runner.temp }}/exact-resume-result/result.json
+          if-no-files-found: error
+          retention-days: 14
