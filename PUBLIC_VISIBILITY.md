@@ -19,31 +19,33 @@ This exception does **not** mean the repository is public-safe and does not eras
 
 Current direct execution implementation lives on `exp/first-kaggle-submission` and uses `scripts/two_stage_lora24_direct_preflight.py`. It materializes the fixed private Kaggle base/runtime inputs, launches the private internet-disabled T4 preflight kernel, verifies the resulting submission artifacts, and does **not** submit to the competition.
 
-## 2026-11-03 narrow free-CPU shadow Actions exception
+## 2026-11-03 CPU-first Actions exception
 
-The user explicitly authorized proceeding with a slow free-CPU fallback for the current DCT-v3 work.
+The user explicitly authorized using CPU training first for the current DCT-v3 work, even though it is slow.
 
-This authorization is narrow. It applies only to the `infra/v3-cpu-shadow-resume` CPU-shadow path and does **not** make the repository public-safe generally.
+This authorization applies only to the `infra/v3-cpu-shadow-resume` lineage and does **not** make the repository public-safe generally.
 
 Allowed under this exception:
 
-- a manually bounded GitHub-hosted CPU shadow workflow on `infra/v3-cpu-shadow-resume`;
+- deliberately bounded GitHub-hosted CPU training chunks on `infra/v3-cpu-shadow-resume`;
+- sequential resume from a verified prior CPU checkpoint;
 - the immutable external Phase14 artifact `13067907516` (`conservative_public_subset.parquet`);
 - the public pinned Qwen model revision already used by the frozen experiment;
-- upload of trainable-only CPU-shadow checkpoints and execution metadata;
-- unit/static verification for the CPU-shadow infrastructure.
+- upload of trainable-only CPU checkpoints and execution metadata;
+- unit/static verification for the CPU training infrastructure.
 
 Required safeguards:
 
-- immediately delete `data/train.csv`, `data/test.csv`, and `data/sample_submission.parquet` from the runner workspace after checkout and assert they are absent before shadow training;
+- immediately delete `data/train.csv`, `data/test.csv`, and `data/sample_submission.parquet` from the runner workspace after checkout and assert they are absent before CPU training;
 - do not materialize or score official competition rows;
 - do not use Public LB;
-- do not use Kaggle credentials or private competition datasets for the CPU-shadow lane;
-- do not auto-chain unlimited runs; each heavy chunk must be deliberately bounded;
+- do not use Kaggle credentials or private competition datasets for the CPU lane;
+- keep each heavy chunk explicitly bounded and checkpointed; do not create an unlimited automatic chain;
+- only resume after the previous chunk produced a valid checkpoint and finite training evidence;
 - do not authorize a Kaggle submission;
-- do not relabel CPU-shadow evidence as the frozen CUDA v3 transfer gate.
+- do not relabel CPU evidence as the frozen CUDA v3 transfer gate.
 
-The original instruction against new GitHub Actions remains in force for all other new workflows not covered by this narrow exception.
+The original instruction against unrelated new GitHub Actions remains in force for all other workflows not covered by this exception.
 
 ## Immediate incident state
 
