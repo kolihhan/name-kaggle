@@ -1,0 +1,33 @@
+name: V3 Static Tests
+
+on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/v3-static-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exp/dct-temporal-fingerprint-v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test dependencies
+        run: |
+          python -m pip install -q pandas numpy scipy scikit-learn pytest
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run focused v3 tests
+        run: |
+          PYTHONPATH=. pytest -q \
+            tests/test_dct_v3_transfer_split.py \
+            tests/test_dct_temporal_pool.py \
+            tests/test_materialize_dct_v3_worker.py
