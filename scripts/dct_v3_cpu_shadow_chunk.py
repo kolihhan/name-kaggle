@@ -11,6 +11,12 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from scripts.cpu_shadow_backend import (
+    backend_runtime_spec,
+    cpu_autocast_context,
+    torch_model_dtype,
+)
+
 MODEL_ID = "Qwen/Qwen3-8B-Base"
 MODEL_REVISION = "49e3418fbbbca6ecbdf9608b4d22e5a407081db4"
 EXPECTED_HOLDOUT_SOURCES = ["alperen", "hailey", "willrice"]
@@ -18,6 +24,7 @@ EXPECTED_TRAIN_ROWS = 14502
 EXPECTED_HELDOUT_ROWS = 14506
 EXPECTED_ELIGIBLE_LABELS = 17
 REPRESENTATIONS = {"mean", "dct"}
+BACKENDS = {"fp16", "bf16"}
 
 
 def scientific_scope() -> dict[str, object]:
@@ -68,6 +75,7 @@ def validate_progress(
 def build_lineage_fingerprint(
     *,
     representation: str,
+    backend: str,
     model_revision: str,
     training_spec: dict[str, Any],
     holdout_sources: Sequence[str],
@@ -76,6 +84,7 @@ def build_lineage_fingerprint(
 ) -> str:
     if representation not in REPRESENTATIONS:
         raise ValueError(f"unsupported CPU shadow representation: {representation}")
+    backend_spec = backend_runtime_spec(backend)
     payload = {
         "candidate": "dct-v3-cpu-shadow",
         "representation": representation,
@@ -85,7 +94,7 @@ def build_lineage_fingerprint(
         "holdout_sources": list(holdout_sources),
         "labels": list(labels),
         "triplets": [[int(v) for v in rows] for rows in triplets],
-        "backend": "cpu_float16_no_autocast_no_gradscaler",
+        "backend": backend_spec,
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -143,6 +152,7 @@ def _representation(
 def run_cpu_shadow_chunk(
     *,
     representation: str,
+    backend: str,
     safe_path: Path,
     snapshot_path: Path,
     output_checkpoint: Path,
@@ -152,6 +162,7 @@ def run_cpu_shadow_chunk(
 ) -> dict[str, Any]:
     if representation not in REPRESENTATIONS:
         raise ValueError(f"unsupported CPU shadow representation: {representation}")
+    backend_spec = backend_runtime_spec(backend)
     if max_microbatches <= 0:
         raise ValueError("max_microbatches must be positive")
 
@@ -238,7 +249,7 @@ def run_cpu_shadow_chunk(
     base = AutoModel.from_pretrained(
         str(snapshot_path),
         config=config,
-        torch_dtype=torch.float16,
+        torch_dtype=torch_model_dtype(torch, backend),
         local_files_only=True,
         low_cpu_mem_usage=True,
     )
@@ -300,6 +311,7 @@ def run_cpu_shadow_chunk(
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_multiplier)
     lineage = build_lineage_fingerprint(
         representation=representation,
+        backend=backend,
         model_revision=MODEL_REVISION,
         training_spec=spec,
         holdout_sources=list(split["holdout_sources"]),
@@ -360,14 +372,15 @@ def run_cpu_shadow_chunk(
 
         rows = rows_group[microbatch_index]
         encoding = make_encoding(rows)
-        z = _representation(
-            representation=representation,
-            model=model,
-            norms=norms,
-            layers=layers,
-            encoding=encoding,
-            torch=torch,
-        )
+        with cpu_autocast_context(torch, backend):
+            z = _representation(
+                representation=representation,
+                model=model,
+                norms=norms,
+                layers=layers,
+                encoding=encoding,
+                torch=torch,
+            )
         target = torch.as_tensor(y[rows], dtype=torch.long)
         plain_logits = plain(dropout(z))
         centered_logits = centered(dropout(center_triplet(z)))
@@ -409,7 +422,7 @@ def run_cpu_shadow_chunk(
     result.update(
         {
             "representation": representation,
-            "backend": "cpu_float16_no_autocast_no_gradscaler",
+            "backend": backend_spec,
             "model_id": MODEL_ID,
             "model_revision": MODEL_REVISION,
             "holdout_sources": list(split["holdout_sources"]),
@@ -440,6 +453,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--representation", choices=sorted(REPRESENTATIONS), required=True
     )
+    parser.add_argument("--backend", choices=sorted(BACKENDS), required=True)
     parser.add_argument("--safe-path", type=Path, required=True)
     parser.add_argument("--snapshot-path", type=Path, required=True)
     parser.add_argument("--output-checkpoint", type=Path, required=True)
@@ -453,6 +467,7 @@ def main() -> None:
     args = parse_args()
     result = run_cpu_shadow_chunk(
         representation=args.representation,
+        backend=args.backend,
         safe_path=args.safe_path,
         snapshot_path=args.snapshot_path,
         output_checkpoint=args.output_checkpoint,
