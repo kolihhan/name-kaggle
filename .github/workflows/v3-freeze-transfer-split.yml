@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
 
+# Split-only workflow: no model loading, prediction, or scoring.
 jobs:
   freeze:
     runs-on: ubuntu-latest
