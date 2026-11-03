@@ -1,9 +1,10 @@
 V3 CPU shadow BF16 benchmark trigger
 Date: 2026-11-03 MYT
 
-Purpose: execute exactly one DCT Stage-1 CPU-shadow microbatch using the BF16 backend and measure operational wall-clock feasibility.
+Purpose: execute exactly one DCT Stage-1 CPU-shadow microbatch using the BF16 backend and measure operational wall-clock feasibility after the FP32 readout-boundary fix.
 
 Comparison anchor: FP16 one-microbatch CPU-shadow run 41598304633.
+Previous BF16 run 41602080074 reached the readout quickly but failed at the BF16->FP32 linear boundary before backward; that failure produced no checkpoint and is not a training result.
 
 Scientific scope:
 - external Phase14 transfer-training data only
