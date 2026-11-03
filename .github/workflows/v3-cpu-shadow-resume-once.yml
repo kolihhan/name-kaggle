@@ -1,0 +1,35 @@
+name: V3 CPU Shadow Resume Once
+
+on:
+  workflow_run:
+    workflows:
+      - V3 CPU Shadow
+    types:
+      - completed
+    branches:
+      - infra/v3-cpu-shadow-resume
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-next-bounded-chunk:
+    if: github.event.workflow_run.id == 41604738508 && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch exactly one resumed BF16 DCT microbatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run v3-cpu-shadow-chunk.yml \
+            --repo kolihhan/name-kaggle \
+            --ref infra/v3-cpu-shadow-resume \
+            -f representation=dct \
+            -f backend=bf16 \
+            -f parent_run_id=41604738508 \
+            -f max_microbatches=1
+          echo 'Dispatched exactly one bounded BF16 DCT resume from parent run 41604738508.'
