@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 90
     env:
       COLAB_SESSION: dct-v3-t4-${{ github.run_id }}
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/colab-adc.json
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/colab-adc-${{ github.run_id }}.json
 
     steps:
       - name: Preflight Colab user authorization (never print secrets)
