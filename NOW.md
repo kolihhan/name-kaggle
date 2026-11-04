@@ -1,5 +1,16 @@
 # NOW
 
+## Stage-1 LoRA24 sibling-holdout inference implementation — 2026-11-04
+
+**IMPLEMENTED AND STATIC VERIFIED; GPU INFERENCE NOT EXECUTED.** User's "go" authorized the scoped source-heldout inference-only validation, not a Kaggle competition submission or training.
+
+- Source: `scripts/audit_lora24_sibling_holdout.py`, `scripts/lora24_sibling_holdout_inference.py`, `scripts/build_lora24_sibling_holdout_kernel.py`. Synthetic tests: `tests/test_lora24_sibling_holdout.py` and `tests/test_build_lora24_sibling_holdout_kernel.py`.
+- GitHub Actions workflow: [41857723140](https://github.com/kolihhan/name-kaggle/actions/runs/41857723140) **SUCCESS**, `6 passed`, generated offline Kaggle source compiled, and metadata/security preflight `STATIC_SOURCE_HOLDOUT_INFERENCE_GATE_PASS`. GPU job was **SKIPPED by design** on a push; only `workflow_dispatch` can start it. This is NOT empirical GPU inference or a source-transfer confusion result.
+- Frozen external data: original SHA-pinned `nishantdahal/ntl-handwriting-blend/pool_v4.parquet`; existing Gate-A source split `abdullah/semenoff/zakir`, 3,324 eligible rows / 13 eligible labels. Exact locked Stage-1 A1 checkpoint `kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint` v1, manifest `c9ba8f77...`; Qwen3-8B Base, 24 layers. No official competition input sources mounted, private Kernel, internet off, aggregate outputs only uploaded to GitHub.
+- Crucial scientific limit: Stage-1 A1 is **not** the final Stage-2 model behind Public `0.520`. The inference diagnosis can describe sibling-family errors across already-consumed Stage-1 sources but cannot independently establish the final 0.520 model's hidden transfer. The original Gate-A sources were previously used for model decision and are not a newly untouched holdout.
+- Since Kaggle weekly GPU quota was previously exhausted and no fresh positive GPU eligibility evidence exists, **do not trigger repeated quota-rejected pushes**. New workflow is prepared for **one manual private inference run** when a valid GPU execution window is confirmed. No new competition submission or training authorized.
+- Scientific result remains **UNRUN / UNKNOWN**. Do not claim 57.32% replicated, any new Public score, or any performance gain.
+
 ## CURRENT DECISION — ACTIVE NTL RESEARCH, COSMORIN LOOP CLOSED (2026-11-04)
 
 **CORRECTION TO MY PREVIOUS MISINTERPRETATION:** The user said to stop repeatedly hitting the same failed 0.622 Notebook route, **not** to abandon Name That LLM or switch to Gemma 4. The unjustified stop directive added to `main/AGENTS.md` has been reverted in commit `c11233ac847bab8416d110583ed3640b3f535f31`. This is a Name That LLM-only research continuation.
