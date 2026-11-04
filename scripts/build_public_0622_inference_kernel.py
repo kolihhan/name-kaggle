@@ -90,6 +90,8 @@ def main() -> None:
     meta["title"] = "NTL Cosmorin0622 Prefit Reuse"
     assert meta["title"].lower().replace(" ", "-") == OUTPUT_ID.split("/", 1)[1]
     meta["is_private"] = True
+    # Explicit documented machine_shape for Kaggle T4 x2; no CPU downgrade.
+    meta["machine_shape"] = "NvidiaTeslaT4"
     # Do not pretend we can force Kaggle's historical V1 Docker SHA.
     meta.pop("docker_image", None)
     (out / "kernel-metadata.json").write_text(json.dumps(meta, indent=2)+"\n")
