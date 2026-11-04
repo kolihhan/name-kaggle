@@ -69,7 +69,7 @@ jobs:
           nb=json.loads((root/m['code_file']).read_text())
           assert nb['cells'][0]['cell_type']=='markdown', 'Attribution must not be executable code'
           assert 'Cosmorin' in ''.join(nb['cells'][0]['source'])
-          code='\\n'.join(
+          code='\n'.join(
               ''.join(c.get('source',[])) if isinstance(c.get('source',''),list) else c.get('source','')
               for c in nb['cells'] if c['cell_type']=='code'
           )
