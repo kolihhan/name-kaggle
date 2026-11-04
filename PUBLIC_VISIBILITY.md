@@ -1,10 +1,18 @@
 # Public Visibility Gate
 
-**Status: UNSAFE — REPOSITORY IS CURRENTLY PUBLIC UNDER A TEMPORARY USER-AUTHORIZED EXECUTION EXCEPTION. RETURN TO PRIVATE AFTER THE SUBMISSION PREFLIGHT/TRAINING RUN.**
+**Status: PUBLIC BY USER CHOICE; NOT VERIFIED PUBLIC-SAFE.**
 
 Last verified: 2026-11-02.
 
 This is a repository-wide safety gate. It is independent of Gate B, candidate selection, and Kaggle submission authorization.
+
+## 2026-11-04 current user direction (supersedes mandatory return-private instruction)
+
+User explicitly confirmed that they want to **keep using the public GitHub repo** and do not want training or GitHub Actions held up by repeatedly requiring a visibility reversal. Do **not** insist on making this repo private after every training or preflight job, and do not claim the older temporary return-private condition is still a user requirement. GitHub Actions and narrowly scoped, data-safe GPU training are authorized workflows while the repository is public.
+
+This is an **operational preference**, **not** a verification that Git history was sanitized. Removing official data from current branches or sparse-checkouts does *not* remove previously committed bytes from reachable Git history. Historical exposure was documented below; its cleanup has not been verified here. Keep the facts separate from the user's accepted workflow choice.
+
+Minimal safeguards still apply: never commit credentials/secrets or official competition data, do not weaken the official-data materialization fail-closed guard, and preserve the frozen evaluation/holdout and submission authorization boundaries. Do not re-open the same public/private warning on every routine training turn; revisit only if new material evidence or a specific release/sharing request warrants it.
 
 ## Temporary execution exception
 
@@ -72,10 +80,10 @@ The repository may be marked `READY` for public visibility only after all of the
 If your task involves repository visibility, GitHub Actions billing, data handling, or public sharing:
 
 1. read this file first;
-2. treat `UNSAFE` as a hard stop on further public exposure unless a current explicit user instruction authorizes a narrowly scoped exception;
+2. recognize that the 2026-11-04 user direction authorizes continued public-repo GitHub Actions training, while historical public-data safety remains unverified;
 3. do not claim this repository is public-safe;
 4. do not rewrite Git history or delete competition evidence unless the user explicitly authorizes that destructive cleanup;
 5. keep infrastructure cleanup separate from Gate B and the scientific evaluation process;
-6. during the temporary exception above, prioritize the direct Kaggle preflight only and return the repository to `private` afterward.
+6. do not enforce an automatic return-to-private or GitHub Actions ban; guard against new data/credential exposure and keep science evaluation rules separate.
 
 Saving GitHub Actions minutes by itself is not sufficient reason to bypass this gate.
