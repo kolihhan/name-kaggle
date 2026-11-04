@@ -315,7 +315,15 @@ def _run_condition_worker(
     snapshot_path: Path,
     worker_output: Path,
     checkpoint_dir: Path,
+    optimizer_boundary_path: Path | None = None,
+    checkpoint_every_steps: int = 0,
+    stop_after_optimizer_steps: int | None = None,
 ) -> None:
+    # Opt-in infrastructure. The default frozen scientific worker is unchanged.
+    if optimizer_boundary_path is None and (checkpoint_every_steps or stop_after_optimizer_steps is not None):
+        raise ValueError("resume controls require an optimizer_boundary_path")
+    if optimizer_boundary_path is not None and checkpoint_every_steps < 1:
+        raise ValueError("checkpoint_every_steps must be positive for resume")
     if condition not in CONDITIONS:
         raise ValueError(condition)
 
@@ -477,6 +485,8 @@ def _run_condition_worker(
         accumulation=accumulation,
     )
     total_steps = len(step_groups)
+    if stop_after_optimizer_steps is not None and not (1 <= stop_after_optimizer_steps <= total_steps):
+        raise ValueError("stop_after_optimizer_steps must be within the full one-epoch schedule")
     warmup_steps = max(1, int(float(spec["warmup_fraction"]) * total_steps))
 
     def lr_multiplier(step: int) -> float:
@@ -534,7 +544,92 @@ def _run_condition_worker(
     loss_count = 0
     skipped_steps = 0
     optimizer_steps = 0
-    for rows_group in step_groups:
+    resume_fingerprint = None
+    save_boundary = None
+    if optimizer_boundary_path is not None:
+        if not train_lora:
+            raise RuntimeError("resumable paired transfer supports frozen A1 only")
+        from scripts.dct_v3_cuda_resume import (
+            load_optimizer_boundary,
+            save_optimizer_boundary,
+        )
+
+        # Fingerprint the frozen worker, exact safe parquet, ordered triplet
+        # schedule, all training parameters and the pinned local snapshot.
+        # Never include holdout predictions or any validation score.
+        snapshot_root = Path(snapshot_path)
+        manifest_path = snapshot_root / "model.safetensors.index.json"
+        if not manifest_path.is_file():
+            raise RuntimeError("missing pinned model shard manifest for resume")
+        ordered_triplets = [
+            [int(index) for index in rows]
+            for rows_group in step_groups for rows in rows_group
+        ]
+        lineage = {
+            "condition": condition,
+            "candidate": CANDIDATE,
+            "model_id": MODEL_ID,
+            "model_revision": MODEL_REVISION,
+            "model_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "model_weight_files": [
+                [entry.name, entry.stat().st_size]
+                for entry in sorted(snapshot_root.glob("*.safetensors"))
+            ],
+            "safe_parquet_sha256": hashlib.sha256(Path(safe_path).read_bytes()).hexdigest(),
+            "worker_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "train_rows_sha256": hashlib.sha256(
+                np.asarray(train_idx, dtype="<i8").tobytes()
+            ).hexdigest(),
+            "heldout_rows_sha256": hashlib.sha256(
+                np.asarray(heldout_idx, dtype="<i8").tobytes()
+            ).hexdigest(),
+            "ordered_triplets_sha256": hashlib.sha256(
+                json.dumps(ordered_triplets, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "labels": labels,
+            "training_spec": spec,
+            "condition_spec": condition_spec,
+            "total_steps": total_steps,
+            "runtime": {
+                "torch": str(torch.__version__),
+                "cuda": str(torch.version.cuda),
+                "transformers": str(transformers.__version__),
+                "peft": str(peft.__version__),
+            },
+        }
+        resume_fingerprint = hashlib.sha256(
+            json.dumps(lineage, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        resume_modules = {
+            "model": model,
+            "norms": norms,
+            "plain": plain,
+            "centered": centered,
+        }
+        optimizer_boundary_path = Path(optimizer_boundary_path)
+        save_boundary = save_optimizer_boundary
+        if optimizer_boundary_path.exists():
+            restored_stats = {}
+            optimizer_steps = load_optimizer_boundary(
+                optimizer_boundary_path,
+                expected_fingerprint=resume_fingerprint,
+                modules=resume_modules,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                expected_total_steps=total_steps,
+                training_stats_out=restored_stats,
+            )
+            if set(restored_stats) != {"loss_sum", "loss_count", "skipped_steps"}:
+                raise RuntimeError("missing resume counters")
+            loss_sum = float(restored_stats["loss_sum"])
+            loss_count = int(restored_stats["loss_count"])
+            skipped_steps = int(restored_stats["skipped_steps"])
+            if loss_count != sum(len(rows_group) for rows_group in step_groups[:optimizer_steps]):
+                raise RuntimeError("resume loss-count cursor mismatch")
+            print(f"{condition} restored optimizer step {optimizer_steps}/{total_steps}", flush=True)
+
+    for rows_group in step_groups[optimizer_steps:]:
         optimizer.zero_grad(set_to_none=True)
         group_size = len(rows_group)
         if group_size <= 0:
@@ -571,6 +666,28 @@ def _run_condition_worker(
             skipped_steps += 1
         scheduler.step()
         optimizer_steps += 1
+        if save_boundary is not None and (
+            optimizer_steps % checkpoint_every_steps == 0
+            or optimizer_steps == total_steps
+            or optimizer_steps == stop_after_optimizer_steps
+        ):
+            optimizer.zero_grad(set_to_none=True)
+            save_boundary(
+                optimizer_boundary_path,
+                fingerprint=resume_fingerprint,
+                modules=resume_modules,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                completed_steps=optimizer_steps,
+                total_steps=total_steps,
+                training_stats={
+                    "loss_sum": loss_sum,
+                    "loss_count": loss_count,
+                    "skipped_steps": skipped_steps,
+                },
+            )
+            print(f"{condition} optimizer boundary saved {optimizer_steps}/{total_steps}", flush=True)
         if optimizer_steps % 50 == 0 or optimizer_steps == total_steps:
             print(
                 f"{condition} step {optimizer_steps}/{total_steps} "
@@ -578,6 +695,11 @@ def _run_condition_worker(
                 f"elapsed={time.time() - started:.0f}s",
                 flush=True,
             )
+        if stop_after_optimizer_steps is not None and optimizer_steps == stop_after_optimizer_steps:
+            # Infrastructure-only pause: no heldout evaluation; the caller must
+            # restart with this exact optimizer-boundary checkpoint.
+            print(f"{condition} paused at {optimizer_steps}/{total_steps}; heldout UNTOUCHED", flush=True)
+            return
 
     if optimizer_steps != total_steps:
         raise RuntimeError(
