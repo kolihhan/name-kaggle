@@ -1,5 +1,12 @@
 # NOW
 
+## Latest read-only score check — 2026-11-04 21:45 MYT
+
+- Submission **57985641**: authenticated Kaggle competition submissions API returns `SubmissionStatus.COMPLETE`, but **Public Score and Private Score are both blank**. Evidence: successful read-only GitHub Actions [41841013584](https://github.com/kolihhan/name-kaggle/actions/runs/41841013584), polled `2026-11-04 13:45:37 UTC`.
+- **No valid new score; prior best remains `0.520`.** This result is not evidence of successful scoring. Submission `57983359` had the same API symptom and the user's Kaggle UI showed `Notebook Threw Exception`.
+- **Actual `57985641` detailed failure category is UNCONFIRMED**: the Kaggle submissions listing is insufficient to distinguish `Notebook Threw Exception` from another invalid-run outcome. Since this retry uses the same V1 inference source as the failed entry, repeat exception is plausible but not verified.
+- No model retraining or additional submission occurred in this check. **Do not re-submit identical source again**; inspect exact Kaggle submission details or perform targeted isolated GPU runtime debugging if available.
+
 Updated: 2026-11-04 MYT
 
 ## Authorized one-more Kaggle submission — 2026-11-04 21:09 MYT
