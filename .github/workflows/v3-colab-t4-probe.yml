@@ -1,0 +1,137 @@
+name: V3 Colab T4 GPU Feasibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/v3-colab-t4-probe.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-dct-colab-t4-feasibility
+  cancel-in-progress: false
+
+jobs:
+  t4-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      COLAB_SESSION: dct-v3-t4-${{ github.run_id }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/colab-adc.json
+
+    steps:
+      - name: Preflight Colab user authorization (never print secrets)
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          value = os.environ.get("COLAB_ADC_JSON", "")
+          if not value:
+              print("::error::No Colab OAuth ADC credential: repository secret COLAB_ADC_JSON is not configured. No GPU was requested.")
+              sys.exit(2)
+          try:
+              payload = json.loads(value)
+          except json.JSONDecodeError:
+              print("::error::COLAB_ADC_JSON is not valid JSON. No GPU was requested.")
+              sys.exit(2)
+          if payload.get("type") != "authorized_user":
+              print("::error::COLAB_ADC_JSON must contain an authorized_user ADC credential, not a Google service account or GitHub token. No GPU was requested.")
+              sys.exit(2)
+          if not all(payload.get(k) for k in ("client_id", "client_secret", "refresh_token")):
+              print("::error::COLAB_ADC_JSON lacks user OAuth credential fields. No GPU was requested.")
+              sys.exit(2)
+          path = pathlib.Path(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+          path.write_text(value, encoding="utf-8")
+          path.chmod(0o600)
+          print("Colab ADC user credential staged securely; no token output.")
+          PY
+
+      - name: Checkout only public probe notebook (exclude competition files)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            notebooks
+          sparse-checkout-cone-mode: true
+
+      - name: Verify non-sensitive checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in data/train.csv data/test.csv data/sample_submission.parquet; do
+            if [[ -e "$path" ]]; then
+              echo "::error::Official competition data appeared in checkout: $path"
+              exit 1
+            fi
+          done
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          nb = json.loads(Path("notebooks/dct_v3_colab_t4_probe.ipynb").read_text())
+          cells = [c for c in nb["cells"] if c.get("cell_type") == "code"]
+          assert len(cells) == 4, "T4 probe notebook content drift"
+          source = "\n".join("".join(c["source"]) for c in cells)
+          for invariant in ("PINNED_SOURCE_COMMIT", "torch.cuda.OutOfMemoryError",
+                            "scientific_decision_authorized", "official_rows_scored"):
+              assert invariant in source, f"Missing safety invariant: {invariant}"
+          print("Synthetic T4 notebook invariants verified; no official data.")
+          PY
+
+      - name: Prepare pinned official Colab CLI
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Colab CLI 0.7.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet google-colab-cli==0.7.5
+          colab version
+
+      - name: Provision T4, execute synthetic probe, recover result
+        shell: bash
+        run: |
+          set -euo pipefail
+          colab --auth adc new -s "$COLAB_SESSION" --gpu T4
+          colab --auth adc exec -s "$COLAB_SESSION" -f notebooks/dct_v3_colab_t4_probe.ipynb
+          colab --auth adc download -s "$COLAB_SESSION" \
+            /content/dct_v3_t4_probe_result.json ./dct_v3_t4_probe_result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result=json.loads(Path("dct_v3_t4_probe_result.json").read_text())
+          assert result["scope"] == "synthetic_t4_memory_probe_only"
+          assert result["scientific_decision_authorized"] is False
+          assert result["official_rows_scored"] == 0
+          assert result["competition_test_rows_used"] == 0
+          assert result["public_lb_tuning"] is False
+          print("Synthetic T4 GPU evidence:", json.dumps(result, sort_keys=True))
+          PY
+
+      - name: Release Colab runtime (even after failure)
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if command -v colab >/dev/null 2>&1 && [[ -s "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+            colab --auth adc stop -s "$COLAB_SESSION" || true
+          fi
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+
+      - name: Preserve only non-sensitive probe result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dct-v3-colab-t4-feasibility-${{ github.run_id }}
+          path: dct_v3_t4_probe_result.json
+          if-no-files-found: ignore
+          retention-days: 14
