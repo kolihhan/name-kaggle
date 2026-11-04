@@ -74,7 +74,7 @@ jobs:
           set -e
           if [ "$rc" -ne 0 ] || grep -Eqi 'Kernel push error:|Maximum weekly GPU quota|quota.*reached|Payment Required' <<<"$result"; then
             echo 'KAGGLE_PUSH_REJECTED; no competition submission'
-            printf '%s\n' "$result" | grep -Ei 'quota|kernel push error|invalid|failed' | head -8 || true
+            printf '%s\n' "$result" | tail -12 | sed -E 's/[A-Za-z0-9_+./=-]{40,}/[REDACTED]/g' || true
             exit 1
           fi
           version="$(printf '%s\n' "$result" | sed -nE 's/.*Kernel version ([0-9]+) successfully pushed.*/\1/p' | tail -1)"
