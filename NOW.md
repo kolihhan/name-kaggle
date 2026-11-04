@@ -1,6 +1,6 @@
 # NOW
 
-Updated: 2026-11-03 MYT
+Updated: 2026-11-04 MYT
 
 ## Competition anchor
 
@@ -57,81 +57,31 @@ Verified implementation:
 - static CUDA-oriented suite `41569836280`: 19 passed;
 - self-hosted executor suite `41580519705`: 24 passed.
 
-## Authoritative CUDA v3 execution
+## Authoritative CUDA v3 execution — awaiting usable GPU, not scored
 
-Scientific run `41580819667`, job `125734978512`, remains QUEUED for labels:
+- Self-hosted CUDA run `41580819667` was **CANCELLED** after remaining queued without a matching GPU host. It produced no paired v1/v3 training or score.
+- Frozen source, model, evaluation contracts and holdouts remain unchanged.
+- V3 source-transfer decision remains **UNRUN / UNKNOWN**, not FAIL.
+- No official OOF, Public LB retuning, or v3 Kaggle submission has been authorized.
 
-`[self-hosted, linux, x64, gpu]`
+### Available execution routes (verified 2026-11-04)
 
-Frozen run head: `2d0a86fffa880709ad25c8ee9153f2b2838617a8`.
+- **Google Colab Free T4:** User-observed Tesla T4, **14.56 GiB** addressable, torch `2.11.0+cu130`. The frozen executor's `>=15 GiB` preflight rejects it; that is a conservative infrastructure gate, not a demonstrated OOM.
+- `notebooks/dct_v3_colab_t4_probe.ipynb`: pinned, synthetic-only T4 LoRA + DCT forward/backward memory feasibility probe. **Created but NOT executed on a real T4**. It scores zero official or heldout rows and cannot decide v3 scientific transfer.
+- `notebooks/dct_v3_colab_gpu.ipynb`: pinned full paired-transfer launcher for sufficiently large CUDA GPU, but **no live Colab execution was observed**.
+- **Kaggle T4**: private, no-data quota-only probe `41767348246` re-ran from GitHub Actions. Push failed at `2026-11-04T03:28:46Z`: `Maximum weekly GPU quota of 30.00 hours reached`. GPU kernel did not launch. The updated workflow now fails closed instead of polling a missing kernel.
+- **Hugging Face Jobs**: connected Free account's L4 attempt returned `402 Payment Required`; not a usable no-cost GPU route.
+- A local/container GPU is not available from the current agent runtime; the user's live Colab session cannot be operated through the connected tools.
 
-No CUDA scientific score exists yet:
+GPU feasibility remains a separate execution question from the frozen v1-v3 scientific comparison. Do not claim a real T4 step or v3 transfer score without explicit execution logs/artifacts.
 
-- v3 transfer gate: UNRUN / UNKNOWN;
-- no official rows scored;
-- no Public LB consumed;
-- no competition submission;
-- no replacement CUDA scientific run while `41580819667` remains queued.
+## CPU shadow — stopped, separate non-scientific lineage
 
-`scripts/bootstrap_ephemeral_gpu_runner.sh` is statically verified by GREEN run `41590510236`. It requires Linux x64, CUDA/PyTorch, at least 15 GiB VRAM, a short-lived registration token, and custom label `gpu`.
-
-## CPU shadow — diagnostic only, full training rejected
-
-Branch: `infra/v3-cpu-shadow-resume`.
-
-CPU remains useful only for bounded execution/mechanism diagnostics. It may not replace the frozen CUDA v3 transfer gate.
-
-### FP16 anchor
-
-Run `41598304633`:
-
-- representation: DCT;
-- backend: CPU float16, no autocast, no GradScaler;
-- max microbatches: 1;
-- latest status: still IN PROGRESS in the first real microbatch;
-- no official rows, Public LB, or submission authorization.
-
-Existing worst-case CPU feasibility probe `41581953208` is also still in progress and remains execution-only evidence.
-
-### BF16 pivot
-
-First BF16 run `41602080074` was not a training result. It reached the readout quickly, then failed at the BF16 -> FP32 linear boundary with a dtype mismatch and produced no checkpoint/result.
-
-The readout boundary was fixed by promoting representation features to FP32 before the FP32 classifier heads. The fix is covered by `test_head_features_cross_autocast_boundary_as_float32` in `tests/test_dct_v3_cpu_shadow_chunk.py`.
-
-Corrected BF16 benchmark:
-
-- run `41604738508`;
-- representation: DCT;
-- backend: CPU bfloat16 + CPU autocast, no GradScaler;
-- max microbatches: 1;
-- separate lineage from FP16;
-- latest status: IN PROGRESS in the real bounded microbatch;
-- no official rows, Public LB, or submission authorization.
-
-### Full-CPU viability decision
-
-Sustained exact Stage-1 CPU training is REJECTED as an operational route.
-
-WHY:
-
-- Stage-1 transfer training has 14,502 rows;
-- `build_prompt_triplets` creates microbatches of at most three rows;
-- therefore one exact epoch requires at least `ceil(14502 / 3) = 4,834` forward/backward microbatches;
-- the corrected BF16 benchmark has already required tens of minutes without finishing one microbatch, while FP16 is slower;
-- even an optimistic hypothetical 10 minutes per microbatch implies about 33.6 days for one epoch before setup/reload/checkpoint overhead.
-
-CURRENT EVIDENCE:
-
-CPU can diagnose execution and mechanism behavior but is orders of magnitude too slow for sustained exact Stage-1 training on free hosted runners.
-
-PIVOT TRIGGER TO REOPEN:
-
-Only reopen full CPU training if a materially different exact-compatible execution method demonstrates sub-minute microbatches without changing the scientific candidate or violating equivalence/lineage requirements.
-
-STATUS: REJECTED for full training; bounded diagnostics only.
-
-Do not chain the existing FP16/BF16 runs into sustained CPU training.
+- The previously checkpointed CPU BF16 DCT lineage successfully preserved state through **microbatch #4** (run `41636327118`); no optimizer step had been reached (accumulation=6).
+- BF16 microbatch #5 (run `41644695149`) timed out after **330 minutes**, shell exit `124`. Previous checkpoint artifact was preserved, but #5 did **not** produce verified training progress.
+- The CPU continuation trigger was removed; latest CPU workflow `41673536800` was `success` only because the training chunk was **skipped**.
+- No sustained CPU training. Do not convert CPU shadow partial gradients or loss to scientific transfer PASS/FAIL.
+- Previous FP16/BF16 diagnostic summaries elsewhere in this branch are historical and do not authorize further CPU chunks.
 
 ## Parallel gradient restriction
 
@@ -195,15 +145,13 @@ CPU shadow results cannot authorize this gate.
 
 ## Current execution policy
 
-- Primary execution problem is now GPU availability, not model design.
-- Keep authoritative CUDA run `41580819667` queued; do not duplicate it.
-- The corrected BF16 run `41604738508` may finish only as a bounded throughput diagnostic; do not chain it.
-- Do not launch additional FP16/BF16 full-training chunks.
-- Do not change DCT modes/layers/source lock/model/seed from CPU diagnostics.
-- Do not consume official OOF or Public LB while transfer remains unresolved.
-- If authoritative CUDA v3 FAILs: stop v3 and reconsider architecture under `RESEARCH_DOCTRINE.md` before activating v4.
-- If authoritative CUDA v3 PASSes: execute the predeclared official OOF gate.
+- Primary blocker: availability of an actual GPU executor with enough tested memory and runtime to preserve the **exact** frozen 24-layer LoRA v1-v3 contract.
+- Do not retrigger CPU continuation; previous #5 hit a 330-minute timeout.
+- Kaggle GPU is quota-blocked as of latest `41767348246`; do not launch full kernel while this remains true.
+- Synthetic T4 memory probe is only a hardware diagnostic; it is **not** v3 transfer evidence.
+- Never weaken the frozen source lock, architecture, DCT modes, training steps, split, seed, or evaluation gates to fit a smaller GPU and then call the result v3.
+- Do not consume official OOF or Public LB before exact paired source-transfer PASS.
 
 ## Next action
 
-**Acquire/provide one exact-compatible GPU runner (Linux x64, CUDA/PyTorch, >=15 GiB VRAM, label `gpu`) so queued authoritative run `41580819667` can execute. Do not spend more effort trying to turn free hosted CPU into the full training path.**
+Obtain actual synthetic T4 GPU probe results via `notebooks/dct_v3_colab_t4_probe.ipynb` on an accessible GPU executor. Do not claim it ran unless verified. If T4 OOMs, seek GPU with >=24 GiB and adequate runtime. If Kaggle GPU quota recovers, run only a bounded no-official-data hardware probe first; defer full paired scientific training until resource + checkpoint viability are established.
