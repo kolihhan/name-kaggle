@@ -183,6 +183,14 @@ CPU shadow results cannot authorize this gate.
 - Research question: whether an added temporal AC1 component captures generator identity that survives source shift, versus noise/corpus-format artifacts. This mechanism is **hypothesis**, not yet evidence. If transfer fails, write per-source/label error analysis as allowed by the frozen result report, and only then reconsider the model family or centered-to-plain distillation under a *new* predeclared contract.
 - Do not declare CUDA resume or paired transfer complete just because a state-serialization unit test passed.
 
+## PIC implementation ledger — 2026-11-04 (resume worker integration)
+
+- **IMPLEMENTED:** Opt-in `optimizer_boundary_path` / `checkpoint_every_steps` / `stop_after_optimizer_steps` parameters on the **shared frozen v1 A1 CUDA worker**, and the exact generated v3 worker inherits them. Defaults remain disabled; no science configuration, source selection, head pooling, DCT coefficient or evaluation threshold was changed.
+- **IMPLEMENTED:** Checkpoints carry strict runtime/worker source/safe-parquet/split index/triplet order/label/model revision/manifest/training-spec fingerprint, trainable weights, AdamW, scheduler, GradScaler, CPU/CUDA RNG, optimizer cursor and training counters. Clean optimizer boundary is enforced. Pausing cannot read heldout predictions.
+- **VERIFIED CPU/STATIC:** GitHub Actions `41794531008` 30 passed and follow-up `41795292904` **31 passed** including new worker default/resume contract, interrupted-vs-uninterrupted CPU dropout/AdamW equality and training counter restoration; frozen worker materialization/kernel compilation passed.
+- **RUNNING/NOT YET VERIFIED:** GitHub Actions `41794900419`, a single Colab T4 invocation comparing fixed real external-data frozen-v3-worker uninterrupted two optimizer steps against interrupted one step + resume one step. No official competition data or source-holdout prediction is used; result must be checked before labeling CUDA resume PASS.
+- **NOT DONE:** CUDA bitwise equivalence, full v1/v3 one-epoch training, frozen paired source-transfer and official OOF/submission. Do not infer model quality from optimizer state or training-loss outputs.
+
 ## Next action
 
 Real-data T4 LoRA training feasibility and checkpoint artifact are now **VERIFIED** by run `41778479162`. Stop further bounded pilot reruns: there is no value in repeating two optimizer steps. The open scientific question is still the original *frozen paired v1 vs v3 full source-transfer* experiment. Before any costly full attempt, build an exact-resumable CUDA training/checkpoint mechanism that preserves optimizer/scheduler/RNG/grad-accumulation state and survives Colab session limits; keep evaluation firewall and split unchanged. GPU availability, remaining free quota, full-run duration, and the effect of DCT on heldout BA remain **UNKNOWN**.
