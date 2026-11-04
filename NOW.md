@@ -1,5 +1,13 @@
 # NOW
 
+## Stage-1 LoRA24 heldout GPU execution — 2026-11-04 23:37 MYT
+
+**KAGGLE PRIVATE KERNEL PUSH ACCEPTED; MODEL INFERENCE STILL RUNNING, NO RESULT YET.** One-shot Actions run [41859340827](https://github.com/kolihhan/name-kaggle/actions/runs/41859340827), on branch `exp/dct-temporal-fingerprint-v3`, commit `d57552602f0a3e93990128bb58b6b396b3e73467`, completed static tests and passed the Kaggle private kernel push step; the follow-on aggregate-only output retrieval is actively polling Kaggle. No competition submission or training.
+
+Root cause of previous execution failure: [41858850656](https://github.com/kolihhan/name-kaggle/actions/runs/41858850656) reached GPU job but died **on GitHub runner before Kaggle push** with `ModuleNotFoundError: No module named 'numpy'`. The standalone inference bundle builder transitively imported NumPy through an unrelated full-training submission builder. Fix `69c5edaa9614302d725d3260551d2567d1ee129d` isolates the offline wheel list from training imports; regression test in `tests/test_build_lora24_sibling_holdout_kernel.py` builds with `python -S` (stdlib only). Corrected one-shot runner is active. The earlier failure **did not consume GPU quota**.
+
+Scientific interpretation remains strictly limited: Stage-1 A1 is **not** the final Public-0.520 Stage-2 model; original Gate-A heldout sources were consumed during model selection. The upcoming diagnostics are descriptive within-family confusion, not a fresh blind generalization test and not a new leaderboard candidate. Do not retune on the result, auto-retry, train or submit anything to Kaggle competition. Later result must be verified from the GitHub Actions aggregate artifact rather than inferred from a successful push.
+
 ## Stage-1 LoRA24 sibling-holdout inference implementation — 2026-11-04
 
 **IMPLEMENTED AND STATIC VERIFIED; GPU INFERENCE NOT EXECUTED.** User's "go" authorized the scoped source-heldout inference-only validation, not a Kaggle competition submission or training.
