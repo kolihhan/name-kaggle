@@ -37,10 +37,9 @@ def test_materialized_v3_contains_identical_resume_protocol_and_only_frozen_dct_
     assert v3.count("from scripts.dct_v3_cuda_resume import") == 1
     for marker in (
         "optimizer_boundary_path: Path | None = None",
-        "save_optimizer_boundary(",
+        "save_boundary(",
         "load_optimizer_boundary(",
-        "frozen-run",  # Checked by helper, not script; replaced below
-    )[:3]:
+    ):
         assert marker in original
         assert marker in v3
     assert "masked_dct_pool" not in original
