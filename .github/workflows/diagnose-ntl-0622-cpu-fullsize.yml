@@ -1,0 +1,206 @@
+name: Diagnose NTL 0.622 4k CPU Branch (No Training)
+
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/diagnose-ntl-0622-cpu-fullsize.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-fullsize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl0622-cpu-fullsize-probe
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI only
+        run: python -m pip install -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Prepare private CPU-only 4000 synthetic-row branch test
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "\${KAGGLE_API_TOKEN:?Kaggle credentials missing}"
+          mkdir -p /tmp/ntl0622-fullsize
+          cat > /tmp/ntl0622-fullsize/kernel-metadata.json <<'JSON'
+          {
+            "id": "kolihhan/ntl0622-cpu-fullsize-probe",
+            "title": "NTL0622 CPU Fullsize Probe",
+            "code_file": "probe.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_gpu": false,
+            "enable_internet": false,
+            "competition_sources": [],
+            "dataset_sources": ["cosmorin/name-that-llm-0-622-reproduction-svc-cache"],
+            "kernel_sources": [],
+            "model_sources": []
+          }
+          JSON
+          cat > /tmp/ntl0622-fullsize/probe.py <<'PY'
+          """Synthetic 4000-row SVC/clustering/Sinkhorn regression. No training of any model.
+          No official competition data read. No neural model inference. No submission.
+          """
+          import gc,glob,hashlib,json,re,resource,time
+          from pathlib import Path
+          import joblib,numpy as np
+          from scipy.sparse import hstack
+          from scipy.cluster.hierarchy import linkage,fcluster
+          from scipy.spatial.distance import squareform
+          from sklearn.feature_extraction.text import TfidfVectorizer
+
+          START=time.monotonic()
+          N=4000
+          K=18
+          SMALL_WORDS = set("a an the and or but if while although because as so than that which who whom whose this these those it its they them their theirs he him his she her hers we us our ours you your yours i me my mine in on at to from with without for of by over under between through into about is are was were be been being have has had do does did can could will would shall should may might must not no nor all any some each every both either neither other another such only also just very too more most less here there when where why how what whether then now still yet even much many few little".split())
+          VIEWS=[("char",3,5,250000,1.0),("word",1,3,180000,0.7),("shape",2,6,60000,0.5),("small",1,3,50000,0.5)]
+          TWIN=dict(thresh=0.85,min_size=2,max_size=18)
+          def shape_text(t):
+              return re.sub(r"[^\W\d_]+",lambda m:"X" if m[0].isupper() else "x",t)
+          def small_words_text(t):
+              return " ".join(w.lower() if w.lower() in SMALL_WORDS or not w.isalnum() else "CONTENT"
+                              for w in re.findall(r"\w+|[^\w\s]",t))
+          def softmax(x):
+              e=np.exp(x-x.max(1,keepdims=True))
+              return e/e.sum(1,keepdims=True)
+          def one(pattern):
+              hits=sorted(set(glob.glob("/kaggle/input/**/"+pattern,recursive=True)))
+              assert len(hits)==1,("file_count",pattern,len(hits))
+              return Path(hits[0])
+          cp=one("ntl620_svc_prefit_v1/svc_prefit.joblib")
+          h=hashlib.sha256()
+          with cp.open("rb") as f:
+              for block in iter(lambda:f.read(8*1024*1024),b""):h.update(block)
+          assert h.hexdigest()=="f294ce929714e852a5a3f1d34ff7a5c5f0a0df3d73bd4a24ae327cbde4d96352"
+          cache=joblib.load(cp)
+          assert len(cache["vectorizers"])==len(VIEWS)==4
+          assert cache["svc"].classes_.tolist()==list(range(K))
+          topics=[
+              "Old rivers carry the mountain snow toward a distant quiet harbor",
+              "The little theatre opened again after summer on the coastal road",
+              "A flock of birds landed beside the garden and the orchard",
+              "Rain fell on the stone bridge as the fishermen returned home",
+              "The science museum displayed a small collection of antique clocks",
+              "Local buses traveled along the market road at sunrise",
+              "The dry wheat fields stretched toward the horizon under golden clouds",
+              "Scientists found unusual stones near a dormant mountain",
+              "A quiet library provided books about forests and rivers",
+              "Waves crashed against the lighthouse beyond the empty beach",
+              "The village baker prepared fresh bread before the market opened",
+              "A long train crossed the valley between ancient green hills",
+              "The orchestra performed in the town square during spring",
+              "A gardener planted roses outside the brick farmhouse",
+              "Clear northern skies revealed a faint band of distant stars",
+              "The city archive preserved letters from travelers and explorers",
+              "A red bicycle rested against the old wooden fence",
+              "A farmer gathered apples as the season turned cooler",
+              "The young painter made sketches of the harbor at twilight",
+              "Warm sunlight filled the stone courtyard on a calm morning",
+          ]
+          # 4000 invented texts with both duplicate and varying passage structure.
+          texts=[
+              topics[i%len(topics)]+(
+                  " Today the neighbors discussed the same view with friends."
+                  if (i//len(topics))%3==0 else
+                  " They heard stories about the place and visited together."
+                  if (i//len(topics))%3==1 else
+                  " Another description of this curious location spread at dawn."
+              )+" The route number was "+str((i//60)%7)+"."
+              for i in range(N)
+          ]
+          begin=time.monotonic()
+          B=[]
+          for vec,(name,_,_,_,weight) in zip(cache["vectorizers"],VIEWS):
+              prep=shape_text if name=="shape" else small_words_text if name=="small" else (lambda z:z)
+              B.append(vec.transform([prep(t) for t in texts])*weight)
+          scores=cache["svc"].decision_function(hstack(B,format="csr"))
+          assert scores.shape==(N,K) and np.isfinite(scores).all()
+          P=softmax(scores)
+          del B,cache,scores
+          t_svc=round(time.monotonic()-begin,2)
+
+          begin=time.monotonic()
+          Xt=TfidfVectorizer(stop_words="english",sublinear_tf=True).fit_transform(texts)
+          D=np.clip(1-(Xt@Xt.T).toarray(),0,None)
+          assert D.shape==(N,N) and np.isfinite(D).all()
+          np.fill_diagonal(D,0)
+          groups=fcluster(linkage(squareform(D,checks=False),method="average"),
+                          TWIN["thresh"],criterion="distance")
+          assert groups.shape==(N,) and groups.min()>0
+          size=np.bincount(groups)[groups]
+          twin_rows=(size>=TWIN["min_size"])&(size<=TWIN["max_size"])
+          t_cluster=round(time.monotonic()-begin,2)
+          del Xt,D
+          gc.collect()
+
+          begin=time.monotonic()
+          c=np.ones(K)
+          target=np.full(K,len(P)/K)
+          for _ in range(300):
+              X=P*c
+              X/=X.sum(1,keepdims=True)
+              c*=target/X.sum(0)
+          Q=P*c
+          Q/=Q.sum(1,keepdims=True)
+          assert Q.shape==(N,K) and np.isfinite(Q).all()
+          assert np.allclose(Q.sum(1),1,rtol=1e-6,atol=1e-7)
+          t_sinkhorn=round(time.monotonic()-begin,2)
+          result={
+              "scope":"synthetic_cpu_only_4000_no_training_no_submission",
+              "n_rows":N,"n_classes":K,"finite":True,
+              "svm_seconds":t_svc,"clustering_seconds":t_cluster,
+              "sinkhorn_seconds":t_sinkhorn,"total_seconds":round(time.monotonic()-START,2),
+              "cluster_count":len(np.unique(groups)),"twin_rows":int(twin_rows.sum()),
+              "peak_maxrss_mib":round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,1),
+          }
+          Path("/kaggle/working/diagnostic-summary.json").write_text(json.dumps(result,sort_keys=True))
+          print("NTL0622_FULLSIZE "+json.dumps(result,sort_keys=True),flush=True)
+          PY
+          python -m py_compile /tmp/ntl0622-fullsize/probe.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          meta=json.loads(Path("/tmp/ntl0622-fullsize/kernel-metadata.json").read_text())
+          assert meta["title"].lower().replace(" ","-")==meta["id"].split("/")[1]
+          assert meta["is_private"] and meta["enable_gpu"] is False
+          assert meta["competition_sources"]==[] and meta["model_sources"]==[]
+          print("FULLSIZE_STATIC_GATE_PASS")
+          PY
+      - name: Push exactly one private CPU probe (no competition submit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if kaggle kernels status "$KERNEL_REF" >/dev/null 2>&1; then
+            echo "CPU fullsize probe already exists; refusing overwrite"; exit 1
+          fi
+          result="$(kaggle kernels push -p /tmp/ntl0622-fullsize 2>&1)" || {
+            echo "$result" | grep -Ei 'error|quota|invalid|bad request' | head -12 || true
+            exit 1
+          }
+          echo "FULLSIZE_PROBE_PUSHED"
+      - name: Verify completion and log sanitized counters
+        shell: bash
+        run: |
+          set -euo pipefail
+          done=0
+          for n in $(seq 1 55); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            if grep -Eqi '(^|[^a-z])(complete|completed|success|succeeded)([^a-z]|$)' <<< "$status"; then
+              done=1;break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled)([^a-z]|$)' <<< "$status"; then
+              echo "FULLSIZE_PROBE_ERROR"
+              kaggle kernels logs "$KERNEL_REF" | tail -18 || true
+              exit 1
+            fi
+            sleep 15
+          done
+          test "$done" = 1 || { echo "FULLSIZE_PROBE_INCOMPLETE"; exit 1; }
+          kaggle kernels logs "$KERNEL_REF" 2>&1 | grep 'NTL0622_FULLSIZE' | tail -1
