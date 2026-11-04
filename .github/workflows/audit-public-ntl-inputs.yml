@@ -118,6 +118,27 @@ jobs:
                 else:
                   z["json_error"]="not-exactly-one-small-JSON"
               item["small_public_json"][file]=z
+
+            # Kaggle CLI supports a read-only dataset version/status probe.
+            status=subprocess.run(["kaggle","datasets","status",ref,"--format","json"],
+                                  text=True,capture_output=True,timeout=40)
+            item["status_ok"]=status.returncode==0
+            if status.returncode==0:
+              try:
+                sj=json.loads(status.stdout)
+                item["status_json"]=sj if isinstance(sj,(dict,list,str,int,float)) else None
+              except Exception:
+                item["status_parse_error"]=True
+            owner,slug=ref.split("/",1)
+            listing=subprocess.run(["kaggle","datasets","list","--user",owner,"-s",slug,"-v"],
+                                   text=True,capture_output=True,timeout=40)
+            item["list_ok"]=listing.returncode==0
+            if listing.returncode==0:
+              try:
+                rows=list(csv.DictReader(listing.stdout.splitlines()))
+                item["list_matches"]=[row for row in rows if row.get("ref")==ref][:2]
+              except Exception:
+                item["list_parse_error"]=True
             out.append(item)
             print("ASSET_META",ref,"metadata",item["metadata_ok"],"files",item["files_listing_ok"],"count",len(names),flush=True)
           report={
