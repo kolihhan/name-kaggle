@@ -2,6 +2,25 @@
 
 Updated: 2026-11-04 MYT
 
+## Kaggle #57983359 postmortem — four private CPU diagnostics completed (2026-11-04 MYT)
+
+**STATUS: PRE-MODEL + FULLSIZE CPU PASS; GPU / HIDDEN RERUN ROOT CAUSE UNKNOWN.** No training, no new official competition submission, no base-weight downloads to GitHub, and no changes to frozen ML/validation contracts. These probes executed privately on Kaggle CPU through GitHub Actions. They cannot reproduce actual hidden samples or two 14B GPU inference passes.
+
+| Layer | Run | Observed result | Limits |
+|---|---|---|---|
+| 1. Kaggle environment/input hashes | [41828297015](https://github.com/kolihhan/name-kaggle/actions/runs/41828297015) — success | Exact `numpy=2.1.3`, `scipy=1.16.3`, `scikit-learn=1.6.1`, `joblib=1.6.0` matched SVC cache manifest; `train.csv`, `pool_v4.parquet`, `svc_prefit.joblib` SHA-256: **PASS**; all 5 adapter/encoder small JSON config files mounted once and readable | These are CPU image checks; hidden scoring GPU image and asset state may differ |
+| 2. SVC on invented passages + safetensors tensor headers | [41828879403](https://github.com/kolihhan/name-kaggle/actions/runs/41828879403) — success | SHA-pinned SVC cache loaded; four views produced finite shape `3x18`; Qwen3 adapter: 189 matching A/B keys; Qwen2.5: 224 matching A/B keys; both have valid rank/pairs, plain+centered heads; DeBERTa classification head header valid | Safetensors headers only; no neural tensors loaded or model forward |
+| 3. Full-size CPU algorithm path | [41829562049](https://github.com/kolihhan/name-kaggle/actions/runs/41829562049) — success | 4,000 fabricated passages; full prefitted SVC + TFIDF all-pairs average-linkage + 300-round Sinkhorn finite; SVC 2.51 s, cluster 1.11 s, Sinkhorn 0.18 s; total 9.41 s, maxRSS ~547.8 MiB | Synthetic clusters produced **0 centered-twin rows**; true hidden text, neural ensemble, and GPU inference not covered; these measurements are NOT full runtime estimates |
+| 4. Exact two pinned base Qwen model mounts/config/tokenizer | [41830046480](https://github.com/kolihhan/name-kaggle/actions/runs/41830046480) — success | Both `qwen3` / `qwen2` configs unique and matched required depth/hidden size; keep/layer indices/eos valid; both tokenizers worked on invented text. Formula in scored source estimates truncated Qwen3 **18.06 GiB** and Qwen2.5 **17.86 GiB** fp16 model weights, each processed sequentially | No model-weight loading/forward, LoRA merge, DeBERTa forward, or GPU memory/hidden test sizing |
+
+### Diagnosis and decision
+
+- **FACT:** The official submission `57983359` failed with Kaggle UI detail `Notebook Threw Exception`; the CLI's `COMPLETE` only meant processing finished. No score; the team's valid Public best remains `0.520`.
+- **FACT:** Current Kaggle private CPU environment passes exact cache package versions/hash checks, SVC prediction, two adapter tensor-header/heads checks, 4,000-row synthetic cluster/Sinkhorn, and base config/tokenizer mounting.
+- **INFERENCE:** The highest-value remaining investigation targets **GPU-only model loading/sharding, LoRA merging, long-input batches, DeBERTa forward, or different hidden-rerun environment**. Static 18 GiB/trunk estimates imply two-GPU sharding and substantial additional activation/adapter memory, but **GPU OOM is not proven**.
+- **UNKNOWN:** Hidden-exception line/trace, runtime memory peak, whether hidden scoring uses the same image and mounts as these CPU tests, whether long hidden passages trigger uncaught single-row CUDA OOM, and actual Private/Public transfer.
+- **STOP:** No more blind Kaggle submissions or training. No GPU quota available at previous push (`Maximum weekly GPU quota of 30.00 hours reached`). When two-GPU inference capacity becomes available, first run a private no-training sample/long-passages GPU diagnostic with stage markers and OOM handling, not another competition scoring submission. Do not claim 0.622 replicated or change evaluation/scoring rules to suppress an unknown error.
+
 ## IMPORTANT CORRECTION — submission 57983359 FAILED (2026-11-04 MYT)
 
 **SUBMISSION FAILURE VERIFIED FROM USER-SHARED KAGGLE SUBMISSION DETAILS: `Notebook Threw Exception`. DO NOT INTERPRET KAGGLE CLI `SubmissionStatus.COMPLETE` AS PASS.** The authenticated submissions list reported `COMPLETE` with blank Public/Private scores (read-only Actions `41824958338`, including second attempt). The Kaggle UI's detailed evaluation outcome for this exact submission is **Notebook Threw Exception**. Consequently **0.622 WAS NOT REPRODUCED**. Existing own best scored Public remains **0.520**; no valid new score.
