@@ -8,6 +8,8 @@ on:
       - .github/workflows/v3-static-tests.yml
       - scripts/dct_v3_local_transfer.py
       - tests/test_dct_v3_local_transfer.py
+      - scripts/dct_v3_cuda_resume.py
+      - tests/test_dct_v3_cuda_resume.py
       - scripts/dct_temporal_pool.py
       - scripts/materialize_dct_v3_worker.py
       - scripts/dct_v3_source_eval.py
@@ -40,7 +42,8 @@ jobs:
             tests/test_materialize_dct_v3_worker.py \
             tests/test_dct_v3_source_eval.py \
             tests/test_build_dct_v3_transfer_kernel.py \
-            tests/test_dct_v3_local_transfer.py
+            tests/test_dct_v3_local_transfer.py \
+            tests/test_dct_v3_cuda_resume.py
       - name: Compile generated runtime sources
         run: |
           rm -rf /tmp/v3-static
