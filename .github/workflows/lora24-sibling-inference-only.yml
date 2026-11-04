@@ -40,7 +40,10 @@ jobs:
           print('STATIC_SOURCE_HOLDOUT_INFERENCE_GATE_PASS')
           PY
   gpu-inference:
-    if: github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       github.event.head_commit.message == 'experiment: one-shot stage1 A1 source holdout GPU inference')
     needs: static
     runs-on: ubuntu-latest
     timeout-minutes: 120
