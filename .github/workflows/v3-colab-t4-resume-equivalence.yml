@@ -1,0 +1,147 @@
+name: V3 Colab T4 Frozen Worker Resume Equivalence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/v3-colab-t4-resume-equivalence.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v3-colab-t4-resume-equivalence
+  cancel-in-progress: false
+
+jobs:
+  frozen-worker-resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      COLAB_SESSION: v3-resume-proof-${{ github.run_id }}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/colab-adc-${{ github.run_id }}.json
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Validate private Colab user OAuth
+        shell: bash
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,sys
+          from pathlib import Path
+          value=os.environ.get("COLAB_ADC_JSON","")
+          if not value:
+              sys.exit("COLAB_ADC_JSON missing. GPU not requested.")
+          data=json.loads(value)
+          if data.get("type")!="authorized_user" or not all(data.get(k) for k in ("client_id","client_secret","refresh_token")):
+              sys.exit("Colab ADC invalid; GPU not requested.")
+          p=Path(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+          p.write_text(value,encoding="utf-8")
+          p.chmod(0o600)
+          print("OAuth present; never printed.")
+          PY
+
+      - name: Checkout diagnostic only, no official competition data
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/dct_v3_colab_resume_check.py
+          sparse-checkout-cone-mode: false
+
+      - name: Verify bounded diagnostic is no-scoring and pinned
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/dct_v3_colab_resume_check.py
+          python3 - <<'PY'
+          from pathlib import Path
+          text=Path("scripts/dct_v3_colab_resume_check.py").read_text()
+          for token in ('MAX_PROOF_STEPS = 2','PINNED_COMMIT = "d9bf4f0f88d396d32348e94033c07759c244ec6d"',
+                        'stop_after_optimizer_steps=stop','exact_equal(', 'V3_CUDA_RESUME_BITWISE_PASS'):
+              assert token in text,token
+          for token in ('kaggle competitions submit','KAGGLE_API_TOKEN','pd.read_csv('):
+              assert token not in text,token
+          for path in ('data/train.csv','data/test.csv','data/sample_submission.parquet'):
+              assert not Path(path).exists(),path
+          print("Frozen-resume proof preflight PASS")
+          PY
+
+      - name: Download immutable external safe pool subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-resume-data
+          gh api /repos/kolihhan/name-kaggle/actions/artifacts/13067907516/zip > /tmp/v3-resume-data/source.zip
+          unzip -q /tmp/v3-resume-data/source.zip -d /tmp/v3-resume-data
+          test -s /tmp/v3-resume-data/conservative_public_subset.parquet
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile("/tmp/v3-resume-data/source.zip") as z:
+              files=z.namelist()
+              assert "conservative_public_subset.parquet" in files
+              assert not any("train.csv" in f or "test.csv" in f or "sample_submission" in f for f in files)
+          print("External-only source downloaded")
+          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install official Colab CLI
+        run: |
+          python -m pip install --disable-pip-version-check -q google-colab-cli==0.7.5
+          colab version
+
+      - name: Run exactly one T4 session; compare uninterrupted against resumed states
+        shell: bash
+        run: |
+          set -euo pipefail
+          colab --auth adc new -s "$COLAB_SESSION" --gpu T4
+          colab --auth adc upload -s "$COLAB_SESSION" \
+            /tmp/v3-resume-data/conservative_public_subset.parquet \
+            /content/conservative_public_subset.parquet
+          colab --auth adc exec -s "$COLAB_SESSION" --timeout 2400 \
+            -f scripts/dct_v3_colab_resume_check.py
+          colab --auth adc download -s "$COLAB_SESSION" \
+            /content/v3_resume_result.json ./v3_resume_result.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("v3_resume_result.json").read_text())
+          assert d["scope"]=="actual_frozen_v3_worker_optimizer_boundary_resume_proof"
+          assert d["decision"]=="verified_bitwise_identical"
+          assert d["optimizer_steps_proven"]==2
+          assert d["official_rows_scored"]==0 and d["heldout_predictions_computed"] is False
+          assert d["scientific_transfer_evaluated"] is False
+          assert d["kaggle_submission_authorized"] is False
+          print("VERIFIED_COLAB_V3_RESUME_EQUIVALENCE",json.dumps(d,sort_keys=True))
+          PY
+
+      - name: Release Colab T4 and remove OAuth material
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if command -v colab >/dev/null 2>&1 && [[ -s "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+            colab --auth adc stop -s "$COLAB_SESSION" || true
+          fi
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+
+      - name: Preserve proof JSON only (no external text or full checkpoint)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dct-v3-t4-resume-proof-${{ github.run_id }}
+          path: v3_resume_result.json
+          if-no-files-found: warn
+          retention-days: 14
