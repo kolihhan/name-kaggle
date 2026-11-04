@@ -2,14 +2,6 @@
 
 This repository is the source of truth for Ko Lih Han's **Name That LLM** Kaggle competition work.
 
-## Current stop decision (2026-11-04)
-
-**USER-DIRECTED PAUSE:** The Cosmorin published 0.622 V1/V3 reproduction lane is closed after failed/blank-scored Code Competition reruns. Do **not** repeat the same Kaggle submissions, launch additional CPU/GPU probes, restart self-training, or use Public LB as a repair loop. The last verified valid Public LB anchor is **0.520**. Historic submit ID `57983359` threw a hidden-rerun Notebook exception; `57985641` later showed `COMPLETE` with blank score, **not a verified successful evaluation**.
-
-The full dated record is at [`exp/dct-temporal-fingerprint-v3/NOW.md`](https://github.com/kolihhan/name-kaggle/blob/exp/dct-temporal-fingerprint-v3/NOW.md), commit `637e043803a08eaf63300eb8e51411db3ea38405`. That branch is the authoritative source for the halted experiment; the default `main` is historically behind and does not contain its `NOW.md`.
-
-**Reopen only** with a materially new, testable approach explicitly authorized by the user. Redirect work to higher-value ongoing projects rather than retrying the same candidate.
-
 ## Entry order
 
 For substantive work in this repository:
