@@ -2,6 +2,18 @@
 
 Updated: 2026-11-04 MYT
 
+## User-directed strategy change — 2026-11-04 MYT
+
+**STATUS: SELF-TRAINING PAUSED; READ-ONLY SUBMISSION REVIEW.** The user explicitly requested that the project stop pursuing self-trained v3/full 8B/27B experiments for now and look at actual Kaggle submission results instead.
+
+- Do not launch/relaunch Colab, Kaggle GPU, self-hosted, or CPU training jobs; do not add another model submission merely to compare Public scores.
+- Existing Colab v3 resume-equivalence run [41794900419](https://github.com/kolihhan/name-kaggle/actions/runs/41794900419) ended `cancelled` at 2026-11-04T08:44:34Z; **no CUDA-resume PASS or v3 source-transfer result** was obtained.
+- Existing verified submissions: Phase 7 Public `0.369` (#57838845); Phase 15 Public `0.357` (#57861337); two-stage LoRA v1 Public `0.520` (#57908683). Private LB unavailable. The v1 baseline remains unchanged.
+- Kaggle's live competition overview states that Public LB uses about 40% of the test, with about 60% reserved for final Private LB; Public scores are not a model-selection oracle.
+- Public Kaggle notebook pages currently display stronger third-party methods (for example, `0.622`, `0.642`, `0.666`), but the availability, licensing, full checkpoint/input accessibility, clean reproduction, and independence of those methods are **not yet verified**. Their displayed notebook interactive runtime is not necessarily the hidden re-run runtime.
+- **Next task:** read-only audit of published high-scoring Kaggle notebooks and existing competition submission records. Prioritize reproducible, permissible inference-only reuse of public pretrained checkpoints plus fixed, non-tuned ensemble design; evaluate runtime/data/source integrity before any future submission decision.
+- Existing frozen v3 contract and past negative evidence are retained for reproducibility, not treated as an obligation to keep training. Reopening GPU training requires a fresh explicit user request.
+
 ## Competition anchor
 
 - Submitted champion: `two-stage-lora24-v1` — Public LB `0.520`, submission `57908683`.
