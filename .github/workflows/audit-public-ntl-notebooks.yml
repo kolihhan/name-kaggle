@@ -43,6 +43,17 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/audit_public_notebooks.py --output /tmp/ntl-public-audit/public-notebook-audit.json
+      - name: Preserve publicly published Apache-2 notebook source for audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-public-source-${{ github.run_id }}
+          path: |
+            /tmp/ntl-public-notebooks/*/*.ipynb
+            /tmp/ntl-public-notebooks/*/*.py
+            /tmp/ntl-public-notebooks/*/kernel-metadata.json
+          if-no-files-found: warn
+          retention-days: 2
       - name: Preserve sanitized manifest only
         if: always()
         uses: actions/upload-artifact@v4
