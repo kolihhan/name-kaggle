@@ -25,6 +25,7 @@ TARGETS = [
     ("cosmorin-622", [
         "cosmorin/name-that-llm-public620-reproduction",
     ]),
+    ("control-old-public", ["nishantdahal/two-stage-lora-part-two"]),
     ("alexchilton-667", [
         "alexchilton/name-that-llm-0-667-all-public-what-failed",
         "alexchilton/name-that-llm-0-662-all-public-what-failed",
@@ -80,7 +81,13 @@ def pull(label: str, refs: list[str], folder: Path):
             ["kaggle", "kernels", "pull", ref, "-p", str(folder), "-m"],
             capture_output=True, text=True, timeout=90,
         )
-        attempted.append({"ref": ref, "ok": result.returncode == 0})
+        err = (result.stderr or result.stdout or "").lower()
+        cause = ("auth" if "401" in err or "unauthorized" in err else
+                 "forbidden" if "403" in err or "forbidden" in err else
+                 "not_found" if "404" in err or "not found" in err else
+                 "cli_arguments" if "usage:" in err or "argument" in err else
+                 "other")
+        attempted.append({"ref": ref, "ok": result.returncode == 0, "error_class": cause})
         if result.returncode == 0 and source_cells(folder):
             return ref, attempted
     return None, attempted
