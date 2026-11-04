@@ -1,0 +1,118 @@
+name: NTL Stage1 Sibling Holdout (Inference Only)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/lora24-sibling-inference-only.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ntl-stage1-sibling-holdout-inference-only
+  cancel-in-progress: false
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU-only test dependencies
+        run: python -m pip install -q numpy pandas scipy scikit-learn pytest pyarrow
+      - name: Verify source and build private bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts/audit_lora24_sibling_holdout.py scripts/lora24_sibling_holdout_inference.py scripts/build_lora24_sibling_holdout_kernel.py
+          python -m pytest -q tests/test_lora24_sibling_holdout.py tests/test_build_lora24_sibling_holdout_kernel.py
+          python scripts/build_lora24_sibling_holdout_kernel.py --output-dir /tmp/ntl-sibling-probe
+          python - <<'PY'
+          import json, pathlib
+          p=pathlib.Path('/tmp/ntl-sibling-probe')
+          m=json.loads((p/'kernel-metadata.json').read_text())
+          code=(p/'kernel_main.py').read_text()
+          compile(code,'kernel_main.py','exec')
+          assert m['is_private'] and not m['enable_internet']
+          assert m['enable_gpu'] and m['competition_sources']==[]
+          assert len(m['dataset_sources'])==3 and len(m['model_sources'])==1
+          assert 'run_final_fit(' not in code and 'kaggle competitions submit' not in code
+          print('STATIC_SOURCE_HOLDOUT_INFERENCE_GATE_PASS')
+          PY
+  gpu-inference:
+    if: github.event_name == 'workflow_dispatch'
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl-lora24-stage1-sibling-holdout-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Kaggle client
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Create private GPU diagnostic exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          if kaggle kernels status "$KERNEL_REF" >/dev/null 2>&1; then
+            echo 'EXISTING_INFERENCE_PROBE_FOUND; refuse to push duplicate'
+            exit 1
+          fi
+          python scripts/build_lora24_sibling_holdout_kernel.py --output-dir /tmp/ntl-sibling-probe
+          set +e
+          output="$(kaggle kernels push -p /tmp/ntl-sibling-probe 2>&1)"
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            echo 'GPU_DIAGNOSTIC_PUSH_REJECTED; no competition submission; no retry'
+            printf '%s\n' "$output" | grep -Ei 'error|quota|invalid|bad request' | head -8 || true
+            exit "$result"
+          fi
+          echo 'PRIVATE_INFERENCE_PROBE_PUSHED'
+      - name: Fetch and verify only private aggregate output
+        shell: bash
+        run: |
+          set -euo pipefail
+          done=0
+          for i in $(seq 1 420); do
+            state="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            if grep -q 'KernelWorkerStatus.COMPLETE' <<< "$state"; then
+              done=1
+              break
+            fi
+            if grep -Eq 'KernelWorkerStatus.(ERROR|FAILED|CANCELLED)' <<< "$state"; then
+              echo 'PRIVATE_INFERENCE_FAILED; no competition submission'
+              kaggle kernels logs "$KERNEL_REF" | tail -20 || true
+              exit 1
+            fi
+            sleep 15
+          done
+          test "$done" = 1 || { echo 'INFERENCE_UNFINISHED'; exit 1; }
+          mkdir -p /tmp/ntl-sibling-private-output safe-summary
+          kaggle kernels output "$KERNEL_REF" -p /tmp/ntl-sibling-private-output -o >/dev/null
+          python - <<'PY'
+          import json,pathlib,shutil
+          r=list(pathlib.Path('/tmp/ntl-sibling-private-output').glob('**/stage1_sibling_holdout_summary.json'))
+          assert len(r)==1, 'exactly one summary expected'
+          x=json.loads(r[0].read_text())
+          assert x['scope']=='stage1_A1_external_source_holdout_only'
+          assert x['no_training'] and x['no_kaggle_competition_submission']
+          assert x['not_the_final_0520_stage2_model']
+          assert x['pooled']['rows']==3324
+          assert sorted(x['sources'])==['abdullah','semenoff','zakir']
+          assert x['decision']=='descriptive_only_no_promotion'
+          shutil.copyfile(r[0],'safe-summary/ntl-stage1-sibling-holdout-aggregate.json')
+          print('PRIVATE_GPU_INFERENCE_AGGREGATE',json.dumps(x['pooled'],sort_keys=True))
+          PY
+          rm -rf /tmp/ntl-sibling-private-output
+      - name: Upload aggregate only — no per-row source predictions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-stage1-sibling-holdout-aggregate-only
+          path: safe-summary/ntl-stage1-sibling-holdout-aggregate.json
+          if-no-files-found: error
