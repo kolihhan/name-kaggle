@@ -65,7 +65,12 @@ jobs:
                 names=[str(row.get("name") or row.get("Name") or "") for row in rows][:80]
               except Exception:
                 names=[]
+            info=m.get("info",{}) if isinstance(m.get("info"),dict) else {}
             item={
+              "metadata_info_keys":sorted(info.keys())[:70],
+              "metadata_info_selected":{k:info.get(k) for k in
+                  ("title","id","licenses","license","licenseName","currentVersionNumber",
+                   "latestVersionNumber","currentVersion","isPrivate","size","totalBytes")},
               "ref":ref,"metadata_ok":meta.returncode==0,
               "files_listing_ok":files.returncode==0,
               "files_count_listed":len(names),
