@@ -2,6 +2,16 @@
 
 Updated: 2026-11-04 MYT
 
+## User-requested Kaggle prefit submission attempt — 2026-11-04 MYT
+
+**NO NEW SUBMISSION CREATED. KAGGLE KERNEL PUSH BLOCKED.** User authorized submitting a Kaggle Notebook to run on Kaggle rather than self-training. Chosen path was frozen published Cosmorin 0.622 V1 inference-only code, **not** a new training job.
+
+- Added `scripts/build_public_0622_inference_kernel.py`, verifying upstream V1 raw notebook SHA `e9819e87b1b60231388aff0db1d0ef312b707c6c6b9911a054603333f6bb067b` and executable code SHA `1595f543caf314fc766a79dca313961af4d73f2a5cbea1ec2b4724aea5c4289b`, preserving author attribution. It does not include new neural model training.
+- Added `.github/workflows/submit-public-0622-inference.yml`, a once-only Kaggle submission guard: existing submissions, exact source, public sample execution, parquet validation, and only then final Kaggle submission. It fails closed if Kaggle refuses a GPU notebook.
+- First GitHub Actions run [41821527795](https://github.com/kolihhan/name-kaggle/actions/runs/41821527795) and second diagnostic run [41821744868](https://github.com/kolihhan/name-kaggle/actions/runs/41821744868) both failed at **`kaggle kernels push`**, with Kaggle CLI reporting `400 Client Error: Bad Request`. The response did not expose a confirmed detailed cause in sanitized job logs. Earlier Kaggle GPU quota probe on this date had found `Maximum weekly GPU quota of 30.00 hours reached`, so GPU quota remains a plausible but **unconfirmed** explanation for this particular HTTP 400.
+- Verified **7 existing official submissions** (Phase7, Phase15, 5 duplicate v1 submissions), latest v1 Public **0.520**; no new submission, score, model training, inference or Kaggle kernel version from these attempts.
+- **STOP:** Do not auto-retry 400 pushes, change Kaggle metadata or resource settings blindly, bypass the GPU restriction, or claim 0.622 for our account. Preserve pinned builder/workflow for a future targeted diagnosis or quota reset. Any later attempt must verify the specific 400 cause and current exact dataset versions before submitting. Keep user preference: avoid self-training.
+
 ## 0.622 version-pinned preflight — 2026-11-04 MYT
 
 **STATIC PASS, END-TO-END RUNTIME UNKNOWN — NO TRAINING OR SUBMISSION.** Read the scored Kaggle Notebook V1 and current V3 directly using the public Kaggle API: executable code SHA-256 is identical (`1595f543caf314fc766a79dca313961af4d73f2a5cbea1ec2b4724aea5c4289b`), but Kaggle Docker image digests differ. The existing SVC cache's public manifest matches its code-pinned cache hash and source version; both LoRA adapter configs, three model metas and Kaggle dataset license labels were checked using **small JSON files only**. Dataset metadata says `CC-BY-SA-4.0` for both hosted datasets; HF Qwen model cards say `apache-2.0`. Current dataset version numbers and full weight-byte checksums remain **UNKNOWN**.
