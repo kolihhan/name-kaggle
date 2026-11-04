@@ -1,0 +1,136 @@
+name: Submit NTL 0.622 Prefit Inference Once
+
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/submit-public-0622-inference.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ntl-public-0622-submission
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl-cosmorin0622-prefit-reuse
+      SUBMISSION_DESCRIPTION: Public Cosmorin 0.622 prefit inference reproduction
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/build_public_0622_inference_kernel.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install official Kaggle client and parquet checker
+        run: python -m pip install -q 'six==1.17.0' 'kaggle==2.2.5' 'pandas>=2,<3' 'pyarrow>=15,<23'
+      - name: Check account, duplicate submission, and kernel collision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          kaggle competitions submissions name-that-llm -v -q > /tmp/submissions-before.csv
+          python - <<'PY'
+          import csv,os
+          with open("/tmp/submissions-before.csv",newline="") as f:
+              rows=list(csv.DictReader(f))
+          desc=os.environ["SUBMISSION_DESCRIPTION"].lower()
+          assert not any(desc in ' '.join(str(v) for v in row.values()).lower() for row in rows), "Already submitted this candidate"
+          print("SUBMISSION_DUPLICATE_GUARD_PASS",len(rows))
+          PY
+          if kaggle kernels status "$KERNEL_REF" >/dev/null 2>&1; then
+            echo "Kernel slug occupied; no changes made"
+            exit 1
+          fi
+      - name: Pull exact Apache-2 V1 code and build no-training kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/build_public_0622_inference_kernel.py --output-dir /tmp/ntl0622-kernel
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('/tmp/ntl0622-kernel/kernel-metadata.json').read_text())
+          assert m['id']=='kolihhan/ntl-cosmorin0622-prefit-reuse'
+          assert m['enable_internet'] is False and m['enable_gpu'] is True and m['is_private'] is True
+          assert m['competition_sources']==['name-that-llm']
+          assert len(m['dataset_sources'])==2 and len(m['model_sources'])==2
+          print("PINNED_SOURCE_PREFLIGHT_PASS")
+          PY
+      - name: Push one Kaggle GPU notebook; fail closed if quota exhausted
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          result="$(kaggle kernels push -p /tmp/ntl0622-kernel --timeout 32400 2>&1)"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] || grep -Eqi 'Kernel push error:|Maximum weekly GPU quota|quota.*reached|Payment Required' <<<"$result"; then
+            echo 'KAGGLE_PUSH_REJECTED; no competition submission'
+            printf '%s\n' "$result" | grep -Ei 'quota|kernel push error|invalid|failed' | head -8 || true
+            exit 1
+          fi
+          version="$(printf '%s\n' "$result" | sed -nE 's/.*Kernel version ([0-9]+) successfully pushed.*/\1/p' | tail -1)"
+          test -n "$version" || { echo 'Kernel version not verified, refusing submission'; exit 1; }
+          echo "KERNEL_VERSION=$version" >> "$GITHUB_ENV"
+          echo "KERNEL_PUSHED_VERSION=$version"
+      - name: Wait for sample output and verify format
+        shell: bash
+        run: |
+          set -euo pipefail
+          complete=0
+          for attempt in $(seq 1 100); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            if printf '%s\n' "$status" | grep -Eqi '(^|[^a-z])(complete|completed|success|succeeded)([^a-z]|$)'; then
+              complete=1
+              break
+            fi
+            if printf '%s\n' "$status" | grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled|canceled)([^a-z]|$)'; then
+              echo 'KERNEL_FAILED; not submitting'
+              exit 1
+            fi
+            sleep 30
+          done
+          test "$complete" = 1 || { echo 'No complete sample output; not submitting'; exit 1; }
+          kaggle kernels files "$KERNEL_REF" -v | grep -q 'submission.parquet'
+          mkdir -p /tmp/ntl0622-output
+          kaggle kernels output "$KERNEL_REF" -p /tmp/ntl0622-output --file-pattern '.*submission\.parquet$' -q
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+          p=Path('/tmp/ntl0622-output/submission.parquet')
+          assert p.is_file(), 'Missing submission parquet'
+          df=pd.read_parquet(p)
+          assert df.columns.tolist()==['id','model']
+          assert 1<=len(df)<=3 and df.id.is_unique and not df.isna().any().any()
+          print('VALID_SAMPLE_OUTPUT_ROWS',len(df))
+          PY
+      - name: Submit exact verified Kaggle kernel version once
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KERNEL_VERSION"
+          kaggle competitions submissions name-that-llm -v -q > /tmp/submissions-after.csv
+          python - <<'PY'
+          import csv,os
+          with open("/tmp/submissions-after.csv",newline="") as f:
+              rows=list(csv.DictReader(f))
+          desc=os.environ["SUBMISSION_DESCRIPTION"].lower()
+          assert not any(desc in ' '.join(str(v) for v in row.values()).lower() for row in rows), "Duplicate appeared; stop"
+          PY
+          kaggle competitions submit name-that-llm \
+            -f submission.parquet -k "$KERNEL_REF" -v "$KERNEL_VERSION" \
+            -m "$SUBMISSION_DESCRIPTION"
+          echo "KAGGLE_SUBMISSION_ACCEPTANCE_COMMAND_COMPLETED"
+      - name: Display submission status without private artifacts
+        if: always()
+        run: |
+          echo "Kernel: https://www.kaggle.com/code/$KERNEL_REF"
+          kaggle competitions submissions name-that-llm -v -q | head -10 || true
