@@ -15,7 +15,18 @@ from typing import Mapping
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.build_two_stage_lora24_kaggle_model_kernel import offline_pip_args
+def offline_pip_args(wheelhouse: str) -> list[str]:
+    """Pinned offline wheels; no transitive import of training/inference packages.
+
+    The GitHub packaging runner installs only the Kaggle client. Importing the
+    original submission builder here would transitively require NumPy/Pandas.
+    """
+    return [
+        "-m", "pip", "install", "-q", "--no-index", "--find-links",
+        str(wheelhouse), "--no-deps", "transformers==4.57.1",
+        "peft==0.17.1", "safetensors", "tokenizers==0.22.1",
+        "huggingface-hub==0.36.0",
+    ]
 
 KERNEL_REF = "kolihhan/ntl-lora24-stage1-sibling-holdout-v1"
 KERNEL_TITLE = "NTL LoRA24 Stage1 Sibling Holdout V1"
