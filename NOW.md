@@ -1,5 +1,16 @@
 # NOW
 
+## CURRENT DECISION — PAUSED / NO FURTHER 0.622 REPRODUCTION (2026-11-04)
+
+**The user explicitly ended the repeated Cosmorin 0.622 attempt and authorized switching attention to a different, evidence-bearing task. This overrides older "next diagnostic" suggestions below.**
+
+- **Stop all Cosmorin V1/V3 competition submissions, reruns, test probes, notebook pushes, source-version swaps, GPU/CPU preflights, and new self-training.** Keep historical experiments/workflows for evidence only; do not invoke them.
+- Last accepted submission `57985641` was `COMPLETE` but scored blank at the last API check, so **not a valid leaderboard result**. First `57983359` definitively failed `Notebook Threw Exception` according to user-visible Kaggle details. Baseline best valid **Public 0.520**. No private score verified.
+- The 4 successful CPU diagnostics did not establish hidden-run correctness or identify a repairable failure. Repeating them or V1 is not a new experiment. Do not burn additional Kaggle submissions or GPU quota on this lane.
+- **Reopening gate:** a substantially different, independently justified hypothesis with a testable mechanism *and* verification stronger than another public-LB attempt, or a direct new user instruction naming a specific fresh approach. Resume only after updating the experiment contract; don't silently reactivate these old workflows.
+- Prioritize already-progressing work elsewhere rather than speculative fixes here. Preserve this branch, code, run logs, and audit trail; no destructive clean-up or secret exposure.
+
+
 ## Latest read-only score check — 2026-11-04 21:45 MYT
 
 - Submission **57985641**: authenticated Kaggle competition submissions API returns `SubmissionStatus.COMPLETE`, but **Public Score and Private Score are both blank**. Evidence: successful read-only GitHub Actions [41841013584](https://github.com/kolihhan/name-kaggle/actions/runs/41841013584), polled `2026-11-04 13:45:37 UTC`.
