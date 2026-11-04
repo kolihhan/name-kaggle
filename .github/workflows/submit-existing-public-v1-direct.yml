@@ -1,0 +1,82 @@
+name: NTL Direct Code Submission From Existing Public V1 (No Push)
+
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/submit-existing-public-v1-direct.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ntl-existing-public-v1-one-attempt
+  cancel-in-progress: false
+
+jobs:
+  direct-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      SOURCE_REF: cosmorin/name-that-llm-public620-reproduction
+      SOURCE_VERSION: '1'
+      EXPECTED_SOURCE_SHA: e9819e87b1b60231388aff0db1d0ef312b707c6c6b9911a054603333f6bb067b
+      DESCRIPTION: Direct public Cosmorin V1 prefit reproduction with attribution
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI (no ML tools)
+        run: python -m pip install -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Verify known public scored V1 and prevent duplicate submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle API token missing}"
+          mkdir -p /tmp/public-v1
+          kaggle kernels pull "$SOURCE_REF/$SOURCE_VERSION" -p /tmp/public-v1 -m >/dev/null
+          python - <<'PY'
+          import hashlib, json, os, pathlib
+          p=pathlib.Path('/tmp/public-v1')
+          n=list(p.glob('*.ipynb'))
+          assert len(n)==1
+          assert hashlib.sha256(n[0].read_bytes()).hexdigest()==os.environ['EXPECTED_SOURCE_SHA']
+          m=json.loads((p/'kernel-metadata.json').read_text())
+          assert m['id']==os.environ['SOURCE_REF']
+          assert m['enable_internet'] is False and m['enable_gpu'] is True
+          assert m['competition_sources']==['name-that-llm']
+          print('PREFLIGHT: published public V1 verified; training not invoked.')
+          PY
+          kaggle competitions submissions name-that-llm -v -q > /tmp/submissions-before.csv
+          python - <<'PY'
+          import csv,os
+          with open('/tmp/submissions-before.csv',newline='') as fh:
+              rows=list(csv.DictReader(fh))
+          desc=os.environ['DESCRIPTION'].lower()
+          assert not any(desc in ' '.join(str(v) for v in row.values()).lower() for row in rows), 'Already submitted once'
+          print('NO_DUPLICATE:',len(rows),'prior submissions')
+          PY
+      - name: Directly submit existing V1 notebook (no GPU notebook push or local training)
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          response="$(kaggle competitions submit name-that-llm \
+            -k "$SOURCE_REF" \
+            -v "$SOURCE_VERSION" \
+            -f submission.parquet \
+            -m "$DESCRIPTION" 2>&1)"
+          result=$?
+          set -e
+          printf '%s\n' "$response" | sed -E 's/[A-Za-z0-9_+=./-]{56,}/[REDACTED]/g' | tail -20
+          if [ "$result" -ne 0 ]; then
+            echo 'DIRECT_SUBMISSION_REJECTED; no notebook push and no training.'
+            exit "$result"
+          fi
+          echo 'DIRECT_SUBMISSION_API_ACCEPTED; scoring may still be pending.'
+      - name: Inspect live submission record
+        if: always()
+        shell: bash
+        run: |
+          kaggle competitions submissions name-that-llm -v -q | head -12 || true
