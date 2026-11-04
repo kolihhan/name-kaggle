@@ -116,7 +116,7 @@ jobs:
           colab --auth adc upload -s "$COLAB_SESSION" \
             /tmp/v3-public-source/conservative_public_subset.parquet \
             /content/conservative_public_subset.parquet
-          colab --auth adc exec -s "$COLAB_SESSION" \
+          colab --auth adc exec -s "$COLAB_SESSION" --timeout 1200 \
             -f scripts/dct_v3_colab_t4_train_pilot.py
           colab --auth adc download -s "$COLAB_SESSION" \
             /content/dct_v3_t4_real_train/result.json ./real_train_result.json
