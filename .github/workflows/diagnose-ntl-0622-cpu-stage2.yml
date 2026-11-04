@@ -1,0 +1,185 @@
+name: Diagnose 0.622 CPU SVC and LoRA Schema (No Training)
+
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/diagnose-ntl-0622-cpu-stage2.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl0622-cpu-stage2-probe
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install official Kaggle CLI only
+        run: python -m pip install -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Prepare private synthetic-only CPU SVC and model schema check
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "\${KAGGLE_API_TOKEN:?Kaggle credentials missing}"
+          mkdir -p /tmp/ntl0622-stage2
+          cat > /tmp/ntl0622-stage2/kernel-metadata.json <<'JSON'
+          {
+            "id": "kolihhan/ntl0622-cpu-stage2-probe",
+            "title": "NTL0622 CPU Stage2 Probe",
+            "code_file": "probe.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_gpu": false,
+            "enable_internet": false,
+            "competition_sources": [],
+            "dataset_sources": [
+              "cosmorin/name-that-llm-0-622-reproduction-svc-cache",
+              "nishantdahal/ntl-handwriting-blend"
+            ],
+            "kernel_sources": [],
+            "model_sources": []
+          }
+          JSON
+          cat > /tmp/ntl0622-stage2/probe.py <<'PY'
+          """Check public prefit SVC and LoRA tensor header compatibility; no training.
+          Uses invented texts only; no official data, no neural weight tensor loads.
+          """
+          import glob,hashlib,json,re,time,traceback
+          from pathlib import Path
+          import numpy as np
+          from scipy.sparse import hstack
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          import joblib
+
+          START=time.monotonic()
+          INPUT='/kaggle/input'
+          EXPECTED='f294ce929714e852a5a3f1d34ff7a5c5f0a0df3d73bd4a24ae327cbde4d96352'
+          result={'training':False,'submission':False,'synthetic_text_only':True,
+                  'svc':{},'lora':{},'deberta':{}}
+          def find_one(pattern):
+              found=sorted(set(glob.glob(f'{INPUT}/**/{pattern}',recursive=True)))
+              if len(found)!=1:raise RuntimeError('path_count_'+pattern+'_'+str(len(found)))
+              return Path(found[0])
+          def sha(path):
+              h=hashlib.sha256()
+              with path.open('rb') as handle:
+                  for block in iter(lambda:handle.read(8388608),b''):h.update(block)
+              return h.hexdigest()
+          def header(path):
+              with path.open('rb') as f:
+                  length=int.from_bytes(f.read(8),'little')
+                  if not (0<length<20_000_000):raise ValueError('invalid_safetensors_header_length')
+                  return json.loads(f.read(length))
+
+          try:
+              mp=find_one('ntl620_svc_prefit_v1/manifest.json')
+              manifest=json.loads(mp.read_text())
+              cp=mp.parent/'svc_prefit.joblib'
+              assert sha(cp)==EXPECTED==manifest['cache_sha256']
+              cache=joblib.load(cp)
+              labels=cache['labels']
+              assert len(labels)==18 and len(cache['vectorizers'])==4
+              assert cache['svc'].classes_.tolist()==list(range(18))
+              testtext=[
+                "The sky above the coast was grey, while the small boat moved slowly through fog.",
+                "A short synthetic example with punctuation: how? why! because.",
+                "Mysterious birds circle a quiet harbor as the evening light fades.",
+              ]
+              smallwords=set("a an the and or but if while although because as so than that which who whom whose this these those it its they them their theirs he him his she her hers we us our ours you your yours i me my mine in on at to from with without for of by over under between through into about is are was were be been being have has had do does did can could will would shall should may might must not no nor all any some each every both either neither other another such only also just very too more most less least here there when where why how what whether then now still yet even much many few little".split())
+              def shape_text(t):
+                  return re.sub(r"[^\W\d_]+",lambda m:"X" if m[0].isupper() else "x",t)
+              def small_text(t):
+                  return " ".join(w.lower() if w.lower() in smallwords or not w.isalnum() else "CONTENT"
+                                 for w in re.findall(r"\w+|[^\w\s]",t))
+              weights=[1.0,0.7,0.5,0.5]
+              views=[testtext,testtext,[shape_text(t) for t in testtext],[small_text(t) for t in testtext]]
+              B=[v.transform(text)*w for v,text,w in zip(cache['vectorizers'],views,weights)]
+              logits=cache['svc'].decision_function(hstack(B,format='csr'))
+              result['svc']={'load':'PASS','n_classes':len(labels),'n_views':len(B),
+                             'synthetic_rows':len(testtext),'shape_matches':logits.shape==(3,18),
+                             'finite':bool(np.isfinite(logits).all())}
+          except Exception as exc:
+              result['svc']={'error_type':type(exc).__name__,'error_short':str(exc)[:110]}
+          for name in ['lora_qwen3_14b','lora_qwen25_14b']:
+              try:
+                  p=find_one(name+'/adapter/adapter_model.safetensors')
+                  hdr=header(p)
+                  A=[k for k in hdr if '.lora_A.' in k]
+                  B=[k for k in hdr if '.lora_B.' in k]
+                  pairs=all(k.replace('.lora_A.','.lora_B.') in hdr for k in A)
+                  layerkeys=[k for k in A if 'layers.' in k]
+                  cfg=json.loads(find_one(name+'/adapter/adapter_config.json').read_text())
+                  r=int(cfg['r'])
+                  shapes_consistent=all(
+                      len(hdr[k]['shape'])==2 and hdr[k]['shape'][0]==r
+                      and hdr[k.replace('.lora_A.','.lora_B.')]['shape'][1]==r
+                      for k in A
+                  ) if pairs else False
+                  heads=header(find_one(name+'/heads.safetensors'))
+                  result['lora'][name]={
+                      'header':'PASS','num_A':len(A),'num_B':len(B),
+                      'paired_keys':pairs,'layer_keys_all':len(layerkeys)==len(A),
+                      'rank_consistent':shapes_consistent,
+                      'head_has_plain':all(k in heads for k in ['plain.weight','plain.bias']),
+                      'head_has_centered':all(k in heads for k in ['centered.weight','centered.bias'])
+                  }
+              except Exception as exc:
+                  result['lora'][name]={'error_type':type(exc).__name__,'error_short':str(exc)[:110]}
+          try:
+              dh=header(find_one('deberta_v3_large/head.safetensors'))
+              result['deberta']={'head_readable':True,'has_weight_bias':
+                                 'weight' in dh and 'bias' in dh}
+          except Exception as exc:
+              result['deberta']={'error_type':type(exc).__name__,'error_short':str(exc)[:110]}
+          result['seconds']=round(time.monotonic()-START,2)
+          Path('/kaggle/working/stage2.json').write_text(json.dumps(result,sort_keys=True,indent=2)+'\n')
+          print('NTL0622_STAGE2 '+json.dumps(result,sort_keys=True),flush=True)
+          PY
+          python -m py_compile /tmp/ntl0622-stage2/probe.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          meta=json.loads(Path('/tmp/ntl0622-stage2/kernel-metadata.json').read_text())
+          assert meta['title'].lower().replace(' ','-')==meta['id'].split('/')[1]
+          assert meta['is_private'] and meta['enable_gpu'] is False
+          assert meta['competition_sources']==[] and meta['model_sources']==[]
+          print('SAFE_STAGE2_PRECHECK_OK')
+          PY
+      - name: Run one private CPU-only Kaggle probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          if kaggle kernels status "$KERNEL_REF" >/dev/null 2>&1; then
+            echo "Probe already exists; refuse duplicate"
+            exit 1
+          fi
+          output="$(kaggle kernels push -p /tmp/ntl0622-stage2 2>&1)" || {
+            echo "$output" | grep -Ei 'quota|push error|bad request|invalid|error' | head -8 || true
+            exit 1
+          }
+          echo "CPU_STAGE2_PUSH_OK"
+      - name: Read-only fetch of safe diagnostic output
+        shell: bash
+        run: |
+          set -euo pipefail
+          done=0
+          for n in $(seq 1 50); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            if grep -Eqi '(^|[^a-z])(complete|completed|success|succeeded)([^a-z]|$)' <<< "$status"; then
+              done=1;break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|cancelled)([^a-z]|$)' <<< "$status"; then
+              kaggle kernels logs "$KERNEL_REF" | tail -18 || true
+              exit 1
+            fi
+            sleep 15
+          done
+          test "$done" = 1 || { echo "STAGE2_STILL_RUNNING";exit 1; }
+          kaggle kernels logs "$KERNEL_REF" 2>&1 | grep 'NTL0622_STAGE2' | tail -1
