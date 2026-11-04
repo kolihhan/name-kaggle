@@ -2,6 +2,15 @@
 
 Updated: 2026-11-04 MYT
 
+## Kaggle 0.622 retry outcome — 2026-11-04 MYT
+
+**CONFIRMED GPU QUOTA BLOCK; NO NEW KAGGLE SUBMISSION.** The user explicitly requested a fresh retry. GitHub Actions run [41823017835](https://github.com/kolihhan/name-kaggle/actions/runs/41823017835) failed at `kaggle kernels push` with Kaggle's explicit response: `Kernel push error: Maximum weekly GPU quota of 30.00 hours reached.`. The account's maximum is **30.00 hours per week**; remaining quota at this attempt was insufficient for the GPU notebook.
+
+- This retry corrected a genuine `kernel-metadata.json` title/slug mismatch, put original upstream attribution in a Markdown cell rather than executable Python, and set the documented `machine_shape: NvidiaTeslaT4` for T4 x2. Static preflight verified that executable code hash still matches the published scored V1 source, both dataset/model source lists and the output contract remain unchanged, and no new model training is introduced. Relevant commits: `44e738cdffd1fe206502a54943c70cc36a2de6a9`, `dbe1a5d54b38df19cae51c1a855e3cc60c015819`, `98eb2fc4d8f575ae090879df80e073ce44ad7ce5`.
+- Earlier run [41822974665](https://github.com/kolihhan/name-kaggle/actions/runs/41822974665) failed only on a transient static-test newline-join bug; final run `41823017835` passed the corrected source SHA/preflight gate. The actual Kaggle push was rejected due to the **confirmed quota**.
+- The existing Kaggle submissions remained **7**, including five redundant previously completed v1 rows (Public `0.520`); **there is no 0.622 submission or new Public score** from this retry.
+- **DO NOT RETRY before GPU quota renews.** Do not mislabel this as a model/Notebook inference failure, silently change hardware, or attempt another training approach. Use the frozen Kaggle prefit inference-only bundle after eligibility returns; verify quota and existing submission duplicates first.
+
 ## User-requested Kaggle prefit submission attempt — 2026-11-04 MYT
 
 **NO NEW SUBMISSION CREATED. KAGGLE KERNEL PUSH BLOCKED.** User authorized submitting a Kaggle Notebook to run on Kaggle rather than self-training. Chosen path was frozen published Cosmorin 0.622 V1 inference-only code, **not** a new training job.
