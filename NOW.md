@@ -2,6 +2,12 @@
 
 Updated: 2026-11-04 MYT
 
+## Kaggle score check (2026-11-04 19:56 MYT)
+
+- Submission 57983359: `SubmissionStatus.COMPLETE`; Public Score and Private Score are both blank in the authenticated Kaggle API.
+- Evidence: GitHub Actions run 41824958338, read-only successful status check.
+- Prior best Public Score remains 0.520. No new submit or training in this check.
+
 ## Existing public V1 direct Kaggle submission — 2026-11-04 MYT
 
 **ACCEPTED BY KAGGLE API; SCORING PENDING; NO USER TRAINING OR NEW NOTEBOOK PUSH.** After the user clarified that they wanted a *competition submission*, not self-training, submitted the public Cosmorin already-saved V1 directly via `kaggle competitions submit name-that-llm -k cosmorin/name-that-llm-public620-reproduction -v 1 -f submission.parquet`. The official code competition's server will re-run the submitted Notebook against hidden data for scoring.
