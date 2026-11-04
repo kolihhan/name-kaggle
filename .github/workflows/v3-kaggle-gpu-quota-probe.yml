@@ -72,7 +72,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          kaggle kernels push -p /tmp/kaggle-gpu-probe
+          # Recheck 2026-11-04: quota-only private T4 diagnostic; no data or training.
+          output="$(kaggle kernels push -p /tmp/kaggle-gpu-probe 2>&1)"
+          printf '%s\n' "$output"
+          if grep -Eqi 'Kernel push error:|Maximum weekly GPU quota|Payment Required|quota.*reached' <<< "$output"; then
+            echo 'KAGGLE_GPU_QUOTA_AVAILABLE=0'
+            exit 1
+          fi
 
       - name: Poll quota-only execution
         shell: bash
