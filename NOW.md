@@ -2,6 +2,17 @@
 
 Updated: 2026-11-04 MYT
 
+## Existing public V1 direct Kaggle submission — 2026-11-04 MYT
+
+**ACCEPTED BY KAGGLE API; SCORING PENDING; NO USER TRAINING OR NEW NOTEBOOK PUSH.** After the user clarified that they wanted a *competition submission*, not self-training, submitted the public Cosmorin already-saved V1 directly via `kaggle competitions submit name-that-llm -k cosmorin/name-that-llm-public620-reproduction -v 1 -f submission.parquet`. The official code competition's server will re-run the submitted Notebook against hidden data for scoring.
+
+- **New submission ref: `57983359`**, created `2026-11-04 11:45:46 UTC`; GitHub Actions [41823529904](https://github.com/kolihhan/name-kaggle/actions/runs/41823529904) **SUCCESS**; Kaggle CLI printed `Submission ref: 57983359`.
+- Verified the public scored V1 source SHA `e9819e87b1b60231388aff0db1d0ef312b707c6c6b9911a054603333f6bb067b`, code attribution in submission description `Direct public Cosmorin V1 prefit reproduction with attribution`, and no duplicate among 7 prior submissions.
+- The next immediate submissions list showed `57983359 / SubmissionStatus.PENDING / publicScore blank`; **0.622 is the upstream author's reported Public score, NOT our scored result**.
+- No repo-side Kaggle GPU kernel push, model training, or local inference occurred. Kaggle will run the submitted public inference Notebook on hidden test during scoring; this is execution/inference, **not additional model training by us**.
+- **Do not re-submit duplicates.** Next action is read-only check of submission `57983359` for `COMPLETE / ERROR` and only then compare its actual Public score to existing own `0.520`. If it fails, examine the official failure class before any retry.
+- Exact one-shot GitHub Actions workflow: `.github/workflows/submit-existing-public-v1-direct.yml`.
+
 ## Kaggle 0.622 retry outcome — 2026-11-04 MYT
 
 **CONFIRMED GPU QUOTA BLOCK; NO NEW KAGGLE SUBMISSION.** The user explicitly requested a fresh retry. GitHub Actions run [41823017835](https://github.com/kolihhan/name-kaggle/actions/runs/41823017835) failed at `kaggle kernels push` with Kaggle's explicit response: `Kernel push error: Maximum weekly GPU quota of 30.00 hours reached.`. The account's maximum is **30.00 hours per week**; remaining quota at this attempt was insufficient for the GPU notebook.
