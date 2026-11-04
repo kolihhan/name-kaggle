@@ -15,7 +15,7 @@ import os
 import random
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, MutableMapping
 
 import numpy as np
 import torch
@@ -87,6 +87,7 @@ def save_optimizer_boundary(
     scaler: Any,
     completed_steps: int,
     total_steps: int,
+    training_stats: Mapping[str, int | float] | None = None,
 ) -> None:
     """Atomically store exact-resumable state. No partial accumulation allowed."""
     if not fingerprint or len(fingerprint) < 16:
@@ -101,6 +102,7 @@ def save_optimizer_boundary(
         "fingerprint": fingerprint,
         "completed_steps": int(completed_steps),
         "total_steps": int(total_steps),
+        "training_stats": dict(training_stats or {}),
         "trainable_parameters": {
             name: parameter.detach().cpu().clone() for name, parameter in parameters.items()
         },
@@ -131,6 +133,7 @@ def load_optimizer_boundary(
     scheduler: Any,
     scaler: Any,
     expected_total_steps: int,
+    training_stats_out: MutableMapping[str, int | float] | None = None,
 ) -> int:
     """Restore trainables/optimizer/scheduler/scaler/RNG and return next cursor.
 
@@ -172,4 +175,10 @@ def load_optimizer_boundary(
     scheduler.load_state_dict(payload["scheduler"])
     scaler.load_state_dict(payload["grad_scaler"])
     _restore_rng(saved_rng)
+    if training_stats_out is not None:
+        stats = payload.get("training_stats", {})
+        if not isinstance(stats, dict) or any(type(v) not in (int, float) for v in stats.values()):
+            raise RuntimeError("Invalid training_stats payload")
+        training_stats_out.clear()
+        training_stats_out.update(stats)
     return completed
