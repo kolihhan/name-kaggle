@@ -23,8 +23,11 @@ TARGETS = [
         "lightningv08/0-636-lora-llama-qwen3-8-27b",
     ]),
     ("cosmorin-636", ["cosmorin/name-that-llm-how-to-reproduce-0-636"]),
-    ("cosmorin-622", [
-        "cosmorin/name-that-llm-public620-reproduction",
+    ("cosmorin-622-v1-scored", [
+        "cosmorin/name-that-llm-public620-reproduction/1",
+    ]),
+    ("cosmorin-622-v3-latest", [
+        "cosmorin/name-that-llm-public620-reproduction/3",
     ]),
     ("control-old-public", ["nishantdahal/two-stage-lora-part-two"]),
     ("alexchilton-667", [
