@@ -35,6 +35,33 @@ class TestPrivateSiblingInferenceBundle(unittest.TestCase):
             self.assertNotIn("train_two_stage2_epochs(", code)
             self.assertIn("INFERENCE_ONLY_SUMMARY_COMPLETE", code)
 
+    def test_packager_runs_with_stdlib_only(self):
+        """Regression: GitHub GPU job installs kaggle only; no NumPy/Pandas required."""
+        import subprocess
+        import sys
+
+        repo_root = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as folder:
+            destination = Path(folder) / "bundle"
+            outcome = subprocess.run(
+                [
+                    sys.executable, "-S",
+                    str(repo_root / "scripts/build_lora24_sibling_holdout_kernel.py"),
+                    "--repo-root", str(repo_root),
+                    "--output-dir", str(destination),
+                ],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(
+                outcome.returncode, 0,
+                "builder imported third-party ML modules in GitHub packaging runner:\n"
+                + outcome.stdout + outcome.stderr,
+            )
+            self.assertTrue((destination / "kernel_main.py").exists())
+
     def test_incorrect_source_set_is_not_packaged(self):
         from scripts.build_lora24_sibling_holdout_kernel import kernel_source
         with self.assertRaisesRegex(RuntimeError, "source set drift"):
