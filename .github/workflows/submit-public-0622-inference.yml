@@ -55,14 +55,26 @@ jobs:
           set -euo pipefail
           python scripts/build_public_0622_inference_kernel.py --output-dir /tmp/ntl0622-kernel
           python - <<'PY'
-          import json
+          import json,hashlib
           from pathlib import Path
-          m=json.loads(Path('/tmp/ntl0622-kernel/kernel-metadata.json').read_text())
+          root=Path('/tmp/ntl0622-kernel')
+          m=json.loads((root/'kernel-metadata.json').read_text())
           assert m['id']=='kolihhan/ntl-cosmorin0622-prefit-reuse'
+          assert m['title'].lower().replace(' ','-')==m['id'].split('/')[1], 'Kaggle ID/title slug mismatch'
           assert m['enable_internet'] is False and m['enable_gpu'] is True and m['is_private'] is True
+          assert m['machine_shape']=='NvidiaTeslaT4', 'T4x2 required'
           assert m['competition_sources']==['name-that-llm']
           assert len(m['dataset_sources'])==2 and len(m['model_sources'])==2
-          print("PINNED_SOURCE_PREFLIGHT_PASS")
+          assert m['kernel_type']=='notebook' and m['language']=='python'
+          nb=json.loads((root/m['code_file']).read_text())
+          assert nb['cells'][0]['cell_type']=='markdown', 'Attribution must not be executable code'
+          assert 'Cosmorin' in ''.join(nb['cells'][0]['source'])
+          code='\\n'.join(
+              ''.join(c.get('source',[])) if isinstance(c.get('source',''),list) else c.get('source','')
+              for c in nb['cells'] if c['cell_type']=='code'
+          )
+          assert hashlib.sha256(code.encode()).hexdigest()=='1595f543caf314fc766a79dca313961af4d73f2a5cbea1ec2b4724aea5c4289b', 'Scored V1 executable code modified'
+          print('PINNED_SOURCE_PREFLIGHT_PASS',m['machine_shape'],'code_sha_ok')
           PY
       - name: Push one Kaggle GPU notebook; fail closed if quota exhausted
         shell: bash
