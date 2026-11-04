@@ -43,7 +43,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' &&
-       github.event.head_commit.message == 'experiment: one-shot stage1 A1 source holdout GPU inference')
+       (github.event.head_commit.message == 'experiment: one-shot stage1 A1 source holdout GPU inference' ||
+        github.event.head_commit.message == 'fix: retry source holdout GPU after proven packaging dependency bug'))
     needs: static
     runs-on: ubuntu-latest
     timeout-minutes: 120
