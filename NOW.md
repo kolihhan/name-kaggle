@@ -149,9 +149,13 @@ CPU shadow results cannot authorize this gate.
 - Do not retrigger CPU continuation; previous #5 hit a 330-minute timeout.
 - Kaggle GPU is quota-blocked as of latest `41767348246`; do not launch full kernel while this remains true.
 - Synthetic T4 memory probe is only a hardware diagnostic; it is **not** v3 transfer evidence.
+- Official Google Colab CLI `0.7.5` bridge was added at `.github/workflows/v3-colab-t4-probe.yml` under explicit user authorization, using a single bounded synthetic T4 probe, sparse checkout, no official rows, and forced Colab cleanup.
+- First validation run `41772721301` failed at workflow parsing (job-level runner context); fixed in commit `20435de64b63e56f8d5957574c754d78b5a57ccf`.
+- Corrected run `41772827966` executed the GitHub Actions job and stopped at its credential preflight: secret `COLAB_ADC_JSON` was absent; **no Colab runtime was requested, no GPU allocated, and no training/scoring occurred**.
+- The only remaining blocker for the Colab bridge is one-time Google **user OAuth ADC** authorization supplied privately to GitHub Actions as the repository secret `COLAB_ADC_JSON`. Never commit the credential, upload it as an artifact, or paste it into chat. Do not repeat the same no-credential run.
 - Never weaken the frozen source lock, architecture, DCT modes, training steps, split, seed, or evaluation gates to fit a smaller GPU and then call the result v3.
 - Do not consume official OOF or Public LB before exact paired source-transfer PASS.
 
 ## Next action
 
-Obtain actual synthetic T4 GPU probe results via `notebooks/dct_v3_colab_t4_probe.ipynb` on an accessible GPU executor. Do not claim it ran unless verified. If T4 OOMs, seek GPU with >=24 GiB and adequate runtime. If Kaggle GPU quota recovers, run only a bounded no-official-data hardware probe first; defer full paired scientific training until resource + checkpoint viability are established.
+For the official GitHub→Colab CLI path, resolve the one-time missing `COLAB_ADC_JSON` GitHub Actions secret using Google user OAuth ADC; then run `.github/workflows/v3-colab-t4-probe.yml` exactly once to obtain the synthetic T4 result. Without that credential, do not retry this path. Alternative: run the existing Colab notebook interactively in the user's already-authenticated browser session. Do not claim it ran unless verified. If T4 OOMs, seek GPU with >=24 GiB and adequate runtime. If Kaggle GPU quota recovers, run only a bounded no-official-data hardware probe first; defer full paired scientific training until resource + checkpoint viability are established.
