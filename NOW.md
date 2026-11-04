@@ -2,6 +2,12 @@
 
 Updated: 2026-11-04 MYT
 
+## Public-submission source audit — 2026-11-04 MYT
+
+**DONE: READ-ONLY AUDIT; NO TRAINING, INFERENCE OR SUBMISSION.** Report: [`artifacts/research/public-submission-reuse-audit-2026-11-04.md`](artifacts/research/public-submission-reuse-audit-2026-11-04.md). Verified public-notebook source pull: Actions `41810333036`; verified authenticated dataset metadata enumeration: Actions `41809970435`.
+
+**Prioritize reproducibility of Cosmorin's historic 0.622 prefit SVC + 2x14B LoRA + DeBERTa inference pipeline** (2 dataset sources, 2 base models) using exact published versions and rights checks. No independent score gain or hidden runtime is established. The newer Cosmorin 0.636 code-only guide references 32 fixed inputs, uses CPU SVC fitting, and reports 2002s for 3-row sample, not hidden execution. The current Lightning 0.666 source uses a hardcoded 3-row preview (21-second UI is not real ensemble runtime); its scored version V47 precedes newer source edits. **DO NOT retrain, resume v3, tune on Public LB, or submit without renewed explicit authorization.** Public dataset filenames readable via authenticated API do not verify weights' bytes, licensing, or final runtime.
+
 ## User-directed strategy change — 2026-11-04 MYT
 
 **STATUS: SELF-TRAINING PAUSED; READ-ONLY SUBMISSION REVIEW.** The user explicitly requested that the project stop pursuing self-trained v3/full 8B/27B experiments for now and look at actual Kaggle submission results instead.
