@@ -1,4 +1,4 @@
-name: Audit NTL Public Input Metadata (Read Only)
+name: Audit NTL 0.622 Asset Version and Manifests (Read Only)
 
 on:
   push:
@@ -23,29 +23,29 @@ jobs:
           python-version: '3.11'
       - name: Install Kaggle metadata client
         run: python -m pip install --disable-pip-version-check -q 'six==1.17.0' 'kaggle==2.2.5'
-      - name: Inspect declared datasets without downloading files
+      - name: Inspect 0.622 dataset versions and small JSON only
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import csv,json,subprocess,re
+          import csv,json,subprocess,re,hashlib
+          from kaggle.api.kaggle_api_extended import KaggleApi
           from pathlib import Path
           refs=[
             "cosmorin/name-that-llm-0-622-reproduction-svc-cache",
             "nishantdahal/ntl-handwriting-blend",
-            "nishantdahal/ntl-two-stage-lora",
-            "lightningv08/ntl-olmo2-native24-final-inference-assets",
-            "dhruvtibarewal/nlm-l24-adapters-v5",
-            "dhruvtibarewal/nlm-enc-v5",
-            "pjmathematician/ultrabert-380m-ntl",
-            "bbucxi/qwen35-9b-safetensors",
-            "kirilltym/ntl-spectral-style-heads-paired-4404",
-            "josephadamski91/ntl-atlas-qwen3-8b-v1",
-            "zbigniewkirchner/ntl-qwen3-8b-lora-claude-head",
           ]
+          json_paths={
+            refs[0]:["ntl620_svc_prefit_v1/manifest.json"],
+            refs[1]:["lora_qwen3_14b/meta.json","lora_qwen25_14b/meta.json",
+                     "deberta_v3_large/meta.json",
+                     "lora_qwen3_14b/adapter/adapter_config.json",
+                     "lora_qwen25_14b/adapter/adapter_config.json"],
+          }
           out=[]
           root=Path("/tmp/ntl-asset-meta")
           root.mkdir(parents=True,exist_ok=True)
+          api=KaggleApi();api.authenticate()
           for i,ref in enumerate(refs):
             d=root/f"asset-{i}"
             d.mkdir()
@@ -75,11 +75,50 @@ jobs:
               "is_private_declared":m.get("isPrivate",None),
               "metadata_keys":sorted(m.keys())[:80]
             }
+
+            try:
+              ds=api.dataset_view(ref)
+              item["api_details"]={}
+              for key in ("title","licenseName","currentVersionNumber","lastUpdated","isPrivate","totalBytes"):
+                val=getattr(ds,key,None)
+                item["api_details"][key]=val if val is None or isinstance(val,(str,int,float,bool)) else str(val)[:120]
+              item["view_ok"]=True
+            except Exception as exc:
+              item["view_ok"]=False
+              item["view_error_type"]=type(exc).__name__
+            item["small_public_json"]={}
+            for j,file in enumerate(json_paths[ref]):
+              fd=d/f"json-{j}"
+              fd.mkdir()
+              p=subprocess.run(["kaggle","datasets","download","-d",ref,"-f",file,
+                                "-p",str(fd),"--unzip"],
+                                capture_output=True,text=True,timeout=90)
+              z={"single_file_requested":file,"download_ok":p.returncode==0}
+              if p.returncode==0:
+                matches=list(fd.rglob(Path(file).name))
+                if len(matches)==1 and matches[0].stat().st_size<2_000_000:
+                  payload=matches[0].read_bytes()
+                  try: data=json.loads(payload)
+                  except Exception: data={}
+                  z["json_ok"]=bool(data)
+                  z["sha256"]=hashlib.sha256(payload).hexdigest()
+                  z["selected"]={key:data.get(key) for key in (
+                    ("schema","source_version","cache_sha256","source_code_sha256",
+                     "sample_cache_reload_exact","fit_used_test_rows","versions")
+                     if file.endswith("manifest.json") else
+                    ("r","lora_alpha","lora_dropout","target_modules","base_model_name_or_path")
+                     if file.endswith("adapter_config.json") else
+                    ("labels","cfg","max_len")
+                  )}
+                else:
+                  z["json_error"]="not-exactly-one-small-JSON"
+              item["small_public_json"][file]=z
             out.append(item)
             print("ASSET_META",ref,"metadata",item["metadata_ok"],"files",item["files_listing_ok"],"count",len(names),flush=True)
           report={
-            "scope":"read_only_authenticated_metadata_and_file_names_only",
-            "payload_data_downloaded":False,
+            "scope":"read_only_0.622_metadata_and_small_json",
+            "small_public_json_downloaded":True,
+            "official_competition_data_downloaded":False,
             "weights_downloaded":False,
             "training_or_inference_performed":False,
             "public_to_anonymous_verified":False,
@@ -92,7 +131,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ntl-public-input-meta-${{ github.run_id }}
+          name: ntl-0622-asset-meta-${{ github.run_id }}
           path: /tmp/ntl-asset-meta/summary.json
           if-no-files-found: warn
           retention-days: 30
