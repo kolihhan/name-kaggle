@@ -1,15 +1,15 @@
 # NOW
 
-## CURRENT DECISION — PAUSED / NO FURTHER 0.622 REPRODUCTION (2026-11-04)
+## CURRENT DECISION — ACTIVE NTL RESEARCH, COSMORIN LOOP CLOSED (2026-11-04)
 
-**The user explicitly ended the repeated Cosmorin 0.622 attempt and authorized switching attention to a different, evidence-bearing task. This overrides older "next diagnostic" suggestions below.**
+**CORRECTION TO MY PREVIOUS MISINTERPRETATION:** The user said to stop repeatedly hitting the same failed 0.622 Notebook route, **not** to abandon Name That LLM or switch to Gemma 4. The unjustified stop directive added to `main/AGENTS.md` has been reverted in commit `c11233ac847bab8416d110583ed3640b3f535f31`. This is a Name That LLM-only research continuation.
 
-- **Stop all Cosmorin V1/V3 competition submissions, reruns, test probes, notebook pushes, source-version swaps, GPU/CPU preflights, and new self-training.** Keep historical experiments/workflows for evidence only; do not invoke them.
-- Last accepted submission `57985641` was `COMPLETE` but scored blank at the last API check, so **not a valid leaderboard result**. First `57983359` definitively failed `Notebook Threw Exception` according to user-visible Kaggle details. Baseline best valid **Public 0.520**. No private score verified.
-- The 4 successful CPU diagnostics did not establish hidden-run correctness or identify a repairable failure. Repeating them or V1 is not a new experiment. Do not burn additional Kaggle submissions or GPU quota on this lane.
-- **Reopening gate:** a substantially different, independently justified hypothesis with a testable mechanism *and* verification stronger than another public-LB attempt, or a direct new user instruction naming a specific fresh approach. Resume only after updating the experiment contract; don't silently reactivate these old workflows.
-- Prioritize already-progressing work elsewhere rather than speculative fixes here. Preserve this branch, code, run logs, and audit trail; no destructive clean-up or secret exposure.
-
+- **Retire only the repeated external Cosmorin 0.622 V1/V3 submit/probe route.** The historical workflow, experiments, results, and failed submission IDs remain preserved below. Do not retry the identical frozen source or consume more Kaggle attempts to diagnose it.
+- Current verified best **own** Public LB remains **0.520** from `two-stage-lora24-v1`; its honest OOF plain BA was `0.546761` and the original Stage-1 source-transfer gate passed.
+- **New evidence from original frozen Gate-B OOF predictions:** 1,223 plain errors, 701 (57.32%) inside the same model/provider family; centered head rescued 353 but broke 350. This suggests sibling-model discrimination as a research direction, **not** that centered or label-specific correction should be promoted. Dataset/label-level metrics are previously consumed OOF evidence, not a fresh transfer set.
+- **Active next task:** one read-only search for existing truly disjoint external-source predictions/embeddings sufficient to test family/sibling confusion shift without new training or inference. If those artifacts are missing, stop the audit rather than inventing another model/GPU run.
+- Keep no-self-training and no-unjustified-submission boundaries. A materially different representation or inference candidate must pass a frozen independent transfer check before any competition submission; no Pub-LB tuning.
+- Detailed evidence and fact/inference/unknown separation: [`artifacts/research/ntl-sibling-confusion-pivot-2026-11-04.md`](artifacts/research/ntl-sibling-confusion-pivot-2026-11-04.md).
 
 ## Latest read-only score check — 2026-11-04 21:45 MYT
 
