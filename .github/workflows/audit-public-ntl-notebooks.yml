@@ -38,7 +38,7 @@ jobs:
             test ! -e "$f" || { echo "Official data unexpectedly present"; exit 1; }
           done
       - name: Install Kaggle client (not ML runtime)
-        run: python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5'
+        run: python -m pip install --disable-pip-version-check -q 'six==1.17.0' 'kaggle==2.2.5'
       - name: Pull public notebook source and extract static manifests
         run: |
           set -euo pipefail
