@@ -1,0 +1,166 @@
+name: Diagnose NTL 0.622 Qwen Base Mounts on CPU
+
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/diagnose-ntl-0622-qwen-configs.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  base-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl0622-qwen-config-probe
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Kaggle CLI only
+        run: python -m pip install -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Prepare private CPU-only model mount and architecture preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "\${KAGGLE_API_TOKEN:?Missing Kaggle credential}"
+          mkdir -p /tmp/ntl0622-config
+          cat > /tmp/ntl0622-config/kernel-metadata.json <<'JSON'
+          {
+            "id": "kolihhan/ntl0622-qwen-config-probe",
+            "title": "NTL0622 Qwen Config Probe",
+            "code_file": "probe.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_gpu": false,
+            "enable_internet": false,
+            "competition_sources": [],
+            "dataset_sources": ["nishantdahal/ntl-handwriting-blend"],
+            "kernel_sources": [],
+            "model_sources": [
+              "qwen-lm/qwen-3/Transformers/14b-base/1",
+              "qwen-lm/qwen2.5/Transformers/14b/1"
+            ]
+          }
+          JSON
+          cat > /tmp/ntl0622-config/probe.py <<'PY'
+          """Verify exact pinned Qwen model-source config/tokenizer paths on Kaggle CPU.
+          Does not load any base weights, adapter tensors, or official competition data.
+          """
+          import glob,json,os,time
+          from pathlib import Path
+          import transformers,torch
+          from transformers import AutoConfig,AutoTokenizer
+
+          START=time.monotonic()
+          ROOT='/kaggle/input'
+          specs={
+            'lora_qwen3_14b':dict(model_type='qwen3',hidden_size=5120,num_hidden_layers=40),
+            'lora_qwen25_14b':dict(model_type='qwen2',hidden_size=5120,num_hidden_layers=48),
+          }
+          result={'scope':'private_cpu_no_training_no_weights_no_submission','versions':{
+              'torch':torch.__version__,'transformers':transformers.__version__},'models':{}}
+          def one(pattern):
+              hits=sorted(set(glob.glob(ROOT+'/**/'+pattern,recursive=True)))
+              assert len(hits)==1,('path_unique',pattern,len(hits))
+              return Path(hits[0])
+          for name,spec in specs.items():
+              item={}
+              try:
+                  matches=[]
+                  config_candidates=sorted(set(glob.glob(ROOT+'/**/config.json',recursive=True)))
+                  for cfg in config_candidates:
+                      try:
+                          data=json.loads(Path(cfg).read_text())
+                      except Exception:
+                          continue
+                      if all(data.get(k)==v for k,v in spec.items()):
+                          matches.append(cfg)
+                  item['exact_config_matches']=len(matches)
+                  assert len(matches)==1, 'base config not unique or missing'
+                  base=os.path.dirname(matches[0])
+                  cfg=AutoConfig.from_pretrained(base,local_files_only=True)
+                  meta=json.loads(one(name+'/meta.json').read_text())
+                  keep=meta['cfg']['keep']
+                  layers=meta['cfg']['layers']
+                  item.update({
+                    'config_ok':True,'model_type':cfg.model_type,
+                    'layers_match':cfg.num_hidden_layers==spec['num_hidden_layers'],
+                    'hidden_size_match':cfg.hidden_size==spec['hidden_size'],
+                    'keep_safe':0<keep<=cfg.num_hidden_layers,
+                    'requested_layer_indices_safe':all(0<=i<=keep for i in layers),
+                    'n_pooled_layers':len(layers),
+                    'config_layer_types_present':getattr(cfg,'layer_types',None) is not None,
+                    'expected_weight_gib':round(
+                        2*(cfg.vocab_size*cfg.hidden_size+keep*(
+                          2*cfg.hidden_size*cfg.num_attention_heads*getattr(cfg,'head_dim',cfg.hidden_size//cfg.num_attention_heads)+
+                          2*cfg.hidden_size*cfg.num_key_value_heads*getattr(cfg,'head_dim',cfg.hidden_size//cfg.num_attention_heads)+
+                          3*cfg.hidden_size*cfg.intermediate_size
+                        ))/2**30,2)
+                  })
+                  tok=AutoTokenizer.from_pretrained(base,local_files_only=True)
+                  encoded=tok(['A quiet garden and a distant harbor.','Short example.'],
+                              add_special_tokens=False,truncation=True,max_length=meta['cfg']['max_len'])
+                  item.update({
+                    'tokenizer_ok':True,
+                    'synthetic_tokenized_rows':len(encoded['input_ids']),
+                    'eos_id_valid':0<=int(meta['cfg'].get('eos_id',tok.eos_token_id))<cfg.vocab_size,
+                    'eos_vocab_size':cfg.vocab_size,
+                  })
+                  assert all([item['layers_match'],item['hidden_size_match'],
+                              item['keep_safe'],item['requested_layer_indices_safe'],
+                              item['tokenizer_ok'],item['eos_id_valid']])
+              except Exception as exc:
+                  item['failure_type']=type(exc).__name__
+                  item['failure_reason']=str(exc)[:180]
+              result['models'][name]=item
+          result['total_seconds']=round(time.monotonic()-START,2)
+          print('NTL0622_BASE_CONFIGS '+json.dumps(result,sort_keys=True),flush=True)
+          Path('/kaggle/working/base-config-report.json').write_text(json.dumps(result,sort_keys=True))
+          assert all(v.get('config_ok') and v.get('tokenizer_ok') and not v.get('failure_type')
+                     for v in result['models'].values()), 'BASE_MODEL_CONFIG_PREFLIGHT_FAILED'
+          PY
+          python -m py_compile /tmp/ntl0622-config/probe.py
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          m=json.loads(Path('/tmp/ntl0622-config/kernel-metadata.json').read_text())
+          assert m['title'].lower().replace(' ','-')==m['id'].split('/')[1]
+          assert m['is_private'] and not m['enable_gpu'] and not m['enable_internet']
+          assert not m['competition_sources'] and len(m['model_sources'])==2
+          print('BASE_CONFIG_STATIC_GATE_PASS')
+          PY
+      - name: Push private CPU-only diagnostic (no code competition submission)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if kaggle kernels status "$KERNEL_REF" >/dev/null 2>&1; then
+            echo 'Probe already exists, refusing overwrite'; exit 1
+          fi
+          output="$(kaggle kernels push -p /tmp/ntl0622-config 2>&1)" || {
+            echo "$output" | grep -Ei 'quota|error|invalid' | head -12 || true; exit 1;
+          }
+          echo 'BASE_CONFIG_PUSH_OK'
+      - name: Wait and inspect only safe preflight counters
+        shell: bash
+        run: |
+          set -euo pipefail
+          done=0
+          for n in $(seq 1 55); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            if grep -Eqi '(^|[^a-z])(complete|completed|succeeded|success)([^a-z]|$)' <<< "$status"; then
+              done=1;break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|cancelled)([^a-z]|$)' <<< "$status"; then
+              echo 'BASE_CONFIG_PROBE_FAILED'
+              kaggle kernels logs "$KERNEL_REF" | grep -E 'NTL0622_BASE_CONFIGS|BASE_MODEL_CONFIG_PREFLIGHT_FAILED' | tail -5 || true
+              exit 1
+            fi
+            sleep 15
+          done
+          test "$done" = 1 || { echo 'BASE_CONFIG_STILL_RUNNING'; exit 1; }
+          kaggle kernels logs "$KERNEL_REF" 2>&1 | grep 'NTL0622_BASE_CONFIGS' | tail -1
