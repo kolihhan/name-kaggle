@@ -160,6 +160,29 @@ CPU shadow results cannot authorize this gate.
 - Never weaken the frozen source lock, architecture, DCT modes, training steps, split, seed, or evaluation gates to fit a smaller GPU and then call the result v3.
 - Do not consume official OOF or Public LB before exact paired source-transfer PASS.
 
+## PIC checkpoint/research execution review — 2026-11-04 MYT
+
+### Evidence and decision
+- **VERIFIED:** Real external-data T4 pilot `41778479162` completed 2 true optimizer updates and preserved trainable-only adapter/heads. It tested training mechanics, **not** source-transfer or predictive quality. Full v1-v3 paired source-transfer remains `UNRUN / UNKNOWN`.
+- **VERIFIED:** Added `scripts/dct_v3_cuda_resume.py` (atomic optimizer-boundary save/load for trainable parameters, optimizer, scheduler, GradScaler, Python/NumPy/torch CPU and all CUDA RNG states, strict checkpoint fingerprint/cursor validation, fail-closed mid-accumulation); `tests/test_dct_v3_cuda_resume.py` proves bitwise CPU interruption/resume equivalence with dropout and AdamW and checks wrong lineage/unsafe cursor rejection.
+- **VERIFIED:** Run `41792568893` — `V3 Static Tests` — completed **27 passed**, including resume primitives, and compiled frozen v3 worker/kernel. This test suite does **not** verify CUDA RNG restoration or a real resumed 24-layer Qwen run.
+- **UNKNOWN:** GPU resume equivalence across separate Colab sessions, Colab free-T4 quota/lifetime for full runs, genuine source-transfer advantage for DCT, or resulting Kaggle performance.
+- **REJECTED:** Treating 31 train rows, 2 updates, training loss or a successful CI as evidence that v3 beats v1. The saved pilot adapter is **not** an exact-resumable v3 Stage-1 checkpoint.
+
+### Current PIC priority (smallest discriminating next work)
+1. Wire the already-tested optimizer-boundary checkpoint primitive into the **existing frozen v1 and materialized v3 workers**, preserving all training semantics, prompt triplet order and seven frozen config fields, not building a parallel experimental training recipe.
+2. Freeze a verifiable resume fingerprint binding the model revision + truncated shard manifest, source-code revision, raw public pool SHA, Phase14 subset/split-lock digest, label order, v1/v3 condition, DCT modes, triplet order, training spec, PyTorch/transformers/PEFT runtime and exact optimizer-step count. Reject foreign/incompatible checkpoints.
+3. Test uninterrupted vs interrupted-and-resumed training on the **same** small fixed real-data microbatches on Colab T4; compare trainable parameters, optimizer/scheduler/scaler cursor, per-microbatch loss and RNG state without looking at heldout predictions. CPU resume 27-test CI does not substitute for this.
+4. After CUDA equivalence PASS, execute both full **one-epoch** Stage-1 conditions using the exact frozen 14,502 training rows, recover checkpoints after bounded runs, and score the predeclared three-source 14,506-row holdout **once** only when both conditions finish.
+5. Apply frozen paired-transfer gate as-is: pooled BA increase, positive 5,000-prompt bootstrap lower CI, positive mean source delta, at most one negative source and no per-label recall safety veto. **FAIL -> reject v3 without retuning**; **PASS -> official five-fold OOF**, then only if that gate passes proceed to final fit/submission per contract.
+
+### Resource and research guardrails
+- Do not relaunch the 2-step pilot or the 330-minute CPU shadow. Reuse the successful T4 feasibility and existing CPU-resume implementation as infrastructure evidence.
+- Colab free T4 is **not** an unlimited GPU; stop cleanly and preserve optimizer-boundary checkpoints before session limits. Do not open several competing GPU sessions. No additional Kaggle GPU run while weekly quota status is unverified.
+- No Public-LB tuning, no adaptive holdout source reselection, no v3 mode/layer/loss sweeps. Source-transfer is a frozen external-data diagnostic, not a guarantee of hidden-Kaggle generalization.
+- Research question: whether an added temporal AC1 component captures generator identity that survives source shift, versus noise/corpus-format artifacts. This mechanism is **hypothesis**, not yet evidence. If transfer fails, write per-source/label error analysis as allowed by the frozen result report, and only then reconsider the model family or centered-to-plain distillation under a *new* predeclared contract.
+- Do not declare CUDA resume or paired transfer complete just because a state-serialization unit test passed.
+
 ## Next action
 
 Real-data T4 LoRA training feasibility and checkpoint artifact are now **VERIFIED** by run `41778479162`. Stop further bounded pilot reruns: there is no value in repeating two optimizer steps. The open scientific question is still the original *frozen paired v1 vs v3 full source-transfer* experiment. Before any costly full attempt, build an exact-resumable CUDA training/checkpoint mechanism that preserves optimizer/scheduler/RNG/grad-accumulation state and survives Colab session limits; keep evaluation firewall and split unchanged. GPU availability, remaining free quota, full-run duration, and the effect of DCT on heldout BA remain **UNKNOWN**.
