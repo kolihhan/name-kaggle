@@ -10,6 +10,8 @@ on:
       - tests/test_dct_v3_local_transfer.py
       - scripts/dct_v3_cuda_resume.py
       - tests/test_dct_v3_cuda_resume.py
+      - scripts/run_two_stage_lora24_gate_a_gpu.py
+      - tests/test_dct_v3_worker_resume_integration.py
       - scripts/dct_temporal_pool.py
       - scripts/materialize_dct_v3_worker.py
       - scripts/dct_v3_source_eval.py
@@ -43,7 +45,8 @@ jobs:
             tests/test_dct_v3_source_eval.py \
             tests/test_build_dct_v3_transfer_kernel.py \
             tests/test_dct_v3_local_transfer.py \
-            tests/test_dct_v3_cuda_resume.py
+            tests/test_dct_v3_cuda_resume.py \
+            tests/test_dct_v3_worker_resume_integration.py
       - name: Compile generated runtime sources
         run: |
           rm -rf /tmp/v3-static
