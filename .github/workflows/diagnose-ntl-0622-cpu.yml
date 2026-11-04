@@ -1,0 +1,172 @@
+name: Diagnose 0.622 Kaggle CPU Environment (No Training)
+
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/diagnose-ntl-0622-cpu.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl0622-cpu-environment-probe
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle client only
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Prepare private read-only CPU probe with no model or weight loads
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "\${KAGGLE_API_TOKEN:?Kaggle credentials missing}"
+          mkdir -p /tmp/ntl0622-cpu
+          cat > /tmp/ntl0622-cpu/kernel-metadata.json <<'JSON'
+          {
+            "id": "kolihhan/ntl0622-cpu-environment-probe",
+            "title": "NTL0622 CPU Environment Probe",
+            "code_file": "probe.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_gpu": false,
+            "enable_internet": false,
+            "competition_sources": ["name-that-llm"],
+            "dataset_sources": [
+              "cosmorin/name-that-llm-0-622-reproduction-svc-cache",
+              "nishantdahal/ntl-handwriting-blend"
+            ],
+            "kernel_sources": [],
+            "model_sources": []
+          }
+          JSON
+          cat > /tmp/ntl0622-cpu/probe.py <<'PY'
+          """Environment and public manifest diagnostics ONLY. No model fitting or inference.
+          Never print, upload, or save official competition data, prediction files or secrets.
+          """
+          import glob,hashlib,importlib.metadata,json,os
+          from pathlib import Path
+
+          ROOT='/kaggle/input'
+          PACKAGE_KEYS=['numpy','scipy','scikit-learn','joblib','torch','transformers','safetensors','accelerate']
+          result={
+              'scope':'private_CPU_premodel_diagnostics_only',
+              'training':False,'inference':False,'submission':False,
+              'gpu_available':False,'paths':{},'manifest':{},'packages':{},
+          }
+          def locate(pattern):
+              paths=sorted(set(glob.glob(f'{ROOT}/**/{pattern}', recursive=True)))
+              result['paths'][pattern]={'matches':len(paths)}
+              return Path(paths[0]) if len(paths)==1 else None
+          def sha256(path):
+              h=hashlib.sha256()
+              with path.open('rb') as f:
+                  for block in iter(lambda:f.read(8*1024*1024),b''):
+                      h.update(block)
+              return h.hexdigest()
+          def check_sha(path,expected):
+              if path is None or not isinstance(expected,str):
+                  return 'NOT_CHECKABLE'
+              try:return 'PASS' if sha256(path)==expected else 'MISMATCH'
+              except Exception as exc:return 'ERROR_'+type(exc).__name__
+
+          for package in PACKAGE_KEYS:
+              try:found=importlib.metadata.version(package)
+              except importlib.metadata.PackageNotFoundError:found='NOT_INSTALLED'
+              result['packages'][package]={'installed':found}
+          mp=locate('ntl620_svc_prefit_v1/manifest.json')
+          try:
+              if mp is None:raise FileNotFoundError('manifest-not-unique')
+              manifest=json.loads(mp.read_text())
+              result['manifest']['readable']=True
+              result['manifest']['schema_matches']=manifest.get('schema')=='ntl620-svc-prefit-v1'
+              result['manifest']['source_version_matches']=manifest.get('source_version')==361311282
+              result['manifest']['cache_expected_hash_matches']=(
+                  manifest.get('cache_sha256')=='f294ce929714e852a5a3f1d34ff7a5c5f0a0df3d73bd4a24ae327cbde4d96352')
+              for package,expected in manifest.get('versions',{}).items():
+                  result['packages'].setdefault(package,{})['manifest_expected']=expected
+                  result['packages'][package]['matches']=result['packages'][package].get('installed')==expected
+              train=locate('train.csv')
+              pool=locate('pool_v4.parquet')
+              cache=mp.parent/'svc_prefit.joblib'
+              result['manifest']['train_sha']=check_sha(train,manifest.get('train_sha256'))
+              result['manifest']['pool_sha']=check_sha(pool,manifest.get('pool_sha256'))
+              result['manifest']['cache_sha']=check_sha(cache,manifest.get('cache_sha256'))
+              result['paths']['svc_prefit.joblib']={'matches':int(cache.is_file())}
+          except Exception as exc:
+              result['manifest']['readable']=False
+              result['manifest']['error_type']=type(exc).__name__
+          for pattern in (
+              'lora_qwen3_14b/meta.json','lora_qwen25_14b/meta.json',
+              'deberta_v3_large/meta.json',
+              'lora_qwen3_14b/adapter/adapter_config.json',
+              'lora_qwen25_14b/adapter/adapter_config.json'):
+              p=locate(pattern)
+              if p is not None:
+                  try:
+                      data=json.loads(p.read_text())
+                      result['paths'][pattern]['json_readable']=isinstance(data,dict)
+                  except Exception as exc:
+                      result['paths'][pattern]['json_error_type']=type(exc).__name__
+          Path('/kaggle/working/preflight.json').write_text(json.dumps(result,sort_keys=True,indent=2)+'\n')
+          print('NTL0622_CPU_DIAGNOSTIC '+json.dumps(result,sort_keys=True),flush=True)
+          PY
+          python -m py_compile /tmp/ntl0622-cpu/probe.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/ntl0622-cpu/kernel-metadata.json').read_text())
+          assert d['id']=='kolihhan/ntl0622-cpu-environment-probe'
+          assert d['title'].lower().replace(' ','-')==d['id'].split('/')[1]
+          assert d['is_private'] and not d['enable_gpu'] and not d['enable_internet']
+          assert d['model_sources']==[] and d['kernel_sources']==[]
+          print('CPU_PROBE_CONTRACT_PASS')
+          PY
+      - name: Push CPU-only kernel; never submit to competition
+        shell: bash
+        run: |
+          set -euo pipefail
+          if kaggle kernels status "$KERNEL_REF" >/dev/null 2>&1; then
+            echo 'CPU probe already exists; refusing to overwrite'
+            exit 1
+          fi
+          set +e
+          output="$(kaggle kernels push -p /tmp/ntl0622-cpu 2>&1)"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] || grep -Eqi 'kernel push error:|maximum.*quota.*reached' <<< "$output"; then
+            echo 'CPU_PROBE_PUSH_REJECTED'
+            printf '%s\n' "$output" | grep -Ei 'push error|quota|bad request|invalid|error' | head -12 || true
+            exit 1
+          fi
+          echo 'CPU_PROBE_PUSH_ACCEPTED'
+      - name: Poll CPU probe and inspect diagnostic only
+        shell: bash
+        run: |
+          set -euo pipefail
+          done=0
+          for n in $(seq 1 40); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            if grep -Eqi '(^|[^a-z])(complete|completed|succeeded|success)([^a-z]|$)' <<< "$status"; then
+              done=1
+              break
+            fi
+            if grep -Eqi '(^|[^a-z])(error|failed|failure|cancelled)([^a-z]|$)' <<< "$status"; then
+              echo 'CPU_PROBE_RUN_FAILED'
+              kaggle kernels logs "$KERNEL_REF" | tail -35 || true
+              exit 1
+            fi
+            sleep 15
+          done
+          test "$done" = 1 || { echo 'CPU_PROBE_INCOMPLETE'; exit 1; }
+          echo 'CPU_PROBE_COMPLETE'
+          kaggle kernels logs "$KERNEL_REF" 2>&1 | grep 'NTL0622_CPU_DIAGNOSTIC' | tail -1
+          # The diagnostic intentionally prints only versions and PASS/MISMATCH flags.
+          # Never upload raw Kaggle output files or official dataset bytes to GitHub.
