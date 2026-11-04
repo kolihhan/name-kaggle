@@ -107,3 +107,32 @@ def test_refuse_mid_accumulation_or_invalid_step(tmp_path):
             optimizer=optimizer, scheduler=scheduler, scaler=scaler,
             completed_steps=6, total_steps=5,
         )
+
+
+def test_loss_counters_survive_optimizer_boundary_and_reject_wrong_schedule(tmp_path):
+    model, optimizer, scheduler, scaler = build()
+    for step in range(2):
+        run_step(model, optimizer, scheduler, scaler, step)
+    ckpt = tmp_path / "resume.pt"
+    from scripts.dct_v3_cuda_resume import save_optimizer_boundary, load_optimizer_boundary
+    stats = {"loss_sum": 31.5, "loss_count": 6, "skipped_steps": 0}
+    save_optimizer_boundary(
+        ckpt, fingerprint=LINEAGE, modules={"model": model},
+        optimizer=optimizer, scheduler=scheduler, scaler=scaler,
+        completed_steps=2, total_steps=5, training_stats=stats,
+    )
+    restored = build(seed=999)
+    stats_out = {}
+    cursor = load_optimizer_boundary(
+        ckpt, expected_fingerprint=LINEAGE, modules={"model": restored[0]},
+        optimizer=restored[1], scheduler=restored[2], scaler=restored[3],
+        expected_total_steps=5, training_stats_out=stats_out,
+    )
+    assert cursor == 2
+    assert stats_out == stats
+    with pytest.raises(RuntimeError, match="total_steps"):
+        load_optimizer_boundary(
+            ckpt, expected_fingerprint=LINEAGE, modules={"model": restored[0]},
+            optimizer=restored[1], scheduler=restored[2], scaler=restored[3],
+            expected_total_steps=6,
+        )
