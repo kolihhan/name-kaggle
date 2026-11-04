@@ -54,6 +54,16 @@ Only if the mechanism survives an actual disjoint transfer check should a separa
 - **Revisit** the representation class only with a new independent source-transfer prediction and frozen admission rule.
 - **No new official Kaggle submission** without a new viable inference candidate, full hidden-sized smoke under the same constrained runtime, and explicit go-ahead.
 
+## Inference-only source-heldout implementation (2026-11-04)
+
+**READY FOR ONE PRIVATE GPU RUN; NO GPU RESULT YET.** Added source module `scripts/audit_lora24_sibling_holdout.py` to count plain-head family/sibling errors on the frozen Gate-A heldout source records, source-only inference runner `scripts/lora24_sibling_holdout_inference.py` loading exact Stage-1 A1 checkpoint, and offline private-Kaggle packager `scripts/build_lora24_sibling_holdout_kernel.py`. Frozen `abdullah`, `semenoff`, `zakir` source set and 3,324 eligible / 13 labels are fail-closed. Model training, competition data mounts, and Kaggle competition submission are absent.
+
+[Static validation Actions 41857723140](https://github.com/kolihhan/name-kaggle/actions/runs/41857723140): **6 synthetic tests passed**, bundled generated Kernel compiles and passes private/no-internet/no-competition-source invariants. GPU job intentionally skipped by push policy; it is restricted to workflow_dispatch.
+
+**Scientific caveat:** This reuses original Stage-1 A1 checkpoint, not the Stage-2 final `0.520` model; original Gate-A source holdout has already been consumed to choose A1 vs A0. Thus any eventual sibling fraction can only be a *descriptive Stage-1 transfer diagnostic*, not independent final-model evidence, a new candidate, or a new Public score.
+
+**Resource boundary:** Kaggle GPU quota was explicitly exhausted earlier on 2026-11-04. No GPU run was attempted now to avoid more quota wall collisions; current GPU capacity not re-verified. The runner is ready for one private no-training GPU forward when GPU quota is independently confirmed. No automatic retry or submission.
+
 ## Completed no-training source-evidence availability check
 
 **UNAVAILABLE — stop at this boundary, no additional compute.** Checked the original Gate-A recovery workflow `41333631967`. Its retained external-transfer evidence artifact **13094213203** (downloaded as a read-only ZIP) contains exactly one JSON report, `two_stage_lora24_gate_a.json`, with A0/A1 scores, per-source aggregate metrics and the predefined PASS verdict. It does **not** contain individual held-out passages with their predicted and true labels, logit vectors, or embeddings. The separate artifact **13094069155** is a 116 MB Stage-1 A1 checkpoint, not a frozen held-out prediction table.
