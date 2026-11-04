@@ -56,11 +56,13 @@ def main() -> None:
         "Upstream source: https://www.kaggle.com/code/cosmorin/name-that-llm-public620-reproduction "
         "(V1). License: Apache-2.0 for notebook code; assets retain their own terms.\n"
     )
-    old_source = nb["cells"][0]["source"]
-    nb["cells"][0]["source"] = (
-        old_source + note if isinstance(old_source, str)
-        else old_source + [note]
-    )
+    # Keep executable Python bytes identical to the scored V1. Attribution is
+    # added as a Markdown cell so it can never become invalid Python code.
+    nb["cells"].insert(0, {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [note],
+    })
     original = json.loads((pulled / "kernel-metadata.json").read_text())
     assert original["id"] == "cosmorin/name-that-llm-public620-reproduction"
     assert original["enable_gpu"] is True
@@ -84,7 +86,9 @@ def main() -> None:
         }
     }
     meta["id"] = OUTPUT_ID
-    meta["title"] = "NTL 0.622 public prefit reproduction (Nishant Cosmorin)"
+    # Kaggle requires a notebook title whose generated slug matches its ID.
+    meta["title"] = "NTL Cosmorin0622 Prefit Reuse"
+    assert meta["title"].lower().replace(" ", "-") == OUTPUT_ID.split("/", 1)[1]
     meta["is_private"] = True
     # Do not pretend we can force Kaggle's historical V1 Docker SHA.
     meta.pop("docker_image", None)
