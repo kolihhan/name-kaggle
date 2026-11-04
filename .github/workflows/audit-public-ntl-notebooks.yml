@@ -6,6 +6,7 @@ on:
       - exp/dct-temporal-fingerprint-v3
     paths:
       - .github/workflows/audit-public-ntl-notebooks.yml
+      - scripts/audit_public_notebooks.py
   workflow_dispatch:
 
 permissions:
