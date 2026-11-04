@@ -1,0 +1,98 @@
+name: Audit NTL Public Input Metadata (Read Only)
+
+on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/audit-public-ntl-inputs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asset-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle metadata client
+        run: python -m pip install --disable-pip-version-check -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Inspect declared datasets without downloading files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,subprocess,re
+          from pathlib import Path
+          refs=[
+            "cosmorin/name-that-llm-0-622-reproduction-svc-cache",
+            "nishantdahal/ntl-handwriting-blend",
+            "nishantdahal/ntl-two-stage-lora",
+            "lightningv08/ntl-olmo2-native24-final-inference-assets",
+            "dhruvtibarewal/nlm-l24-adapters-v5",
+            "dhruvtibarewal/nlm-enc-v5",
+            "pjmathematician/ultrabert-380m-ntl",
+            "bbucxi/qwen35-9b-safetensors",
+            "kirilltym/ntl-spectral-style-heads-paired-4404",
+            "josephadamski91/ntl-atlas-qwen3-8b-v1",
+            "zbigniewkirchner/ntl-qwen3-8b-lora-claude-head",
+          ]
+          out=[]
+          root=Path("/tmp/ntl-asset-meta")
+          root.mkdir(parents=True,exist_ok=True)
+          for i,ref in enumerate(refs):
+            d=root/f"asset-{i}"
+            d.mkdir()
+            meta=subprocess.run(["kaggle","datasets","metadata",ref,"-p",str(d)],
+                                text=True,capture_output=True,timeout=50)
+            files=subprocess.run(["kaggle","datasets","files",ref,"-v"],
+                                 text=True,capture_output=True,timeout=50)
+            mpath=d/"dataset-metadata.json"
+            m={}
+            if mpath.is_file():
+              m=json.loads(mpath.read_text())
+            names=[]
+            if files.returncode==0:
+              lines=files.stdout.splitlines()
+              try:
+                rows=list(csv.DictReader(lines))
+                names=[str(row.get("name") or row.get("Name") or "") for row in rows][:80]
+              except Exception:
+                names=[]
+            item={
+              "ref":ref,"metadata_ok":meta.returncode==0,
+              "files_listing_ok":files.returncode==0,
+              "files_count_listed":len(names),
+              "file_names":names,
+              "title":m.get("title"),
+              "licenses":m.get("licenses"),
+              "is_private_declared":m.get("isPrivate",None),
+              "metadata_keys":sorted(m.keys())[:80]
+            }
+            out.append(item)
+            print("ASSET_META",ref,"metadata",item["metadata_ok"],"files",item["files_listing_ok"],"count",len(names),flush=True)
+          report={
+            "scope":"read_only_authenticated_metadata_and_file_names_only",
+            "payload_data_downloaded":False,
+            "weights_downloaded":False,
+            "training_or_inference_performed":False,
+            "public_to_anonymous_verified":False,
+            "results":out,
+          }
+          (root/"summary.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n")
+          if sum(x["files_listing_ok"] for x in out)==0:
+            raise SystemExit("Dataset files enumeration unavailable; report retained")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-public-input-meta-${{ github.run_id }}
+          path: /tmp/ntl-asset-meta/summary.json
+          if-no-files-found: warn
+          retention-days: 30
