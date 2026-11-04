@@ -49,15 +49,18 @@ def main() -> None:
         assert forbidden not in code, "Unexpected model training: " + forbidden
 
     # Preserve unmodified executable cells and upstream author's attribution.
-    nb["cells"][0]["source"] += [
-        "\n",
-        "\n",
-        "Reuse note: copied unmodified executable code from Cosmorin's scored V1, ",
-        "which in turn credits Nishant Dahal. This is an independent rerun, ",
-        "not a novel model or a guaranteed 0.622 result. ",
-        "Upstream source: https://www.kaggle.com/code/cosmorin/name-that-llm-public620-reproduction ",
-        "(V1). License: Apache-2.0 for notebook code; assets retain their own terms.\n",
-    ]
+    note = (
+        "\n\nReuse note: copied unmodified executable code from Cosmorin's scored V1, "
+        "which in turn credits Nishant Dahal. This is an independent rerun, "
+        "not a novel model or a guaranteed 0.622 result. "
+        "Upstream source: https://www.kaggle.com/code/cosmorin/name-that-llm-public620-reproduction "
+        "(V1). License: Apache-2.0 for notebook code; assets retain their own terms.\n"
+    )
+    old_source = nb["cells"][0]["source"]
+    nb["cells"][0]["source"] = (
+        old_source + note if isinstance(old_source, str)
+        else old_source + [note]
+    )
     original = json.loads((pulled / "kernel-metadata.json").read_text())
     assert original["id"] == "cosmorin/name-that-llm-public620-reproduction"
     assert original["enable_gpu"] is True
