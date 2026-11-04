@@ -26,9 +26,9 @@ Do not restart from chat assumptions when repo state is available.
 
 ## Public visibility gate
 
-`PUBLIC_VISIBILITY.md` currently has status **BLOCKED**. Treat that as a hard repository-wide gate.
+`PUBLIC_VISIBILITY.md` records a **public-by-user-choice / not-certified-public-safe** status. The 2026-11-04 user decision permits continued GitHub Actions and Colab training without a mandatory private-visibility switch. Treat this as an operational authorization, not as proof that historic competition data was purged.
 
-- Do not make this repository public while official Competition Data remains in reachable Git history or another redistribution blocker remains.
+- This repository is already public by explicit user choice. Do not broaden exposure by uploading new official Competition Data or secrets; historical Git exposure remains a separately documented, unverified cleanup issue.
 - Do not weaken public-safety guards in workflows that fetch or materialize competition data.
 - Do not assume the dataset's CC BY-SA 4.0 label overrides competition-specific data-security obligations.
 - Do not assume public GitHub code alone satisfies Kaggle's public Competition Code sharing requirements.
