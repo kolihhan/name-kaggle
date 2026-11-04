@@ -628,6 +628,9 @@ def _run_condition_worker(
             if loss_count != sum(len(rows_group) for rows_group in step_groups[:optimizer_steps]):
                 raise RuntimeError("resume loss-count cursor mismatch")
             print(f"{condition} restored optimizer step {optimizer_steps}/{total_steps}", flush=True)
+            if stop_after_optimizer_steps is not None and optimizer_steps >= stop_after_optimizer_steps:
+                print(f"{condition} already paused at {optimizer_steps}/{total_steps}; heldout UNTOUCHED", flush=True)
+                return
 
     for rows_group in step_groups[optimizer_steps:]:
         optimizer.zero_grad(set_to_none=True)
