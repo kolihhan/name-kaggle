@@ -4,11 +4,20 @@ Date: 2026-11-03 MYT
 
 ## Status
 
-**WAITING_FOR_SELF_HOSTED_GPU_RUNNER — SCIENTIFIC TRANSFER GATE UNRUN.**
+**SCIENTIFIC PAIRED SOURCE-TRANSFER GATE UNRUN / UNKNOWN; GPU TRAINING FEASIBILITY VERIFIED.**
 
 This is **not** a scientific FAIL. The frozen v1-vs-v3 paired source-transfer experiment has not produced any model score.
 
 The original Kaggle execution backend is no longer required for this gate. After Kaggle rejected the frozen kernel because the weekly GPU quota was exhausted, the execution backend was changed to GitHub Actions orchestration with a dedicated self-hosted CUDA runner. The scientific contract is unchanged.
+
+## Current verified execution addendum — 2026-11-04 MYT
+
+- The historical self-hosted run `41580819667` was **CANCELLED** without running the frozen paired v1-v3 experiment. All references below to its queued status are historical, not current.
+- Synthetic feasibility on Colab T4: GitHub Actions `41772827966` attempt 2 **SUCCESS**; 11.68 GiB peak reserved, real GPU forward/backward/optimizer, no heldout scoring.
+- Real public external-source training **pilot** on Colab T4: `41778479162` **SUCCESS**, 31 train rows, 12 prompt-local microbatches, 2 optimizer updates; checkpoint artifact `13297683118` contains adapter and heads only. **It is not full Stage-1, not exact optimizer-state-resumable, and not source-transfer evaluation.**
+- Infrastructure work `scripts/dct_v3_cuda_resume.py` and its three CPU-only equivalence/negative tests added. GitHub Actions `41792568893` **SUCCESS: 27 passed**, including frozen v3 tests and generation/compilation of workers. The helper is not yet integrated with frozen CUDA v1/v3 workers; CUDA resume equivalence remains unverified.
+- **PIC sequence:** integrate boundary-safe resume into both frozen workers without recipe changes, prove interrupted-vs-uninterrupted equality on real fixed T4 batches, run the frozen one-epoch v1 and v3 pair with protected optimizer/scaler/RNG state, evaluate the locked 14,506 source-heldout rows once. Apply all original PASS/FAIL gates without changing thresholds. Official OOF is unauthorized until source-transfer PASS.
+- Original self-hosted notes below are retained for historical traceability; `NOW.md` contains the active execution policy.
 
 ## Frozen experiment identity
 
@@ -72,14 +81,14 @@ It is restricted to a matching runner:
 
 and does not trigger from pull requests. The actual Qwen3-8B LoRA compute is intentionally **not** sent to a GitHub-hosted CPU runner, because doing so would not provide the CUDA environment required by the frozen worker.
 
-Current queued scientific run:
+Historical queued scientific run (since cancelled):
 
 - run ID: `41580819667`
 - head SHA: `2d0a86fffa880709ad25c8ee9153f2b2838617a8`
 - job: `transfer`
 - status: **queued**
 
-A real queued job exists, so workflow parsing/registration is valid. It is waiting for a self-hosted Linux x64 runner carrying the custom `gpu` label.
+At the time of the original report, a queued job proved workflow parsing/registration was valid. That job was later **CANCELLED**; it is no longer waiting for a runner.
 
 The queued run will:
 
@@ -99,7 +108,7 @@ Do not mark v3 PASS or FAIL until run `41580819667` obtains a matching GPU runne
 
 ## Resume rule
 
-Bring online a dedicated self-hosted Linux x64 CUDA runner with custom label `gpu`. Do not create a replacement scientific run while `41580819667` remains queued.
+Historical rule (superseded): bring online a dedicated self-hosted Linux x64 CUDA runner with custom label `gpu`, and do not duplicate its queued run. The job has since been cancelled; the active path is Colab T4 with an exact-resumable paired worker, per the addendum above.
 
 Do **not** change:
 
