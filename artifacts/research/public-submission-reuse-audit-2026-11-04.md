@@ -2,6 +2,41 @@
 
 **Scope:** static examination of published Kaggle notebook source and authenticated dataset metadata; **no training, inference, model-weight download, Kaggle competition submission, or hidden-test scoring**. This report implements the user's decision to stop self-training and examine actual submission evidence first.
 
+## 0.622 scored-version and asset preflight — 2026-11-04 MYT (verified addendum)
+
+**VERDICT: STATIC REPRODUCTION PATH CONFIRMED; FULL HIDDEN RERUN NOT VERIFIED. NO TRAINING OR SUBMISSION.**
+
+### Exact V1 versus V3 code
+
+- Used Kaggle's version-addressable CLI source pull `kaggle kernels pull cosmorin/name-that-llm-public620-reproduction/1` and `.../3`. Source audit GitHub Actions [#41818385187](https://github.com/kolihhan/name-kaggle/actions/runs/41818385187); archived public source artifact `13315054761`.
+- **The executable Python code is byte-for-byte identical in V1 and V3** (code SHA-256 `1595f543caf314fc766a79dca313961af4d73f2a5cbea1ec2b4724aea5c4289b`); the Notebook serialized bytes differ (V1 notebook SHA `e9819e87b1b60231388aff0db1d0ef312b707c6c6b9911a054603333f6bb067b`; V3 SHA `f39c791303139519251768035930bba027678c32244bf295c1196a71a70d7fcd`).
+- All declared dataset/model input refs are identical across V1/V3. However **the Docker images differ**: scored V1 `gcr.io/kaggle-private-byod/python@sha256:9a6bcfda6d03b2cd9aa347ee8c1bae62043328ed0f4afe9bda014e4f8bbf9435`, V3 `gcr.io/kaggle-images/python@sha256:17b2fc7f27c25c6c2fd4230ec8e66097ab2b89fc88e1e4d6f338b72e1ee0bc3e`. **Reproducibility of the exact V1 runtime environment is not established.**
+- The notebook's public page displays Best Score `0.622 V1`; this reported score was not independently rerun by our repo.
+
+### Dataset licenses, small-file provenance and compatibility
+
+Using authenticated, public, *single-file* Kaggle JSON retrieval (no adapter weights, no official rows), metadata runs [#41818192295](https://github.com/kolihhan/name-kaggle/actions/runs/41818192295), [#41818435010](https://github.com/kolihhan/name-kaggle/actions/runs/41818435010), and [#41818716399](https://github.com/kolihhan/name-kaggle/actions/runs/41818716399):
+
+| Asset | API result | Verified details |
+|---|---|---|
+| `cosmorin/name-that-llm-0-622-reproduction-svc-cache` | Public metadata + one small manifest readable | Kaggle metadata license `CC-BY-SA-4.0`; `manifest.json` SHA-256 `b4bb3e9a213f4f955e71b233e849dfc8480ba1739e05e1aa02d6a8ad46983187`; schema `ntl620-svc-prefit-v1`; expected `source_version=361311282`; cache `svc_prefit.joblib` SHA declared `f294ce929714e852a5a3f1d34ff7a5c5f0a0df3d73bd4a24ae327cbde4d96352`; `fit_used_test_rows=false`, `sample_cache_reload_exact=true` |
+| `nishantdahal/ntl-handwriting-blend` | Public metadata + five small JSON configs readable | Kaggle metadata license `CC-BY-SA-4.0`; Qwen3-14B LoRA `keep=27`, layers `[2,4,6,9,13,17,22,27]`; Qwen2.5-14B LoRA `keep=32`, layers `[3,5,8,11,16,21,27,32]`; both adapters `r=16`, alpha `32`, dropout `0.05`. DeBERTa `max_len=384`. All three meta files share the expected ordered 18-class labels. |
+| Official Qwen bases | Hugging Face repo-card metadata | `Qwen/Qwen3-14B-Base` and `Qwen/Qwen2.5-14B` report `apache-2.0`; Kaggle notebook pins model sources `qwen-lm/qwen-3/Transformers/14b-base/1`, `qwen-lm/qwen2.5/Transformers/14b/1`. |
+
+The **cache manifest pins exact runtime versions**: `numpy==2.1.3`, `scipy==1.16.3`, `scikit-learn==1.6.1`, `joblib==1.6.0`. Notebook source enforces these with `importlib.metadata.version` equality checks, and checks the SVC cache SHA and official train/pool SHA. This prevents silently loading an unrelated cache, but **the `.joblib` pickle has not been downloaded or executed** (loading arbitrary pickle is code-execution capable). Weight file contents have not been hashed and rights of individual derivations beyond the parent dataset license need attribution review. Dataset-current-version numbers were **not established**: `datasets status` failed and the public metadata/listing did not expose a version number. Listing timestamps only showed `2026-10-23` updates; not a substitute for version pinning.
+
+### Static hidden-run path and resource risk
+
+- Kaggle official [Data](https://www.kaggle.com/competitions/name-that-llm/data) says interactive `test.csv` has 3 sample rows and hidden rerun has **approximately 4,000** rows. Official [Overview](https://www.kaggle.com/competitions/name-that-llm/overview/description) requires **GPU notebook <=9h, internet disabled**, plus `submission.parquet` output.
+- The source performs four-view prefit-SVC transforms, loads **two different 14B LoRA trunks sequentially**, and runs DeBERTa. For hidden-sized test it also computes an **all-pairs dense** test-text similarity array `(Xt @ Xt.T).toarray()`, hierarchical clustering `linkage(squareform(D))`, and **300-iteration Sinkhorn** (if `len(test) >= 50`). None of these large-input branches are end-to-end benchmarked here.
+- At 4,000 rows the pairwise matrix alone holds **16 million entries** (about **128 MB** if float64), before temporary arrays, linkage, the model activation/cache cost and LoRA feature matrices. This is *memory-accounting only*, not a runtime estimate.
+- The code's GPU loader requires multiple devices to shard a trunk when its estimated weight size exceeds 13 GiB; otherwise it loads on `cuda:0`. The Kaggle T4 machine currently maps to **T4 × 2** according to Kaggle CLI documentation, but the actual target runner/resources have not been executed in this audit.
+- **Material runtime/version risk:** V1's pinned Docker SHA differs from V3; the notebook refuses any dependency version drift from its SVC manifest. Public page's short sample execution is not proof of hidden execution throughput. No GPU inference, full input mount check, empirical 9h proof or competition submission has been made.
+
+### Next exact decision boundary
+
+The 0.622 route is **feasible to inspect and package**, but it is **not cleared for new competition submission**. To claim submission-ready, still need (1) exact Kaggle asset-version or content-hash pin for large adapter/encoder weights and correct attribution, (2) a trusted isolated validation of the `joblib` cache/metadata against code-required hashes, (3) environment dependency compatibility with V1 and an end-to-end ~4,000-row timing/memory preflight on permitted T4×2 runtime, and (4) rule compliance. Do not use public leaderboard to select changes. Preserve already-submitted local `0.520` as an independent anchor.
+
 ## Decision
 
 **Prioritize the historic 0.622 Cosmorin reproduction as a minimal inference-only reproducibility candidate, not as a new competition champion.** Its publicly available code consumes an already-prefit SVC cache and final two-stage LoRA/DeBERTa weights. It has substantially fewer declared dependencies than the later 0.636/0.666 ensembles. This recommendation concerns *feasibility of reproducing the published inference pipeline*, not predicted leaderboard uplift over our submitted 0.520.
