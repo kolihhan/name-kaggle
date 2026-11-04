@@ -73,7 +73,7 @@ jobs:
                     'paired_v1_vs_v3_transfer_evaluated','scientific_decision_authorized',
                     'model.save_pretrained','TRAINING_PILOT_SUCCESS'):
               assert x in s, x
-          for x in ('kaggle datasets download','KAGGLE_API_TOKEN','train.csv','test.csv'):
+          for x in ('kaggle datasets download','KAGGLE_API_TOKEN','pd.read_csv(', 'train_test_split('):
               assert x not in s, x
           print('Real-data bounded pilot static checks PASS')
           PY
