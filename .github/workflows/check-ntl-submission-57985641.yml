@@ -1,0 +1,51 @@
+name: Check NTL Submission 57985641 (Read Only)
+
+on:
+  push:
+    branches:
+      - exp/dct-temporal-fingerprint-v3
+    paths:
+      - .github/workflows/check-ntl-submission-57985641.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI only
+        run: python -m pip install -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Query submission record without submitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle credentials not configured}"
+          kaggle competitions submissions name-that-llm -v -q > /tmp/submissions.csv
+          python - <<'PY'
+          import csv,json
+          with open('/tmp/submissions.csv',newline='') as f:
+              rows=list(csv.DictReader(f))
+          matches=[x for x in rows if x.get('ref')=='57985641']
+          if len(matches)!=1:
+              print('TARGET_NOT_FOUND',len(matches),'total_records',len(rows))
+              raise SystemExit(2)
+          r=matches[0]
+          print('TARGET_SUBMISSION_STATUS '+json.dumps({
+              'ref':r.get('ref'),
+              'status':r.get('status'),
+              'publicScore':r.get('publicScore'),
+              'privateScore':r.get('privateScore'),
+              'description':r.get('description'),
+              'date':r.get('date')
+          },sort_keys=True))
+          baseline=[x for x in rows if x.get('publicScore')=='0.520']
+          print('BASELINE_0520_COUNT',len(baseline))
+          PY
