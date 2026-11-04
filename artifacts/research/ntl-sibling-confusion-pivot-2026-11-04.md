@@ -54,6 +54,14 @@ Only if the mechanism survives an actual disjoint transfer check should a separa
 - **Revisit** the representation class only with a new independent source-transfer prediction and frozen admission rule.
 - **No new official Kaggle submission** without a new viable inference candidate, full hidden-sized smoke under the same constrained runtime, and explicit go-ahead.
 
+## Completed no-training source-evidence availability check
+
+**UNAVAILABLE — stop at this boundary, no additional compute.** Checked the original Gate-A recovery workflow `41333631967`. Its retained external-transfer evidence artifact **13094213203** (downloaded as a read-only ZIP) contains exactly one JSON report, `two_stage_lora24_gate_a.json`, with A0/A1 scores, per-source aggregate metrics and the predefined PASS verdict. It does **not** contain individual held-out passages with their predicted and true labels, logit vectors, or embeddings. The separate artifact **13094069155** is a 116 MB Stage-1 A1 checkpoint, not a frozen held-out prediction table.
+
+Therefore existing source-level aggregate BA proves **A1 > A0** on the held-out sources, but **cannot** test whether 57.32% within-family confusion repeats there. No data should be guessed, and a new GPU forward pass or model training is not authorized by this read-only check.
+
+The useful result is therefore a *diagnosis of an observed OOF bottleneck* with a clearly identified independent-evidence gap, not a new leaderboard candidate. The next scientific action, if separately authorized, would be a tightly specified **inference-only** source-heldout prediction export (not retraining) and an exact same-family-error-rate comparison with the existing 701/1,223 observation; freeze the source subset and failure thresholds first. Until such evidence exists, no ensemble tuning or Kaggle submission is justified.
+
 ## Evidence distinction
 
 - **FACT:** All counts above were computed from the archived original OOF CSV; scores and submission references are recorded in canonical repo artifacts.
