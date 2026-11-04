@@ -181,6 +181,10 @@ CPU shadow results cannot authorize this gate.
 - Colab free T4 is **not** an unlimited GPU; stop cleanly and preserve optimizer-boundary checkpoints before session limits. Do not open several competing GPU sessions. No additional Kaggle GPU run while weekly quota status is unverified.
 - No Public-LB tuning, no adaptive holdout source reselection, no v3 mode/layer/loss sweeps. Source-transfer is a frozen external-data diagnostic, not a guarantee of hidden-Kaggle generalization.
 - Research question: whether an added temporal AC1 component captures generator identity that survives source shift, versus noise/corpus-format artifacts. This mechanism is **hypothesis**, not yet evidence. If transfer fails, write per-source/label error analysis as allowed by the frozen result report, and only then reconsider the model family or centered-to-plain distillation under a *new* predeclared contract.
+
+- **Pre-result mechanism confound (2026-11-04):** DCT `[DC0, AC1]` also doubles the Stage-1 classifier input width and consequently increases head parameter count versus v1 mean-only pooling. A future paired-transfer PASS would establish improvement by the *frozen composite treatment*, not isolate AC1's generator-fingerprint contribution from added head capacity. Keep the v3 contract unchanged. Any capacity-matched placebo/ablation must be separately preregistered and judged with independent evidence, not used to rescue/reselect v3 against its already-locked holdout.
+- **Version pin audit:** The live Colab optimizer-resume proof pins `d9bf4f0f88d396d32348e94033c07759c244ec6d`; Git blob SHAs of its shared Stage-1 worker, CUDA resume helper, v3 materializer, and frozen split builder match those on this branch as of `10a6919a18641a885d4876ab07fbbc835dfa108d`. Later commits changed proof/CI/tests/docs, not those four worker inputs. A PASS would still be *only* resume-equivalence evidence, never source-transfer evidence.
+
 - Do not declare CUDA resume or paired transfer complete just because a state-serialization unit test passed.
 
 ## PIC implementation ledger — 2026-11-04 (resume worker integration)
