@@ -2,6 +2,12 @@
 
 Updated: 2026-11-04 MYT
 
+## 0.622 version-pinned preflight — 2026-11-04 MYT
+
+**STATIC PASS, END-TO-END RUNTIME UNKNOWN — NO TRAINING OR SUBMISSION.** Read the scored Kaggle Notebook V1 and current V3 directly using the public Kaggle API: executable code SHA-256 is identical (`1595f543caf314fc766a79dca313961af4d73f2a5cbea1ec2b4724aea5c4289b`), but Kaggle Docker image digests differ. The existing SVC cache's public manifest matches its code-pinned cache hash and source version; both LoRA adapter configs, three model metas and Kaggle dataset license labels were checked using **small JSON files only**. Dataset metadata says `CC-BY-SA-4.0` for both hosted datasets; HF Qwen model cards say `apache-2.0`. Current dataset version numbers and full weight-byte checksums remain **UNKNOWN**.
+
+The full ~4,000-row hidden test triggers pairwise clustering and 300-round Sinkhorn absent from the three-row public sample, plus sequential two-14B+DeBERTa inference. The Notebook requires pinned NumPy/SciPy/scikit-learn/joblib versions, GPU T4×2 and <=9h; these full-run requirements are not benchmarked. **Do not promote 0.622 to a new Kaggle submission without the independent environment, integrity and runtime gates.** Evidence: [`artifacts/research/public-submission-reuse-audit-2026-11-04.md`](artifacts/research/public-submission-reuse-audit-2026-11-04.md), GitHub Actions `41818385187` (source V1/V3), `41818435010` and `41818716399` (public metadata/small manifests). No model weights, official data or private credentials were downloaded into the public GitHub artifacts.
+
 ## Public-submission source audit — 2026-11-04 MYT
 
 **DONE: READ-ONLY AUDIT; NO TRAINING, INFERENCE OR SUBMISSION.** Report: [`artifacts/research/public-submission-reuse-audit-2026-11-04.md`](artifacts/research/public-submission-reuse-audit-2026-11-04.md). Verified public-notebook source pull: Actions `41810333036`; verified authenticated dataset metadata enumeration: Actions `41809970435`.
