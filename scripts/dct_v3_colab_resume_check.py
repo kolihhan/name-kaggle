@@ -78,7 +78,17 @@ def run():
     import pandas as pd
     import torch
     import transformers
+    # PEFT may probe a broken optional torchao package in Colab.
+    import importlib.util as importlib_util
+    original_find_spec = importlib_util.find_spec
+    importlib_util.find_spec = (
+        lambda name, *args, **kwargs: None
+        if name.split(".")[0] == "torchao"
+        else original_find_spec(name, *args, **kwargs)
+    )
     import peft
+    import peft.import_utils as peft_import_utils
+    peft_import_utils.is_torchao_available = lambda *args, **kwargs: False
 
     from scripts.dct_v3_cpu_feasibility import _download_truncated_snapshot
     from scripts.dct_v3_transfer_split import build_transfer_split
