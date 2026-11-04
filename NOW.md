@@ -2,6 +2,15 @@
 
 Updated: 2026-11-04 MYT
 
+## Authorized one-more Kaggle submission — 2026-11-04 21:09 MYT
+
+**NEW SUBMISSION ACCEPTED, PENDING SCORING, NO TRAINING.** User explicitly requested one additional competition submission after the four CPU diagnostics. Preserved the exact published prefit pipeline; no model weights or competition data committed to GitHub, no self-training, no GitHub-side GPU Notebook push.
+
+- First controlled alternative: Cosmorin V3 (`cosmorin/name-that-llm-public620-reproduction/3`) has the same executable V1 code SHA `1595f543caf314fc766a79dca313961af4d73f2a5cbea1ec2b4724aea5c4289b` but different Kaggle Docker image. A direct competition submission attempt via [Actions 41835333341](https://github.com/kolihhan/name-kaggle/actions/runs/41835333341) was **rejected by Kaggle API with HTTP 400 Bad Request**; **no submission record / no score** for V3. Specific error reason not exposed.
+- Final direct V1 retry (unchanged exact notebook source, original publisher and assets): [Actions 41835523954](https://github.com/kolihhan/name-kaggle/actions/runs/41835523954) **SUCCESS**. Kaggle CLI printed **`Submission ref: 57985641`** and **3 submissions remaining today**. Initial authoritative list shows `57985641, SubmissionStatus.PENDING, publicScore blank`, timestamp `2026-11-04 13:09:32.673000 UTC`. Submission description: `Cosmorin V1 repeat after CPU diagnostics 57983359 no training`.
+- **IMPORTANT:** This V1 code is identical to the failed submission `57983359`. CPU preflight PASS did not fix the unknown hidden-run exception. Do not claim a valid score until Kaggle's submission detail confirms no `Notebook Threw Exception` and the actual `publicScore` is nonblank. CLI `SubmissionStatus.COMPLETE` with blank score was previously a failed rerun.
+- One authorized additional submission has been created. **Do not submit again automatically**. Next action: read-only check `57985641` score *and* detailed failure state when available. Until then the best verified valid Public score remains `0.520`.
+
 ## Kaggle #57983359 postmortem — four private CPU diagnostics completed (2026-11-04 MYT)
 
 **STATUS: PRE-MODEL + FULLSIZE CPU PASS; GPU / HIDDEN RERUN ROOT CAUSE UNKNOWN.** No training, no new official competition submission, no base-weight downloads to GitHub, and no changes to frozen ML/validation contracts. These probes executed privately on Kaggle CPU through GitHub Actions. They cannot reproduce actual hidden samples or two 14B GPU inference passes.
