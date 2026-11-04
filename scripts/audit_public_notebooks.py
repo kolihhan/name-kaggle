@@ -87,7 +87,14 @@ def pull(label: str, refs: list[str], folder: Path):
                  "not_found" if "404" in err or "not found" in err else
                  "cli_arguments" if "usage:" in err or "argument" in err else
                  "other")
-        attempted.append({"ref": ref, "ok": result.returncode == 0, "error_class": cause})
+        last_line = (result.stderr or result.stdout or "").strip().splitlines()
+        msg = last_line[-1] if last_line else ""
+        secret = os.environ.get("KAGGLE_API_TOKEN", "")
+        if secret:
+            msg = msg.replace(secret, "[SECRET]")
+        # Explicitly drop any long opaque token-like text, then cap.
+        msg = re.sub(r"[A-Za-z0-9_+./=-]{40,}", "[REDACTED]", msg)[:180]
+        attempted.append({"ref": ref, "ok": result.returncode == 0, "error_class": cause, "diagnostic": msg})
         if result.returncode == 0 and source_cells(folder):
             return ref, attempted
     return None, attempted
