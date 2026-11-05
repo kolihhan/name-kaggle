@@ -1,5 +1,12 @@
 # NOW
 
+## PIC official DIRECT submission — 2026-11-05 11:48 MYT
+
+**Confirmed new competition submission ID: `58008463`**, created `2026-11-05 03:48:15.950000 UTC` from exact pre-existing published upstream Notebook `lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble/47`. The source SHA-256 `be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d` was checked before submit. The official Kaggle `kaggle competitions submit -k ... -v 47 -f submission.parquet` API accepted the submission. Authenticated read-only [run 41963909784](https://github.com/kolihhan/name-kaggle/actions/runs/41963909784) shows **10 total official submissions**, latest `58008463 / SubmissionStatus.PENDING / Public Score empty` and detailed `kaggle competitions submission 58008463` confirms `PENDING`. The exact submission execution is [GitHub Actions 41963828666](https://github.com/kolihhan/name-kaggle/actions/runs/41963828666), which polls official score. **Own scored best remains 0.520 until an actual new nonblank score appears.** No score comparison yet; published upstream 0.666 is NOT ours.
+
+**Important corrected mental model:** Direct code-competition submission of an already-published Kaggle Notebook version **does not require personal weekly GPU quota**; only a new author-side Kaggle GPU Notebook push/commit or our self-imposed private inference preflight does. Kaggle performs code competition hidden rerun on separate evaluation compute. The prior GPU preflight was unnecessary for this user's direct submission goal. Therefore the wrong planned November 7 GPU-gated cron workflow on `main` has been **disabled** in commit `851702ec209afd4c497f93d3078bcf9d8a65edf9`; no GPU reset waiting needed. We did NOT train any model, push GPU Notebook, or burn personal GPU allocation in direct submit. Do not submit this V47 again while `58008463` exists; if it ends with blank score inspect `kaggle competitions submission 58008463` and do not retry unchanged source.
+
+
 ## PIC execution checkpoint — 2026-11-05 MYT: GPU hard block, one-shot continuation armed
 
 **Formal competition result:** No new accepted competition submission. Authenticated Kaggle [snapshot Actions 41961137677](https://github.com/kolihhan/name-kaggle/actions/runs/41961137677) still has **9 total** submissions, newest `57985641` with `SubmissionStatus.COMPLETE` and both score fields empty. Best actually scored own submission remains **0.520**; delta from proposed V47 is **unknown**, not +0.146.
