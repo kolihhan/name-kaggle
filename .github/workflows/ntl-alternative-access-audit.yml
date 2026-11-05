@@ -1,0 +1,54 @@
+name: NTL V47 Input Access and Smaller Candidates (Read Only)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-alternative-access-audit.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read permission status for pinned candidates
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,json,pathlib,hashlib,re
+          root=pathlib.Path('/tmp/ntl-public-access')
+          root.mkdir()
+          def cmd(args, timeout=60):
+              try:
+                  p=subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+                  msg=(p.stderr+'\n'+p.stdout)[-250:]
+                  msg=re.sub(r'[A-Za-z0-9_+=./-]{55,}', '[REDACTED]', msg)
+                  return p.returncode==0, msg
+              except Exception as e: return False, type(e).__name__
+          refs=[
+           ('lightning-v47','lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble/47'),
+           ('lightning-0595','lightningv08/0-595-two-stage-lora-gaussian-olmo2/14'),
+           ('nishant-part-two','nishantdahal/two-stage-lora-part-two'),
+          ]
+          for label,ref in refs:
+              dest=root/label;dest.mkdir()
+              good,msg=cmd(['kernels','pull',ref,'-p',str(dest),'-m'])
+              if not good:
+                  print('CANDIDATE_SOURCE_BLOCKED',label,repr(msg),flush=True);continue
+              md=json.loads((dest/'kernel-metadata.json').read_text())
+              nb=list(dest.glob('*.ipynb'))
+              source='\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in json.loads(nb[0].read_text())['cells'] if c['cell_type']=='code')
+              print('CANDIDATE_SOURCE',json.dumps({'label':label,'ref':ref,'sha256':hashlib.sha256(nb[0].read_bytes()).hexdigest(),'internet':md.get('enable_internet'),'gpu':md.get('enable_gpu'),'sources_datasets':md.get('dataset_sources'),'sources_notebooks':md.get('kernel_sources'),'sources_models':md.get('model_sources'),'has_preview_gate':'emit_known_preview' in source,'backward_training':bool(re.search(r'\\.backward\\s*\\(|trainer\\.train\\s*\\(',source))},sort_keys=True),flush=True)
+              for i,ds in enumerate(md.get('dataset_sources',[])):
+                  dd=root/('asset_'+label+'_'+str(i));dd.mkdir()
+                  ok,res=cmd(['datasets','metadata',ds,'-p',str(dd)])
+                  print('DATASET_ACCESS',label,ds,'OK' if ok else 'BLOCKED',repr(res) if not ok else '',flush=True)
+              for nk in md.get('kernel_sources',[]):
+                  ok,res=cmd(['kernels','status',nk])
+                  print('KERNEL_ASSET_ACCESS',label,nk,'OK' if ok else 'BLOCKED',repr(res) if not ok else '',flush=True)
+          PY
