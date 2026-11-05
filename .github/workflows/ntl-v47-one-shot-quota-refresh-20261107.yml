@@ -1,0 +1,85 @@
+name: NTL V47 One-Shot Kaggle Quota Refresh
+on:
+  schedule:
+    - cron: '17 0 7 11 *'
+permissions:
+  contents: read
+concurrency:
+  group: ntl-v47-single-20261107-official-attempt
+  cancel-in-progress: false
+jobs:
+  quota-gated-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+    steps:
+      - name: Enforce exact one-shot UTC date
+        id: calendar
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(date -u +%Y-%m-%d)" = '2026-11-07' ]; then
+            echo 'allowed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'One-shot date is not 2026-11-07; skip forever after that date.'
+            echo 'allowed=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.calendar.outputs.allowed == 'true'
+        with:
+          python-version: '3.11'
+      - name: Verify Kaggle GPU entitlement without consuming compute
+        if: steps.calendar.outputs.allowed == 'true'
+        id: quota
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle token missing}"
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import os,re,subprocess
+          p=subprocess.run(['kaggle','quota'],capture_output=True,text=True,timeout=60)
+          if p.returncode:
+              raise SystemExit('KAGGLE_QUOTA_QUERY_FAILED '+p.stderr[-300:])
+          rows=[x.strip() for x in p.stdout.splitlines() if x.strip().startswith('GPU ')]
+          if len(rows)!=1:
+              raise SystemExit('KAGGLE_GPU_QUOTA_SCHEMA_UNKNOWN; no kernel push')
+          columns=rows[0].split()
+          if len(columns)<4 or not columns[2].endswith('h'):
+              raise SystemExit('KAGGLE_GPU_QUOTA_REMAINING_UNKNOWN; no kernel push')
+          remaining=float(columns[2][:-1])
+          print('GPU_QUOTA_HOURS_REMAINING',remaining,flush=True)
+          ready=(remaining>=4.0)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('ready='+('true' if ready else 'false')+'\n')
+          if not ready:
+              print('GPU_QUOTA_INSUFFICIENT_NO_PUSH_NO_COMPETITION_SUBMISSION',flush=True)
+          PY
+      - uses: actions/checkout@v4
+        if: steps.quota.outputs.ready == 'true'
+        with:
+          ref: f05ebd6d3852663bd903d2e4ee6b592fd2c02f8b
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/ntl_v47_full_preflight_submit_once.py
+            tests/test_ntl_v47_preflight_guard.py
+          sparse-checkout-cone-mode: false
+      - name: Confirm zero official data in public runner, validate gate
+        if: steps.quota.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f" || { echo 'OFFICIAL_DATA_IN_PUBLIC_WORKSPACE'; exit 1; }
+          done
+          python -m unittest discover -s tests -p test_ntl_v47_preflight_guard.py -v
+          python -m py_compile scripts/ntl_v47_full_preflight_submit_once.py
+      - name: Install no-training output verifier
+        if: steps.quota.outputs.ready == 'true'
+        run: python -m pip install -q 'pandas==2.2.3' 'pyarrow==19.0.1'
+      - name: Run one full Kaggle inference gate, then submit officially only if valid
+        if: steps.quota.outputs.ready == 'true'
+        run: python -u scripts/ntl_v47_full_preflight_submit_once.py
