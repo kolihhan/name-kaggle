@@ -1,0 +1,54 @@
+name: NTL Stage1 vs New Public Pool Overlap Audit
+
+on:
+  push:
+    branches:
+      - research/sibling-information-probe-20261105
+    paths:
+      - scripts/audit_sibling_pool_overlap.py
+      - .github/workflows/ntl-sibling-pool-overlap.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/audit_sibling_pool_overlap.py
+            .github/workflows/ntl-sibling-pool-overlap.yml
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: test ! -e data/train.csv && test ! -e data/test.csv
+      - run: python -m pip install --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.2.3 pyarrow==20.0.0
+      - name: Download only 2 named public external parquet files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl_stage1 /tmp/ntl_new
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/ntl_stage1 --unzip >/dev/null
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f ntl_open_pool.parquet -p /tmp/ntl_new --unzip >/dev/null
+          test -s /tmp/ntl_stage1/pool_v4.parquet
+          test -s /tmp/ntl_new/ntl_open_pool.parquet
+          echo 'Both public external parquet files obtained; no official data was requested'
+      - name: Compute only aggregate source overlap and schema
+        run: |
+          python scripts/audit_sibling_pool_overlap.py \
+            --stage1 /tmp/ntl_stage1/pool_v4.parquet \
+            --candidate /tmp/ntl_new/ntl_open_pool.parquet \
+            --output /tmp/ntl-sibling-source-overlap.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ntl-sibling-source-overlap-aggregate-only
+          path: /tmp/ntl-sibling-source-overlap.json
+          retention-days: 21
