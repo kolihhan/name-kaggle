@@ -140,7 +140,8 @@ proof = {
     'upstream_version':47, 'preflight_mode':'actual_inference_preview_disabled',
     'model_weights_inference_executed':True, 'training_performed':False,
     'test_rows':len(t), 'submission_rows':len(s),
-    'columns':list(s.columns), 'input_id_sha256':digest,
+    'columns':list(s.columns), 'official_labels':sorted(allowed),
+    'input_id_sha256':digest,
     'output_id_sha256':hashlib.sha256(
         ('\\n'.join(s['id'].astype(str))).encode()
     ).hexdigest(), 'missing_ids':0,'duplicate_ids':0,
@@ -171,6 +172,23 @@ print('OFFICIAL_SAMPLE_FULL_INFERENCE_PASS',json.dumps(proof,sort_keys=True),flu
     return private
 
 
+def verify_kaggle_push_accepted(returncode: int, output: str) -> int:
+    """Require a new Kaggle kernel version, not merely a successful CLI exit.
+
+    Kaggle CLI may exit 0 while printing "Kernel push error: Maximum weekly
+    GPU quota of 30.00 hours reached." An old kernel status=COMPLETE must never
+    substitute for a newly accepted preflight run.
+    """
+    if returncode != 0:
+        raise RuntimeError("FULL_SAMPLE_PREFLIGHT_PUSH_REJECTED: " + output[-1200:])
+    if re.search(r"quota|403|forbidden|push error|permission denied", output, re.I):
+        raise RuntimeError("FULL_SAMPLE_PREFLIGHT_PUSH_REJECTED: " + output[-1200:])
+    m = re.search(r"Kernel version\s+(\d+)\s+successfully pushed\b", output, re.I)
+    if m is None:
+        raise RuntimeError("FULL_SAMPLE_PREFLIGHT_PUSH_UNCONFIRMED: " + output[-1200:])
+    return int(m.group(1))
+
+
 def run_or_reuse_preflight(folder):
     # This dedicated canary was created and advanced from V1 to V5 to
     # validate SaveKernel permission for the exact full V47 source families.
@@ -185,8 +203,10 @@ def run_or_reuse_preflight(folder):
         check=False,
     )
     log("PRIVATE_PREFLIGHT_PUSH_OUTPUT", (p.stdout + p.stderr)[-1500:])
-    if p.returncode != 0:
-        raise RuntimeError("FULL_SAMPLE_PREFLIGHT_UPDATE_FAILED: " + (p.stderr + p.stdout)[-1200:])
+    accepted_version = verify_kaggle_push_accepted(
+        p.returncode, p.stdout + "\\n" + p.stderr
+    )
+    log("NEW_PRIVATE_FULL_INFERENCE_VERSION_ACCEPTED", accepted_version)
     # Kaggle may queue GPU work; a successful push is NOT a successful inference.
     deadline = time.monotonic() + 200 * 60
     prev = None
@@ -229,8 +249,11 @@ def verify_output():
         raise RuntimeError("Wrong columns")
     if not sub.id.is_unique or sub.id.isna().any() or sub.model.isna().any():
         raise RuntimeError("Invalid ids or labels")
-    if not set(sub.model).issubset(LABELS):
-        raise RuntimeError("Unknown predicted labels")
+    official_labels = proof.get("official_labels")
+    if not isinstance(official_labels, list) or len(official_labels) != 18:
+        raise RuntimeError("Missing exact official 18-label evidence from Kaggle preflight")
+    if not set(sub.model.astype(str)).issubset(set(official_labels)):
+        raise RuntimeError("Predicted labels outside verified official label set")
     if proof["input_id_sha256"] != proof["output_id_sha256"]:
         raise RuntimeError("IDs do not match")
     log("EXACT_V47_KAGGLE_FULL_SAMPLE_VERIFIED", json.dumps(proof, sort_keys=True))
