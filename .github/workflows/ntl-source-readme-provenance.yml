@@ -34,8 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/ntl_readmes
-          refs=(trnhip/ntl-api-gen elliotthankinson/ntl-exact-gens-v3 aswathvanan/ntl-proxy-passages alessandrolair/ntl-kaggle-benchmarks-generated-passages)
-          for i in 0 1 2 3; do
+          refs=(trnhip/ntl-api-gen elliotthankinson/ntl-exact-gens-v3 aswathvanan/ntl-proxy-passages alessandrolair/ntl-kaggle-benchmarks-generated-passages zeminglii/ntl-own-exact-route-generations kilupy/ntl-18-model-corpus)
+          for i in 0 1 2 3 4 5; do
             mkdir -p "/tmp/ntl_readmes/$i"
             kaggle datasets download -d "${refs[$i]}" -f README.md -p "/tmp/ntl_readmes/$i" --unzip >/dev/null
             test -s "/tmp/ntl_readmes/$i/README.md"
@@ -46,7 +46,7 @@ jobs:
           python - <<'PY'
           import hashlib
           from pathlib import Path
-          refs=['trnhip/ntl-api-gen','elliotthankinson/ntl-exact-gens-v3','aswathvanan/ntl-proxy-passages','alessandrolair/ntl-kaggle-benchmarks-generated-passages']
+          refs=['trnhip/ntl-api-gen','elliotthankinson/ntl-exact-gens-v3','aswathvanan/ntl-proxy-passages','alessandrolair/ntl-kaggle-benchmarks-generated-passages','zeminglii/ntl-own-exact-route-generations','kilupy/ntl-18-model-corpus']
           for i,ref in enumerate(refs):
               p=Path(f'/tmp/ntl_readmes/{i}/README.md')
               text=p.read_text(encoding='utf-8',errors='replace')
