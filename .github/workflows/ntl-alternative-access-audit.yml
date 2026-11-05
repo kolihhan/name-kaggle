@@ -43,7 +43,7 @@ jobs:
               md=json.loads((dest/'kernel-metadata.json').read_text())
               nb=list(dest.glob('*.ipynb'))
               source='\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in json.loads(nb[0].read_text())['cells'] if c['cell_type']=='code')
-              print('CANDIDATE_SOURCE',json.dumps({'label':label,'ref':ref,'sha256':hashlib.sha256(nb[0].read_bytes()).hexdigest(),'internet':md.get('enable_internet'),'gpu':md.get('enable_gpu'),'sources_datasets':md.get('dataset_sources'),'sources_notebooks':md.get('kernel_sources'),'sources_models':md.get('model_sources'),'has_preview_gate':'emit_known_preview' in source,'backward_training':bool(re.search(r'\\.backward\\s*\\(|trainer\\.train\\s*\\(',source))},sort_keys=True),flush=True)
+              print('CANDIDATE_SOURCE',json.dumps({'label':label,'ref':ref,'sha256':hashlib.sha256(nb[0].read_bytes()).hexdigest(),'internet':md.get('enable_internet'),'gpu':md.get('enable_gpu'),'sources_datasets':md.get('dataset_sources'),'sources_notebooks':md.get('kernel_sources'),'sources_models':md.get('model_sources'),'has_preview_gate':'emit_known_preview' in source,'backward_training':('.backward(' in source or 'trainer.train(' in source)},sort_keys=True),flush=True)
               for i,ds in enumerate(md.get('dataset_sources',[])):
                   dd=root/('asset_'+label+'_'+str(i));dd.mkdir()
                   ok,res=cmd(['datasets','metadata',ds,'-p',str(dd)])
