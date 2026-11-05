@@ -99,6 +99,9 @@ def test_real_evaluation_route_synthetic_only(examples):
     assert len(result["per_source"]) == 2
     assert len(result["per_class"]) == 16
     assert result["scope"].startswith("independent external")
+    assert result["flat_error_breakdown"]["same_family_errors"] >= 0
+    assert result["treatment_error_breakdown"]["cross_family_errors"] >= 0
+    assert isinstance(result["top1_family_switches"], int)
 
 
 def test_checksum_and_no_pickle_objects(tmp_path, examples):
@@ -113,3 +116,18 @@ def test_checksum_and_no_pickle_objects(tmp_path, examples):
     np.savez(unsafe, **train)
     with pytest.raises(ValueError):
         load_embeddings(unsafe, sha256(unsafe))
+
+
+def test_family_mass_preservation_does_not_ensure_top1_family():
+    flat = np.zeros(18)
+    altered = np.zeros(18)
+    gpt = [i for i, x in enumerate(LABELS) if family(x) == "gpt-"]
+    gemini = [i for i, x in enumerate(LABELS) if family(x) == "gemini-"]
+    flat[gpt[0]] = .255
+    flat[gpt[1]] = .255
+    flat[gemini[0]] = .49
+    altered[gpt[0]] = .51
+    altered[gemini[0]] = .49
+    assert np.isclose(flat[gpt].sum(), altered[gpt].sum())
+    assert np.isclose(flat[gemini].sum(), altered[gemini].sum())
+    assert family(LABELS[flat.argmax()]) != family(LABELS[altered.argmax()])
