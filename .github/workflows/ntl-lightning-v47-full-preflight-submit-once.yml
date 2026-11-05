@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ntl-lightning-v47-full-preflight-submit-20261105
+  group: ntl-lightning-v47-reuse-private-canary-20261105
   cancel-in-progress: false
 jobs:
   gated-competition-submission:
