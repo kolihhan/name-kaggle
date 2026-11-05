@@ -19,7 +19,7 @@ jobs:
           set -euo pipefail
           kaggle kernels status kolihhan/ntl-lightning-v47-genuine-preflight-20261105 || true
           echo MY_PRIVATE_V47_KERNELS
-          kaggle kernels list --mine -v -q | grep -Ei 'ntl-lightning|ntl-private-permission' | head -12 || true
+          kaggle kernels list --mine -v | grep -Ei 'ntl-lightning|ntl-private-permission' | head -12 || true
           kaggle competitions submissions name-that-llm -v -q > /tmp/my-submissions.csv
           python - <<'PY'
           import csv,json
