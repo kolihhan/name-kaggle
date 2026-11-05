@@ -154,6 +154,8 @@ print('OFFICIAL_SAMPLE_FULL_INFERENCE_PASS',json.dumps(proof,sort_keys=True),flu
         "source": proof_code.splitlines(keepends=True),
     })
     (private / notebooks[0].name).write_text(json.dumps(nb, ensure_ascii=False))
+    # Do not retain the original author's numeric Kaggle notebook identity.
+    md.pop("id_no", None)
     md["id"] = PREFLIGHT
     md["title"] = "NTL Lightning V47 Genuine Preflight 20261105"
     md["is_private"] = True
