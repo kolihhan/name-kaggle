@@ -1,0 +1,38 @@
+name: NTL V47 Submission 58008463 18:50 MYT Official Status Read Only
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-status-check-20261105-1850.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Query exact official submission and public score without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle token missing}"
+          echo '--- EXACT OFFICIAL KAGGLE DETAIL ---'
+          kaggle competitions submission 58008463
+          kaggle competitions submissions name-that-llm -v -q > /tmp/ntl.csv
+          python - <<'PY'
+          import csv,json,datetime
+          rows=list(csv.DictReader(open('/tmp/ntl.csv',newline='')))
+          rows.sort(key=lambda r:int(r['ref']),reverse=True)
+          tgt=[r for r in rows if r['ref']=='58008463']
+          assert len(tgt)==1,"Submission missing"
+          print('CHECK_UTC',datetime.datetime.now(datetime.timezone.utc).isoformat())
+          print('OFFICIAL_TARGET',json.dumps({k:tgt[0].get(k) for k in ['ref','status','publicScore','privateScore','description','date']},sort_keys=True))
+          print('LAST_OFFICIAL_REF',rows[0]['ref'],'TOTAL',len(rows))
+          if tgt[0].get('publicScore'):
+              print('ACTUAL_SCORE',tgt[0]['publicScore'],'DELTA_VS_0520',round(float(tgt[0]['publicScore'])-.520,4))
+          else:
+              print('NO_PUBLIC_SCORE',tgt[0]['status'])
+          PY
