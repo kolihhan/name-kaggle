@@ -44,3 +44,12 @@ jobs:
           assert not re.search(r'\.backward\s*\(|optimizer\.step\s*\(|trainer\.train\s*\(',code), 'Contains train calls'
           print('V47_FULL_INFERENCE_PATCH_FEASIBLE')
           PY
+      - name: Retain exact public Apache-2 V47 source temporarily for mechanism audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-lightning-v47-source-only-20261105
+          path: |
+            /tmp/ntl-v47/*.ipynb
+            /tmp/ntl-v47/kernel-metadata.json
+          retention-days: 1
+          if-no-files-found: error
