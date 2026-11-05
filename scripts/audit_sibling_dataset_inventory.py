@@ -34,7 +34,7 @@ def main():
               "candidates": {}}
     for ref in CANDIDATES:
         result["candidates"][ref] = {
-            "files": run_cmd(["kaggle", "datasets", "files", "-d", ref]),
+            "files": run_cmd(["kaggle", "datasets", "files", ref]),
         }
         print(ref, json.dumps(result["candidates"][ref]), flush=True)
     with open(args.out, "w", encoding="utf-8") as f:
