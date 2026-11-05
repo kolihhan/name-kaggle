@@ -33,3 +33,16 @@ Therefore: do not run the evaluator with reused official folds or pretend synthe
 3. Extract fixed Stage-1 A1 Qwen3-8B LoRA24 embeddings once to a private source, then run the predeclared CPU evaluation; issue PASS/FAIL without threshold tuning.
 
 **No new model training. No formal Kaggle competition submission. No official data or private embeddings added to public GitHub.**
+
+## Executed data-source audit addendum — 2026-11-06 MYT
+
+**Status: REAL SOURCE / OVERLAP VERIFICATION COMPLETED; SCIENTIFIC DATA GATE STILL BLOCKED.** Previously synthetic test CI remains 6/6 PASS. This update does not represent a new model score.
+
+- Retrieved public external dataset file inventories and primary README generation protocols in successful GitHub Actions 42063920056, 42065056290, 42065237791, and 42065527178. maniceet dataset returned a genuine resource-specific 403.
+- Verified current crtproduction 212,623-row pool, 60 upstream catalog entries (not the stale 255k listing). Full source-catalog and two-Parquet audits succeeded in Actions 42064170317 and 42064722943. Exactly **61,681 of its 212,623 normalized response texts** overlap the pre-existing frozen Stage-1 75,783-row public pool. This is *text* overlap, not a source/prompt independence proof.
+- Independently downloaded the original public source files (Actions 42065925337). alessandrolair original: 3,866 rows / 12 labels / 3 multi-label families, SHA256 e98b1924269c30116f50623052f7fc4ea6148f7575d2fe483c9bd899b4ea2e21, zero exact normalized Stage-1 overlap; per-row Kaggle Benchmarks proxy slug but no independently verified served backend response. elliotthankinson pool_v8j_add original: 8,347 rows / 7 labels, SHA256 e8aeafcd75b9832c297324da360051a48fec3b58d1d8cfe251e03c2558f40185, zero exact normalized Stage-1 response or exact prompt_key overlap; **only two qualifying sibling families** (GLM and GPT), not three. Other batches require separate provenance audit before 3-family admission.
+- trnhip original README explicitly admits served-model ID was not recorded; aswathvanan reuses other public prompt banks. Neither qualifies as an independent full strict holdout merely because of zero exact response overlap.
+- Potential independent source pair: alessandrolair plus correctly audited sub-batches of elliotthankinson, with unknown cross-source prompt equivalence, API served-model validation, and Stage-1 *training-source* independence at prompt-bank level. No final two-source lock exists.
+- **No Stage-1 A1 LoRA embedding extraction, readout fitting, statistical assessment, additional GPU training, or Kaggle competition submission happened.** Real BA delta remains UNKNOWN. The readout evaluator must not be run on fake or spent holdout material.
+
+Canonical details / hashes / source evidence: SOURCE_ADMISSION.md. The next necessary scientific dependency is a defensible pair of fully source/prompt-disjoint, serving-ID-traceable corpora and private frozen checkpoint embeddings; only then run the previously fixed paired experiment. Do not loosen the preregistered three-family/source conditions just to obtain a result.
