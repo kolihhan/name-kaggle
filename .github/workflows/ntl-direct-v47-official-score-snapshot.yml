@@ -1,0 +1,35 @@
+name: NTL V47 Official Score Snapshot No GPU
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-direct-v47-official-score-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Query latest actual official submission and detail
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle competitions submissions name-that-llm -v -q > /tmp/submissions.csv
+          python - <<'PY'
+          import csv,json,subprocess
+          r=list(csv.DictReader(open('/tmp/submissions.csv')))
+          assert r, 'No submissions'
+          r.sort(key=lambda d:int(d['ref']),reverse=True)
+          print('MY_SUBMISSIONS_TOTAL',len(r),flush=True)
+          for x in r[:4]:
+              print('LATEST_OFFICIAL_SUBMISSION',json.dumps({k:x.get(k) for k in ('ref','description','status','publicScore','privateScore','date')},sort_keys=True),flush=True)
+          newest=r[0]['ref']
+          d=subprocess.run(['kaggle','competitions','submission',newest],capture_output=True,text=True,timeout=80)
+          print('DETAIL_EXIT_CODE',d.returncode,flush=True)
+          print('DETAIL_RESPONSE',(d.stdout+'\n'+d.stderr)[-1400:],flush=True)
+          PY
