@@ -1,0 +1,26 @@
+name: NTL Stop Stale V47 Preflight Attempts (No Kaggle Operations)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-stop-stale-attempts.yml]
+permissions:
+  contents: read
+jobs:
+  cancel-old-stuck-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    concurrency:
+      group: ntl-lightning-v47-full-preflight-submit-20261105
+      cancel-in-progress: true
+    steps:
+      - name: Cancel stale v3 group without Kaggle operation
+        run: echo "Stop stale polling runs that can confuse old canary output with full preflight"
+  cancel-pending-v4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    concurrency:
+      group: ntl-lightning-v47-reuse-private-canary-20261105
+      cancel-in-progress: true
+    steps:
+      - name: Cancel pending v4 group without Kaggle operation
+        run: echo "Stop queued duplicate preflight attempts while GPU quota is exhausted"
