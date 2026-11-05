@@ -20,7 +20,7 @@ import time
 SOURCE = "lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble"
 VERSION = "47"
 UPSTREAM_SHA256 = "be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d"
-PREFLIGHT = "kolihhan/ntl-lightning-v47-genuine-preflight-20261105"
+PREFLIGHT = "kolihhan/ntl-private-permission-canary-20261105"
 DESCRIPTION = "NTL Lightning V47 exact public source after full-sample inference gate 20261105"
 BASELINE_REF = 57985641
 LABELS = {
@@ -111,14 +111,18 @@ def prepare_private_full_sample():
     proof_code = """
 import json, hashlib, pathlib, pandas as pd
 p = pathlib.Path('/kaggle/working/submission.parquet')
-t = pd.read_csv('/kaggle/input/competitions/name-that-llm/test.csv', dtype={'id':str})
+possible = [
+    pathlib.Path('/kaggle/input/name-that-llm/test.csv'),
+    pathlib.Path('/kaggle/input/competitions/name-that-llm/test.csv'),
+]
+test_path = next((x for x in possible if x.is_file()), None)
+assert test_path is not None, 'Official competition test.csv is not mounted'
+t = pd.read_csv(test_path, dtype={'id':str})
 s = pd.read_parquet(p)
-allowed = {
-    'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra',
-    'gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.7-flash',
-    'gemini-3.8-flash','claude-fable-5','claude-opus-4-6','claude-opus-4-8',
-    'claude-opus-5','claude-sonnet-5','qwen3.8-max','glm-5.3','glm-5.3-flash','kimi-k3'
-}
+train_path = test_path.with_name('train.csv')
+assert train_path.is_file(), 'Official competition training labels are not mounted'
+allowed = set(pd.read_csv(train_path, usecols=['model'])['model'].dropna().astype(str))
+assert len(allowed) == 18, 'Expected 18 exact official labels'
 assert preview is False, 'known-fixture shortcut was used'
 assert p.is_file(), 'missing submission.parquet'
 assert list(s.columns) == ['id','model'], list(s.columns)
@@ -157,7 +161,7 @@ print('OFFICIAL_SAMPLE_FULL_INFERENCE_PASS',json.dumps(proof,sort_keys=True),flu
     # Do not retain the original author's numeric Kaggle notebook identity.
     md.pop("id_no", None)
     md["id"] = PREFLIGHT
-    md["title"] = "NTL Lightning V47 Genuine Preflight 20261105"
+    md["title"] = "NTL Private Permission Canary 20261105"
     md["is_private"] = True
     md["enable_internet"] = False
     md["enable_gpu"] = True
@@ -168,18 +172,21 @@ print('OFFICIAL_SAMPLE_FULL_INFERENCE_PASS',json.dumps(proof,sort_keys=True),flu
 
 
 def run_or_reuse_preflight(folder):
+    # This dedicated canary was created and advanced from V1 to V5 to
+    # validate SaveKernel permission for the exact full V47 source families.
+    # Upgrade it exactly once from a known existing private-kernel identity.
     existing = cli("kernels", "status", PREFLIGHT, check=False)
-    if existing.returncode == 0:
-        log("EXISTING_PREFLIGHT_FOUND_NO_DUPLICATE_PUSH", (existing.stdout + existing.stderr)[-300:])
-    else:
-        p = cli(
-            "kernels", "push", "-p", str(folder),
-            "--accelerator", "NvidiaTeslaT4", "--timeout", "32400",
-            check=False,
-        )
-        log("PRIVATE_PREFLIGHT_PUSH_OUTPUT", (p.stdout + p.stderr)[-1500:])
-        if p.returncode != 0:
-            raise RuntimeError("FULL_SAMPLE_PREFLIGHT_PUSH_FAILED: " + (p.stderr + p.stdout)[-1200:])
+    if existing.returncode != 0:
+        raise RuntimeError("Known private canary missing; refuse to create a fresh ambiguous kernel")
+    log("KNOWN_PRIVATE_CANARY_STATUS", (existing.stdout + existing.stderr)[-350:])
+    p = cli(
+        "kernels", "push", "-p", str(folder),
+        "--accelerator", "NvidiaTeslaT4", "--timeout", "32400",
+        check=False,
+    )
+    log("PRIVATE_PREFLIGHT_PUSH_OUTPUT", (p.stdout + p.stderr)[-1500:])
+    if p.returncode != 0:
+        raise RuntimeError("FULL_SAMPLE_PREFLIGHT_UPDATE_FAILED: " + (p.stderr + p.stdout)[-1200:])
     # Kaggle may queue GPU work; a successful push is NOT a successful inference.
     deadline = time.monotonic() + 200 * 60
     prev = None
