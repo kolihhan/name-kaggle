@@ -32,3 +32,13 @@ jobs:
                   if re.search(r'preview|fixture|fast.commit|smoke|len\(test\)|len\(TE\)|submission.parquet|to_parquet|if .*(test|size|rows)|run_all|if not|return True|source_cache|model.fit|\.fit\(',line,re.I):
                       print('CODE_CONTEXT',i,j,' | '.join(x[:260] for x in lines[max(0,j-1):min(len(lines),j+2)]),flush=True)
           PY
+      - name: Preserve Apache-2 public V14 code only (no official data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-public-lightning-v14-source
+          path: |
+            /tmp/v14/*.ipynb
+            /tmp/v14/kernel-metadata.json
+          retention-days: 1
+          if-no-files-found: error
