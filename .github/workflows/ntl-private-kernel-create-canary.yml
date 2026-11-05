@@ -1,0 +1,39 @@
+name: NTL Private Kaggle Kernel Save Permission Canary
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-private-kernel-create-canary.yml]
+permissions: {contents: read}
+jobs:
+  minimal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Try exactly one new private no-input CPU kernel
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          d=pathlib.Path('/tmp/ntl-canary');d.mkdir()
+          nb={'cells':[{'cell_type':'code','execution_count':None,'metadata':{},'outputs':[],'source':['print("NTL_KAGGLE_CANARY_NO_DATA")\n']}],
+              'metadata':{'kernelspec':{'name':'python3','display_name':'Python 3'}},'nbformat':4,'nbformat_minor':5}
+          (d/'canary.ipynb').write_text(json.dumps(nb))
+          md={'id':'kolihhan/ntl-private-permission-canary-20261105',
+              'title':'NTL Private Permission Canary 20261105',
+              'code_file':'canary.ipynb','language':'python','kernel_type':'notebook',
+              'is_private':True,'enable_gpu':False,'enable_internet':False,
+              'dataset_sources':[],'kernel_sources':[],'competition_sources':[],'model_sources':[]}
+          (d/'kernel-metadata.json').write_text(json.dumps(md))
+          PY
+          set +e
+          kaggle kernels push -p /tmp/ntl-canary >/tmp/ntl-canary-out.txt 2>&1
+          status=$?
+          set -e
+          echo "MINIMAL_PRIVATE_SAVE_EXIT_CODE $status"
+          cat /tmp/ntl-canary-out.txt | tail -12
+          test "$status" -eq 0
