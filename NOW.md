@@ -1,5 +1,14 @@
 # NOW
 
+## Sibling probe continuation — real external-source audit, NOT scientific model PASS (2026-11-06)
+
+**Verified:** GitHub Actions 42063920056, 42064170317, 42064722943, 42065056290, 42065237791, 42065527178, and 42065925337 read actual Kaggle public external dataset metadata/README/Parquets. Current crtproduction pool is 212,623 rows / 60 listed upstream sources; 61,681 exact normalized responses overlap the frozen Stage-1 pool (75,783 rows). Candidate original alessandrolair file 3,866 rows / 12 labels / 3 sibling families, 0 exact text overlaps; original elliotthankinson v8j 8,347 rows / 7 labels / only 2 sibling families, 0 exact text or exact prompt_key overlaps. These figures do NOT establish served-model identity or full prompt/source independence.
+
+**Decision:** **ENGINEERING PASS / REAL DATA RECON DONE / STRICT HOLDOUT NOT ADMITTED**. No new classifier BA, LoRA embeddings, GPU training, or Kaggle competition submission. Original upstream README shows trnhip lacks returned served ID and aswathvanan uses shared public prompt banks; they are unsuitable as fully strict holdouts. Closest provisional pair is alessandrolair with appropriately vetted elliotthankinson sub-batches, but cannot open the frozen three-family/two-independent-source gate yet.
+
+Source of truth: artifacts/research/sibling-information-probe-v1/SOURCE_ADMISSION.md and RESULT.md. Source hashes and execution links recorded there. Next dependency: verify exact prompt-bank disjointness, returned/served model provenance and complete three-family coverage *before* extracting private Stage-1 A1 embeddings. Do not use official OOF, public leaderboard, or synthetic CI as evidence of new accuracy.
+
+
 ## Independent sibling-information probe (2026-11-05) — ENGINEERING PASS / DATA BLOCKED
 
 Research branch: research/sibling-information-probe-20261105. This is **not** the existing score-copy or DCT-v3 lineage. Frozen experiment contract / code / negative control / data source reconnaissance at artifacts/research/sibling-information-probe-v1/. GitHub Actions 42059420744: **6 synthetic tests PASS**, no official competition rows or Kaggle submission. No real frozen LoRA embeddings from **two genuinely independent source families** have passed admission; therefore **NO new balanced-accuracy result and no new competition submission**. Next: audited source-level provenance & served-model check, private embedding extraction from fixed Stage-1 A1, then single predeclared CPU readout comparison. Do not claim any improvement from current synthetic CI.
