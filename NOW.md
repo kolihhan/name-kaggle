@@ -1,5 +1,12 @@
 # NOW
 
+## Verified Kaggle V47 public score — 2026-11-05 18:51 MYT
+
+**OFFICIAL SCORING SUCCESS.** Fresh authenticated Kaggle competition API detail returned `Submission Ref: 58008463`, `Status: COMPLETE`, and **`Public Score: 0.666`** at `2026-11-05T10:51:53Z` (18:51 MYT), read-only GitHub Actions [42014195583](https://github.com/kolihhan/name-kaggle/actions/runs/42014195583). The authenticated submissions listing independently matches the exact ref and `SubmissionStatus.COMPLETE`, `publicScore: "0.666"`, newest ref among 10 records. **Own best Public score is now 0.666**, vs previous own best 0.520 (**+0.146 absolute; +28.08% relative**).
+
+This was the original already-published public Lightning V47 Notebook `lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble/47`, source SHA256 `be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d`, directly submitted to Kaggle code competition via `kaggle competitions submit -k ... -v 47` in [41963828666](https://github.com/kolihhan/name-kaggle/actions/runs/41963828666). **No training or Kaggle GPU notebook push by us.** Do not claim this is an independently invented model or the score was achieved by prior experimental repo candidate; attribution remains with the original public Notebook author. Kaggle official public-scoring is proven; private score remains blank/unavailable. **No need for another duplicate submit, GPU reset wait, or retry.** The previous PENDING snapshot is superseded.
+
+
 ## PIC official DIRECT submission — 2026-11-05 11:48 MYT
 
 **Confirmed new competition submission ID: `58008463`**, created `2026-11-05 03:48:15.950000 UTC` from exact pre-existing published upstream Notebook `lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble/47`. The source SHA-256 `be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d` was checked before submit. The official Kaggle `kaggle competitions submit -k ... -v 47 -f submission.parquet` API accepted the submission. Authenticated read-only [run 41963909784](https://github.com/kolihhan/name-kaggle/actions/runs/41963909784) shows **10 total official submissions**, latest `58008463 / SubmissionStatus.PENDING / Public Score empty` and detailed `kaggle competitions submission 58008463` confirms `PENDING`. The exact submission execution is [GitHub Actions 41963828666](https://github.com/kolihhan/name-kaggle/actions/runs/41963828666), which polls official score. **Own scored best remains 0.520 until an actual new nonblank score appears.** No score comparison yet; published upstream 0.666 is NOT ours.
