@@ -1,0 +1,87 @@
+name: NTL V47 SaveKernel Source-Family Bisect (No Competition Submission)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-savekernel-source-bisect.yml]
+permissions: {contents: read}
+jobs:
+  source-bisect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Test each V47 input family with unchanged private CPU canary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,subprocess,time
+          d=pathlib.Path('/tmp/v47-source-families');d.mkdir()
+          nb={'cells':[{'cell_type':'code','execution_count':None,'metadata':{},'outputs':[],'source':['print("V47_INPUT_FAMILY_CANARY")\n']}],
+              'metadata':{'kernelspec':{'name':'python3','display_name':'Python 3'}},'nbformat':4,'nbformat_minor':5}
+          (d/'canary.ipynb').write_text(json.dumps(nb))
+          models=[
+            'qwen-lm/qwen-3/Transformers/14b-base/1',
+            'qwen-lm/qwen-3/Transformers/8b-base/1',
+            'qwen-lm/qwen-3/Transformers/4b-base/1',
+            'qwen-lm/qwen2.5/Transformers/7b/1',
+            'qwen-lm/qwen2.5/Transformers/14b/1']
+          datasets=[
+            'dhruvtibarewal/nlm-l24-adapters',
+            'lightningv08/ntl-olmo2-native24-final-inference-assets',
+            'seyitkaangunes/ntl-extra-api-passages',
+            'abdullah1afify/ntl-generations',
+            'dophuchung/ntl-proxy-generations',
+            'zbigniewkirchner/ntl-qwen3-8b-lora-claude-head',
+            'josephadamski91/ntl-atlas-qwen3-8b-v1',
+            'lucasboesen/ntl-free-proxy-generations',
+            'kirilltym/ntl-spectral-style-heads-paired-4404',
+            'dhruvtibarewal/nlm-enc-v5',
+            'nishantdahal/ntl-two-stage-lora',
+            'nishantdahal/ntl-handwriting-blend',
+            'dhruvtibarewal/nlm-l24-adapters-v5',
+            'prvsiyan/prvsiyans-extended-name-that-llm-dataset',
+            'bbucxi/qwen35-9b-safetensors',
+            'pjmathematician/ultrabert-380m-ntl']
+          kernels=[
+            'lucasboesen/name-that-llm-glm4-9b-trunc25',
+            'lucasboesen/name-that-llm-extract-encoders2',
+            'lucasboesen/name-that-llm-electra-large-weights',
+            'lucasboesen/name-that-llm-desklib-weights',
+            'lucasboesen/name-that-llm-train-lora24-s7',
+            'lucasboesen/name-that-llm-train-tokattn',
+            'lucasboesen/name-that-llm-train-tokattn2',
+            'vnton37nguyn/ntl-train-lora-qwen25-instyle']
+          base={'id':'kolihhan/ntl-private-permission-canary-20261105',
+                'title':'NTL Private Permission Canary 20261105',
+                'code_file':'canary.ipynb','language':'python','kernel_type':'notebook',
+                'is_private':True,'enable_gpu':False,'enable_internet':False,
+                'dataset_sources':[],'kernel_sources':[],'competition_sources':[],'model_sources':[]}
+          stages=[
+            ('model_sources',[],[],models,[]),
+            ('model_and_datasets',datasets,[],models,[]),
+            ('all_public_sources',datasets,kernels,models,[]),
+            ('all_including_competition',datasets,kernels,models,['name-that-llm']),
+          ]
+          for stage,ds,ks,ms,cs in stages:
+              md=dict(base,dataset_sources=ds,kernel_sources=ks,model_sources=ms,competition_sources=cs)
+              (d/'kernel-metadata.json').write_text(json.dumps(md))
+              p=subprocess.run(['kaggle','kernels','push','-p',str(d)],capture_output=True,text=True,timeout=90)
+              err=(p.stderr+'\n'+p.stdout).strip()
+              print('SAVEKERNEL_FAMILY',stage,'status',p.returncode,'datasets',len(ds),'kernels',len(ks),'models',len(ms),'competition',len(cs),flush=True)
+              print('SAVEKERNEL_RESPONSE',stage,err[-550:],flush=True)
+              if p.returncode!=0:
+                  print('FIRST_BLOCKING_STAGE',stage,flush=True)
+                  break
+              # Wait for the tiny CPU job to complete before updating this same Notebook.
+              for _ in range(40):
+                  st=subprocess.run(['kaggle','kernels','status',base['id']],capture_output=True,text=True,timeout=30)
+                  out=st.stdout+st.stderr
+                  if 'KernelWorkerStatus.COMPLETE' in out:break
+                  if 'KernelWorkerStatus.ERROR' in out:
+                      print('CANARY_RUNTIME_ERROR',stage,flush=True);break
+                  time.sleep(5)
+          PY
