@@ -1,0 +1,105 @@
+name: NTL V47 Direct Existing-Notebook Competition Submission (No GPU Push)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-direct-official-submit-20261105.yml]
+permissions:
+  contents: read
+concurrency:
+  group: name-that-llm-v47-direct-official-submit-once-20261105
+  cancel-in-progress: false
+jobs:
+  competition-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      CANDIDATE: lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble
+      VERSION: '47'
+      DESCRIPTION: 'Lightning V47 existing published notebook direct official submit 20261105 no training'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI (no GPU, no training)
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Verify pinned public source, check My Submissions, submit exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle credentials not configured}"
+          mkdir -p /tmp/ntl-v47-public
+          kaggle kernels pull "$CANDIDATE/$VERSION" -p /tmp/ntl-v47-public -m >/dev/null
+          python - <<'PY'
+          import pathlib,hashlib,json,os
+          d=pathlib.Path('/tmp/ntl-v47-public')
+          files=list(d.glob('*.ipynb'))
+          assert len(files)==1
+          digest=hashlib.sha256(files[0].read_bytes()).hexdigest()
+          assert digest=='be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d',digest
+          md=json.loads((d/'kernel-metadata.json').read_text())
+          assert md['id']==os.environ['CANDIDATE']
+          assert md.get('enable_internet') is False
+          assert md.get('competition_sources')==['name-that-llm']
+          print('PUBLIC_SOURCE_SHA256_VERIFIED',digest,flush=True)
+          PY
+          kaggle competitions submissions name-that-llm -v -q > /tmp/ntl-v47-before.csv
+          python - <<'PY'
+          import csv,json,os
+          with open('/tmp/ntl-v47-before.csv',newline='') as f:r=list(csv.DictReader(f))
+          assert r,'Kaggle My Submissions returned no records'
+          ids={int(x['ref']) for x in r}
+          assert 57985641 in ids,'Previous known submission not found'
+          assert max(ids)==57985641,'Newer submission exists: do not duplicate'
+          assert not any(os.environ['DESCRIPTION'] in (x.get('description') or '') for x in r),'Same V47 official submission exists already'
+          print('PRE_SUBMIT_RECORDS',len(r),'LAST_REF',max(ids),flush=True)
+          PY
+          echo 'OFFICIAL_DIRECT_SUBMIT_START; no kernels push or GPU sessions'
+          kaggle competitions submit name-that-llm -k "$CANDIDATE" -v "$VERSION" -f submission.parquet -m "$DESCRIPTION" 2>&1 | tee /tmp/ntl-v47-direct-submit-result.txt
+          python - <<'PY'
+          import re,pathlib
+          s=pathlib.Path('/tmp/ntl-v47-direct-submit-result.txt').read_text()
+          m=re.search(r'Submission ref:\s*(\d+)',s)
+          assert m,'No accepted Kaggle official competition submission ID'
+          ref=m.group(1)
+          pathlib.Path('/tmp/ntl-v47-official-id.txt').write_text(ref)
+          print('OFFICIAL_COMPETITION_SUBMISSION_ID',ref,flush=True)
+          PY
+      - name: Poll official My Submissions for actual Public Score or failure (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,pathlib,subprocess,time,os
+          target=pathlib.Path('/tmp/ntl-v47-official-id.txt').read_text().strip()
+          description=os.environ['DESCRIPTION']
+          seen=None
+          for n in range(36):
+              p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],capture_output=True,text=True,timeout=120)
+              if p.returncode:
+                  raise RuntimeError('Submission polling failed: '+p.stderr[-500:])
+              matches=[r for r in csv.DictReader(p.stdout.splitlines()) if r.get('ref')==target]
+              if len(matches)!=1:
+                  raise RuntimeError('Accepted competition submission missing: '+target)
+              r=matches[0]
+              if r.get('description')!=description:
+                  raise RuntimeError('Submission description mismatch: possible incorrect reference')
+              state=(r.get('status'),r.get('publicScore'))
+              if state!=seen:
+                  print('OFFICIAL_SCORE_POLL',json.dumps({k:r.get(k) for k in ['ref','status','publicScore','privateScore','date','description']},sort_keys=True),flush=True)
+                  seen=state
+              if r.get('publicScore'):
+                  score=float(r['publicScore'])
+                  print('OFFICIAL_ACTUAL_PUBLIC_SCORE',score,'DELTA_VS_0520',round(score-0.520,3),'REF',target,flush=True)
+                  break
+              if 'ERROR' in (r.get('status') or '').upper():
+                  print('OFFICIAL_SUBMISSION_TERMINAL_ERROR',target,r.get('status'),flush=True)
+                  break
+              if n==35:
+                  print('OFFICIAL_SUBMISSION_NO_SCORE_YET',target,'LAST_STATUS',r.get('status'),flush=True)
+                  break
+              time.sleep(40)
+          detail=subprocess.run(['kaggle','competitions','submission',target],capture_output=True,text=True,timeout=90)
+          print('OFFICIAL_DETAIL_EXIT',detail.returncode,flush=True)
+          print('OFFICIAL_DETAIL_BODY',(detail.stdout+'\n'+detail.stderr)[-1600:],flush=True)
+          PY
