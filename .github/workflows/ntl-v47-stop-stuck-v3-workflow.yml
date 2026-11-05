@@ -1,0 +1,17 @@
+name: NTL Cancel Stuck V47 Old Preflight (No Kaggle)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-stop-stuck-v3-workflow.yml]
+permissions:
+  contents: read
+concurrency:
+  group: ntl-lightning-v47-full-preflight-submit-20261105
+  cancel-in-progress: true
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Record stop
+        run: echo "Cancel old V47 preflight polling process; no new Kaggle operations"
