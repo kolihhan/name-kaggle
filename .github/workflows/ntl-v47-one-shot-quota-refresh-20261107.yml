@@ -1,7 +1,6 @@
 name: NTL V47 One-Shot Kaggle Quota Refresh
 on:
-  schedule:
-    - cron: '17 0 7 11 *'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
