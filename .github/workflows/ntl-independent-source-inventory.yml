@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: test ! -e data/train.csv && test ! -e data/test.csv
-      - run: python -m pip install --disable-pip-version-check kaggle==2.2.5
+      - run: python -m pip install --disable-pip-version-check kaggle==2.2.5 six==1.17.0
       - name: List public dataset metadata, no content download
         run: python scripts/audit_sibling_dataset_inventory.py --out /tmp/sibling-source-inventory.json
       - uses: actions/upload-artifact@v4
