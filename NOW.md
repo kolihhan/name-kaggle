@@ -1,5 +1,20 @@
 # NOW
 
+## PIC execution checkpoint — 2026-11-05 MYT: GPU hard block, one-shot continuation armed
+
+**Formal competition result:** No new accepted competition submission. Authenticated Kaggle [snapshot Actions 41961137677](https://github.com/kolihhan/name-kaggle/actions/runs/41961137677) still has **9 total** submissions, newest `57985641` with `SubmissionStatus.COMPLETE` and both score fields empty. Best actually scored own submission remains **0.520**; delta from proposed V47 is **unknown**, not +0.146.
+
+**Current Kaggle GPU quota (authoritative):** `GPU used 31.79h | remaining 0.00h | total 30.00h | refreshAt 2026-11-07T00:00:00+00:00` (**2026-11-07 08:00 Asia/Kuala_Lumpur**). [Quota log 41961137677](https://github.com/kolihhan/name-kaggle/actions/runs/41961137677). Do **not** burn more pushes before quota restoration.
+
+**Exact V47** remains `lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble/47` with pinned notebook SHA-256 `be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d`. Original upstream-reported 0.666 is **not** this team's score. Full-inference proof is still **missing**; no official submit.
+
+**Defect fixed, regression tested:** [Actions 41956709567](https://github.com/kolihhan/name-kaggle/actions/runs/41956709567) observed Kaggle CLI return zero while printing `Kernel push error: Maximum weekly GPU quota of 30.00 hours reached.`. The previous script incorrectly continued against an old `KernelWorkerStatus.COMPLETE` and failed `Missing proof or parquet: proof=0 parquet=0`. `scripts/ntl_v47_full_preflight_submit_once.py` now requires a new `Kernel version N successfully pushed` acknowledgement, fails closed on quota/403 and validates predicted labels against the 18 actual official labels rather than an assumed hardcoded set. [Actions 41960701231](https://github.com/kolihhan/name-kaggle/actions/runs/41960701231): five zero-network guard tests PASS. No training executed.
+
+**Stale runs canceled:** Pending `41956662951` and stuck older `41955673124` both report `cancelled`, via read-only/no-Kaggle GitHub concurrency stopper workflows `41960971704` and `41961054354`. This prevents old scripts from attempting duplicate pushes when quota refreshes.
+
+**One-time continuation configured on default main branch:** [`.github/workflows/ntl-v47-one-shot-quota-refresh-20261107.yml`](https://github.com/kolihhan/name-kaggle/blob/main/.github/workflows/ntl-v47-one-shot-quota-refresh-20261107.yml), added at commit `966e06dc0b77a1ca9f9a382c62467f33e7cb6606`, is scheduled for **2026-11-07 00:17 UTC / 08:17 MYT**. It checks the exact 2026 date, live Kaggle GPU quota (requires >=4h), sparse-checks-out the tested script pinned at `f05ebd6d3852663bd903d2e4ee6b592fd2c02f8b`, runs no-network tests, and only then attempts genuine private GPU inference and sample `submission.parquet` validation. **Only if the gate passes**, that script calls the real Kaggle competition submit API **once**, deduplicates against My Submissions, and polls for nonblank Public Score or reports the raw failure. The annual cron entry is inert on other years because of the exact-date guard; it is not evidence that a future execution or score succeeded. Do not trigger any parallel attempts and do not claim success in advance. ChatGPT scheduled-task limit was full (5/5), so no separate ChatGPT automation was created.
+
+
 ## PIC score attempt — 2026-11-05 10:29 MYT (no new Public score)
 
 **Actual Kaggle competition submission: NOT CREATED.** Most recent authenticated `My Submissions` snapshot [Actions 41863313129](https://github.com/kolihhan/name-kaggle/actions/runs/41863313129) contains exactly 9 records, latest `57985641` (`COMPLETE`, both score fields blank), previous `57983359` (`COMPLETE`, both blank; UI reports `Notebook Threw Exception`). Best scored own result remains `0.520` (`57908683` and its duplicate retries). Difference for a new candidate is **unknown** until Kaggle actually scores a new competition submission.
