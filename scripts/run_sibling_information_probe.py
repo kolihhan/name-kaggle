@@ -216,6 +216,21 @@ def evaluate(train: dict, holdout: dict, lock: dict) -> dict:
         per_class[label] = {"flat_recall": before, "conditional_recall": after, "delta": after - before}
         if before >= .25 and after < before - .15:
             safety_veto.append(label)
+    def error_breakdown(predictions):
+        correct = predictions == truth
+        family_correct = np.fromiter(
+            (family(a) == family(b) for a, b in zip(predictions, truth)),
+            dtype=bool, count=len(truth),
+        )
+        return {
+            "exact_accuracy": float(np.mean(correct)),
+            "family_accuracy": float(np.mean(family_correct)),
+            "within_correct_family_accuracy": (
+                float(np.mean(correct[family_correct])) if family_correct.any() else None
+            ),
+            "same_family_errors": int(np.sum(~correct & family_correct)),
+            "cross_family_errors": int(np.sum(~family_correct)),
+        }
     result = {
         "status": "PASS" if (treat_ba > base_ba and ci[0] > 0
                             and sum(s["delta"] > 0 for s in by_source.values()) >= 2
@@ -228,6 +243,11 @@ def evaluate(train: dict, holdout: dict, lock: dict) -> dict:
         "delta": treat_ba - base_ba, "prompt_bootstrap_95ci": ci,
         "bootstrap_valid_replicates": valid_replicates,
         "per_source": by_source, "per_class": per_class, "safety_veto": safety_veto,
+        "flat_error_breakdown": error_breakdown(base),
+        "treatment_error_breakdown": error_breakdown(treat),
+        "top1_family_switches": int(sum(
+            family(a) != family(b) for a, b in zip(base, treat)
+        )),
         "holdout_sha256": lock["holdout_sha256"],
         "checkpoint_manifest_sha256": lock["checkpoint_manifest_sha256"],
     }
