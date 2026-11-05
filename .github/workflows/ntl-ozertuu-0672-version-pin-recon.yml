@@ -1,0 +1,73 @@
+name: NTL Pin Ozertuu 0.672 Existing Published Notebook Version (Read Only)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-ozertuu-0672-version-pin-recon.yml]
+permissions: {contents: read}
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      REF: ozertuu/0-672-dual-svc-calibrated-blend-proven-3-lora
+      EXPECTED_SOURCE_SHA: 05367a7f8efd41b2f4959505bc7e2e07a5978b85ee426c08bb5969c60945e2c2
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Check exact upstream score fields, version, pinned source and My Submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing Kaggle API token}"
+          mkdir -p /tmp/ntl0672
+          kaggle kernels pull "$REF" -p /tmp/ntl0672 -m >/dev/null
+          python - <<'PY'
+          import csv,json,pathlib,hashlib,subprocess,os
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          sha=hashlib.sha256(next(pathlib.Path('/tmp/ntl0672').glob('*.ipynb')).read_bytes()).hexdigest()
+          assert sha == os.environ['EXPECTED_SOURCE_SHA'],('Source changed since previous audit',sha)
+          meta=json.loads((pathlib.Path('/tmp/ntl0672')/'kernel-metadata.json').read_text())
+          assert meta['id']==os.environ['REF']
+          assert meta.get('competition_sources')==['name-that-llm']
+          assert meta.get('enable_internet') is False
+          print('PINNED_LATEST_SOURCE_SHA',sha,flush=True)
+          print('PINNED_PUBLIC_METADATA',json.dumps({k:meta.get(k) for k in ['id','id_no','docker_image','machine_shape','enable_gpu']},sort_keys=True),flush=True)
+          api=KaggleApi();api.authenticate()
+          try:
+              r=api.kernels_list(user='ozertuu',page_size=100)
+              x=[v for v in r if '0-672-dual-svc-calibrated-blend-proven-3-lora' in str(getattr(v,'ref',''))]
+              if x:
+                  v=x[0];o={}
+                  for name in ['ref','title','best_public_score','bestPublicScore','score','version_number','versionNumber','last_run_time','lastRunTime','total_votes']:
+                      if hasattr(v,name):
+                          val=getattr(v,name)
+                          o[name]=str(val)
+                  print('UPSTREAM_KERNEL_LIST_METADATA',json.dumps(o,sort_keys=True),flush=True)
+              else:print('UPSTREAM_KERNEL_LIST_NO_MATCH',flush=True)
+          except Exception as e:
+              print('UPSTREAM_KERNEL_LIST_ERROR',type(e).__name__,str(e)[:250],flush=True)
+          sub=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],capture_output=True,text=True,check=True,timeout=40)
+          rows=list(csv.DictReader(sub.stdout.splitlines()));rows.sort(key=lambda x:int(x['ref']),reverse=True)
+          print('OWN_LATEST_SUBMISSION',json.dumps({k:rows[0].get(k) for k in ['ref','description','publicScore','status','date']},sort_keys=True),flush=True)
+          print('OWN_SUBMISSION_COUNT',len(rows),flush=True)
+          PY
+          echo 'PINNING_VERSIONS_READ_ONLY'
+          for v in $(seq 1 80); do
+            mkdir -p "/tmp/pin-${v}"
+            if kaggle kernels pull "${REF}/${v}" -p "/tmp/pin-${v}" -m >/dev/null 2>/tmp/pinerr; then
+              OBS=$(python -c "import pathlib,hashlib;print(hashlib.sha256(next(pathlib.Path('/tmp/pin-${v}').glob('*.ipynb')).read_bytes()).hexdigest())")
+              echo "VERSION_SHA ${v} ${OBS}"
+              if [ "$OBS" = "$EXPECTED_SOURCE_SHA" ]; then
+                echo "PINNED_EXACT_VERSION ${v} ${OBS}"
+                exit 0
+              fi
+            else
+              echo "VERSION_NOT_FOUND ${v} $(tail -c 180 /tmp/pinerr)"
+              if [ "$v" -gt 2 ]; then break; fi
+            fi
+          done
+          echo 'PIN_NOT_FOUND; refuse inferred version or submission' >&2
+          exit 1
