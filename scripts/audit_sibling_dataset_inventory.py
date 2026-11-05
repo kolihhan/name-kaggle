@@ -12,6 +12,10 @@ CANDIDATES = [
     "olegzholobov/name-that-llm-response-corpus",
     "nishantdahal/ntl-handwriting-blend",
     "maniceet/name-that-llm-openrouter-openai-generations",
+    "trnhip/ntl-api-gen",
+    "elliotthankinson/ntl-exact-gens-v3",
+    "aswathvanan/ntl-proxy-passages",
+    "alessandrolair/ntl-kaggle-benchmarks-generated-passages",
 ]
 
 
