@@ -34,13 +34,13 @@ jobs:
           nb=json.loads(n[0].read_text())
           codes=[''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in nb['cells'] if c['cell_type']=='code']
           code='\n'.join(codes)
-          rx=r'(?m)^\\s*preview\\s*=\\s*emit_known_preview\\(DATA\\s*,\\s*None\\s*,\\s*OUTPUT\\)\\s*$'
+          rx=r'(?m)^\s*preview\s*=\s*emit_known_preview\(DATA\s*,\s*None\s*,\s*OUTPUT\)\s*$'
           previews=len(re.findall(rx,code))
-          print('EXACT_SOURCE',json.dumps({'ref':os.environ['SOURCE'],'version':os.environ['VERSION'],'sha256':hashlib.sha256(n[0].read_bytes()).hexdigest(),'code_sha256':hashlib.sha256(code.encode()).hexdigest(),'notebook_id':md.get('id'),'code_cells':len(codes),'preview_switches':previews,'enable_internet':md.get('enable_internet'),'enable_gpu':md.get('enable_gpu'),'competition_sources':md.get('competition_sources'),'dataset_sources_count':len(md.get('dataset_sources',[])),'kernel_sources_count':len(md.get('kernel_sources',[])),'model_sources_count':len(md.get('model_sources',[])),'has_ensemble_main':"RUNTIME/'ensemble.py'" in code,'has_to_parquet':'.to_parquet(' in code,'offline':md.get('enable_internet')==False,'has_training_backward':bool(re.search(r'\\.backward\\s*\\(|optimizer\\.step\\s*\\(|trainer\\.train\\s*\\(',code))},sort_keys=True))
+          print('EXACT_SOURCE',json.dumps({'ref':os.environ['SOURCE'],'version':os.environ['VERSION'],'sha256':hashlib.sha256(n[0].read_bytes()).hexdigest(),'code_sha256':hashlib.sha256(code.encode()).hexdigest(),'notebook_id':md.get('id'),'code_cells':len(codes),'preview_switches':previews,'enable_internet':md.get('enable_internet'),'enable_gpu':md.get('enable_gpu'),'competition_sources':md.get('competition_sources'),'dataset_sources_count':len(md.get('dataset_sources',[])),'kernel_sources_count':len(md.get('kernel_sources',[])),'model_sources_count':len(md.get('model_sources',[])),'has_ensemble_main':"RUNTIME/'ensemble.py'" in code,'has_to_parquet':'.to_parquet(' in code,'offline':md.get('enable_internet')==False,'has_training_backward':bool(re.search(r'\.backward\s*\(|optimizer\.step\s*\(|trainer\.train\s*\(',code))},sort_keys=True))
           assert md['id']==os.environ['SOURCE']
           assert md['enable_internet'] is False and md['enable_gpu'] is True
           assert md['competition_sources']==['name-that-llm']
           assert previews == 1, 'Cannot force exact V47 real inference: preview switch not uniquely identified'
-          assert not re.search(r'\\.backward\\s*\\(|optimizer\\.step\\s*\\(|trainer\\.train\\s*\\(',code), 'Contains train calls'
+          assert not re.search(r'\.backward\s*\(|optimizer\.step\s*\(|trainer\.train\s*\(',code), 'Contains train calls'
           print('V47_FULL_INFERENCE_PATCH_FEASIBLE')
           PY
