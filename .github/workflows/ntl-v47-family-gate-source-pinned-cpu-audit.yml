@@ -1,0 +1,45 @@
+name: NTL V47 Family Gate Source-Pinned CPU Audit (No Model or Competition Data)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths:
+      - .github/workflows/ntl-v47-family-gate-source-pinned-cpu-audit.yml
+      - scripts/audit_v47_family_gate_cpu.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-pinned-cpu-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - name: Checkout only audit script; never materialize repository competition data
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/audit_v47_family_gate_cpu.py
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU and Kaggle public-source requirements only
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0 "numpy>=1.26,<3" "scipy>=1.11,<2"
+      - name: Pull pinned public notebook source; do not run Kaggle kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing credentials}"
+          mkdir -p /tmp/ntl-v47-source
+          kaggle kernels pull lightningv08/0-666-qwen3-8-27b-lora-weighted-ensemble/47 -p /tmp/ntl-v47-source -m
+          python scripts/audit_v47_family_gate_cpu.py \
+            --notebook /tmp/ntl-v47-source/0-666-qwen3-8-27b-lora-weighted-ensemble.ipynb \
+            --json-output /tmp/ntl-v47-family-gate-invariants.json
+      - name: Save only aggregate synthetic test results (no Kaggle data)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-v47-synthetic-family-gate-proof
+          path: /tmp/ntl-v47-family-gate-invariants.json
+          retention-days: 30
+          if-no-files-found: error
