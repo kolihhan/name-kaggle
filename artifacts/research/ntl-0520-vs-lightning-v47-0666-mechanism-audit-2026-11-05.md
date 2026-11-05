@@ -78,7 +78,33 @@ These percentages concern the **top-level probability blend only**, not causal i
 - **REOPEN TRIGGER:** a separately approved, pre-registered disjoint-source/prompt experiment establishes an independently useful mechanism and resources are available.
 - **STATUS:** ACTIVE for this audit; does not permanently ban training or new model classes.
 
-### Highest-value next check (NOT executed)
+## Follow-up executed: disjoint paired-predictions availability gate — 2026-11-05
+
+**VERDICT: NOT TESTABLE FROM RETAINED ARTIFACTS; NOT an empirical V47 ablation.** We completed a targeted inspection and did not use GPU, fit models, read hidden test data, or make a competition submission.
+
+| Checked evidence | Exactly available | Can it support unbiased 0.520-vs-0.666 mechanism comparison? |
+|---|---|---|
+| Own original Gate-B Actions run `41398543856`, artifact `13125872633` (downloaded and ZIP contents verified this turn) | `gate_b_output/gate_b_candidate_oof.csv` and five fold-level prediction CSVs on all **2,699 official training rows** | **No.** This is repeatedly reused official OOF for our model, while the V47 and its upstream final checkpoints already use official train. V47 predictions on these rows would be in-sample/contaminated, not a fair paired holdout. |
+| Own original Gate-A Actions run `41333631967`, artifact `13094213203` (downloaded and ZIP contents verified) | **One aggregate JSON** `two_stage_lora24_gate_a.json` containing source/condition metrics, not individual predictions/logits/embeddings | **No.** No row-aligned labels and predictions for an actual paired test; those source groups also informed Stage-1 model selection. |
+| Published Lightning V47 source audit `42016381979`, artifact `13410085387` | Exact SHA-pinned public Notebook and metadata only; the Notebook source builds `core.npz`, `complementary.npy`, `pre-balance.npz`, `final-logits.npz` **at inference time** | **No.** Source code and output *recipes* are not independently labeled row-aligned evaluations. Public three-row fast preview uses a hardcoded fixture. There is no cached disjoint labeled component prediction matrix in this inspected source artifact. |
+| Project's frozen DCT-v3 transfer contract `artifacts/candidates/dct-temporal-fingerprint-v3/RESULT.md` | 14,506 external heldout rows by `alperen/hailey/willrice`, locked **for v3**; old source fingerprints and labels exist in its own specific contract | **Not presently.** The split's independence from **Lightning's** external training pool and trained heads is not proven, and no V47 predictions on it exist. Reusing the v3 split without checking source/prompt provenance would mistake one model's holdout for another's. |
+| Kaggle official submission `58008463` | Status COMPLETE and **Public 0.666**; previous independent submission Public 0.520 | **No.** Two aggregate metrics on a hidden Public-LB subset, with no per-example labels or counterfactual component scores, cannot separate more data from model diversity or family gates. |
+
+**Boundary:** This was a focused inventory of the listed repo and Actions artifacts and the exact published source, not an assertion that no other independent data or private checkpoints could exist anywhere. The necessary combination **(same independently labeled source rows, provable exclusion from every compared training/fitted artifact, and per-row component predictions for both models)** has **not been found**.
+
+### Exact-source CPU mechanism test (completed; NOT a scoring experiment)
+
+- Added reproducible `scripts/audit_v47_family_gate_cpu.py` and Actions workflow `.github/workflows/ntl-v47-family-gate-source-pinned-cpu-audit.yml`.
+- [GitHub Actions **42021098034**](https://github.com/kolihhan/name-kaggle/actions/runs/42021098034) **SUCCESS**. Source was pulled from the published exact `/47` Notebook and byte-checked against SHA-256 `be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d`. The two original functions `_np_logsoftmax` and `_apply_conditional_family_gate` were **compiled and executed verbatim from AST** on generated logits. No published model/head was loaded and no competition text was used. Aggregate evidence artifact `13411512310` (`ntl-v47-synthetic-family-gate-proof`).
+- For each of five sequential gates (`claude`, `claude_lora`, `gpt`, `gemini`, `glm`), 384 synthetic rows passed the invariants: max change in total family log mass **4.44e-16**, max outside-family logit change **0.0**, all **64** deliberately high-confidence family rows stayed unchanged, and low-confidence rows demonstrably changed.
+- **Counterexample to an overly strong interpretation:** A crafted synthetic sample's top individual label changed from `gpt-5.5` to `claude-fable-5` after the Claude gate, **despite unchanged total Claude family mass**. A family-mass-preserving specialist can still change which *family* the top-1 label belongs to. Therefore do **not** claim this gate can never alter the cross-family top-1 decision.
+- These tests establish exactly how the **published implementation behaves** for synthetic inputs, **not** that this gate improves balanced accuracy, predicts real errors, or causes part of the +0.146 score difference. No empirical component effect size is identified.
+
+### Scientific next decision
+
+Stop the proposed paired ablation **at the availability/provenance gate** instead of using the spent official folds or making repeated leaderboard submissions. To reopen, first secure a genuinely disjoint labeled external prompt bank **and** training-source manifests for all compared fitted V47 artifacts, plus precomputed aligned logits or one separately authorized inference-only run for both models. Freeze the contrast before looking at outcomes; if data independence cannot be proven, report **NOT TESTABLE**. No retraining or official submit is needed for the current completed audit.
+
+\n### Highest-value next check (inventory executed; empirical paired ablation NOT TESTABLE)
 
 **No training, no Kaggle submit:** Search for *existing* per-row component prediction artifacts and source metadata for the frozen V47 package and our own model. Prefer **external prompts/source banks demonstrably excluded from both systems' model/head training**, not the repeatedly examined official 2,699 rows or the Kaggle public leaderboard. If both per-component predictions and disjoint labeled rows exist, lock a paired comparison (same rows, 18-class balanced accuracy, family-vs-sibling confusion, per-source change) with single-core, plus SVC4, plus fitted family gates, plus test-group logic, plus optional GSQ as counterfactuals. No weight/threshold search. If the artifacts or provenance are unavailable, report **NOT TESTABLE** rather than claiming ablation.
 
