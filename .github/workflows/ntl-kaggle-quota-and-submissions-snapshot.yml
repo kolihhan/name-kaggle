@@ -1,0 +1,36 @@
+name: NTL Kaggle Quota and Submission Snapshot (Read Only)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-kaggle-quota-and-submissions-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Inspect GPU quota and official submission records only
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle token missing}"
+          echo '--- KAGGLE_QUOTA ---'
+          kaggle quota || true
+          echo '--- OFFICIAL_COMPETITION_RECORDS ---'
+          kaggle competitions submissions name-that-llm -v -q >/tmp/ntl-submissions.csv
+          python - <<'PY'
+          import csv,json
+          with open('/tmp/ntl-submissions.csv',newline='') as f:
+              rows=list(csv.DictReader(f))
+          rows.sort(key=lambda r:int(r['ref']),reverse=True)
+          print('OFFICIAL_TOTAL',len(rows))
+          for r in rows[:5]:
+              print('OFFICIAL_SUBMISSION_RECORD',json.dumps({k:r.get(k) for k in ('ref','status','publicScore','privateScore','description','date')},sort_keys=True))
+          PY
