@@ -1,0 +1,39 @@
+name: NTL Lightning V47 Full Sample Gate Then One Official Submission
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-lightning-v47-full-preflight-submit-once.yml]
+permissions:
+  contents: read
+concurrency:
+  group: ntl-lightning-v47-full-preflight-submit-20261105
+  cancel-in-progress: false
+jobs:
+  gated-competition-submission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/ntl_v47_full_preflight_submit_once.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Ensure official dataset is not in the public GitHub runner
+        run: |
+          set -euo pipefail
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f" || { echo "Public repo official-data exposure guard"; exit 1; }
+          done
+          python -m py_compile scripts/ntl_v47_full_preflight_submit_once.py
+      - name: Install Kaggle client and Parquet verifier only (no model training)
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.2.3' 'pyarrow==19.0.1'
+      - name: Run exact V47 full-sample GPU inference, verify Parquet, then submit once
+        run: python -u scripts/ntl_v47_full_preflight_submit_once.py
