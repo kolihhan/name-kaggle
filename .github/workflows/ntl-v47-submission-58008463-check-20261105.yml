@@ -1,0 +1,40 @@
+name: NTL V47 Submission 58008463 Current Status (Read Only)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-submission-58008463-check-20261105.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read exact official submission status and latest record
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle competitions submission 58008463
+          kaggle competitions submissions name-that-llm -v -q >/tmp/ntl-v47-list.csv
+          python - <<'PY'
+          import csv,json
+          with open('/tmp/ntl-v47-list.csv',newline='') as f: rows=list(csv.DictReader(f))
+          matches=[r for r in rows if r.get('ref')=='58008463']
+          assert len(matches)==1, 'No unique V47 submission record'
+          x=matches[0]
+          print('ACTUAL_V47_SUBMISSION',json.dumps({k:x.get(k) for k in ('ref','status','publicScore','privateScore','date','description')},sort_keys=True),flush=True)
+          print('MY_SUBMISSIONS_COUNT',len(rows),flush=True)
+          print('LATEST_SUBMISSION_REF',max(int(r['ref']) for r in rows),flush=True)
+          score=(x.get('publicScore') or '').strip()
+          if score:
+              print('ACTUAL_PUBLIC_SCORE',score,'DELTA_VS_0520',f'{float(score)-0.520:+.3f}',flush=True)
+          else:
+              print('NO_PUBLIC_SCORE_CONFIRMED',x.get('status'),flush=True)
+          PY
