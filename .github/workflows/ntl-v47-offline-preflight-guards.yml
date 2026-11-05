@@ -1,0 +1,30 @@
+name: NTL V47 No-Training Preflight Guards
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-v47-offline-preflight-guards.yml]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/ntl_v47_full_preflight_submit_once.py
+            tests/test_ntl_v47_preflight_guard.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Confirm no official competition files materialized
+        run: |
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f" || exit 1
+          done
+      - name: Execute no-network preflight gate tests
+        run: |
+          python -m py_compile scripts/ntl_v47_full_preflight_submit_once.py
+          python -m unittest discover -s tests -p test_ntl_v47_preflight_guard.py -v
