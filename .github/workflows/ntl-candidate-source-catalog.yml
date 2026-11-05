@@ -1,0 +1,65 @@
+name: NTL Candidate Source Catalog Audit
+
+on:
+  push:
+    branches:
+      - research/sibling-information-probe-20261105
+    paths:
+      - .github/workflows/ntl-candidate-source-catalog.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows/ntl-candidate-source-catalog.yml
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: test ! -e data/train.csv && test ! -e data/test.csv
+      - run: python -m pip install --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.2.3
+      - name: Download only tiny public source/catalog metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl_sources
+          for file in sources.csv per_model.csv removal_summary.csv v12_append_log.csv; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$file" -p /tmp/ntl_sources --unzip >/dev/null
+          done
+          find /tmp/ntl_sources -maxdepth 1 -type f -printf '%f %s bytes\n'
+      - name: Analyze only public metadata tables
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          import pandas as pd
+          root=Path('/tmp/ntl_sources')
+          report={'scope':'public_catalog_only_no_texts_no_competition_data','files':{}}
+          for path in sorted(root.glob('*.csv')):
+              df=pd.read_csv(path)
+              info={'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'rows':len(df),'columns':list(df.columns)}
+              if path.name=='sources.csv':
+                  info['catalog_rows']=df.fillna('').astype(str).to_dict('records')
+              else:
+                  info['preview']=df.head(50).fillna('').astype(str).to_dict('records')
+              report['files'][path.name]=info
+          print(json.dumps(report,indent=2,ensure_ascii=False)[:28000])
+          Path('/tmp/sibling-catalog-summary.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sibling-source-catalog-summary-no-text
+          path: /tmp/sibling-catalog-summary.json
+          retention-days: 14
