@@ -1,0 +1,58 @@
+name: NTL 0.672 and 0.668 Upstream Source and Score Recon (No Submission)
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-0-672-0-668-public-sources-recon.yml]
+permissions: {contents: read}
+jobs:
+  source-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Pull only already-published PUBLIC source and current status
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing token}"
+          for row in 'ozertuu/0-672-dual-svc-calibrated-blend-proven-3-lora' 'omerfarukmerey/0-668-verifier-matched-rows-pool-prompts' 'zbigniewkirchner/0-667-pairwise-verifier-matched-external-rows'; do
+            slug="${row##*/}"; mkdir -p "/tmp/public/${slug}"
+            echo "::group::PUBLIC_SOURCE_${row}"
+            kaggle kernels status "$row" || true
+            kaggle kernels pull "$row" -p "/tmp/public/${slug}" -m || true
+            echo "::endgroup::"
+          done
+          python - <<'PY'
+          import json,pathlib,hashlib,re
+          for d in sorted(pathlib.Path('/tmp/public').iterdir()):
+              n=list(d.glob('*.ipynb'))
+              meta=list(d.glob('kernel-metadata.json'))
+              if not n:
+                  print('SOURCE_UNAVAILABLE',d.name,flush=True);continue
+              nb=json.loads(n[0].read_bytes())
+              cells=[''.join(c.get('source',[])) for c in nb['cells'] if c.get('cell_type')=='code']
+              code='\n'.join(cells)
+              md=json.loads(meta[0].read_text()) if meta else {}
+              print('PIN_CANDIDATE',json.dumps({
+                'name':d.name,'source_sha256':hashlib.sha256(n[0].read_bytes()).hexdigest(),
+                'notebook_cells':len(cells),'internet':md.get('enable_internet'),
+                'gpu':md.get('enable_gpu'),'competition_sources':md.get('competition_sources'),
+                'dataset_sources':len(md.get('dataset_sources',[])),
+                'kernel_sources':len(md.get('kernel_sources',[])),
+                'model_sources':len(md.get('model_sources',[])),
+                'preview_or_shortcut':bool(re.search(r'preview|cache.*test|known.*sample',code,re.I)),
+                'submission_parquet':bool(re.search(r'submission.parquet',code)),
+                'contains_training':bool(re.search(r'\.backward\s*\(|trainer\.train\s*\(|optimizer\.step\s*\(',code)),
+              },sort_keys=True),flush=True)
+          PY
+      - name: Retain only published upstream source for study
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-0-672-0-668-public-source-only
+          path: /tmp/public/
+          retention-days: 2
+          if-no-files-found: error
