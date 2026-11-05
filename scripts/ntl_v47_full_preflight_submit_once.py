@@ -155,7 +155,7 @@ print('OFFICIAL_SAMPLE_FULL_INFERENCE_PASS',json.dumps(proof,sort_keys=True),flu
     })
     (private / notebooks[0].name).write_text(json.dumps(nb, ensure_ascii=False))
     md["id"] = PREFLIGHT
-    md["title"] = "NTL Lightning V47 actual full-sample inference validation once"
+    md["title"] = "NTL Lightning V47 Genuine Preflight 20261105"
     md["is_private"] = True
     md["enable_internet"] = False
     md["enable_gpu"] = True
