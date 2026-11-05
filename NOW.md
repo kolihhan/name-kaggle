@@ -1,5 +1,14 @@
 # NOW
 
+## V47 vs own LoRA24 mechanism investigation — 2026-11-05
+
+**COMPLETED: exact-source static comparative audit.** Report: [`artifacts/research/ntl-0520-vs-lightning-v47-0666-mechanism-audit-2026-11-05.md`](artifacts/research/ntl-0520-vs-lightning-v47-0666-mechanism-audit-2026-11-05.md). Official score `58008463 / COMPLETE / 0.666` was verified at 18:51 MYT by [419141? No — official run **42014195583**](https://github.com/kolihhan/name-kaggle/actions/runs/42014195583), vs independent project 0.520, +0.146 absolute. The external source is public Lightning V47; **attribute it to the original author**.
+
+Read exact published v47 Notebook SHA `be996d4921795156b2bc27e78171c70de02c9a43fdcfcaf7bc949c72e7dce32d` from temporary public Apache-2 source artifact [42016381979](https://github.com/kolihhan/name-kaggle/actions/runs/42016381979); 11 local static-source consistency assertions PASS. Concrete differences from our 0.520 single Qwen3-8B LoRA24 + plain head: V47 has six diverse neural backbone/member streams, three fitted sparse core readouts (including strong SVC4), confidence-gated family-sibling adjustments, inferred test-group centered/Gaussian features, complementary large ensemble, optional Atlas, class balancing, and typography evidence. **Important correction: full hidden-route GSQ Qwen3.8-27B probability share is only 5% (initial config 7% overwritten to 5% in cell 45)**. Pre-postprocessing core/complement/Atlas/GSQ shares depend on Atlas gate; details in report. Thus the +0.146 cannot honestly be attributed to 27B alone.
+
+**Evidence limitation:** this is a comparison of two entirely different systems on the Kaggle public 40% leaderboard, not a controlled ablation or independent private transfer. V47 has material extra data provenance and source-scale differences; exact train/validation overlap and causal component gains are **unknown**. No GPU inference, retraining, extra Kaggle competition submission, or tuning was performed in this audit. Recommended next scientific check is a frozen, paired component comparison using genuinely disjoint source-bank labeled rows **only if** already-existing component outputs and provenance support it; otherwise report NOT TESTABLE.
+
+
 ## Verified Kaggle V47 public score — 2026-11-05 18:51 MYT
 
 **OFFICIAL SCORING SUCCESS.** Fresh authenticated Kaggle competition API detail returned `Submission Ref: 58008463`, `Status: COMPLETE`, and **`Public Score: 0.666`** at `2026-11-05T10:51:53Z` (18:51 MYT), read-only GitHub Actions [42014195583](https://github.com/kolihhan/name-kaggle/actions/runs/42014195583). The authenticated submissions listing independently matches the exact ref and `SubmissionStatus.COMPLETE`, `publicScore: "0.666"`, newest ref among 10 records. **Own best Public score is now 0.666**, vs previous own best 0.520 (**+0.146 absolute; +28.08% relative**).
