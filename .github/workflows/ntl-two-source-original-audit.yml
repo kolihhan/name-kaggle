@@ -1,0 +1,82 @@
+name: NTL Two Source Original Record Provenance Audit
+
+on:
+  push:
+    branches:
+      - research/sibling-information-probe-20261105
+    paths:
+      - .github/workflows/ntl-two-source-original-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows/ntl-two-source-original-audit.yml
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: test ! -e data/train.csv && test ! -e data/test.csv
+      - run: python -m pip install --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.2.3 pyarrow==20.0.0
+      - name: Download only original public source data and pinned Stage1 reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/stage1 /tmp/elliot /tmp/aless
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/stage1 --unzip >/dev/null
+          kaggle datasets download -d elliotthankinson/ntl-exact-gens-v3 -f pool_v8j_add.parquet -p /tmp/elliot --unzip >/dev/null
+          kaggle datasets download -d alessandrolair/ntl-kaggle-benchmarks-generated-passages -f ntl_kbench_generated.parquet -p /tmp/aless --unzip >/dev/null
+      - name: Compare normalized text, prompt identifiers, label coverage and serving metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,unicodedata
+          from pathlib import Path
+          from collections import Counter
+          import pandas as pd
+          base=Path('/tmp/stage1/pool_v4.parquet')
+          b=pd.read_parquet(base)
+          if hashlib.sha256(base.read_bytes()).hexdigest()!='37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec':
+              raise RuntimeError('Stage-1 source changed: FAIL CLOSED')
+          def h(s):
+              s=' '.join(unicodedata.normalize('NFKC',str(s)).casefold().split())
+              return hashlib.sha256(s.encode('utf-8')).hexdigest()
+          ref=set(b['text'].map(h))
+          base_keys=set(b['prompt_key'].astype(str))
+          out={'scope':'public_external_source_provenance_no_official_data_no_training','sources':{}}
+          datasets=[('elliotthankinson/ntl-exact-gens-v3',Path('/tmp/elliot/pool_v8j_add.parquet')),('alessandrolair/ntl-kaggle-benchmarks-generated-passages',Path('/tmp/aless/ntl_kbench_generated.parquet'))]
+          for name,p in datasets:
+              df=pd.read_parquet(p)
+              if 'text' not in df or 'model' not in df: raise RuntimeError('missing columns')
+              entry={'file_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'rows':int(len(df)),'columns':list(df.columns),
+                     'model_counts':{str(k):int(v) for k,v in df['model'].astype(str).value_counts().items()},
+                     'text_overlap_stage1_count':int(df['text'].map(h).isin(ref).sum()),
+                     'served_identity_fields':[c for c in df if any(k in c.lower() for k in ('model_seen','model_version','proxy_model','provider','route'))]}
+              if 'prompt_key' in df:
+                  entry['prompt_key_overlap_stage1_count']=int(df['prompt_key'].astype(str).isin(base_keys).sum())
+              if 'discriminator_pass' in df:
+                  yes=df['discriminator_pass'].fillna(False).astype(bool)
+                  entry['discriminator_pass_counts']={str(k):int(v) for k,v in df.loc[yes,'model'].astype(str).value_counts().items()}
+              for key in ('source','setting','tier','route','provider','reasoning','run_date'):
+                  if key in df:
+                      entry[key+'_counts']={str(k):int(v) for k,v in df[key].astype(str).value_counts().head(30).items()}
+              out['sources'][name]=entry
+          print(json.dumps(out,indent=2)[:29000])
+          Path('/tmp/ntl-two-source-provenance.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ntl-two-source-provenance-aggregate
+          path: /tmp/ntl-two-source-provenance.json
+          retention-days: 14
