@@ -1,0 +1,55 @@
+name: NTL Candidate Served-Model Provenance README Audit
+
+on:
+  push:
+    branches:
+      - research/sibling-information-probe-20261105
+    paths:
+      - .github/workflows/ntl-source-readme-provenance.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readmes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflows/ntl-source-readme-provenance.yml
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: test ! -e data/train.csv && test ! -e data/test.csv
+      - run: python -m pip install --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Download original public README files (no passage data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl_readmes
+          refs=(trnhip/ntl-api-gen elliotthankinson/ntl-exact-gens-v3 aswathvanan/ntl-proxy-passages alessandrolair/ntl-kaggle-benchmarks-generated-passages)
+          for i in 0 1 2 3; do
+            mkdir -p "/tmp/ntl_readmes/$i"
+            kaggle datasets download -d "${refs[$i]}" -f README.md -p "/tmp/ntl_readmes/$i" --unzip >/dev/null
+            test -s "/tmp/ntl_readmes/$i/README.md"
+          done
+      - name: Print source READMEs for auditable provenance inspection
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          refs=['trnhip/ntl-api-gen','elliotthankinson/ntl-exact-gens-v3','aswathvanan/ntl-proxy-passages','alessandrolair/ntl-kaggle-benchmarks-generated-passages']
+          for i,ref in enumerate(refs):
+              p=Path(f'/tmp/ntl_readmes/{i}/README.md')
+              text=p.read_text(encoding='utf-8',errors='replace')
+              print('===== DATASET',ref,'SHA256',hashlib.sha256(p.read_bytes()).hexdigest(),'=====')
+              print(text[:15000])
+          PY
