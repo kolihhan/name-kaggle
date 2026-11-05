@@ -1,4 +1,5 @@
 name: NTL V47 Official Score Snapshot No GPU
+# Recheck official submission 58008463 after initial PENDING window
 # Check official submission 58008463 after pending evaluation on 2026-11-05.
 on:
   push:
