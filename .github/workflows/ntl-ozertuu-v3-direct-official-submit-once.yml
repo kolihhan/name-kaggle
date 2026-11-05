@@ -1,0 +1,87 @@
+name: NTL Ozertuu 0.672 V3 Direct Official Submission Once
+on:
+  push:
+    branches: [exp/dct-temporal-fingerprint-v3]
+    paths: [.github/workflows/ntl-ozertuu-v3-direct-official-submit-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-ozertuu-v3-once
+  cancel-in-progress: false
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      REF: ozertuu/0-672-dual-svc-calibrated-blend-proven-3-lora
+      VERSION: "3"
+      SHA: 05367a7f8efd41b2f4959505bc7e2e07a5978b85ee426c08bb5969c60945e2c2
+      DESCRIPTION: "Reproduction Ozertuu public Dual-SVC 3-LoRA exact V3 20261105 no independent model training"
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle API CLI only
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Verify pinned code, newest own submission, submit once using Kaggle competition API
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Kaggle credentials unavailable}"
+          mkdir -p /tmp/candidate
+          kaggle kernels pull "${REF}/${VERSION}" -p /tmp/candidate -m >/dev/null
+          kaggle competitions submissions name-that-llm -v -q > /tmp/current.csv
+          python - <<'PY'
+          import os,csv,json,hashlib,pathlib
+          d=pathlib.Path('/tmp/candidate')
+          src=list(d.glob('*.ipynb'))
+          assert len(src)==1,'Pinned source missing/ambiguous'
+          sha=hashlib.sha256(src[0].read_bytes()).hexdigest()
+          assert sha==os.environ['SHA'],f'V3 source drift: {sha}'
+          md=json.loads((d/'kernel-metadata.json').read_text())
+          assert md['id']==os.environ['REF']
+          assert md['enable_internet'] is False and md['enable_gpu'] is True
+          assert md['competition_sources']==['name-that-llm']
+          assert len(md['dataset_sources'])==19 and len(md['kernel_sources'])==8 and len(md['model_sources'])==8
+          nb=json.loads(src[0].read_bytes())
+          code='\n'.join(''.join(c['source']) for c in nb['cells'] if c.get('cell_type')=='code')
+          assert "FAST_COMMIT = len(_pd.read_csv(DATA + '/test.csv')) < 50" in code
+          assert 'submission.parquet' in code
+          with open('/tmp/current.csv',newline='') as f: rows=list(csv.DictReader(f))
+          assert rows,'My Submissions empty'
+          ids={int(x['ref']) for x in rows}
+          assert max(ids)==58008463,'New submission exists; recheck before another submission'
+          assert any(x.get('ref')=='58008463' and x.get('publicScore')=='0.666' for x in rows),'Old reference changed'
+          assert not any(os.environ['DESCRIPTION'] == (x.get('description') or '') for x in rows),'Already submitted this candidate'
+          print('PINNED_EXACT_ORIGINAL_V3',sha,'MY_PREVIOUS_SUBMISSIONS',len(rows),flush=True)
+          PY
+          echo 'OFFICIAL_DIRECT_SUBMISSION_START: no Kaggle kernel push, no private GPU session'
+          kaggle competitions submit name-that-llm -k "$REF" -v "$VERSION" -f submission.parquet -m "$DESCRIPTION" 2>&1 | tee /tmp/submit-result
+          python - <<'PY'
+          import re,pathlib
+          output=pathlib.Path('/tmp/submit-result').read_text()
+          ids=re.findall(r'Submission ref:\s*(\d+)',output,re.I)
+          assert len(ids)==1,'No exact official acceptance; refusing success claim'
+          pathlib.Path('/tmp/accepted-id').write_text(ids[0])
+          print('OFFICIAL_ACCEPTED_SUBMISSION_REF',ids[0],flush=True)
+          PY
+      - name: Query official result without resubmitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID=$(cat /tmp/accepted-id)
+          kaggle competitions submission "$ID"
+          kaggle competitions submissions name-that-llm -v -q > /tmp/after.csv
+          python - <<'PY'
+          import csv,json,pathlib,os
+          target=pathlib.Path('/tmp/accepted-id').read_text().strip()
+          rows=list(csv.DictReader(open('/tmp/after.csv',newline='')))
+          matches=[x for x in rows if x['ref']==target]
+          assert len(matches)==1 and matches[0].get('description')==os.environ['DESCRIPTION'],'Submission missing or mismatched'
+          print('EXACT_OFFICIAL_ENTRY',json.dumps({k:matches[0].get(k) for k in ['ref','status','publicScore','privateScore','description','date']},sort_keys=True),flush=True)
+          if matches[0].get('publicScore'):
+              x=float(matches[0]['publicScore'])
+              print('SCORED_PUBLIC',x,'DELTA_VS_0666',round(x-.666,4),flush=True)
+          else:
+              print('PENDING_UNSCORED_CONFIRMED',target,matches[0].get('status'),flush=True)
+          PY
