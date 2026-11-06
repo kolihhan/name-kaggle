@@ -1,5 +1,15 @@
 # NOW
 
+## Lightning V47 core provider gate — built, promotion blocked (2026-11-07)
+
+Built one Notebook from Kaggle V47 script version `365000313` (baseline submission `58008463`, Public `0.666`). Only `core_readout.py` changes. It retains grouped logits on provider agreement and falls back to logits without the `_twin` and `_gauss` votes on disagreement, with the original active-vote denominator. The downstream ensemble receives the selected row. [Frozen contract](artifacts/research/v47-core-provider-gate-20261107/CONTRACT.md)
+
+**Verified locally.** All 37 code cells compile and the 30 input source IDs match V47. Seven focused gate checks passed. A mixed-batch fixture exercised the gate through the original final writer and matched the official Parquet schema. The three-row preview was bypassed in the test harness. The previously archived LoRA24 replay reproduced `0.54676112 → 0.55233159` with 207 rescues and 192 regressions.
+
+**Blocked.** Kaggle authentication, the pinned input mounts and the required GPUs were unavailable in this session, so full V47 checkpoint inference did not run. The candidate lacks fold-safe V47 OOF evidence and a verified transfer cohort under the frozen promotion policy. No new fits, submission or score. Frozen decision is follow up at Public ≥`0.671`, close at ≤`0.661`, inconclusive in between.
+
+Notebook SHA-256 `f33e67004315dcdad424d2230fbf8805caa235b441efeda3b6251637ca5dc836`. Core patch SHA-256 `92dd3179b48e86a5115686e9d1a2d71b4eea76f9b8e9aae9fbfb1db6d2947978`.
+
 ## V47 core grouping feasibility — closed (2026-11-07)
 
 The original V47 grouper put **23 of 2,699 passages (0.85%)** in groups that mix prompts, below the predeclared **5%** threshold for preparing the ablation. It grouped **95.59%** of passages and achieved **99.75% pair precision** and **76.79% pair recall** against known prompt IDs. The grouping-off candidate stops here. The result measures prompt recovery on existing training text. The effect on model attribution and hidden test groups remains unknown. [Feasibility result](artifacts/research/v47-core-grouping-feasibility-20261107.md)
