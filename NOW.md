@@ -1,5 +1,15 @@
 # NOW
 
+## Research PIC update — generator-versus-collection-channel identifiability (2026-11-06)
+
+**NEW primary-sourced research decision:** [`artifacts/research/generator-vs-channel-identification-decision-20261106.md`](artifacts/research/generator-vs-channel-identification-decision-20261106.md). Existing 18-label OOF shows different error regimes (Gemini family right 97.5%; GLM 42%), but cannot establish whether underlying signals reflect **generator identity** or **generation/collection channel** (instructions, sampling, version, gateway, formatting). Prompt-disjoint CV does not by itself control channel. Do not derive model-fingerprint claims from per-source BA with different label coverage.
+
+**Specific previous category-error correction:** DCT-v3 operates on a **surrogate Qwen3-8B encoder's token-position hidden states** for a completed passage, not on the original generator's real decoding steps. ICML 2026 `Every Step Counts` measures *diffusion-model decoding trajectories* and does not validate our surrogate-state DCT scheme. Frozen DCT contract remains unchanged and unscored. ATLAS is strong at *family* identity under version/domain shift, but its MAABench trains one version per family; it does not directly solve exact sibling identification in this 18-class Kaggle task.
+
+**Research priority:** Before any architecture/new training, require a genuinely crossed `model × same prompt × generation channel` comparison with exact source-version metadata and an independent heldout design. One public proxy dataset documents some GPT/Gemini temperature variants, but does **not** demonstrate a complete 18-label independent factorial evaluation. No candidate promoted or experiment authorized from this work; no actions, submissions, GPU, or deployment.
+
+
+
 ## Current mode — Research PIC, no submission/deployment (2026-11-06)
 
 **Current explicit instruction supersedes prior operational "Audit → Submit → Verify" reading**: independently research the Name That LLM science and audit existing evidence; do not train, run experiments, dispatch Actions, submit existing Kaggle notebooks, deploy, or chase live scores without explicit fresh authorization. Do not infer "go" means Kaggle submission.
