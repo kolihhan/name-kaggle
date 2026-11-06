@@ -33,3 +33,8 @@ The 0.668 was verified from **both** the official submissions table and `kaggle 
 Kaggle returned and My Submissions independently confirmed **ref `58045266`**, accepted **2026-11-06 04:23:43 UTC**. First verified status: `SubmissionStatus.PENDING`, blank Public and Private score. Do NOT report as scored yet. DO NOT submit the same code again; version/description locked. No new custom kernel, training run, Public-LB tuning or local ML experiment occurred.
 
 **Next verification:** query `kaggle competitions submission 58045266` and the authenticated My Submissions table read-only. On COMPLETE, report official Public Score against **0.668** and any Kaggle exception detail; no automatic retuning or duplicate submission. If score is blank, treat COMPLETE as not necessarily scoring success. This is an operational benchmark reproduction and is NOT independent original research.
+
+
+## Immediate official scoring recheck
+
+[GitHub Actions 42162414001](https://github.com/kolihhan/name-kaggle/actions/runs/42162414001) **SUCCESS** (read-only), checked 2026-11-06 04:25:37 UTC. Authenticated `kaggle competitions submission 58045266` and `competitions submissions name-that-llm` independently agree: `SubmissionStatus.PENDING`, blank public and private scores. This verifies submission acceptance and current status, **not hidden execution success or score**. No duplicate submission was made; best scored remains 0.668 until a new officially scored entry appears.
