@@ -42,3 +42,7 @@ Kaggle returned and My Submissions independently confirmed **ref `58045266`**, a
 ## Recheck — 2026-11-06 12:55 MYT
 
 [GitHub Actions 42165348166](https://github.com/kolihhan/name-kaggle/actions/runs/42165348166) SUCCESS. Authenticated Kaggle query at 2026-11-06T04:55:49Z reports exact submission `58045266` remains `SubmissionStatus.PENDING`, blank Public/Private scores. The existing 0.668 (`58022340`) remains the latest confirmed scored best. This was a read-only recheck; no new submission or experiment. Do not resubmit this exact V1. On terminal status compare against 0.668 or inspect runtime failure if terminal unscored.
+
+## Latest read-only official status — 2026-11-06 13:37 MYT
+
+[GitHub Actions 42169482307](https://github.com/kolihhan/name-kaggle/actions/runs/42169482307) **SUCCESS**. At 2026-11-06 05:37:23 UTC authenticated Kaggle API detail and My Submissions both report **58045266 = PENDING**, Public Score blank, Private Score blank. Best **scored** published reproduction remains **58022340 = 0.668** (verified earlier this date). No new submission authorized or executed in this follow-up. Do not infer failure or success merely from PENDING. Next action: read-only verify until terminal; only afterwards compare to 0.668 or diagnose an error; no duplicate submit and no own experiments.
