@@ -1,5 +1,9 @@
 # NOW
 
+## V47 core grouping feasibility — closed (2026-11-07)
+
+The original V47 grouper put **23 of 2,699 passages (0.85%)** in groups that mix prompts, below the predeclared **5%** threshold for preparing the ablation. It grouped **95.59%** of passages and achieved **99.75% pair precision** and **76.79% pair recall** against known prompt IDs. The grouping-off candidate stops here. The result measures prompt recovery on existing training text. The effect on model attribution and hidden test groups remains unknown. [Feasibility result](artifacts/research/v47-core-grouping-feasibility-20261107.md)
+
 ## Research PIC decision — close contextual choice CPU v1 (2026-11-06)
 
 **Result.** Recovered the completed five-fold CPU comparison. Phase 7 scored `0.370052`, choice counts `0.370428`, and adding sentence position `0.370798`. Position added one net correct prediction over counts and lost to the baseline under typography normalization. The candidate failed every promotion threshold after baseline reproduction. [Frozen contract](artifacts/research/contextual-choice-cpu-v1/CONTRACT.md) · [Verified result](artifacts/research/contextual-choice-cpu-v1/RESULT.md)
