@@ -104,6 +104,13 @@ An ensemble that raises OOF without adding independent information is not automa
 
 ## 7. Build a learning loop, not only a patch/phase loop
 
+Every research direction records four items.
+
+- **Hypothesis** states the mechanism and what observable result it predicts.
+- **Evidence** states why it is worth testing and what remains uncertain.
+- **Experiment** fixes the cheapest discriminating test, its control and its stopping rule before execution. When local GPU is unavailable, prefer available artifacts and bounded CPU checks. A candidate that passes the frozen checks can use one exact Kaggle Notebook version for a hidden-transfer test.
+- **Decision** records continue, modify or stop from the observed evidence. A controlled negative result closes a direction. A leaderboard score records transfer of the submitted system and never becomes a parameter search.
+
 Weak loop:
 
 ```text
