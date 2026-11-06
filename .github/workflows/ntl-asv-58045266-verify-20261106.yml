@@ -1,0 +1,38 @@
+name: NTL ASV Official Score Verify 58045266 Read Only
+
+on:
+  push:
+    branches: [ops/audit-submit-verify-20261106]
+    paths: [.github/workflows/ntl-asv-58045266-verify-20261106.yml]
+
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Query EXACT accepted ref and official submissions, no mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing token}"
+          kaggle competitions submission 58045266
+          kaggle competitions submissions name-that-llm -v -q >/tmp/status.csv
+          python - <<'PY'
+          import csv,json,datetime
+          rows=list(csv.DictReader(open('/tmp/status.csv',newline='')))
+          t=[r for r in rows if r.get('ref')=='58045266']
+          assert len(t)==1,'Official ref unavailable'
+          r=t[0]
+          assert r.get('description')=='Reproduction public Ozertuu Dual-SVC Residual Apex exact V1 20261106 no independent training'
+          print('ASV_CHECK_TIME_UTC',datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)
+          print('ASV_VERIFIED',json.dumps({k:r.get(k) for k in ('ref','status','publicScore','privateScore','date','description')},sort_keys=True),flush=True)
+          if r.get('publicScore'):
+              print('ASV_IMPROVEMENT_OVER_0668',round(float(r['publicScore'])-0.668,4),flush=True)
+          else: print('ASV_STATUS_PENDING_OR_UNSCORED',r.get('status'),flush=True)
+          PY
