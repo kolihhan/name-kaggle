@@ -87,3 +87,14 @@ Separate [Action 42151491857](https://github.com/kolihhan/name-kaggle/actions/ru
 Prior [Action 42151251888](https://github.com/kolihhan/name-kaggle/actions/runs/42151251888) found zero exact answer overlap between original alessandrolair and elliotthankinson. [Action 42151649815](https://github.com/kolihhan/name-kaggle/actions/runs/42151649815) also found zero exact normalized prompt overlap between alessandrolair and zeminglii, and zero direct text/ID overlap of zeminglii prompt values with Stage-1 opaque prompt IDs/keys. These **negative direct-ID tests do not supersede the positive Stage-1-to-prompt-canon reconstructed link above**.
 
 **Decision: strict admission remains BLOCKED.** No frozen LoRA embedding export, readout scoring, GPU training, official Kaggle data, or Kaggle submission occurred. To unlock the frozen probe, account for the exact 30,133-row A1 training split and its 14,102 potentially unmapped broader-pool responses; verify source and prompt independence without treating ID formatting differences as proof. No evaluation criteria were changed.
+
+
+### Exact frozen A1 training-split check (2026-11-06)
+
+[GitHub Actions 42152215480](https://github.com/kolihhan/name-kaggle/actions/runs/42152215480) reconstructed the frozen Phase14 conservative subset and removed the original three Gate-A heldout sources/prompt keys. The resulting **30,133 A1 adaptation training rows** match the recorded Gate-A result exactly; a mismatch would have failed the job.
+
+Joining adapter-training answers to the current public pool by normalized exact response text mapped **18,406** responses to a prompt_canon; **11,727** training responses remain unmapped. Among zeminglii's 2,162 candidate records, **125 rows are now provably tied to an actual A1 training prompt**. This is narrower than the earlier 621 rows linked to the *whole* 75,783-row source pool.
+
+**Interpretation:** at least 125 zeminglii rows would violate a strict A1 prompt-disjoint holdout. Excluding only those 125 does NOT certify the remaining 2,037 rows because 11,727 actual A1 training responses lack a canonical-prompt mapping through this join. Nor can the entire 621-row broader-pool exclusion be described as adapter-training exposure.
+
+**Next true gate:** resolve the 11,727 unmapped adapter-training responses to original prompt-bank lineage, or use a completely original, documented, source-disjoint and returned-model-verified external prompt corpus. Until then maintain NO ADMISSION, NO GPU INFERENCE, and NO scientific result. Do not relax the frozen contract.
