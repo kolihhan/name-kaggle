@@ -1,5 +1,17 @@
 # NOW
 
+## Independent research pivot — source transfer, not sibling gate (2026-11-06)
+
+**User correction accepted:** stop optimizing an elaborate sibling-information-probe and repeatedly source-screening holdouts; no more source inventories, sibling readout fitting, or claim of independent performance from scrutinized sources.
+
+**Actual action:** dedicated branch research/source-transfer-mechanism-20261106, frozen diagnostic contract at artifacts/research/source-transfer-views-20261106/CONTRACT.md; original Stage-1 external-only 30,133-row A1 training split, exact pinned public source alessandrolair (3,866 rows) and elliotthankinson (8,347 rows) under two generation protocols. One CPU run [GitHub Actions 42157902705](https://github.com/kolihhan/name-kaggle/actions/runs/42157902705) compares fixed Phase14 feature views FULL (char+word+shape+small), LEXICAL (char+word) and SURFACE (shape+small), same LinearSVC. No official Kaggle competition data; no GPU; no submission.
+
+**Evaluation:** these two sources have been inspected before, so diagnostic directional evidence only; not clean independent evaluation or model promotion. Do not change sources, hyperparameters, or test the new idea repeatedly against these numbers. Mechanism bottleneck is unknown until real results; Public 0.666 externally authored whole system cannot be causally attributed to any single feature.
+
+**Restriction status:** A prior prohibition on revisiting style/lexical model classes is REOPENED for one mechanism test. Sibling-expert-v1 is RETIRED as active research (historical audit preserved). No new model trained for competition or Public LB optimization in this pivot.
+
+
+
 ## Official Kaggle Ozertuu V3 score candidate submitted — 2026-11-05 20:11 MYT
 
 **NEW COMPETITION SUBMISSION: `58022340`, accepted `2026-11-05 12:11:08.823000 UTC` / 20:11 MYT, status `SubmissionStatus.PENDING`, Public/Private scores blank on first authenticated query.** The accepted submission is actual Kaggle competition API `kaggle competitions submit name-that-llm -k ozertuu/0-672-dual-svc-calibrated-blend-proven-3-lora -v 3 -f submission.parquet` from [Actions `42024958522`](https://github.com/kolihhan/name-kaggle/actions/runs/42024958522) (SUCCESS). Source SHA256 explicitly verified before submission: `05367a7f8efd41b2f4959505bc7e2e07a5978b85ee426c08bb5969c60945e2c2`. Its version was discovered read-only in [Actions `42024702664`](https://github.com/kolihhan/name-kaggle/actions/runs/42024702664): public **V3** matches that exact hash. Current author latest notebook drifted to `be98b4e0755e8bf30982b46d9a2c1eb96ebda2f4386402a0476b8502c641ffb8` — don't submit unpinned latest. Kaggle My Submissions was 10 before, so new submission is **11th**; old actual completed and scored champ remains **0.666**, `58008463`. **DO NOT SAY 0.672 IS OUR SCORE YET**: 0.672 is author title/ranked public Notebook indication, and V3's actual score with our Kaggle account is pending. Do not retry unchanged V3.
