@@ -1,5 +1,17 @@
 # NOW
 
+## Current mode — Research PIC, no submission/deployment (2026-11-06)
+
+**Current explicit instruction supersedes prior operational "Audit → Submit → Verify" reading**: independently research the Name That LLM science and audit existing evidence; do not train, run experiments, dispatch Actions, submit existing Kaggle notebooks, deploy, or chase live scores without explicit fresh authorization. Do not infer "go" means Kaggle submission.
+
+**NEW completed research evidence (read-only):** `artifacts/research/independent-conditional-attribution-diagnosis-20261106.md` decomposes the **already-archived** original LoRA24 Gate-B 2,699 OOF predictions, independently verified ZIP SHA256 `fa675fcf8ac3860984b449748cf067c3da29389a921417e5e1047bb22a7be8ce`; no models were run or changed. Exact 18-label macro: plain BA `0.546761`, wrong sibling `0.259771`, wrong provider `0.193468`, provider-family correct `0.806532`. Provider-correct for Gemini `0.9750`, GPT `0.8800`, but GLM only `0.4200`. Centered head decreases sibling error `0.018188` but increases cross-provider error `0.017099`, yielding almost no net BA change. **Therefore one blanket "fix siblings" narrative and a global family gate are inadequate.** All these OOF slices are already consumed, not unseen transfer tests.
+
+**Research decision:** Examine conditional identity evidence robustness across prompt/source/generation protocol and separate provider-recognition from within-provider sibling attribution. ATLAS/Profiler already cover likelihood/context approaches; do not claim simply adding them is novel. Do not use group one-per-prompt matching absent evidence test construction supports it. A new candidate requires independent source/version/prompt provenance and a genuine precommitted falsification boundary; **none is authorized for execution today**.
+
+**Competition score context (historical):** own independently developed Public `0.520`; third-party published notebooks reproduced Public `0.666` and `0.668`. Previously sent Apex V1 ref `58045266` was PENDING at last observed 13:37 MYT; this research-only work did not recheck or resubmit it. Published leaderboard results are not causal evidence of method contribution.
+
+
+
 ## User-selected execution mode: AUDIT → SUBMIT → VERIFY, no own experiments (2026-11-06)
 
 **Official Kaggle latest verified score: 0.668 (ref 58022340, COMPLETE), superseding V47 0.666.** [Authenticated status run 42161796795](https://github.com/kolihhan/name-kaggle/actions/runs/42161796795) confirmed this directly. The notebook author titled it 0.672 but our account scored 0.668. Attribution: externally authored Ozertuu public V3, not our independently developed model (our independent LoRA24 scored 0.520).
