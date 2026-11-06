@@ -1,5 +1,12 @@
 # NOW
 
+## A1 adapter training prompt-reuse result — 2026-11-06
+
+[Actions 42152215480](https://github.com/kolihhan/name-kaggle/actions/runs/42152215480) reproduced the exact Stage-1 **30,133-row** LoRA A1 training split (same Gate-A original holdout sources and prompt purge). It mapped **18,406** trained answer texts to public prompt_canon; **11,727** training answers are not mapped. A total of **125/2,162 zeminglii candidate rows** are provably on prompts present in the A1 trained subset. This is distinct from the **621** zeminglii rows matched to the broader 75,783-row Stage-1 source pool.
+
+**Status remains DATA_BLOCKED.** These are lower-bound detected overlaps, not certification of the remaining candidate data. Next meaningful work is independent prompt-bank lineage for unmapped training rows or genuinely new prompts and per-row served model response logs. No LoRA embedding extraction, readout fitting, new score, training, or submission. Details: artifacts/research/sibling-information-probe-v1/SOURCE_ADMISSION.md.
+
+
 ## Confirmed candidate prompt reuse — 2026-11-06
 
 **NEW VERIFIED:** [Action 42151858490](https://github.com/kolihhan/name-kaggle/actions/runs/42151858490) traced 61,681 Stage-1 response matches into the current public pool's prompt_canon. The zeminglii 2,162-row candidate has 1,441 unique prompts, **522 proved reused** in the broader Stage-1 public pool, affecting **621 rows**. The other 1,541 rows are *not proven spent*, not proven independent. Critically, the Stage-1 A1 adapter used 30,133 training rows, so exact adapter-training-prompt overlap is still UNKNOWN. Do not report 621 as definitive adapter-training leakage.
