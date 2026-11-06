@@ -50,3 +50,7 @@ Canonical details / hashes / source evidence: SOURCE_ADMISSION.md. The next nece
 ## 2026-11-06 follow-up: real-data source-prompt join
 
 GitHub Actions 42151858490 SUCCESS: source-prompt linkage detected 522 reused prompt identities, contaminating 621 of 2,162 zeminglii candidate rows relative to the **full** Stage-1 public pool; 1,541 rows remain without detected overlap, not certified independent. Model response metadata 42151491857 verified model_seen for 2,162/2,162 with exact expected model label as substring. The frozen actual 30,133-row A1 training subset's prompt overlap is not separately determined. **No scientific readout PASS/FAIL, no actual model inference, no training or submission.** See SOURCE_ADMISSION.md for detailed counts and caveats.
+
+## Exact A1 training split follow-up — 2026-11-06
+
+GitHub Actions [42152215480](https://github.com/kolihhan/name-kaggle/actions/runs/42152215480) **SUCCESS**. Exact frozen A1 30,133 train rows reconstructed; 18,406 could be mapped to open-pool prompt_canon, 11,727 could not. **125 zeminglii rows confirmed to reuse A1 training prompts**; 621 confirmed against broad 75,783-row source pool. Thus the candidate cannot be admitted unchanged, and the remaining rows lack full prompt-independence proof. Scientific scoring remains blocked; no GPU, LoRA inference, model fitting, or competition submission.
