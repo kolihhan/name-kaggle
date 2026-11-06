@@ -41,6 +41,7 @@ jobs:
           kaggle datasets download -d zeminglii/ntl-own-exact-route-generations -f passages.csv -p /tmp/zeming --unzip >/dev/null
           mkdir -p /tmp/prompt-catalog
           kaggle datasets download -d crtproduction/name-that-llm-open-pool -f prompts.parquet -p /tmp/prompt-catalog --unzip >/dev/null
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f ntl_open_pool.parquet -p /tmp/prompt-catalog --unzip >/dev/null
           kaggle datasets download -d elliotthankinson/ntl-exact-gens-v3 -f or_paid_join.parquet -p /tmp/elliot-join --unzip >/dev/null
       - name: Compare normalized text, prompt identifiers, label coverage and serving metadata
         shell: bash
@@ -134,6 +135,29 @@ jobs:
                       if sourcekey in catalog:
                           pinfo['matched_'+sourcekey+'_counts']={str(k):int(v) for k,v in catalog.loc[hit,sourcekey].astype(str).value_counts().head(40).items()}
                   break
+          mainfile=Path('/tmp/prompt-catalog/ntl_open_pool.parquet')
+          pool=pd.read_parquet(mainfile,columns=['text','prompt_canon','source_dataset'])
+          oldtext=set(b['text'].map(h))
+          matched=pool.loc[pool['text'].map(h).isin(oldtext)]
+          spent=set(matched['prompt_canon'].dropna().astype(str).map(h))
+          zprompts=z['prompt_canon'].astype(str).map(h)
+          zspent=zprompts.isin(spent)
+          a_prompts=aless['prompt'].astype(str).map(h)
+          zall=set(zprompts)
+          out['conservative_prompt_link']={
+              'new_pool_sha256':hashlib.sha256(mainfile.read_bytes()).hexdigest(),
+              'main_pool_rows':len(pool),
+              'stage1_response_overlap_new_pool_rows':len(matched),
+              'stage1_response_unique_hashes_mapped':int(matched['text'].map(h).nunique()),
+              'stage1_response_unique_hashes_total':len(oldtext),
+              'known_spent_prompt_canon_count':len(spent),
+              'zeming_unique_prompts_total':len(zall),
+              'zeming_unique_prompts_with_stage1_response_link':len(set(zprompts[zspent])),
+              'zeming_rows_with_stage1_response_link':int(zspent.sum()),
+              'zeming_rows_not_proven_spent':int((~zspent).sum()),
+              'zeming_remaining_label_counts':{str(k):int(v) for k,v in z.loc[~zspent,'model'].value_counts().items()},
+              'aless_rows_with_stage1_response_link':int(a_prompts.isin(spent).sum())
+          }
           out['prompt_catalog']=pinfo
           print(json.dumps(out,indent=2)[:29000])
           Path('/tmp/ntl-two-source-provenance.json').write_text(json.dumps(out,indent=2)+'\n')
