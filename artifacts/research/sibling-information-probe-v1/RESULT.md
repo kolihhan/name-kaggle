@@ -46,3 +46,7 @@ Therefore: do not run the evaluator with reused official folds or pretend synthe
 - **No Stage-1 A1 LoRA embedding extraction, readout fitting, statistical assessment, additional GPU training, or Kaggle competition submission happened.** Real BA delta remains UNKNOWN. The readout evaluator must not be run on fake or spent holdout material.
 
 Canonical details / hashes / source evidence: SOURCE_ADMISSION.md. The next necessary scientific dependency is a defensible pair of fully source/prompt-disjoint, serving-ID-traceable corpora and private frozen checkpoint embeddings; only then run the previously fixed paired experiment. Do not loosen the preregistered three-family/source conditions just to obtain a result.
+
+## 2026-11-06 follow-up: real-data source-prompt join
+
+GitHub Actions 42151858490 SUCCESS: source-prompt linkage detected 522 reused prompt identities, contaminating 621 of 2,162 zeminglii candidate rows relative to the **full** Stage-1 public pool; 1,541 rows remain without detected overlap, not certified independent. Model response metadata 42151491857 verified model_seen for 2,162/2,162 with exact expected model label as substring. The frozen actual 30,133-row A1 training subset's prompt overlap is not separately determined. **No scientific readout PASS/FAIL, no actual model inference, no training or submission.** See SOURCE_ADMISSION.md for detailed counts and caveats.
