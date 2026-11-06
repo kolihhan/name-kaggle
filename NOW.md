@@ -1,6 +1,8 @@
 # NOW
 
-## Lightning V47 core provider gate — built, promotion blocked (2026-11-07)
+## Lightning V47 core provider gate — shelved as a diagnostic (2026-11-07)
+
+**Research decision.** Shelve the candidate at the evidence gate. The +0.00557 balanced-accuracy replay used already-consumed LoRA24 rows with known prompt groups, and its prompt-bootstrap interval included zero. It leaves the effect on V47's inferred groups unknown. On every provider disagreement, the rule trusts the no-group prediction even when grouping would correct the provider. Reopen only with paired, independently labeled V47 predictions using inferred groups that show how often grouping corrects versus introduces provider errors.
 
 Built one Notebook from Kaggle V47 script version `365000313` (baseline submission `58008463`, Public `0.666`). Only `core_readout.py` changes. It retains grouped logits on provider agreement and falls back to logits without the `_twin` and `_gauss` votes on disagreement, with the original active-vote denominator. The downstream ensemble receives the selected row. [Frozen contract](artifacts/research/v47-core-provider-gate-20261107/CONTRACT.md)
 
