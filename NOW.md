@@ -1,10 +1,10 @@
 # NOW
 
-## Research PIC decision — use existing Kaggle evidence (2026-11-06)
+## Research PIC decision — close contextual choice CPU v1 (2026-11-06)
 
-**Priority:** Establish whether the contextual-choice hypothesis has enough room to help on short passages in the 18-label Kaggle task. MAABench is now an archived external design. Current feasibility uses the Kaggle training set and the existing 2,699 Gate-B out-of-fold predictions.
+**Result.** Recovered the completed five-fold CPU comparison. Phase 7 scored `0.370052`, choice counts `0.370428`, and adding sentence position `0.370798`. Position added one net correct prediction over counts and lost to the baseline under typography normalization. The candidate failed every promotion threshold after baseline reproduction. [Frozen contract](artifacts/research/contextual-choice-cpu-v1/CONTRACT.md) · [Verified result](artifacts/research/contextual-choice-cpu-v1/RESULT.md)
 
-**Smallest next check, design only.** Fix one label-blind definition of a usable wording choice before looking at mistakes. Join the archived predictions to official training passages by ID. Ask what share of all passages, averaged per true label, both have a usable choice and were misclassified by the baseline. This is the maximum possible gain on these rows if scoring changes only passages with a usable choice. Low coverage deprioritizes the idea. High coverage justifies considering a later test. These already-used rows support feasibility only, and the check requires no model inference, training or new dataset. [Revised research decision](artifacts/research/contextual-choice-attribution-decision-20261106.md#current-kaggle-decision)
+**Decision.** Close the sentence-position proxy at the predeclared gate. The 44 pairs covered many passages, but zero pairs had both forms at both positions under the locked detector. Revisit contextual wording only with a different context signal and credible evidence that both choices occur within comparable contexts before fitting. Kaggle promotion for this candidate is closed. [Mechanism and support audit](artifacts/research/contextual-choice-cpu-v1/RESULT.md#what-the-negative-result-covers)
 
 ## Research PIC update — generator-versus-collection-channel identifiability (2026-11-06)
 
