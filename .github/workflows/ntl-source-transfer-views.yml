@@ -1,6 +1,11 @@
 name: NTL Source Transfer Mechanism (One-Shot CPU)
 
 on:
+  push:
+    branches:
+      - research/source-transfer-mechanism-20261106
+    paths:
+      - .github/workflows/ntl-source-transfer-views.yml
   workflow_dispatch:
 
 permissions:
@@ -24,6 +29,7 @@ jobs:
             scripts/run_phase14_public_sparse.py
             scripts/run_two_stage_lora24_gate_a.py
             scripts/run_strong_sparse_anchor.py
+            scripts/run_style_baseline.py
             .github/workflows/ntl-source-transfer-views.yml
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
