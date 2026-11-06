@@ -96,6 +96,26 @@ jobs:
           out['pairwise']={'aless_elliot_shared_normalized_responses':len(set(aless['text'].map(h)) & set(elliot['text'].map(h)))}
           if 'prompt_canon' in z: out['pairwise']['aless_zeming_same_normalized_prompt']=len(set(aless['prompt'].map(h)) & set(z['prompt_canon'].map(h)))
           if 'prompt_key' in j: out['pairwise']['stage1_elliot_join_same_exact_prompt_key_rows']=int(j['prompt_key'].astype(str).isin(base_keys).sum())
+          for key in ('prompt_canon',):
+              if key in z:
+                  zkeys=set(z[key].dropna().astype(str).map(h))
+                  stage1_pk={h(k) for k in base_keys}
+                  stage1_pid={h(k) for k in b['prompt_id'].astype(str)}
+                  out['pairwise']['zeming_prompt_exact_vs_stage1_prompt_key']=len(zkeys & stage1_pk)
+                  out['pairwise']['zeming_prompt_exact_vs_stage1_prompt_id']=len(zkeys & stage1_pid)
+          z37=z[z['model']=='gemini-3.7-flash']
+          out['sources']['zeminglii-original']['gemini_3_7']={
+              'rows':len(z37),
+              'model_seen_counts':{str(k):int(v) for k,v in z37['model_seen'].value_counts().items()},
+              'route_counts':{str(k):int(v) for k,v in z37['route'].value_counts().items()},
+              'provider_counts':{str(k):int(v) for k,v in z37['provider'].value_counts().items()}
+          }
+          z38=z[z['model']=='gemini-3.8-flash']
+          out['sources']['zeminglii-original']['gemini_3_8']={
+              'rows':len(z38),
+              'model_seen_counts':{str(k):int(v) for k,v in z38['model_seen'].value_counts().items()},
+              'route_counts':{str(k):int(v) for k,v in z38['route'].value_counts().items()}
+          }
           if 'prompt_group' in aless: out['sources']['alessandrolair/ntl-kaggle-benchmarks-generated-passages']['prompt_groups']=int(aless['prompt_group'].nunique())
           if 'prompt_key' in elliot: out['sources']['elliotthankinson/ntl-exact-gens-v3']['prompt_keys']=int(elliot['prompt_key'].nunique())
           print(json.dumps(out,indent=2)[:29000])
