@@ -158,6 +158,17 @@ jobs:
               'zeming_remaining_label_counts':{str(k):int(v) for k,v in z.loc[~zspent,'model'].value_counts().items()},
               'aless_rows_with_stage1_response_link':int(a_prompts.isin(spent).sum())
           }
+          seed={'abhinav','hailey','kaplinskiy','keshav','lucasboesen','maniceet','prvsiyan','prvsiyan_v1','semenoff','seyit','willrice','zakir','zbigniew'}
+          ids=b['prompt_id'].astype(str); key=b['prompt_key'].astype(str)
+          allowed=set(ids[b['source'].astype(str).isin(seed)])
+          safe=b[b['source'].astype(str).isin(seed)|ids.isin(allowed)]
+          held=safe['source'].astype(str).isin({'abdullah','semenoff','zakir'})
+          train=safe[~held & ~safe['prompt_id'].isin(set(safe.loc[held,'prompt_id'])) & ~safe['prompt_key'].isin(set(safe.loc[held,'prompt_key']))]
+          if len(safe)!=43781 or len(train)!=30133: raise RuntimeError('Stage1 split changed')
+          trainhash=set(train['text'].map(h))
+          trainlink=pool.loc[pool['text'].map(h).isin(trainhash)]
+          known=set(trainlink['prompt_canon'].astype(str).map(h))
+          out['adapter_train_overlap']={'train_rows':len(train),'mapped_train_texts':int(trainlink['text'].map(h).nunique()),'unmapped_train_texts':len(trainhash)-int(trainlink['text'].map(h).nunique()),'zeming_rows_on_mapped_train_prompts':int(zprompts.isin(known).sum())}
           out['prompt_catalog']=pinfo
           print(json.dumps(out,indent=2)[:29000])
           Path('/tmp/ntl-two-source-provenance.json').write_text(json.dumps(out,indent=2)+'\n')
