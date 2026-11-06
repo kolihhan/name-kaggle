@@ -1,10 +1,10 @@
 # NOW
 
-## Research PIC decision — contextual choices (2026-11-06)
+## Research PIC decision — use existing Kaggle evidence (2026-11-06)
 
-**Priority:** Test whether sibling models prefer different valid expression choices after accounting for which choices their local context makes plausible. The proposed control counts the same choices with a context-constant offset. The candidate uses a frozen reference decoder to supply the contextual offset.
+**Priority:** Establish whether the contextual-choice hypothesis has enough room to help on short passages in the 18-label Kaggle task. MAABench is now an archived external design. Current feasibility uses the Kaggle training set and the existing 2,699 Gate-B out-of-fold predictions.
 
-**Next scientific step, design only:** [Research decision and test](artifacts/research/contextual-choice-attribution-decision-20261106.md). Compare exact Claude Opus 4.8 vs Opus 5 on MAABench Version → Joint using paired seeds and a fixed full-text anchor. The dataset card documents the requisite labels and pair keys. Raw-file access and terms remain prerequisites. Prior results below remain historical evidence. This entry records no experimental result or execution authorization.
+**Smallest next check, design only.** Fix one label-blind definition of a usable wording choice before looking at mistakes. Join the archived predictions to official training passages by ID. Ask what share of all passages, averaged per true label, both have a usable choice and were misclassified by the baseline. This is the maximum possible gain on these rows if scoring changes only passages with a usable choice. Low coverage deprioritizes the idea. High coverage justifies considering a later test. These already-used rows support feasibility only, and the check requires no model inference, training or new dataset. [Revised research decision](artifacts/research/contextual-choice-attribution-decision-20261106.md#current-kaggle-decision)
 
 ## Research PIC update — generator-versus-collection-channel identifiability (2026-11-06)
 
