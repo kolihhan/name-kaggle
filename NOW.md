@@ -1,5 +1,11 @@
 # NOW
 
+## Research PIC decision — contextual choices (2026-11-06)
+
+**Priority:** Test whether sibling models prefer different valid expression choices after accounting for which choices their local context makes plausible. The proposed control counts the same choices with a context-constant offset. The candidate uses a frozen reference decoder to supply the contextual offset.
+
+**Next scientific step, design only:** [Research decision and test](artifacts/research/contextual-choice-attribution-decision-20261106.md). Compare exact Claude Opus 4.8 vs Opus 5 on MAABench Version → Joint using paired seeds and a fixed full-text anchor. The dataset card documents the requisite labels and pair keys. Raw-file access and terms remain prerequisites. Prior results below remain historical evidence. This entry records no experimental result or execution authorization.
+
 ## Research PIC update — generator-versus-collection-channel identifiability (2026-11-06)
 
 **NEW primary-sourced research decision:** [`artifacts/research/generator-vs-channel-identification-decision-20261106.md`](artifacts/research/generator-vs-channel-identification-decision-20261106.md). Existing 18-label OOF shows different error regimes (Gemini family right 97.5%; GLM 42%), but cannot establish whether underlying signals reflect **generator identity** or **generation/collection channel** (instructions, sampling, version, gateway, formatting). Prompt-disjoint CV does not by itself control channel. Do not derive model-fingerprint claims from per-source BA with different label coverage.
