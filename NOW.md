@@ -1,5 +1,16 @@
 # NOW
 
+## User-selected execution mode: AUDIT → SUBMIT → VERIFY, no own experiments (2026-11-06)
+
+**Official Kaggle latest verified score: 0.668 (ref 58022340, COMPLETE), superseding V47 0.666.** [Authenticated status run 42161796795](https://github.com/kolihhan/name-kaggle/actions/runs/42161796795) confirmed this directly. The notebook author titled it 0.672 but our account scored 0.668. Attribution: externally authored Ozertuu public V3, not our independently developed model (our independent LoRA24 scored 0.520).
+
+**NEW VERIFIED SUBMISSION ACCEPTED:** [GitHub Actions 42162219817](https://github.com/kolihhan/name-kaggle/actions/runs/42162219817) directly submitted exact existing **Ozertuu Dual-SVC Residual Refinement Apex V1** from source SHA `3cc78ce05de7304b1240b3b406f00909690e2183efc04b0ea76e267677c70dbd`, with fully verified published version 1 and appropriate Kaggle metadata. Official Kaggle **submission `58045266`** accepted 2026-11-06 04:23:43 UTC, first observed `PENDING` / blank score. **Do not invent score or resubmit the same version.**
+
+**NEXT**: read-only status of `58045266` against prior 0.668 benchmark; if COMPLETE with blank score, investigate genuine Kaggle runtime exception rather than claim success. Exact audit and links: `artifacts/operations/audit-submit-verify-20261106.md`. No user-side ML training, ablation, new model or custom kernel. Public notebook may run its own fit code during Kaggle hidden execution; this is not a claim of zero remote computation.
+
+**Prior research lane PAUSED by explicit user choice.** Do not resume DCT v3, external source-transfer experiments, sibling probes or prompt audits unless user changes goals. Scope is source audit, unchanged published notebook submission, and official scoring verification only.
+
+
 ## Source-transfer mechanism probe COMPLETED — 2026-11-06
 
 **Actual completed one-shot CPU experiment** [GitHub Actions 42157902705](https://github.com/kolihhan/name-kaggle/actions/runs/42157902705), aggregate ZIP artifact `13475960270` (digest `ea2d07c5ececfb36657a4b218521ab72f911b7d9d1589562b4086b3f17dcd669`). Original frozen contract and full results in `artifacts/research/source-transfer-views-20261106/RESULT.md`.
