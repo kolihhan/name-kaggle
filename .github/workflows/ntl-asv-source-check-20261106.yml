@@ -1,0 +1,65 @@
+name: NTL ASV Audit 4 Published Kernels and Pin Source
+
+on:
+  push:
+    branches: [ops/audit-submit-verify-20261106]
+    paths: [.github/workflows/ntl-asv-source-check-20261106.yml]
+
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect published notebook metadata and source without executing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing Kaggle API token}"
+          for ref in \
+            ozertuu/0-672-dual-svc-residual-refinement-apex \
+            ozertuu/0-670-residual-sibling-gating-m4-apex \
+            aboodps/ntl-672-sinkhorn-050 \
+            aboodps/ntl-672-q14top-025 \
+            ozertuu/0-672-dual-svc-calibrated-blend-proven-3-lora; do
+            d="/tmp/candidates/${ref//\//_}"
+            mkdir -p "$d"
+            echo "ASV_SOURCE_BEGIN $ref"
+            kaggle kernels status "$ref" || true
+            kaggle kernels pull "$ref" -p "$d" -m || true
+            echo "ASV_SOURCE_END $ref"
+          done
+          python - <<'PY'
+          import pathlib,json,hashlib,re
+          root=pathlib.Path('/tmp/candidates')
+          for d in root.iterdir():
+              nb=list(d.glob('*.ipynb'))
+              meta=d/'kernel-metadata.json'
+              if len(nb)!=1 or not meta.is_file():
+                  print('ASV_UNAVAILABLE',d.name,flush=True);continue
+              m=json.loads(meta.read_text())
+              doc=json.loads(nb[0].read_text())
+              code='\n'.join(''.join(c['source']) for c in doc['cells'] if c['cell_type']=='code')
+              data={
+                'ref':m.get('id'), 'sha256':hashlib.sha256(nb[0].read_bytes()).hexdigest(),
+                'code_cells':sum(c['cell_type']=='code' for c in doc['cells']),
+                'enable_gpu':m.get('enable_gpu'),'enable_internet':m.get('enable_internet'),
+                'competition_sources':m.get('competition_sources'),
+                'datasets':len(m.get('dataset_sources',[])),
+                'kernels':len(m.get('kernel_sources',[])),
+                'models':len(m.get('model_sources',[])),
+                'has_submission_parquet':bool(re.search(r'submission[.]parquet',code,re.I)),
+                'has_hidden_guard':bool(re.search(r'FAST_COMMIT|len\(.*test|quick_run|preview',code,re.I)),
+                'has_cpu_fit':bool(re.search(r'\.fit\s*\(',code)),
+                'has_own_gradient_training':bool(re.search(r'\.backward\s*\(|optimizer\.step\s*\(|Trainer\s*\(',code)),
+                'contains_imported_module':bool(re.search(r'from\s+\w+\s+import|import\s+\w+',code)),
+                'code_bytes':len(code),
+                'possible_fixed_output':bool(re.search(r'known.*(?:prediction|test)|sample.*submission.*copy|hardcode',code,re.I))
+              }
+              print('ASV_SOURCE',json.dumps(data,sort_keys=True),flush=True)
+          PY
