@@ -72,3 +72,18 @@ Proof: [Kaggle inventory Action 42063920056](https://github.com/kolihhan/name-ka
 ### Decision boundary
 
 The best provisional pair to inspect further is alessandrolair plus independently qualifying elliotthankinson sub-batches. **NO full strict holdout admission or PASS/FAIL claim yet.** Do not set model_serving_provenance_verified=true based solely on creator README assertions. Next: verify exact independent prompt coverage and true served-model traceability, then privately extract frozen Stage-1 A1 embeddings and run the already frozen readout test. GPU training and leaderboard submission remain unauthorized.
+
+
+## 2026-11-06: Verified prompt leakage in a candidate holdout
+
+GitHub Actions [42151858490](https://github.com/kolihhan/name-kaggle/actions/runs/42151858490) succeeded. It matched the 75,783-row frozen Stage-1 public pool (SHA256 37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec) to 212,623 new-pool rows using normalized answer text, then linked those matched answers to exact prompt_canon values. This is a **conservative detector**: 61,681 of 75,783 Stage-1 responses were mapped; 14,102 responses could not be mapped by this route.
+
+Of 1,441 distinct prompts in zeminglii/ntl-own-exact-route-generations (2,162 total rows), **522 prompt texts** have a confirmed connection to a Stage-1 response. This affects **621 zeminglii rows**. Excluding those leaves **1,541 rows NOT PROVEN SPENT**, which must not be misrepresented as 1,541 PROVEN INDEPENDENT rows. Stage-1 pre-official adapter actually trained on only 30,133 of the 75,783 rows, so the 621 figure refers to overlap with the *broader Stage-1 public pool*, not a measured overlap with the exact adapter-training split. The stricter precise training-split overlap remains unverified.
+
+The prompt catalog prompts.parquet contains 16,598 prompts, and all 1,441 distinct zeminglii prompts matched this catalog. The catalog contains no underlying original-source identifier.
+
+Separate [Action 42151491857](https://github.com/kolihhan/name-kaggle/actions/runs/42151491857) confirmed zeminglii original passages.csv SHA256 4ff8c42f3c26b8ee0cfd1552253c3b7faa2ad4d111a8f8781a292e8d41e62afe: **2,162 rows all have nonempty model_seen containing the correct model label**. Specifically 319 Gemini 3.7 rows have returned model_seen=google/gemini-3.7-flash, OpenRouter route, Google provider; 416 Gemini 3.8 rows have model_seen=google/gemini-3.8-flash, Kaggle proxy route. This verifies recorded returned IDs, NOT the physical serving backend's identity.
+
+Prior [Action 42151251888](https://github.com/kolihhan/name-kaggle/actions/runs/42151251888) found zero exact answer overlap between original alessandrolair and elliotthankinson. [Action 42151649815](https://github.com/kolihhan/name-kaggle/actions/runs/42151649815) also found zero exact normalized prompt overlap between alessandrolair and zeminglii, and zero direct text/ID overlap of zeminglii prompt values with Stage-1 opaque prompt IDs/keys. These **negative direct-ID tests do not supersede the positive Stage-1-to-prompt-canon reconstructed link above**.
+
+**Decision: strict admission remains BLOCKED.** No frozen LoRA embedding export, readout scoring, GPU training, official Kaggle data, or Kaggle submission occurred. To unlock the frozen probe, account for the exact 30,133-row A1 training split and its 14,102 potentially unmapped broader-pool responses; verify source and prompt independence without treating ID formatting differences as proof. No evaluation criteria were changed.
