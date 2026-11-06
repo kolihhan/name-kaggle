@@ -1,0 +1,49 @@
+name: NTL Audit Submit Verify - Live My Submissions and Candidate Survey
+
+on:
+  push:
+    branches: [ops/audit-submit-verify-20261106]
+    paths: [.github/workflows/ntl-asv-live-snapshot-20261106.yml]
+
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Read actual official My Submissions, no submission and no data download
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing Kaggle API token}"
+          kaggle competitions submissions name-that-llm -v -q > /tmp/scores.csv
+          python - <<'PY'
+          import csv, json, datetime
+          rows=list(csv.DictReader(open('/tmp/scores.csv',newline='')))
+          rows.sort(key=lambda r:int(r['ref']),reverse=True)
+          print('ASV_SNAPSHOT_UTC', datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)
+          print('ASV_COUNT',len(rows),flush=True)
+          for row in rows:
+              print('ASV_SUBMISSION',json.dumps({k:row.get(k) for k in ('ref','status','publicScore','privateScore','date','description')},sort_keys=True),flush=True)
+          best=[r for r in rows if r.get('publicScore')]
+          if best:
+              top=max(best,key=lambda x:float(x['publicScore']))
+              print('ASV_BEST_SCORED',top['ref'],top['publicScore'],flush=True)
+          else: print('ASV_NO_SCORED_SUBMISSION',flush=True)
+          PY
+          echo 'ASV_TARGET_DETAIL'
+          kaggle competitions submission 58022340 || true
+      - name: Read ranked public competition notebooks only (no GPU/inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sort in scoreDescending dateRun; do
+            echo "ASV_RANK_BEGIN ${sort}"
+            kaggle kernels list --competition name-that-llm --sort-by "$sort" --page-size 50 -p 1 -v || true
+            echo "ASV_RANK_END ${sort}"
+          done
