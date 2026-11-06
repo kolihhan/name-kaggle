@@ -1,0 +1,61 @@
+name: NTL ASV Pin Apex Published Version (Read-Only)
+
+on:
+  push:
+    branches: [ops/audit-submit-verify-20261106]
+    paths: [.github/workflows/ntl-asv-apex-version-pin-20261106.yml]
+
+permissions: {contents: read}
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      REF: ozertuu/0-672-dual-svc-residual-refinement-apex
+      EXPECTED: 3cc78ce05de7304b1240b3b406f00909690e2183efc04b0ea76e267677c70dbd
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Find exact public published version by content SHA (no inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing token}"
+          mkdir -p /tmp/apex-current
+          kaggle kernels pull "$REF" -p /tmp/apex-current -m >/dev/null
+          python - <<'PY'
+          import pathlib,hashlib,os,json
+          d=pathlib.Path('/tmp/apex-current')
+          n=list(d.glob('*.ipynb'))
+          assert len(n)==1
+          h=hashlib.sha256(n[0].read_bytes()).hexdigest()
+          print('ASV_CURRENT_SHA',h,flush=True)
+          assert h==os.environ['EXPECTED'],'Source changed since initial audit; refuse submission'
+          meta=json.loads((d/'kernel-metadata.json').read_text())
+          assert meta['id']==os.environ['REF']
+          assert meta.get('enable_gpu') is True
+          assert meta.get('enable_internet') is False
+          assert meta.get('competition_sources')==['name-that-llm']
+          assert len(meta.get('dataset_sources',[]))==20
+          assert len(meta.get('kernel_sources',[]))==8
+          assert len(meta.get('model_sources',[]))==8
+          print('ASV_PIN_METADATA_VALID',flush=True)
+          PY
+          matched=""
+          for v in $(seq 1 20); do
+            d="/tmp/apex-$v"
+            mkdir -p "$d"
+            if kaggle kernels pull "$REF/$v" -p "$d" -m >/dev/null 2>&1; then
+              actual=$(python - "$d" <<'PY'
+          import pathlib,hashlib,sys
+          p=list(pathlib.Path(sys.argv[1]).glob('*.ipynb'))
+          print(hashlib.sha256(p[0].read_bytes()).hexdigest() if len(p)==1 else 'INVALID')
+          PY
+          )
+              if test "$actual" = "$EXPECTED"; then matched="$v"; echo "ASV_EXACT_VERSION_MATCH $v $actual"; fi
+            fi
+          done
+          if test -z "$matched"; then echo "ASV_BLOCKED_NO_PINNABLE_EXACT_VERSION"; exit 2; fi
+          echo "ASV_MATCHING_VERSIONS $matched"
