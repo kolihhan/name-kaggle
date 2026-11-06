@@ -1,0 +1,90 @@
+name: NTL ASV Official Apex V1 Direct Submission Exactly Once
+
+on:
+  push:
+    branches: [ops/audit-submit-verify-20261106]
+    paths: [.github/workflows/ntl-asv-apex-v1-submit-once-20261106.yml]
+
+permissions: {contents: read}
+concurrency:
+  group: ntl-asv-apex-v1-one-submission
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      REF: ozertuu/0-672-dual-svc-residual-refinement-apex
+      VERSION: "1"
+      SHA: 3cc78ce05de7304b1240b3b406f00909690e2183efc04b0ea76e267677c70dbd
+      DESCRIPTION: "Reproduction public Ozertuu Dual-SVC Residual Apex exact V1 20261106 no independent training"
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle CLI only
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Pin source, exact version, prior submissions and safety before direct Kaggle submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing Kaggle credentials}"
+          mkdir -p /tmp/apex
+          kaggle kernels pull "$REF/$VERSION" -p /tmp/apex -m >/dev/null
+          kaggle competitions submissions name-that-llm -v -q >/tmp/submissions-before.csv
+          python - <<'PY'
+          import os,csv,json,hashlib,pathlib,re
+          d=pathlib.Path('/tmp/apex')
+          p=list(d.glob('*.ipynb'))
+          assert len(p)==1,'Expected exact notebook source'
+          sha=hashlib.sha256(p[0].read_bytes()).hexdigest()
+          assert sha==os.environ['SHA'],f'Pinned V1 changed: {sha}'
+          md=json.loads((d/'kernel-metadata.json').read_text())
+          assert md['id']==os.environ['REF']
+          assert md.get('enable_internet') is False and md.get('enable_gpu') is True
+          assert md.get('competition_sources')==['name-that-llm']
+          assert len(md.get('dataset_sources',[]))==20
+          assert len(md.get('kernel_sources',[]))==8
+          assert len(md.get('model_sources',[]))==8
+          code='\n'.join(''.join(cell.get('source',[])) for cell in json.loads(p[0].read_bytes())['cells'] if cell.get('cell_type')=='code')
+          assert 'submission.parquet' in code
+          with open('/tmp/submissions-before.csv',newline='') as f: rows=list(csv.DictReader(f))
+          assert len(rows)==11, f'Expected 11 prior submissions, found {len(rows)}; new submission needs re-audit'
+          assert max(int(x['ref']) for x in rows)==58022340, 'New concurrent submission detected; stop'
+          assert any(x['ref']=='58022340' and x.get('publicScore')=='0.668' for x in rows),'0.668 champion not present'
+          assert not any(x.get('description')==os.environ['DESCRIPTION'] for x in rows),'Already submitted this pinned candidate'
+          print('ASV_PRE_SUBMIT_VALID exact_version=1 sha='+sha+' previous_count=11 previous_best=0.668',flush=True)
+          PY
+      - name: Submit exact existing published notebook to Kaggle code competition once
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle competitions submit name-that-llm -k "$REF" -v "$VERSION" -f submission.parquet -m "$DESCRIPTION" 2>&1 | tee /tmp/apex-accepted.log
+          python - <<'PY'
+          import pathlib,re
+          txt=pathlib.Path('/tmp/apex-accepted.log').read_text()
+          refs=re.findall(r'Submission ref:\s*(\d+)',txt,re.I)
+          assert len(refs)==1,'No unique accepted official ref; not claiming successful submission'
+          pathlib.Path('/tmp/apex-ref.txt').write_text(refs[0])
+          print('ASV_OFFICIAL_ACCEPTED_REF',refs[0],flush=True)
+          PY
+      - name: Verify acceptance in official My Submissions without resubmission
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID=$(cat /tmp/apex-ref.txt)
+          kaggle competitions submission "$ID"
+          kaggle competitions submissions name-that-llm -v -q >/tmp/submissions-after.csv
+          python - <<'PY'
+          import pathlib,csv,json,os
+          ref=pathlib.Path('/tmp/apex-ref.txt').read_text().strip()
+          rows=list(csv.DictReader(open('/tmp/submissions-after.csv',newline='')))
+          match=[r for r in rows if r.get('ref')==ref]
+          assert len(match)==1 and match[0].get('description')==os.environ['DESCRIPTION'],'Official accepted entry does not match pinned notebook'
+          print('ASV_VERIFIED_SUBMISSION',json.dumps({k:match[0].get(k) for k in ('ref','status','publicScore','privateScore','date','description')},sort_keys=True),flush=True)
+          if match[0].get('publicScore'):
+              print('ASV_V1_DELTA_VS_0668',float(match[0]['publicScore'])-0.668,flush=True)
+          else:
+              print('ASV_SUBMISSION_ACCEPTED_SCORING_NOT_COMPLETE_YET',flush=True)
+          PY
