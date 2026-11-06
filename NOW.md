@@ -1,5 +1,17 @@
 # NOW
 
+## Source-transfer mechanism probe COMPLETED — 2026-11-06
+
+**Actual completed one-shot CPU experiment** [GitHub Actions 42157902705](https://github.com/kolihhan/name-kaggle/actions/runs/42157902705), aggregate ZIP artifact `13475960270` (digest `ea2d07c5ececfb36657a4b218521ab72f911b7d9d1589562b4086b3f17dcd669`). Original frozen contract and full results in `artifacts/research/source-transfer-views-20261106/RESULT.md`.
+
+Eligible-label BA (different labels per source): Aless FULL `0.464769`, LEXICAL `0.457431`, SURFACE `0.388482`; Elliot FULL `0.295586`, LEXICAL `0.297183`, SURFACE `0.199968`. These show SURFACE-only is weaker in both settings, while FULL vs LEXICAL is minimal/inconsistent. Crucial matched-label control: **all three shared GPT-5.6 models have at least as high FULL recall on Elliot as Aless** despite the lower overall Elliot score; do not call absolute score gap a uniform domain-shift penalty.
+
+**DECISION: CLOSE this candidate as a negative mechanism diagnostic; NOT a competition result.** Previously examined source data, different label mixtures, unclear served provenance, non-capacity-matched feature spaces mean no generalization/causal/independent evidence. Do not reuse this pair to fit family-specific gates or search new view weights. No GPU, official data, competition submission, LB use, or adaptive sweep.
+
+**Global next question:** Whether generator-specific information beyond surface and sparse lexical cues lives in token *trajectory* rather than arithmetic mean. DCT-v3 existing frozen candidate is the relevant distinct direction, but its GitHub `RESULT.md` only establishes feasibility, not any scored transfer. No new candidate/experimental claim until that scientifically controlled v1-v3 comparison can actually execute. Earlier prompt-residual LDA failed and v2 prototype contrastive did not pass CI; do not recreate either as a supposedly new idea.
+
+
+
 ## Independent research pivot — source transfer, not sibling gate (2026-11-06)
 
 **User correction accepted:** stop optimizing an elaborate sibling-information-probe and repeatedly source-screening holdouts; no more source inventories, sibling readout fitting, or claim of independent performance from scrutinized sources.
