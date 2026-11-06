@@ -39,6 +39,8 @@ jobs:
           kaggle datasets download -d alessandrolair/ntl-kaggle-benchmarks-generated-passages -f ntl_kbench_generated.parquet -p /tmp/aless --unzip >/dev/null
           mkdir -p /tmp/zeming /tmp/elliot-join
           kaggle datasets download -d zeminglii/ntl-own-exact-route-generations -f passages.csv -p /tmp/zeming --unzip >/dev/null
+          mkdir -p /tmp/prompt-catalog
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f prompts.parquet -p /tmp/prompt-catalog --unzip >/dev/null
           kaggle datasets download -d elliotthankinson/ntl-exact-gens-v3 -f or_paid_join.parquet -p /tmp/elliot-join --unzip >/dev/null
       - name: Compare normalized text, prompt identifiers, label coverage and serving metadata
         shell: bash
@@ -118,6 +120,21 @@ jobs:
           }
           if 'prompt_group' in aless: out['sources']['alessandrolair/ntl-kaggle-benchmarks-generated-passages']['prompt_groups']=int(aless['prompt_group'].nunique())
           if 'prompt_key' in elliot: out['sources']['elliotthankinson/ntl-exact-gens-v3']['prompt_keys']=int(elliot['prompt_key'].nunique())
+          pfile=Path('/tmp/prompt-catalog/prompts.parquet')
+          catalog=pd.read_parquet(pfile)
+          pinfo={'sha256':hashlib.sha256(pfile.read_bytes()).hexdigest(),
+                 'rows':len(catalog),'columns':list(catalog.columns)}
+          for key in ('prompt_canon','prompt','prompt_text','text'):
+              if key in catalog:
+                  zhash=set(z['prompt_canon'].dropna().astype(str).map(h))
+                  hit=catalog[key].astype(str).map(h).isin(zhash)
+                  pinfo['matched_prompt_rows']=int(hit.sum())
+                  pinfo['matched_distinct_prompts']=int(catalog.loc[hit,key].nunique())
+                  for sourcekey in ('source_dataset','source','sources','origin','source_datasets'):
+                      if sourcekey in catalog:
+                          pinfo['matched_'+sourcekey+'_counts']={str(k):int(v) for k,v in catalog.loc[hit,sourcekey].astype(str).value_counts().head(40).items()}
+                  break
+          out['prompt_catalog']=pinfo
           print(json.dumps(out,indent=2)[:29000])
           Path('/tmp/ntl-two-source-provenance.json').write_text(json.dumps(out,indent=2)+'\n')
           PY
