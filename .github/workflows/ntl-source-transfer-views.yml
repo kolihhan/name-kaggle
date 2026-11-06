@@ -1,0 +1,59 @@
+name: NTL Source Transfer Mechanism (One-Shot CPU)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: research/source-transfer-mechanism-20261106
+          sparse-checkout: |
+            scripts/run_source_transfer_views.py
+            scripts/run_phase14_public_sparse.py
+            scripts/run_two_stage_lora24_gate_a.py
+            scripts/run_strong_sparse_anchor.py
+            .github/workflows/ntl-source-transfer-views.yml
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Refuse official competition files
+        run: test ! -e data/train.csv && test ! -e data/test.csv && test ! -e data/sample_submission.parquet
+      - name: Install CPU-only dependencies
+        run: python -m pip install --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy==1.26.4' 'pandas==2.2.3' 'pyarrow==20.0.0' 'scipy==1.15.3' 'scikit-learn==1.6.1'
+      - name: Download exactly three frozen PUBLIC external parquet files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-stage1 /tmp/ntl-aless /tmp/ntl-elliot
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/ntl-stage1 --unzip >/dev/null
+          kaggle datasets download -d alessandrolair/ntl-kaggle-benchmarks-generated-passages -f ntl_kbench_generated.parquet -p /tmp/ntl-aless --unzip >/dev/null
+          kaggle datasets download -d elliotthankinson/ntl-exact-gens-v3 -f pool_v8j_add.parquet -p /tmp/ntl-elliot --unzip >/dev/null
+          test -s /tmp/ntl-stage1/pool_v4.parquet
+          test -s /tmp/ntl-aless/ntl_kbench_generated.parquet
+          test -s /tmp/ntl-elliot/pool_v8j_add.parquet
+      - name: Run frozen paired mechanism diagnostic (no tuning / no official data)
+        shell: bash
+        run: |
+          python -m scripts.run_source_transfer_views \
+            --stage1 /tmp/ntl-stage1/pool_v4.parquet \
+            --aless /tmp/ntl-aless/ntl_kbench_generated.parquet \
+            --elliot /tmp/ntl-elliot/pool_v8j_add.parquet \
+            --output /tmp/ntl-view-diagnostic.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-transfer-views-aggregate-only
+          path: /tmp/ntl-view-diagnostic.json
+          retention-days: 14
