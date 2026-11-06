@@ -37,6 +37,9 @@ jobs:
           kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/stage1 --unzip >/dev/null
           kaggle datasets download -d elliotthankinson/ntl-exact-gens-v3 -f pool_v8j_add.parquet -p /tmp/elliot --unzip >/dev/null
           kaggle datasets download -d alessandrolair/ntl-kaggle-benchmarks-generated-passages -f ntl_kbench_generated.parquet -p /tmp/aless --unzip >/dev/null
+          mkdir -p /tmp/zeming /tmp/elliot-join
+          kaggle datasets download -d zeminglii/ntl-own-exact-route-generations -f passages.csv -p /tmp/zeming --unzip >/dev/null
+          kaggle datasets download -d elliotthankinson/ntl-exact-gens-v3 -f or_paid_join.parquet -p /tmp/elliot-join --unzip >/dev/null
       - name: Compare normalized text, prompt identifiers, label coverage and serving metadata
         shell: bash
         run: |
@@ -72,6 +75,29 @@ jobs:
                   if key in df:
                       entry[key+'_counts']={str(k):int(v) for k,v in df[key].astype(str).value_counts().head(30).items()}
               out['sources'][name]=entry
+          zpath=Path('/tmp/zeming/passages.csv')
+          z=pd.read_csv(zpath)
+          jpath=Path('/tmp/elliot-join/or_paid_join.parquet')
+          j=pd.read_parquet(jpath)
+          for name,df,path in [('zeminglii-original',z,zpath),('elliot-original-paid-join',j,jpath)]:
+              fields=[x for x in df if any(p in x.lower() for p in ('seen','provider','route','proxy','prompt'))]
+              entry={'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'rows':len(df),'columns':list(df.columns),'identity_and_prompt_fields':fields}
+              if 'text' in df: entry['text_overlap_stage1']=int(df['text'].map(h).isin(ref).sum())
+              if 'model' in df: entry['model_counts']={str(k):int(v) for k,v in df['model'].value_counts().items()}
+              if 'model_seen' in df:
+                  entry['model_seen_missing']=int(df['model_seen'].isna().sum())
+                  entry['model_seen_equals_label']=int((df['model_seen'].astype(str)==df['model'].astype(str)).sum())
+                  entry['seen_contains_label']=int(sum(str(label) in str(seen) for seen,label in zip(df['model_seen'],df['model'])))
+              for key in ('provider','route','source'):
+                  if key in df: entry[key+'_counts']={str(k):int(v) for k,v in df[key].fillna('MISSING').astype(str).value_counts().head(12).items()}
+              out['sources'][name]=entry
+          aless=pd.read_parquet(Path('/tmp/aless/ntl_kbench_generated.parquet'))
+          elliot=pd.read_parquet(Path('/tmp/elliot/pool_v8j_add.parquet'))
+          out['pairwise']={'aless_elliot_shared_normalized_responses':len(set(aless['text'].map(h)) & set(elliot['text'].map(h)))}
+          if 'prompt_canon' in z: out['pairwise']['aless_zeming_same_normalized_prompt']=len(set(aless['prompt'].map(h)) & set(z['prompt_canon'].map(h)))
+          if 'prompt_key' in j: out['pairwise']['stage1_elliot_join_same_exact_prompt_key_rows']=int(j['prompt_key'].astype(str).isin(base_keys).sum())
+          if 'prompt_group' in aless: out['sources']['alessandrolair/ntl-kaggle-benchmarks-generated-passages']['prompt_groups']=int(aless['prompt_group'].nunique())
+          if 'prompt_key' in elliot: out['sources']['elliotthankinson/ntl-exact-gens-v3']['prompt_keys']=int(elliot['prompt_key'].nunique())
           print(json.dumps(out,indent=2)[:29000])
           Path('/tmp/ntl-two-source-provenance.json').write_text(json.dumps(out,indent=2)+'\n')
           PY
