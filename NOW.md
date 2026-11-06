@@ -1,5 +1,15 @@
 # NOW
 
+## Confirmed candidate prompt reuse — 2026-11-06
+
+**NEW VERIFIED:** [Action 42151858490](https://github.com/kolihhan/name-kaggle/actions/runs/42151858490) traced 61,681 Stage-1 response matches into the current public pool's prompt_canon. The zeminglii 2,162-row candidate has 1,441 unique prompts, **522 proved reused** in the broader Stage-1 public pool, affecting **621 rows**. The other 1,541 rows are *not proven spent*, not proven independent. Critically, the Stage-1 A1 adapter used 30,133 training rows, so exact adapter-training-prompt overlap is still UNKNOWN. Do not report 621 as definitive adapter-training leakage.
+
+[Action 42151491857](https://github.com/kolihhan/name-kaggle/actions/runs/42151491857) independently confirmed all 2,162 zeminglii rows have recorded model_seen containing their expected label; Gemini 3.7: 319 rows, google/gemini-3.7-flash via Google/OpenRouter; Gemini 3.8: 416 rows, google/gemini-3.8-flash via Kaggle proxy. This checks response metadata, not underlying serving backend truth.
+
+**Research state: DATA BLOCKED.** No fresh LoRA scoring, GPU work, Kaggle submission, or evidence of accuracy improvement. Next single discriminating step: reconstruct the frozen 30,133 Stage-1 adaptation split, map its prompt identity against candidate corpora including unresolved rows, and find two truly source/prompt-disjoint served-ID-audited holdouts. Full evidence in artifacts/research/sibling-information-probe-v1/SOURCE_ADMISSION.md.
+
+
+
 ## Sibling probe continuation — real external-source audit, NOT scientific model PASS (2026-11-06)
 
 **Verified:** GitHub Actions 42063920056, 42064170317, 42064722943, 42065056290, 42065237791, 42065527178, and 42065925337 read actual Kaggle public external dataset metadata/README/Parquets. Current crtproduction pool is 212,623 rows / 60 listed upstream sources; 61,681 exact normalized responses overlap the frozen Stage-1 pool (75,783 rows). Candidate original alessandrolair file 3,866 rows / 12 labels / 3 sibling families, 0 exact text overlaps; original elliotthankinson v8j 8,347 rows / 7 labels / only 2 sibling families, 0 exact text or exact prompt_key overlaps. These figures do NOT establish served-model identity or full prompt/source independence.
