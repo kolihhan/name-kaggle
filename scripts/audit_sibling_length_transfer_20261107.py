@@ -47,6 +47,7 @@ def audit(csv_path):
          "results":{}}
     for name,(higher,lower) in PAIRS.items():
         strata=collections.defaultdict(lambda:collections.Counter())
+        distinct_pair_prompts=set()
         for (bank,prompt,setting,model),_ in buckets.items():
             if model!=higher or setting not in VALID_SETTINGS:continue
             k1=(bank,prompt,setting,higher);k2=(bank,prompt,setting,lower)
@@ -64,6 +65,7 @@ def audit(csv_path):
                 count["excluded_invalid_word_metadata"]+=1
                 continue
             count["paired_prompt_keys"]+=1
+            distinct_pair_prompts.add((bank,prompt))
             if stored_a!=actual_a or stored_b!=actual_b:count["stored_word_count_mismatch"]+=1
             out_sign=sign(actual_a,actual_b)
             target_sign=sign(target_a,target_b)
@@ -78,6 +80,9 @@ def audit(csv_path):
         out["results"][name]={
             "strata":{k:dict(sorted(v.items())) for k,v in sorted(strata.items())},
             "total_paired_prompt_keys":sum(v["paired_prompt_keys"] for v in strata.values()),
+            "distinct_bank_prompt_keys":len(distinct_pair_prompts),
+            "prompt_keys_repeated_across_settings":sum(v["paired_prompt_keys"] for v in strata.values())-len(distinct_pair_prompts),
+            "primary_rlow_t1":dict(sorted(strata["rlow_t1"].items())),
             "total_sol_longer":sum(v["sol_longer"] for v in strata.values()),
             "total_sol_shorter":sum(v["sol_shorter"] for v in strata.values()),
             "total_actual_ties":sum(v["actual_tie"] for v in strata.values()),
@@ -86,7 +91,7 @@ def audit(csv_path):
             "total_actual_matches_target_direction":sum(v["actual_matches_target_direction"] for v in strata.values()),
         }
         item=out["results"][name]
-        item["passes_sample_20_threshold"]=item["total_paired_prompt_keys"]>=20
+        item["passes_sample_20_threshold"]=item["distinct_bank_prompt_keys"]>=20
     out["scientific_limits"]=[
         "Fixed paired output ordering is not actionable on hidden unpaired test passages.",
         "Target lengths may be class-conditioned; source transfer cannot prove model-intrinsic identity.",
