@@ -1,7 +1,7 @@
 # Short-TRACE 8B v1 — first executed checkpoint
 
 **Date:** 2026-11-07  
-**Status:** CPU checks and actual Kaggle v1 push **VERIFIED**; true kernel status **QUEUED** at 2026-11-07 11:22:21 UTC. 8B scientific scores **NOT YET VERIFIED**.
+**Status:** Initial GPU v1 run **ERROR — EXECUTION BLOCKED by missing offline dependency**, verified by authenticated read-only Kaggle status at **2026-11-07 13:11:49 UTC**. No rank features or H/S/T scientific scores were generated. This is **not scientific FAIL**.
 
 ## Frozen science
 - [Contract](CONTRACT.md), committed before any 8B scores.
@@ -20,3 +20,16 @@
 
 ## Next gate
 Retrieve the exact Kaggle GPU execution result, check output `short_trace_8b_result.json` and the frozen contract; mark **PASS_FOR_LARGER_8B_VALIDATION_ONLY**, **NO_ADVANCE**, or **BLOCKED**, strictly by observed result. Do not change bin thresholds, shuffle seed, classifier or split after scores.
+
+
+## Verified execution failure — 2026-11-07 13:11 UTC
+
+- Read-only [Actions 42375838167](https://github.com/kolihhan/name-kaggle/actions/runs/42375838167) checked actual Kaggle slug and received `KernelWorkerStatus.ERROR`. Kaggle logs showed the Python 3.13 kernel raised:
+  ```
+  importlib.metadata.PackageNotFoundError:
+  No package metadata was found for bitsandbytes
+  ```
+- The exception occurs in `BitsAndBytesConfig(load_in_4bit=True)` while configuring 4-bit NF4 quantization, before loading/running Qwen3-8B evaluator and before any H/S/T predictions, scores, or artifacts. The Kaggle Notebook v1 *upload* succeeded; its actual model execution did not.
+- Science controls and data split remain untouched. Fix requires a compatible **Python 3.13 offline bitsandbytes wheel**, tested in the exact Kaggle GPU environment. Respect `enable_internet=false`; mount prepackaged dependency in an approved Kaggle dataset/runtime and pin its sha/version. A new *infrastructure-only* kernel version can then be preflighted and run with the same frozen H/S/T science.
+- No 14B escalation or official competition submission; 8B remains **BLOCKED_BY_ENVIRONMENT**. A green GitHub Actions wrapper run must never be interpreted as successful GPU inference.
+
