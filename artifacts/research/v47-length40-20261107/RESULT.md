@@ -1,6 +1,6 @@
 # V47 fixed-window SVC result
 
-Updated 2026-11-07 at 04:06 UTC. Official submission `58078151` is accepted and pending scoring.
+Updated 2026-11-07 at 07:11 UTC. Official submission `58078151` is accepted and **still PENDING**, with blank Public and Private score fields. Verified against Kaggle's authenticated submission listing at 07:11:19 UTC in [read-only score check](https://github.com/kolihhan/name-kaggle/actions/runs/42350194737). No re-submission or model change.
 
 ## Frozen solution
 
