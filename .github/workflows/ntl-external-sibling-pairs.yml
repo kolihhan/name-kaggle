@@ -1,0 +1,42 @@
+name: NTL External Sibling Matched Request Audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-external-sibling-pairs.yml, scripts/audit_external_sibling_request_pairs.py]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/audit_external_sibling_request_pairs.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Fetch third-party dataset v2 only and check exact sibling pair support
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN" || { echo "Missing Kaggle token"; exit 1; }
+          python -m py_compile scripts/audit_external_sibling_request_pairs.py
+          mkdir -p /tmp/sibling-public
+          if ! kaggle datasets download -d maniceet/name-that-llm-openrouter-openai-generations -p /tmp/sibling-public --unzip -q >/tmp/kaggle-pull-status.log 2>&1; then
+            echo "EXTERNAL_SOURCE_UNAVAILABLE_NORMAL_AUTH"
+            tail -c 450 /tmp/kaggle-pull-status.log | sed -E 's/[A-Za-z0-9_-]{30,}/[redacted]/g'
+            exit 2
+          fi
+          python - <<'PY'
+          import os,glob
+          files=glob.glob('/tmp/sibling-public/**/*.csv',recursive=True)
+          print('CSV_SOURCE_COUNT',len(files))
+          print('CSV_SOURCE_BASENAMES',[os.path.basename(x) for x in files])
+          if len(files) != 1:raise SystemExit("Cannot identify a unique raw CSV; stop.")
+          PY
+          CSV="$(find /tmp/sibling-public -type f -name '*.csv' | head -n 1)"
+          test -n "$CSV"
+          python scripts/audit_external_sibling_request_pairs.py "$CSV"
