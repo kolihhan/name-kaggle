@@ -64,9 +64,23 @@ def audit(root):
     for row in joined.itertuples(index=False):
         same_source[(str(row.source),str(row.id))].add(str(row.model))
     source_pair_counts=collections.Counter()
-    for models in same_source.values():
+    per_source=collections.Counter()
+    # Precommitted diagnostic: conditional on the same source+prompt, count whether
+    # one model habitually outputs more words. Actual length is NOT a requested
+    # length and cannot prove identical generation parameters.
+    length_signs=collections.defaultdict(lambda: collections.Counter())
+    lengths=wide.set_index("id")
+    assert lengths.index.is_unique
+    for (origin, row_id), models in same_source.items():
         for a,b in itertools.combinations(sorted(models),2):
             source_pair_counts[(a,b)] += 1
+            per_source[(a,b,origin)] += 1
+            if a in lengths.columns and b in lengths.columns:
+                t1=lengths.at[row_id,a];t2=lengths.at[row_id,b]
+                if isinstance(t1,str) and isinstance(t2,str):
+                    w1=len(t1.split());w2=len(t2.split())
+                    length_signs[(a,b)][("a_longer" if w1>w2 else
+                                         "b_longer" if w2>w1 else "tied")] += 1
     result={
       "source":"olegzholobov/name-that-llm-response-corpus",
       "file_sha256":file_shas,
@@ -74,6 +88,16 @@ def audit(root):
       "pair_prompt_overlap":pairs_by_prompt,
       "filtered_licensed_exact_prompt_cells":len(filtered),
       "same_source_prompt_keys":len(same_source),
+      "paired_sources_by_class":{
+        name: [{"source":source,"pair_prompt_keys":count}
+               for (_,_,source),count in per_source.most_common()
+               if (_,_) == tuple(sorted(pair))]
+        for name,pair in PAIRS.items()
+      },
+      "paired_actual_word_length_sign":{
+        name:dict(length_signs[tuple(sorted(pair))])
+        for name,pair in PAIRS.items()
+      },
       "same_source_pair_prompt_overlap":{name:source_pair_counts[tuple(sorted(pair))] for name,pair in PAIRS.items()},
       "metadata_columns":{k:sorted(set(x.columns)&{
         "prompt_exact","request","target_words","temperature","reasoning","version","served_model","provider","source",
