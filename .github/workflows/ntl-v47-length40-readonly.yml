@@ -12,96 +12,32 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
-      - name: Match V47 asset identities to selectable Kaggle versions
+      - name: Read candidate v2 and any official submission record
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
-          from concurrent.futures import ThreadPoolExecutor
-          from datetime import datetime
-          from urllib.parse import unquote, urlsplit
-          from kaggle.api.kaggle_api_extended import KaggleApi
-          from kagglesdk.datasets.types.dataset_api_service import ApiDownloadDatasetRequest, ApiGetDatasetRequest
-          from kagglesdk.kernels.types.kernels_api_service import ApiDownloadKernelOutputRequest, ApiGetKernelRequest
-          
-          upstream = ('lightningv08', '0-666-qwen3-8-27b-lora-weighted-ensemble')
-          cutoff = datetime.fromisoformat('2026-11-02T19:45:48.390871')
-          api = KaggleApi()
-          api.authenticate()
-          
-          def get_kernel(owner, slug, label=None):
-              with api.build_kaggle_client() as client:
-                  req = ApiGetKernelRequest()
-                  req.user_name, req.kernel_slug = owner, slug
-                  if label is not None:
-                      req.version_label = label
-                  return client.kernels.kernels_api_client.get_kernel(req)
-          
-          def redirect_ids(url):
-              return {int(p) for p in unquote(urlsplit(url).path).split('/') if p.isdecimal()}
-          
-          source = get_kernel(*upstream, label='v47')
-          ids = [{'sourceType': 'competition', 'sourceId': 170484}, {'sourceType': 'datasetVersion', 'sourceId': 18975315}, {'sourceType': 'datasetVersion', 'sourceId': 20736096}, {'sourceType': 'datasetVersion', 'sourceId': 20819121}, {'sourceType': 'datasetVersion', 'sourceId': 20831302}, {'sourceType': 'datasetVersion', 'sourceId': 20847146}, {'sourceType': 'datasetVersion', 'sourceId': 20934027}, {'sourceType': 'datasetVersion', 'sourceId': 21008519}, {'sourceType': 'datasetVersion', 'sourceId': 21011978}, {'sourceType': 'datasetVersion', 'sourceId': 21062729}, {'sourceType': 'datasetVersion', 'sourceId': 21097171}, {'sourceType': 'datasetVersion', 'sourceId': 21116786}, {'sourceType': 'datasetVersion', 'sourceId': 21119693}, {'sourceType': 'datasetVersion', 'sourceId': 21156661}, {'sourceType': 'datasetVersion', 'sourceId': 21203279}, {'sourceType': 'datasetVersion', 'sourceId': 21227404}, {'sourceType': 'datasetVersion', 'sourceId': 21594398}, {'sourceType': 'kernelVersion', 'sourceId': 358683059}, {'sourceType': 'kernelVersion', 'sourceId': 358745836}, {'sourceType': 'kernelVersion', 'sourceId': 358758062}, {'sourceType': 'kernelVersion', 'sourceId': 358770408}, {'sourceType': 'kernelVersion', 'sourceId': 358911769}, {'sourceType': 'kernelVersion', 'sourceId': 358928013}, {'sourceType': 'kernelVersion', 'sourceId': 358948428}, {'sourceType': 'kernelVersion', 'sourceId': 359652568}, {'sourceType': 'modelInstanceVersion', 'sourceId': 166254}, {'sourceType': 'modelInstanceVersion', 'sourceId': 166265}, {'sourceType': 'modelInstanceVersion', 'sourceId': 363135}, {'sourceType': 'modelInstanceVersion', 'sourceId': 363140}, {'sourceType': 'modelInstanceVersion', 'sourceId': 363153}]
-          dataset_ids = {r['sourceId'] for r in ids if r['sourceType'] == 'datasetVersion'}
-          kernel_ids = {r['sourceId'] for r in ids if r['sourceType'] == 'kernelVersion'}
-          assert len(dataset_ids) == 16 and len(kernel_ids) == 8
-          late = {'nuridudak/ntl-q14-lora', 'nuridudak/ntl-q14-lora-v4', 'nuridudak/ntl-svc-prefit-pool-v4n'}
-          
-          def dataset(ref):
-              owner, slug = ref.split('/')[:2]
-              with api.build_kaggle_client() as client:
-                  req = ApiGetDatasetRequest()
-                  req.owner_slug, req.dataset_slug = owner, slug
-                  view = client.datasets.dataset_api_client.get_dataset(req)
-              historical = sorted((v.version_number for v in (view.versions or [])
-                                   if v.creation_date and v.creation_date.replace(tzinfo=None) < cutoff), reverse=True)
-              for version in historical[:8]:
-                  path = f'{owner}/{slug}/{version}'
-                  listing = api.dataset_list_files(path, page_size=20)
-                  if not listing.files:
-                      continue
-                  with api.build_kaggle_client() as client:
-                      req = ApiDownloadDatasetRequest()
-                      req.owner_slug, req.dataset_slug = owner, slug
-                      req.dataset_version_number = version
-                      req.file_name = listing.files[0].name
-                      response = client.datasets.dataset_api_client.download_dataset(req)
-                  match = redirect_ids(response.url) & dataset_ids
-                  if len(match) == 1:
-                      return (path, match.pop())
-              return (ref, None)
-          
-          def kernel(ref):
-              owner, slug = ref.split('/')[:2]
-              latest = get_kernel(owner, slug).metadata.current_version_number
-              for version in range(latest, max(0, latest - 8), -1):
-                  path = f'{owner}/{slug}/{version}'
-                  listing = api.kernels_list_files(path, page_size=10)
-                  if not listing.files:
-                      continue
-                  with api.build_kaggle_client() as client:
-                      req = ApiDownloadKernelOutputRequest()
-                      req.owner_slug, req.kernel_slug = owner, slug
-                      req.version_number = version
-                      req.file_path = listing.files[0].name
-                      response = client.kernels.kernels_api_client.download_kernel_output(req)
-                  match = redirect_ids(response.url) & kernel_ids
-                  if len(match) == 1:
-                      return (path, match.pop())
-              return (ref, None)
-          
-          def safe(fn, ref):
+          import csv, io, json, subprocess
+          def read(*args):
+              return subprocess.run(['kaggle', *args], capture_output=True, text=True, timeout=60)
+          ref = 'kolihhan/ntl-v47-length40/2'
+          status = read('kernels', 'status', ref)
+          print('EXACT_PRIVATE_STATUS', status.stdout.strip(), status.returncode)
+          result = read('competitions', 'submissions', 'name-that-llm', '-v', '-q')
+          assert result.returncode == 0
+          rows = list(csv.DictReader(io.StringIO(result.stdout)))
+          exact = [r for r in rows if r.get('description','').startswith('Research V47 length40 SVC ')]
+          print('EXACT_OFFICIAL_RECORDS', json.dumps([{k:r.get(k) for k in ('ref','status','publicScore','date')} for r in exact]))
+          if any(v in status.stdout for v in ('COMPLETE', 'ERROR')):
+              result = read('kernels', 'logs', ref)
               try:
-                  return fn(ref)
-              except Exception as error:
-                  return (ref, 'ERROR ' + type(error).__name__ + ' ' + str(getattr(getattr(error, 'response', None), 'status_code', '')))
-          
-          with ThreadPoolExecutor(max_workers=8) as pool:
-              datasets = [pool.submit(safe, dataset, ref) for ref in source.metadata.dataset_data_sources if ref not in late]
-              kernels = [pool.submit(safe, kernel, ref) for ref in source.metadata.kernel_data_sources]
-              for label, checks in [('DATASET', datasets), ('KERNEL', kernels)]:
-                  results = [item.result() for item in checks]
-                  print('PINNED_' + label + '_V47', json.dumps(results), flush=True)
+                  records = json.loads(result.stdout)
+              except json.JSONDecodeError:
+                  records = []
+              for record in records:
+                  if isinstance(record, dict):
+                      for line in record.get('data','').splitlines():
+                          if line.startswith(('V47_HUB_ROOT','V47_FAILED_STAGE','V47_STAGE_TRACE','V47_LENGTH40_REAL_PREFLIGHT_PASS')):
+                              print('EXACT_PRIVATE_EVIDENCE', line[:450])
           PY
