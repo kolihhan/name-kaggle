@@ -1,5 +1,13 @@
 # NOW
 
+## Gemini sibling attribution — requested length is a shortcut (2026-11-07)
+
+The external GPT/Gemini generator draws a target word count from the official training length distribution for the requested label. Each model keeps that target when the reasoning setting changes. In the existing Gemini 3.6/3.8 Flash pilot, the target differed between models for all 20 base prompts. [Upstream generator](https://github.com/RohanExploit/kaggle-name-that-llm-top20/blob/main/data/extra_gpt_gemini/make_tasks.py) · [Pinned data provenance](artifacts/phase2/PHASE2_EXTERNAL_DATA_RECON.md)
+
+**Measured without training.** Match the two low-setting answers to the two default-setting answers for each base prompt. Observed word-length order alone matched **20/20**. Character 3–5-gram cosine matching got **16/20** on full answers and **17/20** after cutting all four answers to the same word count. Across default batches `d1028` and `d1029`, the longer request produced the longer answer on **208/209** unequal-target pairs. There was one answer-length tie and zero reversals. A separate implementation reproduced the character scores and the length count.
+
+**Research decision.** Use a single requested word count shared across models for each base prompt in any follow-up identity test. The exact same-question reference comparison establishes a length shortcut in this source. Equal-length prefixes still come from different original requests, so the remaining matching signal cannot be attributed to model identity alone. The pilot has two model labels and 20 prompts and supplies no Kaggle score estimate.
+
 ## Lightning V47 core provider gate — shelved as a diagnostic (2026-11-07)
 
 **Research decision.** Shelve the candidate at the evidence gate. The +0.00557 balanced-accuracy replay used already-consumed LoRA24 rows with known prompt groups, and its prompt-bootstrap interval included zero. It leaves the effect on V47's inferred groups unknown. On every provider disagreement, the rule trusts the no-group prediction even when grouping would correct the provider. Reopen only with paired, independently labeled V47 predictions using inferred groups that show how often grouping corrects versus introduces provider errors.
