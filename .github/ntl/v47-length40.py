@@ -29,6 +29,50 @@ DESCRIPTION = 'Research V47 length40 SVC 61287905 20261107'
 CONTEXT = b'ntl-v47-length40-20261107'
 SOURCE_KEYS = ('dataset_sources', 'kernel_sources', 'model_sources', 'competition_sources')
 PACKET = Path('.github/ntl/v47-length40-payload.json')
+ARCHIVED_DATASETS = (
+    'dhruvtibarewal/nlm-l24-adapters',
+    'lightningv08/ntl-olmo2-native24-final-inference-assets',
+    'seyitkaangunes/ntl-extra-api-passages',
+    'abdullah1afify/ntl-generations',
+    'dophuchung/ntl-proxy-generations',
+    'zbigniewkirchner/ntl-qwen3-8b-lora-claude-head',
+    'josephadamski91/ntl-atlas-qwen3-8b-v1',
+    'lucasboesen/ntl-free-proxy-generations',
+    'kirilltym/ntl-spectral-style-heads-paired-4404',
+    'dhruvtibarewal/nlm-enc-v5',
+    'nishantdahal/ntl-two-stage-lora',
+    'nishantdahal/ntl-handwriting-blend',
+    'dhruvtibarewal/nlm-l24-adapters-v5',
+    'prvsiyan/prvsiyans-extended-name-that-llm-dataset',
+    'bbucxi/qwen35-9b-safetensors',
+    'pjmathematician/ultrabert-380m-ntl',
+)
+LATER_DATASETS = {
+    'nuridudak/ntl-q14-lora', 'nuridudak/ntl-q14-lora-v4',
+    'nuridudak/ntl-svc-prefit-pool-v4n',
+}
+ARCHIVED_DATASET_VERSIONS = {
+    'lightningv08/ntl-olmo2-native24-final-inference-assets': '17',
+    'dhruvtibarewal/nlm-l24-adapters-v5': '1',
+    'dhruvtibarewal/nlm-enc-v5': '3',
+}
+ARCHIVED_KERNELS = {
+    'lucasboesen/name-that-llm-glm4-9b-trunc25',
+    'lucasboesen/name-that-llm-extract-encoders2',
+    'lucasboesen/name-that-llm-electra-large-weights',
+    'lucasboesen/name-that-llm-desklib-weights',
+    'lucasboesen/name-that-llm-train-lora24-s7',
+    'lucasboesen/name-that-llm-train-tokattn',
+    'lucasboesen/name-that-llm-train-tokattn2',
+    'vnton37nguyn/ntl-train-lora-qwen25-instyle',
+}
+ARCHIVED_MODELS = {
+    'qwen-lm/qwen-3/Transformers/8b-base/1',
+    'qwen-lm/qwen-3/Transformers/14b-base/1',
+    'qwen-lm/qwen-3/Transformers/4b-base/1',
+    'qwen-lm/qwen2.5/Transformers/7b/1',
+    'qwen-lm/qwen2.5/Transformers/14b/1',
+}
 
 
 def encode(data):
@@ -103,9 +147,15 @@ def upstream_at(folder, require_exact_counts=True):
     assert md['id'] == UPSTREAM and md['enable_gpu'] is True and md['enable_internet'] is False
     assert notebook_digest(nb) == UPSTREAM_CODE
     assert md['competition_sources'] == [COMPETITION]
-    counts = tuple(len(md[k]) for k in SOURCE_KEYS)
-    if require_exact_counts and counts != (16, 8, 5, 1):
-        raise RuntimeError(f'KAGGLE_SOURCE_COUNTS_CHANGED {counts}')
+    if require_exact_counts:
+        datasets = set(md['dataset_sources'])
+        archived = set(ARCHIVED_DATASETS)
+        assert archived <= datasets <= archived | LATER_DATASETS, 'Archived V47 dataset references changed'
+        assert set(md['kernel_sources']) == ARCHIVED_KERNELS
+        assert set(md['model_sources']) == ARCHIVED_MODELS
+        print('KAGGLE_V47_RESTORED_ARCHIVED_ATTACHMENTS', sorted(datasets - archived), flush=True)
+        md['dataset_sources'] = [ref + '/' + ARCHIVED_DATASET_VERSIONS[ref]
+                                 if ref in ARCHIVED_DATASET_VERSIONS else ref for ref in ARCHIVED_DATASETS]
     return md, nb
 
 
@@ -237,11 +287,19 @@ def run():
         assert saved_md['id'] == CANDIDATE and saved_md['is_private'] is True
         assert saved_md['enable_internet'] is False and saved_md['enable_gpu'] is True
         assert notebook_digest(saved) == CODE_SHA
-        assert all(sorted(saved_md[key]) == sorted(original[key]) for key in SOURCE_KEYS)
+        for key in SOURCE_KEYS:
+            requested = original[key]
+            actual = saved_md[key]
+            if key == 'dataset_sources':
+                requested = [v.rsplit('/', 1)[0] if v.rsplit('/', 1)[-1].isdigit() else v for v in requested]
+                actual = [v.rsplit('/', 1)[0] if v.rsplit('/', 1)[-1].isdigit() else v for v in actual]
+            assert sorted(actual) == sorted(requested), f'Saved attachment names differ for {key}'
         ids = json.loads(payload)['metadata']['kaggle']['dataSources']
-        assert saved.get('metadata', {}).get('kaggle', {}).get('dataSources') == ids, 'Exact Kaggle source IDs unavailable or drifted'
+        observed_ids = saved.get('metadata', {}).get('kaggle', {}).get('dataSources')
+        print('KAGGLE_SAVED_SOURCE_IDS_MATCH', observed_ids == ids, flush=True)
         poll_kernel(ref)
         proof_from_logs(ref)
+        assert observed_ids == ids, 'Exact Kaggle source IDs unavailable or drifted'
         current = history()
         ensure_no_duplicate(current)
         assert {r['ref'] for r in current} == {r['ref'] for r in initial}, 'Another submission was created during preflight'
