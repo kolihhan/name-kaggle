@@ -1,0 +1,31 @@
+name: NTL Public 18 Label Source Matched Pair Audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-olegzholobov-pair-audit.yml, scripts/audit_external_sibling_multisource_support.py]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/audit_external_sibling_multisource_support.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.2.3' 'pyarrow==19.0.1'
+      - name: Read public external corpus only, summarize matched pair metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m py_compile scripts/audit_external_sibling_multisource_support.py
+          mkdir -p /tmp/ntl-oleg
+          kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -p /tmp/ntl-oleg --unzip -q
+          echo "EXTERNAL_PUBLIC_FILES"
+          find /tmp/ntl-oleg -maxdepth 2 -type f -printf "%f\\n" | head -n 30
+          python scripts/audit_external_sibling_multisource_support.py /tmp/ntl-oleg
