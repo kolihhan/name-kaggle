@@ -1,0 +1,89 @@
+name: NTL Short TRACE 8B Direct Code Competition Submission
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-short-trace-direct-submit.yml]
+permissions: {contents: read}
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      CANDIDATE_TAG: SHORT-TRACE-8B-DIRECT-18CLASS-V0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/short_trace_core.py
+            scripts/run_short_trace_8b_pilot.py
+            scripts/run_short_trace_direct_submit.py
+            scripts/build_short_trace_direct_submit.py
+            tests/test_short_trace_core.py
+            tests/test_short_trace_direct_submit.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: CPU-only dependency install
+        run: python -m pip install -q "kaggle==2.2.5" "six==1.17.0" pytest numpy pandas scikit-learn
+      - name: CPU-only focused tests and full kernel preflight
+        run: |
+          python -m pytest -q tests/test_short_trace_core.py tests/test_short_trace_direct_submit.py
+          python scripts/build_short_trace_direct_submit.py --repo-root . --output-dir /tmp/ntl-competition
+          python -m py_compile /tmp/ntl-competition/kernel_main.py
+      - name: Check source dependency visibility before submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          kaggle datasets files kolihhan/ntl-short-trace-offline-bnb-0502 > /tmp/bnb-files.txt
+          grep -q 'bitsandbytes-0.50.2' /tmp/bnb-files.txt
+          echo "SHORT_TRACE_PUBLIC_OFFLINE_WHEEL_VISIBLE"
+      - name: Push exact one Kaggle code-competition version without local GPU science run
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-competition > /tmp/ntl-submit-push.log 2>&1 || {
+            echo "KAGGLE_KERNEL_PUSH_FAILED"
+            tail -c 1800 /tmp/ntl-submit-push.log
+            exit 1
+          }
+          cat /tmp/ntl-submit-push.log
+          if grep -Eqi "Maximum weekly GPU quota|Payment Required|Kernel push error" /tmp/ntl-submit-push.log; then
+            echo "KAGGLE_PUSH_NOT_ACCEPTED"
+            exit 1
+          fi
+          # Only this one intended Kernel version; do not silently submit another slug.
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          body=Path('/tmp/ntl-submit-push.log').read_text()
+          m=re.search(r'Kernel version (\d+) successfully pushed',body)
+          u=re.search(r'https://www\.kaggle\.com/code/([a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)',body)
+          if not m or not u:
+              raise RuntimeError('Cannot resolve exact pushed Notebook version and slug')
+          slug=u.group(1)
+          if slug!='kolihhan/ntl-short-trace-8b-direct-18class':
+              raise RuntimeError('Kaggle changed slug unexpectedly; refuse blind submit: '+slug)
+          Path('/tmp/ntl-version').write_text(m.group(1))
+          print('KAGGLE_SHORT_TRACE_VERSION',m.group(1),slug)
+          PY
+      - name: Submit this code competition Notebook version exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cat /tmp/ntl-version)"
+          echo "SHORT_TRACE_SUBMITTING_VERSION=$version"
+          kaggle competitions submit name-that-llm \
+            -k kolihhan/ntl-short-trace-8b-direct-18class \
+            -v "$version" \
+            -f submission.parquet \
+            -m "SHORT-TRACE-8B-DIRECT-18CLASS-V0 frozen rank transitions no extra GPU pilot" \
+            > /tmp/ntl-code-submit.log 2>&1 || {
+              echo "SHORT_TRACE_COMPETITION_SUBMIT_NOT_CONFIRMED"
+              tail -c 1500 /tmp/ntl-code-submit.log
+              exit 2
+            }
+          echo "SHORT_TRACE_COMPETITION_SUBMISSION_ACCEPTED"
+          tail -c 1600 /tmp/ntl-code-submit.log
+          # Scoring may take hours; do not wait or launch a second submission.
