@@ -30,7 +30,7 @@ jobs:
           for f in files:
               print('FILE',os.path.basename(f),'BYTES',os.stat(f).st_size,'SHA256',hashlib.sha256(open(f,'rb').read()).hexdigest())
               if f.endswith('.csv'):
-                  with open(f,encoding='utf8-sig',newline='') as fd:
+                  with open(f,encoding='utf-8-sig',newline='') as fd:
                       d=csv.DictReader(fd)
                       print('SCHEMA',d.fieldnames)
                       rows=list(d)
