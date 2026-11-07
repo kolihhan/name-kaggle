@@ -29,15 +29,57 @@ jobs:
           rows = list(csv.DictReader(io.StringIO(result.stdout)))
           exact = [r for r in rows if r.get('description','').startswith('Research V47 length40 SVC ')]
           print('EXACT_OFFICIAL_RECORDS', json.dumps([{k:r.get(k) for k in ('ref','status','publicScore','date')} for r in exact]))
-          if any(v in status.stdout for v in ('COMPLETE', 'ERROR')):
+          if True:
               result = read('kernels', 'logs', ref)
               try:
                   records = json.loads(result.stdout)
               except json.JSONDecodeError:
                   records = []
+              print('EXACT_PRIVATE_LOG_RECORDS', len(records), 'LAST_TIME', records[-1].get('time') if records else None)
               for record in records:
                   if isinstance(record, dict):
                       for line in record.get('data','').splitlines():
                           if line.startswith(('V47_HUB_ROOT','V47_FAILED_STAGE','V47_STAGE_TRACE','V47_LENGTH40_REAL_PREFLIGHT_PASS')):
                               print('EXACT_PRIVATE_EVIDENCE', line[:450])
+          PY
+      - name: Read exact source weight version IDs from Kaggle output metadata
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, time
+          from urllib.parse import unquote, urlsplit
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelRequest, ApiListKernelSessionOutputRequest
+          refs = ["lucasboesen/name-that-llm-glm4-9b-trunc25","lucasboesen/name-that-llm-extract-encoders2","lucasboesen/name-that-llm-electra-large-weights","lucasboesen/name-that-llm-desklib-weights","lucasboesen/name-that-llm-train-lora24-s7","lucasboesen/name-that-llm-train-tokattn","lucasboesen/name-that-llm-train-tokattn2","vnton37nguyn/ntl-train-lora-qwen25-instyle"]
+          expected = {358683059,358745836,358758062,358770408,358911769,358928013,358948428,359652568}
+          api = KaggleApi()
+          api.authenticate()
+          for ref in refs:
+              try:
+                  owner, slug = ref.split('/')
+                  with api.build_kaggle_client() as client:
+                      req = ApiGetKernelRequest()
+                      req.user_name, req.kernel_slug = owner, slug
+                      meta = client.kernels.kernels_api_client.get_kernel(req).metadata
+                      output = ApiListKernelSessionOutputRequest()
+                      output.user_name, output.kernel_slug = owner, slug
+                      output.page_size = 1
+                      listing = client.kernels.kernels_api_client.list_kernel_session_output(output)
+                  ids = {int(p) for p in unquote(urlsplit(listing.files[0].url).path).split('/') if p.isdecimal()}
+                  print('SOURCE_KERNEL_CURRENT_ID', json.dumps({'ref':ref, 'version':meta.current_version_number, 'archived_id':sorted(ids & expected), 'numeric_segments':sorted(ids)}), flush=True)
+              except Exception as error:
+                  print('SOURCE_KERNEL_METADATA_ERROR', ref, type(error).__name__, str(getattr(getattr(error, 'response', None), 'status_code', '')), flush=True)
+              time.sleep(0.6)
+          try:
+              with api.build_kaggle_client() as client:
+                  req = ApiListKernelSessionOutputRequest()
+                  req.user_name, req.kernel_slug, req.version_label = 'kolihhan', 'ntl-v47-length40', 'v2'
+                  req.page_size = 100
+                  listing = client.kernels.kernels_api_client.list_kernel_session_output(req)
+              names = [f.file_name for f in listing.files if 'inference-logs/' in f.file_name]
+              print('PRIVATE_PREFLIGHT_STAGE_FILES', json.dumps(names))
+          except Exception as error:
+              print('PRIVATE_PREFLIGHT_OUTPUT_METADATA', type(error).__name__)
           PY
