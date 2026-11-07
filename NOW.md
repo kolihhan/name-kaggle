@@ -1,5 +1,11 @@
 # NOW
 
+## STABLEPAIR-18 — researched conditional sibling framework vs 0.668 Best (2026-11-07)
+
+**Research/design complete; NOT trained, evaluated, or submitted.** [Full literature+mechanism+benchmark design](artifacts/research/stablepair18-design-best-comparison-20261107.md). Own-account Kaggle **Best confirmed Public 0.668** is an Ozertuu public-solution reproduction (not original work); independently developed LoRA24 scored 0.520; Short-TRACE standalone scored 0.093. STABLEPAIR-18 performance **UNKNOWN**. Historical LoRA24 OOF shows Gemini/GPT primarily sibling-confused but GLM predominantly cross-provider; V47 already contains ATLAS-like likelihood and family gates. New research question: can *matched-prompt, matched-protocol* pairwise sibling evidence survive source shifts and add residual accuracy to a strong anchor without reducing provider-family probability mass? Design fixed B/C0/C1/Cshuf controls and same-row rescue/regression measures, CPU-first and no new GPU/submit.
+
+**Data gate NOT SATISFIED:** prior audited public sibling corpora have model-correlated requested lengths or incomplete exact generation protocol; the potential 3-GPT-label source transfer banks were previously reused, not fresh. Do not claim protocol invariance or compare heldout 3-class BA against 18-class Public 0.668. No aligned **fresh source-disjoint V47 Best** predictions/checkpoint provenance is verified; true paired comparison to 0.668 is **BLOCKED**, not a new numerical win. Next feasible action is *metadata-only* evidence gate for actual crossed model×prompt×protocol support, then one frozen paired test if available. No training, model inference or Kaggle submission authorized from this design.
+
 ## Short-TRACE 8B official direct standalone — FAIL Public 0.093 (2026-11-07)
 
 **LATEST VERIFIED:** [Authenticated official Kaggle score check, Actions 42385772029](https://github.com/kolihhan/name-kaggle/actions/runs/42385772029), at 2026-11-07 15:19:08 UTC: Submission **`58093864` COMPLETE with Public BA `0.093`**. This is a completed and validly scored *negative standalone result*. Own strongest verified submitted reproduction remains Ozertuu Dual-SVC Public `0.668`, followed by Lightning V47 `0.666`. [Exact notebook v1](https://www.kaggle.com/code/kolihhan/ntl-short-trace-8b-direct-18class).
