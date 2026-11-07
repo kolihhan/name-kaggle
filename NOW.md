@@ -2,7 +2,7 @@
 
 ## V47 fixed-window SVC — full preflight passed, submitted once (2026-11-07)
 
-**Official submission accepted.** Candidate `kolihhan/ntl-v47-length40/2` was submitted once as `58078151` at 03:54:38 UTC. Latest authenticated status is `PENDING`, with scoring still in progress. [Verified accepted record and full-preflight proof](https://github.com/kolihhan/name-kaggle/actions/runs/42336749310)
+**Official submission accepted, scoring pending.** Candidate `kolihhan/ntl-v47-length40/2` was submitted once as `58078151` at 03:54:38 UTC. Authenticated read-only recheck at **07:11:19 UTC on 2026-11-07** found `SubmissionStatus.PENDING`, blank Public/Private scores, and exactly one matching submission; no new score or scientific decision. [Latest read-only check](https://github.com/kolihhan/name-kaggle/actions/runs/42350194737) · [Accepted record and full-preflight proof](https://github.com/kolihhan/name-kaggle/actions/runs/42336749310)
 
 **Concrete solution.** Apply the existing pooled-external SVC to evenly spaced 40-word windows and average raw margins before its original normalization and weight. Use the published task length bound for the fixed budget. This is the sole scientific change to V47. [Frozen contract](artifacts/research/v47-length40-20261107/CONTRACT.md)
 
