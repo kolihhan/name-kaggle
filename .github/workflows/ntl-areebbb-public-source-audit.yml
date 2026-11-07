@@ -61,3 +61,49 @@ jobs:
           else:
               raise AssertionError('No public notebook source returned')
           PY
+
+
+      - name: Compare public predecessor and check upstream score metadata
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/areebbb-previous
+          kaggle kernels pull areebbb/ntl-we-back-0-666 -p /tmp/areebbb-previous -m
+          python - <<'PY'
+          import json,hashlib,pathlib,difflib,re
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          a=pathlib.Path('/tmp/areebbb-previous')
+          b=pathlib.Path('/tmp/areebbb-public')
+          p=json.loads(next(a.glob('*.ipynb')).read_text())
+          n=json.loads(next(b.glob('*.ipynb')).read_text())
+          def summary(nb):
+              return [''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb.get('cells',[]) if c.get('cell_type')=='code']
+          aa=summary(p);bb=summary(n)
+          print('PREDECESSOR_METADATA',json.dumps(json.loads((a/'kernel-metadata.json').read_text()),default=str)[:7000])
+          print('PREDECESSOR_SHA256',hashlib.sha256(next(a.glob('*.ipynb')).read_bytes()).hexdigest())
+          print('DIFF_CODE_CELL_COUNTS',len(aa),len(bb))
+          for key in ('DEB_CLS_DIR','hf_cls','ATLAS_BUDGET','ours_svc_w','svc_w','--top34_w','--atlas_w','--sinkhorn','FAST_COMMIT','--comp_w'):
+              prev=[(i,len(re.findall(re.escape(key),v))) for i,v in enumerate(aa) if key in v]
+              cur=[(i,len(re.findall(re.escape(key),v))) for i,v in enumerate(bb) if key in v]
+              print('KEYWORD_DIFF',key,'previous',prev,'new',cur)
+          pre='\n'.join(aa)
+          post='\n'.join(bb)
+          u=list(difflib.unified_diff(pre.splitlines(),post.splitlines(),n=1,fromfile='areebbb_0666',tofile='areebbb_0670'))
+          changes=[x for x in u if x.startswith(('+++','---','@@','+','-'))]
+          print('UNIFIED_DIFF_LINES',len(u),'CHANGED_LINES',len(changes))
+          print('CODE_DIFF_PREVIEW_START')
+          print('\n'.join(changes[:260])[:26000])
+          print('CODE_DIFF_PREVIEW_END')
+          api=KaggleApi();api.authenticate()
+          try:
+              hits=[r for r in api.kernels_list(user='areebbb',page_size=100) if '0-670-this-actually-works' in str(getattr(r,'ref',''))]
+              for k in hits:
+                  d={}
+                  for name in ('ref','title','best_public_score','bestPublicScore','score','version_number','versionNumber','last_run_time','lastRunTime','total_votes','totalVotes'):
+                      if hasattr(k,name):d[name]=str(getattr(k,name))
+                  print('AREEBBB_PUBLIC_KAGGLE_LISTING',json.dumps(d))
+          except Exception as e:
+              print('PUBLIC_SCORE_LOOKUP_ERROR',type(e).__name__,str(e)[:400])
+          PY
