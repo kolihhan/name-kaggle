@@ -82,7 +82,7 @@ exec({core_source!r},module.__dict__)
 sys.modules["scripts.short_trace_core"]=module
 setattr(pkg,"short_trace_core",module)
 
-run_globals={{"__name__":"__main__","__package__":"scripts"}}
+run_globals={{"__name__":"scripts.run_short_trace_8b_pilot","__package__":"scripts"}}
 exec({pilot_source!r},run_globals)
 run_globals["run"](pool,model,Path("/kaggle/working/short_trace_8b_result.json"))
 '''
