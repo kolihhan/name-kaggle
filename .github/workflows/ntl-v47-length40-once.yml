@@ -1,0 +1,39 @@
+name: NTL V47 Length40 Private Kaggle Verification
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-v47-length40-once.yml
+      - .github/ntl/v47-length40-payload.json
+permissions:
+  contents: read
+concurrency:
+  group: ntl-v47-length40-one-shot-20261107
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/ntl/v47-length40.py
+            .github/ntl/v47-length40-payload.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI and encrypted transport dependencies
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'cryptography==46.0.3'
+      - name: Run the isolated Kaggle check
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -f .github/ntl/v47-length40-payload.json ]; then
+            python -u .github/ntl/v47-length40.py run
+          else
+            python -u .github/ntl/v47-length40.py prepare
+          fi
