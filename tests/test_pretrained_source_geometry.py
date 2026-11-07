@@ -97,3 +97,15 @@ def test_cache_fingerprint_tracks_order_and_each_exact_passage():
     assert text_fingerprint(["ab", "c"]) != text_fingerprint(["a", "bc"])
     assert text_fingerprint(["a", "b"]) != text_fingerprint(["b", "a"])
     assert text_fingerprint(["a", "b"]) != text_fingerprint(["a", "B"])
+
+
+def test_legacy_position_buffer_is_checked_before_removing_nonparameter_state():
+    from scripts import pretrained_source_geometry as geometry
+    weight = torch.tensor([[0.3, 0.7]])
+    old = {"encoder.weight": weight, "embeddings.position_ids": torch.arange(6).unsqueeze(0)}
+    cleaned = geometry.compatible_state(old, 6)
+    assert set(cleaned) == {"encoder.weight"}
+    torch.testing.assert_close(cleaned["encoder.weight"], weight)
+    old["embeddings.position_ids"][0, 2] = 99
+    with pytest.raises(ValueError, match="position"):
+        geometry.compatible_state(old, 6)

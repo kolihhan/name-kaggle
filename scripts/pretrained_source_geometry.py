@@ -51,6 +51,18 @@ def text_fingerprint(texts) -> str:
                                     separators=(",", ":")).encode()).hexdigest()
 
 
+def compatible_state(state, position_count):
+    """Old Transformers persisted this deterministic buffer, not a learned weight."""
+    import torch
+    result = dict(state)
+    positions = result.pop("embeddings.position_ids", None)
+    if positions is not None:
+        expected = torch.arange(position_count, dtype=positions.dtype).unsqueeze(0)
+        if not torch.equal(positions, expected):
+            raise ValueError("INVALID: noncanonical legacy position buffer")
+    return result
+
+
 def kernel_class_scores(query, reference, y, labels, mode, tau=TAU):
     if mode not in {"density", "centroid"} or tau <= 0:
         raise ValueError("invalid density mode or temperature")
@@ -179,11 +191,12 @@ def encode(name, texts, assets, cache):
         weight_path, map_location="cpu", weights_only=True)
     prefix = "model." if name == "detective" else ("roberta." if any(k.startswith("roberta.") for k in state) else "")
     mapped = {k[len(prefix):]: value for k, value in state.items() if not prefix or k.startswith(prefix)}
+    mapped = compatible_state(mapped, config.max_position_embeddings)
     status = model.load_state_dict(mapped, strict=False)
     if status.missing_keys or status.unexpected_keys:
         raise ValueError(f"INVALID: checkpoint coverage {status}")
     ignored = sorted(set(state) - {prefix + k for k in mapped})
-    if any(not k.startswith("mlp.") for k in ignored):
+    if any(not k.startswith("mlp.") and k != prefix + "embeddings.position_ids" for k in ignored):
         raise ValueError("INVALID: unexpected checkpoint modules")
     tokenizer = AutoTokenizer.from_pretrained(config_dir, local_files_only=True,
                                               trust_remote_code=False, use_fast=True)
