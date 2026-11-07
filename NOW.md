@@ -1,5 +1,11 @@
 # NOW
 
+## Cross-source length shortcut falsification — completed (2026-11-07)
+
+**Executed one frozen research experiment, not a leaderboard sweep.** Previously, Oleg/SWEeper matched snippets showed Sol longer than Luna **195/196** and longer than Terra **186/199**. Applying the **unchanged direction rule** to a distinct external 834-row proxy generation source, with the same bank/prompt/setting, showed no stable transfer: in the primary `rlow_t1` stratum, **Sol > Luna 20/47**, **Sol > Terra 25/47** (1 tie). These are **47 distinct prompt keys per pair**. The actual output ordering matched the independently logged target word-count direction **47/47 and 46/46** non-tied respectively, but no equal-requested-length pairs exist to separate protocol from model behavior. All-settings pairs 59/57 include 11/10 prompt duplicates and must not be treated as independent.
+
+**Research decision:** FALSIFIED **portable fixed sibling-length ordering**, not the broader possibility of stable identity features. Reject length direction as a Kaggle heuristic, do not tune around this source, and do not claim a model-attribution score or causality. Next viable model-identity experiment needs request-matched **equal target words** for both siblings, independent prompt/source controls and complete endpoint/version/protocol provenance. [Precommitted script](scripts/audit_sibling_length_transfer_20261107.py) · [Cross-source successful execution](https://github.com/kolihhan/name-kaggle/actions/runs/42364554998) · [Full result and limitations](artifacts/research/generator-vs-channel-identification-decision-20261106.md#9-frozen-cross-source-falsification-of-sibling-length-identity--2026-11-07). No training/GPU/new API generation/submission.
+
 ## Matched sibling source search — stronger length artifact, strict protocol still unavailable (2026-11-07)
 
 **Action completed:** [Authenticated Kaggle normal-access attempt](https://github.com/kolihhan/name-kaggle/actions/runs/42362363455) for Maniceet's claimed matched Z.AI/OpenAI corpus still returned **HTTP 403**; no data read. [Public Oleg 18-label corpus audit](https://github.com/kolihhan/name-kaggle/actions/runs/42362668801) completed successfully and verified the Phase 8 Parquet SHA.
