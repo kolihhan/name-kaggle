@@ -1,0 +1,53 @@
+name: NTL V47 Length40 Read Only Verification
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-v47-length40-readonly.yml]
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read the exact Kaggle run and official record
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, io, json, re, subprocess
+          ref = 'kolihhan/ntl-v47-length40/1'
+          def run(*args):
+              return subprocess.run(['kaggle', *args], capture_output=True, text=True, timeout=80)
+          status = run('kernels','status',ref)
+          print('EXACT_PRIVATE_STATUS', status.stdout.strip())
+          result = run('kernels','logs',ref)
+          assert result.returncode == 0, result.stderr[-300:]
+          body = result.stdout.strip()
+          # Kaggle stores notebook stdout and stderr as JSON log records.
+          records = []
+          try:
+              records = json.loads(body)
+          except json.JSONDecodeError:
+              for line in body.splitlines():
+                  try:
+                      records.append(json.loads(line.lstrip(',').rstrip(',')))
+                  except json.JSONDecodeError:
+                      pass
+          if isinstance(records, list) and records and isinstance(records[0], dict):
+              stderr = ''.join(r.get('data','') for r in records if r.get('stream_name') == 'stderr')
+          else:
+              stderr = body
+          stderr = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', stderr)
+          for line in stderr.splitlines()[-32:]:
+              if re.search(r'Cell In|Traceback|AssertionError|FileNotFoundError|RuntimeError|assert |--->|Errno|^ *[0-9]+ ', line):
+                  print('EXACT_KERNEL_TRACE', line[:600])
+          result = run('competitions','submissions','name-that-llm','-v','-q')
+          assert result.returncode == 0
+          rows = list(csv.DictReader(io.StringIO(result.stdout)))
+          matched = [r for r in rows if r.get('description','').startswith('Research V47 length40 SVC ')]
+          print('EXACT_OFFICIAL_RECORDS', json.dumps([{k:r.get(k) for k in ('ref','status','publicScore','date')} for r in matched]))
+          PY
