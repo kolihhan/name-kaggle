@@ -1,0 +1,63 @@
+name: NTL Areebbb Public Source Static Audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-areebbb-public-source-audit.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Pull public source only and print static manifest
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?Missing Kaggle token}"
+          mkdir -p /tmp/areebbb-public
+          kaggle kernels pull areebbb/0-670-this-actually-works -p /tmp/areebbb-public -m
+          python - <<'PY'
+          import json, pathlib, hashlib, re, os, glob
+          d=pathlib.Path('/tmp/areebbb-public')
+          mdpath=d/'kernel-metadata.json'
+          if mdpath.exists():
+              md=json.loads(mdpath.read_text())
+              print('UPSTREAM_METADATA',json.dumps({k:md.get(k) for k in ('id','id_no','title','competition_sources','dataset_sources','kernel_sources','model_sources','enable_gpu','enable_internet','machine_shape','code_file')},ensure_ascii=False,default=str))
+          nbfiles=list(d.glob('*.ipynb'))
+          pyfiles=list(d.glob('*.py'))
+          print('PULLED_FILES',[(p.name,p.stat().st_size) for p in d.iterdir()])
+          if nbfiles:
+              assert len(nbfiles)==1
+              data=nbfiles[0].read_bytes()
+              nb=json.loads(data)
+              cells=nb['cells']
+              print('NOTEBOOK_SHA256',hashlib.sha256(data).hexdigest())
+              print('CELL_COUNTS',json.dumps({x:sum(c.get('cell_type')==x for c in cells) for x in ('code','markdown')}))
+              for i,c in enumerate(cells):
+                  src=c.get('source','')
+                  src=''.join(src) if isinstance(src,list) else src
+                  if c.get('cell_type') not in ('code','markdown'):continue
+                  # Print public notebook source only; exclude output, large embedded objects and accidental literals.
+                  matches=re.findall(r'(?:/kaggle/input/[A-Za-z0-9_./-]+|kagglehub\.[A-Za-z0-9_]+|(?:\b(?:train|predict|fit|infer|read_csv|read_parquet|to_parquet|softmax|classify|tokenize|load_model|load_state_dict|joblib|pickle|torch|transformers|sklearn|SVC|LogisticRegression|TFIDF|tqdm|sentence_transformers|enable_gpu)\b))',src,re.I)
+                  print('CELL_META',json.dumps({'index':i,'kind':c['cell_type'],'chars':len(src),'sha256':hashlib.sha256(src.encode()).hexdigest(),'key_tokens':sorted(set(matches))[:80]}))
+                  if c.get('cell_type')=='code':
+                      # Keep a readable but bounded public-source transcript for methodological review.
+                      if len(src)>18000:
+                          print('CELL_SOURCE_HEAD',i,src[:9000])
+                          print('CELL_SOURCE_TAIL',i,src[-5000:])
+                      else:print('CELL_SOURCE',i,src)
+                  else:
+                      print('MARKDOWN',i,src[:5000])
+          elif pyfiles:
+              assert len(pyfiles)==1
+              txt=pyfiles[0].read_text()
+              print('PY_SHA256',hashlib.sha256(txt.encode()).hexdigest())
+              print('SOURCE_TEXT',txt[:125000])
+          else:
+              raise AssertionError('No public notebook source returned')
+          PY
