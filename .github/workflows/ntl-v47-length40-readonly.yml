@@ -60,7 +60,7 @@ jobs:
           import json
           import re
           from concurrent.futures import ThreadPoolExecutor
-          from urllib.parse import urlsplit
+          from urllib.parse import unquote, urlsplit
           from kaggle.api.kaggle_api_extended import KaggleApi
           from kagglesdk.datasets.types.dataset_api_service import ApiDownloadDatasetRequest, ApiGetDatasetRequest
           owner = 'lightningv08'
@@ -73,7 +73,8 @@ jobs:
               req.dataset_slug = slug
               view = client.datasets.dataset_api_client.get_dataset(req)
           latest = view.current_version_number
-          print('CACHE_HUB_LATEST_VERSION', latest)
+          print('CACHE_HUB_LATEST_VERSION', latest, 'DATASET_ID', view.id)
+          print('CACHE_HUB_DATES', json.dumps([{ 'version':v.version_number, 'created':str(v.creation_date)} for v in (view.versions or []) if v.version_number >= 16]))
           expected = {f'ntl660-prefit.part{i:03d}.bin': 25165824 if i < 11 else 963274 for i in range(12)}
           def check(version):
               files, token = {}, None
@@ -94,8 +95,11 @@ jobs:
                       req.dataset_version_number = version
                       req.file_name = files['ntl660-prefit.part000.bin'][0]
                       response = client.datasets.dataset_api_client.download_dataset(req)
-                  path = urlsplit(response.url).path
-                  found = re.search(r'/kaggle-data-sets/\d+/(\d+)/', path)
+                  path = unquote(urlsplit(response.url).path)
+                  # No query parameters or signed path components are logged.
+                  parts = [p if p.isdecimal() else '_' for p in path.split('/') if p]
+                  print('CACHE_HUB_REDIRECT_COMPONENTS', version, parts, flush=True)
+                  found = re.search(r'(?:/kaggle-data-sets)?/' + str(view.id) + r'/(\d+)/', path)
                   if found:
                       id_value = int(found.group(1))
               return {'version':version, 'version_id':id_value, 'parts':files,
