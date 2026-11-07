@@ -78,8 +78,18 @@ B: existing class-balanced objective with sample_weight=1.
 S: same rows/features/model; for row i of class y and source s,
 w_i = n_y / (k_y * n_y_s), where k_y is the number of observed sources for y.
 Thus sample weights sum to n_y within every class and every observed
-class/source cell has equal mass. Combined with class_weight="balanced",
-each class keeps equal total risk mass. Source is never an inference input.
+class/source cell has equal sample-weight mass. All three arms retain the same
+per-true-class positive and negative loss-coefficient budgets. Source is never
+an inference input. In the frozen one-vs-rest LinearSVC implementation,
+class_weight="balanced" equalizes the positive budget of each binary head; it
+does not equalize total true-label loss-coefficient mass across all 18 heads.
+
+Documentation-only clarification after independent review, 2026-11-08:
+the original wording incorrectly claimed equal total class risk. The exact
+weights, estimator, data, control, thresholds and evaluated predictions remain
+unchanged. The original preregistration is commit dc5f603; its SHA256 is
+4740a7f6c4e2a3311d4c962b6fbba68e2544f9e7f41fdf4f956dcafa2a239b17.
+Verified against sklearn 1.6.1's [one-vs-rest class costs](https://github.com/scikit-learn/scikit-learn/blob/1.6.1/sklearn/svm/src/liblinear/linear.cpp#L2571).
 
 P (negative control): permute S's weights among rows WITHIN EACH CLASS using
 numpy.default_rng(20261108) and sorted class order. This preserves the exact

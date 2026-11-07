@@ -1,0 +1,515 @@
+{
+  "aligned_prediction_archive_sha256": "7ba537d7fd758e632fbcd34fcafe9483f13960a29c58e6c43470a626b798fc2d",
+  "arms": {
+    "B": {
+      "effective_sample_size": 30133.0,
+      "fit_seconds": 29.70059828500007,
+      "iterations": 34,
+      "sample_weight_max": 1.0,
+      "sample_weight_min": 1.0
+    },
+    "P": {
+      "effective_sample_size": 10629.3345458807,
+      "fit_seconds": 32.37887791200001,
+      "iterations": 38,
+      "sample_weight_max": 23.723076923076924,
+      "sample_weight_min": 0.22393438548527403
+    },
+    "S": {
+      "effective_sample_size": 10629.334545880698,
+      "fit_seconds": 35.38280358500015,
+      "iterations": 52,
+      "sample_weight_max": 23.723076923076924,
+      "sample_weight_min": 0.22393438548527403
+    }
+  },
+  "contract_sha256": "4740a7f6c4e2a3311d4c962b6fbba68e2544f9e7f41fdf4f956dcafa2a239b17",
+  "decision": "REJECT",
+  "elapsed_seconds": 147.83020610099993,
+  "eligible_labels": {
+    "abdullah": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.8-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra"
+    ],
+    "semenoff": [
+      "gemini-3.6-flash",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash",
+      "glm-5.3",
+      "glm-5.3-flash",
+      "gpt-5.5",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra",
+      "kimi-k3",
+      "qwen3.8-max"
+    ],
+    "zakir": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.6-flash",
+      "gemini-3.8-flash",
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-6-astra"
+    ]
+  },
+  "features": {
+    "total_features": 505436,
+    "views": [
+      {
+        "max_features": 250000,
+        "name": "char",
+        "ngram_range": [
+          3,
+          5
+        ],
+        "weight": 1.0
+      },
+      {
+        "max_features": 180000,
+        "name": "word",
+        "ngram_range": [
+          1,
+          3
+        ],
+        "weight": 0.7
+      },
+      {
+        "max_features": 60000,
+        "name": "shape",
+        "ngram_range": [
+          2,
+          6
+        ],
+        "weight": 0.5
+      },
+      {
+        "max_features": 50000,
+        "name": "small",
+        "ngram_range": [
+          1,
+          3
+        ],
+        "weight": 0.5
+      }
+    ],
+    "widths": {
+      "char": 250000,
+      "shape": 35574,
+      "small": 39862,
+      "word": 180000
+    }
+  },
+  "gpu_used": false,
+  "heldout_rows": 3324,
+  "isolation": {
+    "remaining_answer_overlap": 0,
+    "remaining_prompt_id_overlap": 0,
+    "remaining_prompt_key_overlap": 0,
+    "removed_train_rows": 0
+  },
+  "kaggle_submitted": false,
+  "official_data_read": false,
+  "primary": {
+    "S_minus_B": -0.007306473499293531,
+    "S_minus_P": 0.002036519089233191,
+    "bootstrap_S_minus_B": {
+      "ci95": [
+        -0.022723508336385118,
+        0.007424125613053159
+      ],
+      "prompt_clusters": 672,
+      "requested_replicates": 2000,
+      "retained_replicates": 2000
+    },
+    "mean_source_ba": {
+      "B": 0.4651165645417863,
+      "P": 0.45577357195325957,
+      "S": 0.45781009104249276
+    },
+    "per_source_S_minus_B": {
+      "abdullah": -0.010704399798737163,
+      "semenoff": -0.0050820583549163745,
+      "zakir": -0.006132962344227
+    }
+  },
+  "public_pool_sha256": "37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec",
+  "scope": "reused_external_source_disjoint_mechanism_diagnostic_not_promotion",
+  "source_results": {
+    "abdullah": {
+      "B": {
+        "balanced_accuracy": 0.48669292273629194,
+        "disagreements_vs_B": 0,
+        "eligible_label_count": 8,
+        "macro_provider_error": 0.07195422351227028,
+        "macro_sibling_error": 0.44135285375143773,
+        "per_label_recall": {
+          "gemini-3.1-pro-preview": 0.5434782608695652,
+          "gemini-3.6-flash": 0.6052631578947368,
+          "gemini-3.8-flash": 0.35555555555555557,
+          "gpt-5.5": 0.5714285714285714,
+          "gpt-5.6-luna": 0.6185567010309279,
+          "gpt-5.6-sol": 0.28,
+          "gpt-5.6-terra": 0.30612244897959184,
+          "gpt-6-astra": 0.6131386861313869
+        },
+        "regressions_vs_B": 0,
+        "rescues_vs_B": 0,
+        "rows": 705
+      },
+      "P": {
+        "balanced_accuracy": 0.4859692739843463,
+        "disagreements_vs_B": 130,
+        "eligible_label_count": 8,
+        "macro_provider_error": 0.0751915072745383,
+        "macro_sibling_error": 0.4388392187411154,
+        "per_label_recall": {
+          "gemini-3.1-pro-preview": 0.6413043478260869,
+          "gemini-3.6-flash": 0.5263157894736842,
+          "gemini-3.8-flash": 0.35555555555555557,
+          "gpt-5.5": 0.5918367346938775,
+          "gpt-5.6-luna": 0.5257731958762887,
+          "gpt-5.6-sol": 0.3,
+          "gpt-5.6-terra": 0.32653061224489793,
+          "gpt-6-astra": 0.6204379562043796
+        },
+        "regressions_vs_B": 38,
+        "rescues_vs_B": 42,
+        "rows": 705
+      },
+      "S": {
+        "balanced_accuracy": 0.4759885229375548,
+        "disagreements_vs_B": 122,
+        "eligible_label_count": 8,
+        "macro_provider_error": 0.07416302583458108,
+        "macro_sibling_error": 0.4498484512278642,
+        "per_label_recall": {
+          "gemini-3.1-pro-preview": 0.6086956521739131,
+          "gemini-3.6-flash": 0.5,
+          "gemini-3.8-flash": 0.35555555555555557,
+          "gpt-5.5": 0.5714285714285714,
+          "gpt-5.6-luna": 0.5154639175257731,
+          "gpt-5.6-sol": 0.32,
+          "gpt-5.6-terra": 0.3163265306122449,
+          "gpt-6-astra": 0.6204379562043796
+        },
+        "regressions_vs_B": 37,
+        "rescues_vs_B": 35,
+        "rows": 705
+      }
+    },
+    "semenoff": {
+      "B": {
+        "balanced_accuracy": 0.4236969777629939,
+        "disagreements_vs_B": 0,
+        "eligible_label_count": 11,
+        "macro_provider_error": 0.2765528495390367,
+        "macro_sibling_error": 0.2997501726979694,
+        "per_label_recall": {
+          "gemini-3.6-flash": 0.6956521739130435,
+          "gemini-3.7-flash": 0.21739130434782608,
+          "gemini-3.8-flash": 0.5490196078431373,
+          "glm-5.3": 0.3204225352112676,
+          "glm-5.3-flash": 0.3527397260273973,
+          "gpt-5.5": 0.6354166666666666,
+          "gpt-5.6-sol": 0.3723404255319149,
+          "gpt-5.6-terra": 0.4731182795698925,
+          "gpt-6-astra": 0.8363636363636363,
+          "kimi-k3": 0.08906882591093117,
+          "qwen3.8-max": 0.11913357400722022
+        },
+        "regressions_vs_B": 0,
+        "rescues_vs_B": 0,
+        "rows": 1889
+      },
+      "P": {
+        "balanced_accuracy": 0.40277739362783294,
+        "disagreements_vs_B": 392,
+        "eligible_label_count": 11,
+        "macro_provider_error": 0.28050263646114776,
+        "macro_sibling_error": 0.3167199699110193,
+        "per_label_recall": {
+          "gemini-3.6-flash": 0.6782608695652174,
+          "gemini-3.7-flash": 0.23043478260869565,
+          "gemini-3.8-flash": 0.5490196078431373,
+          "glm-5.3": 0.34507042253521125,
+          "glm-5.3-flash": 0.2979452054794521,
+          "gpt-5.5": 0.625,
+          "gpt-5.6-sol": 0.3191489361702128,
+          "gpt-5.6-terra": 0.3763440860215054,
+          "gpt-6-astra": 0.8272727272727273,
+          "kimi-k3": 0.08097165991902834,
+          "qwen3.8-max": 0.10108303249097472
+        },
+        "regressions_vs_B": 105,
+        "rescues_vs_B": 74,
+        "rows": 1889
+      },
+      "S": {
+        "balanced_accuracy": 0.41861491940807755,
+        "disagreements_vs_B": 376,
+        "eligible_label_count": 11,
+        "macro_provider_error": 0.2772881004140059,
+        "macro_sibling_error": 0.30409698017791653,
+        "per_label_recall": {
+          "gemini-3.6-flash": 0.6521739130434783,
+          "gemini-3.7-flash": 0.2391304347826087,
+          "gemini-3.8-flash": 0.5294117647058824,
+          "glm-5.3": 0.36971830985915494,
+          "glm-5.3-flash": 0.3493150684931507,
+          "gpt-5.5": 0.6145833333333334,
+          "gpt-5.6-sol": 0.3617021276595745,
+          "gpt-5.6-terra": 0.44086021505376344,
+          "gpt-6-astra": 0.8545454545454545,
+          "kimi-k3": 0.08502024291497975,
+          "qwen3.8-max": 0.10830324909747292
+        },
+        "regressions_vs_B": 73,
+        "rescues_vs_B": 77,
+        "rows": 1889
+      }
+    },
+    "zakir": {
+      "B": {
+        "balanced_accuracy": 0.48495979312607296,
+        "disagreements_vs_B": 0,
+        "eligible_label_count": 8,
+        "macro_provider_error": 0.07578406762801962,
+        "macro_sibling_error": 0.43925613924590745,
+        "per_label_recall": {
+          "gemini-3.1-pro-preview": 0.53125,
+          "gemini-3.6-flash": 0.6794871794871795,
+          "gemini-3.8-flash": 0.4246575342465753,
+          "gpt-5.5": 0.5641025641025641,
+          "gpt-5.6-luna": 0.46153846153846156,
+          "gpt-5.6-sol": 0.2112676056338028,
+          "gpt-5.6-terra": 0.359375,
+          "gpt-6-astra": 0.648
+        },
+        "regressions_vs_B": 0,
+        "rescues_vs_B": 0,
+        "rows": 727
+      },
+      "P": {
+        "balanced_accuracy": 0.4785740482475994,
+        "disagreements_vs_B": 126,
+        "eligible_label_count": 8,
+        "macro_provider_error": 0.06925587604260972,
+        "macro_sibling_error": 0.45217007570979095,
+        "per_label_recall": {
+          "gemini-3.1-pro-preview": 0.6,
+          "gemini-3.6-flash": 0.6410256410256411,
+          "gemini-3.8-flash": 0.3835616438356164,
+          "gpt-5.5": 0.5384615384615384,
+          "gpt-5.6-luna": 0.4358974358974359,
+          "gpt-5.6-sol": 0.2535211267605634,
+          "gpt-5.6-terra": 0.328125,
+          "gpt-6-astra": 0.648
+        },
+        "regressions_vs_B": 39,
+        "rescues_vs_B": 41,
+        "rows": 727
+      },
+      "S": {
+        "balanced_accuracy": 0.47882683078184596,
+        "disagreements_vs_B": 135,
+        "eligible_label_count": 8,
+        "macro_provider_error": 0.08149094511086541,
+        "macro_sibling_error": 0.43968222410728863,
+        "per_label_recall": {
+          "gemini-3.1-pro-preview": 0.575,
+          "gemini-3.6-flash": 0.6410256410256411,
+          "gemini-3.8-flash": 0.410958904109589,
+          "gpt-5.5": 0.6025641025641025,
+          "gpt-5.6-luna": 0.3717948717948718,
+          "gpt-5.6-sol": 0.2535211267605634,
+          "gpt-5.6-terra": 0.34375,
+          "gpt-6-astra": 0.632
+        },
+        "regressions_vs_B": 41,
+        "rescues_vs_B": 40,
+        "rows": 727
+      }
+    }
+  },
+  "train_rows": 30133,
+  "training_cell_counts": {
+    "claude-fable-5": {
+      "prvsiyan": 218,
+      "seyit": 621
+    },
+    "claude-opus-4-6": {
+      "hailey": 80,
+      "prvsiyan": 226,
+      "prvsiyan_v1": 59,
+      "seyit": 635
+    },
+    "claude-opus-4-8": {
+      "hailey": 80,
+      "prvsiyan": 226,
+      "prvsiyan_v1": 60,
+      "seyit": 638
+    },
+    "claude-opus-5": {
+      "hailey": 75,
+      "prvsiyan": 208,
+      "prvsiyan_v1": 57,
+      "seyit": 573
+    },
+    "claude-sonnet-5": {
+      "hailey": 78,
+      "prvsiyan": 223,
+      "prvsiyan_v1": 59,
+      "seyit": 635
+    },
+    "gemini-3.1-pro-preview": {
+      "abhinav": 74,
+      "alperen": 182,
+      "hailey": 62,
+      "jadkutbi": 42,
+      "lucasboesen": 261,
+      "prvsiyan": 188,
+      "prvsiyan_v1": 53
+    },
+    "gemini-3.6-flash": {
+      "abhinav": 101,
+      "alperen": 537,
+      "dophuchung": 12,
+      "hailey": 52,
+      "jadkutbi": 46,
+      "lucasboesen": 226,
+      "prvsiyan": 173,
+      "prvsiyan_v1": 57,
+      "willrice": 473,
+      "zbigniew": 88
+    },
+    "gemini-3.7-flash": {
+      "alperen": 475,
+      "maniceet": 17,
+      "prvsiyan": 158,
+      "willrice": 427
+    },
+    "gemini-3.8-flash": {
+      "abhinav": 183,
+      "alperen": 495,
+      "dophuchung": 11,
+      "hailey": 78,
+      "jadkutbi": 45,
+      "lucasboesen": 190,
+      "prvsiyan": 150,
+      "prvsiyan_v1": 54,
+      "willrice": 492,
+      "zbigniew": 78
+    },
+    "glm-5.3": {
+      "maniceet": 1797,
+      "prvsiyan": 221,
+      "willrice": 613
+    },
+    "glm-5.3-flash": {
+      "maniceet": 2771,
+      "prvsiyan": 223,
+      "willrice": 606
+    },
+    "gpt-5.5": {
+      "abhinav": 112,
+      "alperen": 121,
+      "dophuchung": 9,
+      "hailey": 78,
+      "jadkutbi": 52,
+      "kaplinskiy": 122,
+      "keshav": 100,
+      "lucasboesen": 293,
+      "maniceet": 357,
+      "prvsiyan": 225,
+      "prvsiyan_v1": 59,
+      "willrice": 635,
+      "zbigniew": 105
+    },
+    "gpt-5.6-luna": {
+      "abhinav": 209,
+      "alperen": 184,
+      "dophuchung": 10,
+      "hailey": 81,
+      "jadkutbi": 52,
+      "kaplinskiy": 117,
+      "keshav": 100,
+      "lucasboesen": 288,
+      "maniceet": 1032,
+      "prvsiyan": 220,
+      "prvsiyan_v1": 59,
+      "willrice": 630,
+      "zbigniew": 102
+    },
+    "gpt-5.6-sol": {
+      "abhinav": 117,
+      "alperen": 120,
+      "dophuchung": 11,
+      "hailey": 80,
+      "jadkutbi": 49,
+      "kaplinskiy": 95,
+      "keshav": 99,
+      "lucasboesen": 295,
+      "maniceet": 742,
+      "prvsiyan": 224,
+      "prvsiyan_v1": 59,
+      "willrice": 639,
+      "zbigniew": 104
+    },
+    "gpt-5.6-terra": {
+      "abhinav": 115,
+      "alperen": 120,
+      "dophuchung": 11,
+      "hailey": 80,
+      "jadkutbi": 53,
+      "kaplinskiy": 122,
+      "keshav": 100,
+      "lucasboesen": 293,
+      "maniceet": 733,
+      "prvsiyan": 222,
+      "prvsiyan_v1": 60,
+      "willrice": 632,
+      "zbigniew": 102
+    },
+    "gpt-6-astra": {
+      "abhinav": 112,
+      "alperen": 54,
+      "dophuchung": 8,
+      "hailey": 79,
+      "jadkutbi": 50,
+      "kaplinskiy": 77,
+      "keshav": 99,
+      "lucasboesen": 283,
+      "maniceet": 48,
+      "prvsiyan": 220,
+      "prvsiyan_v1": 60,
+      "willrice": 619,
+      "zbigniew": 93
+    },
+    "kimi-k3": {
+      "maniceet": 62,
+      "prvsiyan": 220,
+      "willrice": 628
+    },
+    "qwen3.8-max": {
+      "maniceet": 5,
+      "prvsiyan": 214,
+      "willrice": 111
+    }
+  },
+  "versions": {
+    "numpy": "1.26.4",
+    "pandas": "2.2.3",
+    "python": "3.12.14",
+    "scipy": "1.15.3",
+    "sklearn": "1.6.1"
+  }
+}

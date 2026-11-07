@@ -1,6 +1,6 @@
 # V47 fixed-window SVC result
 
-Updated 2026-11-07 at 07:11 UTC. Official submission `58078151` is accepted and **still PENDING**, with blank Public and Private score fields. Verified against Kaggle's authenticated submission listing at 07:11:19 UTC in [read-only score check](https://github.com/kolihhan/name-kaggle/actions/runs/42350194737). No re-submission or model change.
+Updated 2026-11-08 MYT. Official submission `58078151` is **COMPLETE, Public BA 0.663**, with Private score blank. The completed score was visible in [authenticated history 42385772029](https://github.com/kolihhan/name-kaggle/actions/runs/42385772029) and freshly reverified at 2026-11-07 16:56:59 UTC / 2026-11-08 00:56:59 MYT in [read-only history 42393822063](https://github.com/kolihhan/name-kaggle/actions/runs/42393822063). This supersedes the earlier 07:11 UTC PENDING observation. No re-submission or model change.
 
 ## Frozen solution
 
@@ -39,7 +39,7 @@ The Kaggle save was read back and its executable code hash checked before submis
 | Submission output | 3 rows, columns `id` and `model`, ordered IDs checked, 18-label vocabulary checked |
 | Official submission count for this variant | One accepted submission, `58078151` |
 
-The full fixture run exercised the original GPU ensemble and final Parquet writer. The repeated-block checks establish the intended invariance with real fitted weights. A transfer gain requires the official score. [Full Kaggle preflight and submission runner](https://github.com/kolihhan/name-kaggle/actions/runs/42331397544) · [Independent fitted-SVC check](https://github.com/kolihhan/name-kaggle/actions/runs/42336678550) · [Authenticated full-preflight and accepted-submission evidence](https://github.com/kolihhan/name-kaggle/actions/runs/42336749310)
+The full fixture run exercised the original GPU ensemble and final Parquet writer. The repeated-block checks establish the intended invariance with real fitted weights. The completed Public score did not show a gain. [Full Kaggle preflight and submission runner](https://github.com/kolihhan/name-kaggle/actions/runs/42331397544) · [Independent fitted-SVC check](https://github.com/kolihhan/name-kaggle/actions/runs/42336678550) · [Authenticated full-preflight and accepted-submission evidence](https://github.com/kolihhan/name-kaggle/actions/runs/42336749310)
 
 ## Executable changes
 
@@ -58,6 +58,6 @@ The first private version failed before competition submission because the inher
 
 ## Decision
 
-The official score is pending. Follow up at Public score at least `0.671`. Close this variant at score at most `0.661`. An intermediate score is inconclusive. The comparison is against the predeclared V47 control `0.666`.
+The official score is `0.663`, or `-0.003` against the predeclared V47 control `0.666`. Under the original rule (follow up at >=`0.671`, close at <=`0.661`), this is **INCONCLUSIVE**, not a promotion or a statistically established loss. It did not beat the control. Keep the variant frozen; do not retune windows or weights toward this Public score.
 
 This single diagnostic follows the user's latest instruction to build a solution and submit it for verification. Leakage-safe grouped OOF for the V47 ensemble is unavailable. A validated research promotion requires independent transfer evidence in addition to this frozen official comparison.
