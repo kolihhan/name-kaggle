@@ -87,7 +87,8 @@ mentioned larger research encoder for the actual released checkpoint.
 Frozen encoder CPU inference and the specified CPU readout fitting ONLY in
 this study. Torch 2.6.0+cpu; Transformers 4.48.3; sklearn 1.6.1. FP32 encoders,
 eval + inference_mode; max_length 512; FIXED padding to 512 for the two H-M
-models, batches of 16; 2 CPU threads. No new encoder fine-tuning, API
+models, batches of 16; 2 CPU threads per encoder, at most two independent CPU
+encoder jobs concurrently. No new encoder fine-tuning, API
 generation, GPU or hidden labels in this study.
 
 PRE-ENCODING SOURCE-FAITHFULNESS AMENDMENT: upstream training pads to 512 and
@@ -106,6 +107,18 @@ does not pass. H-R uses valid-token masked mean.
 This amendment follows independently inspected source BEFORE model predictions;
 it avoids treating a changed inference recipe as the trained method's failure.
 Verify fixed-padding batch invariance and the masked-pooling implementation.
+Operational equivalence optimization, before any OOF/source score: these
+RoBERTa models use absolute positions and give every masked pad token the same
+padding position ID. With dropout off, all pad-query states in a passage are
+identical, and masked keys cannot influence valid states. Compute one padding
+query, then restore its multiplicity (512 minus valid length) in the published
+mean. Sort computational batches by valid token length and restore original
+row order. Logical max length and BOTH representation definitions are unchanged.
+Require a real full-512 first-batch comparison for EACH checkpoint with maximum
+normalized-feature difference <=1e-5, in addition to real batch invariance;
+otherwise INVALID and use/fix only an equivalent execution path. Tiny real
+RoBERTa tests separately verify the identity. This is a speed optimization,
+not a new candidate, lower token budget or a performance-based model change.
 Load checkpoints weights_only=True / safetensors and validate architecture/key
 coverage. No trust_remote_code or execution of downloaded model code.
 

@@ -46,6 +46,23 @@ def masked_mean(hidden, mask):
     return (hidden * mask.unsqueeze(-1).to(hidden.dtype)).sum(dim=1) / mask.sum(dim=1, keepdim=True)
 
 
+def compressed_pool(hidden, mask, logical_length=512):
+    """Restore duplicate absolute-position padding queries without computing each."""
+    import torch
+    counts = mask.to(torch.long).sum(dim=1)
+    width = hidden.shape[1]
+    if (counts == 0).any() or (counts > logical_length).any():
+        raise ValueError("empty or oversized token sequence")
+    if not torch.equal(mask.bool(), torch.arange(width)[None, :] < counts[:, None]):
+        raise ValueError("padding compression requires right padding")
+    if ((counts < logical_length) & (counts >= width)).any():
+        raise ValueError("missing representative padding query")
+    total = (hidden * mask.unsqueeze(-1).to(hidden.dtype)).sum(dim=1)
+    pad = hidden[torch.arange(len(hidden)), counts.clamp(max=width - 1)]
+    return {"published": (total + pad * (logical_length - counts)[:, None]) / logical_length,
+            "masked": total / counts[:, None]}
+
+
 def text_fingerprint(texts) -> str:
     return hashlib.sha256(json.dumps(list(texts), ensure_ascii=False,
                                     separators=(",", ":")).encode()).hexdigest()
@@ -176,6 +193,7 @@ def encode(name, texts, assets, cache):
             "config_sha256": sha256_file(config_dir / "config.json"),
             "pooling": "fixed512-published-and-valid-masked-v1", "max_length": 512,
             "dtype": "float32", "torch": torch.__version__, "transformers": transformers_version,
+            "compute_method": "duplicate-absolute-position-padding-compression-v1",
             "tokenizer_files": {fn: sha256_file(config_dir / fn) for fn in
                                 ["vocab.json", "merges.txt", "tokenizer_config.json", "special_tokens_map.json"]}}
     if cache.exists():
@@ -200,26 +218,49 @@ def encode(name, texts, assets, cache):
         raise ValueError("INVALID: unexpected checkpoint modules")
     tokenizer = AutoTokenizer.from_pretrained(config_dir, local_files_only=True,
                                               trust_remote_code=False, use_fast=True)
+    if (config.position_embedding_type != "absolute" or tokenizer.padding_side != "right"
+            or tokenizer.pad_token_id != config.pad_token_id):
+        raise ValueError("INVALID: absolute-position/right-padding compression assumptions fail")
+    tokenized = tokenizer(texts, padding=False, truncation=True, max_length=512)
+    lengths = np.array([len(row) for row in tokenized["input_ids"]])
+    order = np.argsort(lengths, kind="stable")
     features = {k: np.empty((len(texts), config.hidden_size), dtype=np.float32)
                 for k in ("published", "masked")}
     start, capped = time.monotonic(), 0
     with torch.inference_mode():
         for lo in range(0, len(texts), 16):
-            batch = tokenizer(texts[lo:lo + 16], padding="max_length", truncation=True,
-                              max_length=512, return_tensors="pt")
+            rows = order[lo:lo + 16]
+            examples = []
+            for row in rows:
+                example = {key: list(values[row]) for key, values in tokenized.items()}
+                if lengths[row] < 512:
+                    for key in example:
+                        example[key].append(tokenizer.pad_token_id if key == "input_ids" else 0)
+                examples.append(example)
+            batch = tokenizer.pad(examples, padding=True, return_tensors="pt")
             hidden = model(**batch).last_hidden_state
-            pooled = {"published": hidden.mean(dim=1),
-                      "masked": masked_mean(hidden, batch["attention_mask"])}
+            pooled = compressed_pool(hidden, batch["attention_mask"])
             for key, value in pooled.items():
-                features[key][lo:lo + len(value)] = torch.nn.functional.normalize(value, dim=-1).numpy()
+                features[key][rows] = torch.nn.functional.normalize(value, dim=-1).numpy()
             capped += int((batch["attention_mask"].sum(dim=1) == 512).sum())
             if lo == 0:
-                single = {k: v[:1] for k, v in batch.items()}
+                canonical_batch = tokenizer([texts[row] for row in rows], padding="max_length",
+                                            truncation=True, max_length=512, return_tensors="pt")
+                canonical_hidden = model(**canonical_batch).last_hidden_state
+                canonical_pooled = {"published": canonical_hidden.mean(dim=1),
+                                    "masked": masked_mean(canonical_hidden, canonical_batch["attention_mask"])}
+                canonical_diff = {k: float(np.max(np.abs(
+                    torch.nn.functional.normalize(v, dim=-1).numpy() - features[k][rows])))
+                    for k, v in canonical_pooled.items()}
+                if max(canonical_diff.values()) > 1e-5:
+                    raise ValueError("INVALID: compressed representation differs from real full-512 model")
+                meta["canonical_full512_max_delta"] = canonical_diff
+                single = {k: v[:1] for k, v in canonical_batch.items()}
                 single_hidden = model(**single).last_hidden_state
                 single_pooled = {"published": single_hidden.mean(dim=1),
                                  "masked": masked_mean(single_hidden, single["attention_mask"])}
                 batch_diffs = {k: float(np.max(np.abs(
-                    torch.nn.functional.normalize(v, dim=-1).numpy() - features[k][:1])))
+                    torch.nn.functional.normalize(v, dim=-1).numpy() - features[k][rows[:1]])))
                     for k, v in single_pooled.items()}
                 if max(batch_diffs.values()) > 1e-5:
                     raise ValueError("INVALID: real-checkpoint fixed-padding batch invariance failed")

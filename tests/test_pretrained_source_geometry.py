@@ -109,3 +109,27 @@ def test_legacy_position_buffer_is_checked_before_removing_nonparameter_state():
     old["embeddings.position_ids"][0, 2] = 99
     with pytest.raises(ValueError, match="position"):
         geometry.compatible_state(old, 6)
+
+
+def test_duplicate_padding_compression_matches_real_full_512_token_roberta():
+    from transformers import RobertaConfig, RobertaModel
+    from scripts import pretrained_source_geometry as geometry
+    torch.manual_seed(11)
+    model = RobertaModel(RobertaConfig(vocab_size=50, hidden_size=16, intermediate_size=32,
+                         num_hidden_layers=2, num_attention_heads=2, max_position_embeddings=514,
+                         hidden_dropout_prob=0, attention_probs_dropout_prob=0)).eval()
+    full_ids = torch.tensor([[0, 7, 8, 2] + [1] * 508])
+    full_mask = torch.tensor([[1] * 4 + [0] * 508])
+    short_ids, short_mask = full_ids[:, :5], full_mask[:, :5]
+    with torch.inference_mode():
+        full = model(input_ids=full_ids, attention_mask=full_mask).last_hidden_state
+        short = model(input_ids=short_ids, attention_mask=short_mask).last_hidden_state
+    restored = geometry.compressed_pool(short, short_mask)
+    torch.testing.assert_close(restored["published"], full.mean(dim=1), atol=3e-6, rtol=3e-6)
+    torch.testing.assert_close(restored["masked"], masked_mean(full, full_mask), atol=3e-6, rtol=3e-6)
+
+
+def test_compression_requires_a_real_padding_query_when_virtual_padding_is_needed():
+    from scripts import pretrained_source_geometry as geometry
+    with pytest.raises(ValueError, match="padding query"):
+        geometry.compressed_pool(torch.ones(1, 3, 2), torch.ones(1, 3, dtype=torch.long))
