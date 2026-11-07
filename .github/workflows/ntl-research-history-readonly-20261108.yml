@@ -1,0 +1,33 @@
+name: NTL Research Official History Readonly 20261108
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-research-history-readonly-20261108.yml]
+permissions: {contents: read}
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read official submission history only
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing}"
+          kaggle competitions submissions name-that-llm -v -q >/tmp/history.csv
+          python - <<'PY'
+          import csv, datetime, json
+          rows=list(csv.DictReader(open('/tmp/history.csv',newline='')))
+          rows.sort(key=lambda r:int(r['ref']),reverse=True)
+          exact={'58093864','58078151','58045266','58022340','58008463','57911893'}
+          print('VERIFIED_HISTORY_UTC',datetime.datetime.now(datetime.timezone.utc).isoformat())
+          print('OFFICIAL_TOTAL',len(rows))
+          for r in rows:
+              if r['ref'] in exact or r in rows[:3]:
+                  print('OFFICIAL_RECORD',json.dumps({k:r.get(k) for k in ('ref','status','publicScore','privateScore','date')},sort_keys=True))
+          PY
