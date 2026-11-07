@@ -1,0 +1,67 @@
+name: NTL Short TRACE 8B Direct V1 Finalize
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-short-trace-direct-finalize-v1.yml]
+permissions: {contents: read}
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL_REF: kolihhan/ntl-short-trace-8b-direct-18class
+      CANDIDATE_TAG: SHORT-TRACE-8B-DIRECT-18CLASS-V0
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install Kaggle CLI only (no GPU)
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Reconcile official submissions and inspect same frozen kernel version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          kaggle competitions submissions name-that-llm -v > /tmp/ntl-submission-history.csv
+          if grep -Fq "$CANDIDATE_TAG" /tmp/ntl-submission-history.csv; then
+            echo "SHORT_TRACE_PREVIOUS_COMPETITION_SUBMISSION_ALREADY_ACCEPTED_NO_DUPLICATE"
+            exit 0
+          fi
+          for i in $(seq 1 25); do
+            status="$(kaggle kernels status "$KERNEL_REF" 2>&1 || true)"
+            echo "SHORT_TRACE_EXISTING_V1_KERNEL_STATUS=$status"
+            if grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)' <<<"$status"; then
+              echo "SHORT_TRACE_EXISTING_V1_KERNEL_ERROR"
+              kaggle kernels logs "$KERNEL_REF" 2>&1 | tail -c 6000 || true
+              exit 2
+            fi
+            if grep -Eqi 'KernelWorkerStatus\.(COMPLETE|COMPLETED|SUCCESS)' <<<"$status"; then
+              echo "SHORT_TRACE_EXISTING_V1_KERNEL_COMPLETE"
+              break
+            fi
+            if test "$i" -eq 25; then
+              echo "SHORT_TRACE_EXISTING_V1_NOT_YET_COMPLETE_NO_SUBMISSION_ATTEMPT"
+              exit 3
+            fi
+            sleep 15
+          done
+          mkdir -p /tmp/ntl-preview
+          kaggle kernels output "$KERNEL_REF" -p /tmp/ntl-preview -q
+          test -f /tmp/ntl-preview/submission.parquet || {
+            echo "SHORT_TRACE_PREVIEW_SUBMISSION_FILE_MISSING"
+            exit 3
+          }
+      - name: Submit frozen v1 once after successful preview commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle competitions submit name-that-llm \
+            -k "$KERNEL_REF" -v 1 -f submission.parquet \
+            -m "SHORT-TRACE-8B-DIRECT-18CLASS-V0 frozen rank transitions no extra GPU pilot" \
+            > /tmp/ntl-submit-finalize.log 2>&1 || {
+              echo "SHORT_TRACE_SUBMISSION_REF_NOT_CONFIRMED"
+              tail -c 1500 /tmp/ntl-submit-finalize.log
+              exit 2
+            }
+          echo "SHORT_TRACE_SUBMISSION_V1_ACCEPTED"
+          tail -c 1200 /tmp/ntl-submit-finalize.log
