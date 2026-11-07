@@ -1,7 +1,7 @@
 # Short-TRACE 8B Direct Official Code Submission — execution record
 
 Date: 2026-11-07  
-**Latest verified:** 8/8 CPU checks **PASS**, offline dependency **PUBLISHED**, private Kaggle competition Notebook v1 **PUSHED**, **no confirmed official competition submission ref or score**. This is an execution-status checkpoint, not a scientific result.
+**Latest verified:** Official Kaggle Code Competition submission **ACCEPTED**, ID **58093864** (2026-11-07 13:48:41 UTC); same exact private v1 Notebook. 8/8 CPU tests PASSED, offline dependency published. Hidden scoring result **NOT YET KNOWN**. This is submission acceptance, not proof of model quality.
 
 ## Completed
 - Frozen [contract](CONTRACT.md) before scoring.
@@ -19,3 +19,10 @@ Date: 2026-11-07
 
 ## No tuning
 No control/bin/seed/classifier changes or PubLB tuning. No submission of a dummy fixture as scientific results.
+
+## Finalize — accepted submission (2026-11-07 13:48 UTC)
+
+- [GitHub Actions run 42376975873, rerun attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42376975873) completed SUCCESS. The same frozen Notebook v1 status was `KernelWorkerStatus.COMPLETE`; its real preview output file `submission.parquet` was present. We used the exact same version and no new code/GPU pilot run.
+- The CLI returned **`Submission ref: 58093864`** and `3 submissions remaining today`. No additional Short-TRACE official submission made.
+- **Do not claim** the hidden scoring execution, its actual H/S/T metrics, or a Public score until submission ref 58093864 resolves. See read-only status workflow `42378696638`.
+- From the same authenticated historical Kaggle submissions list on [Actions 42378571735](https://github.com/kolihhan/name-kaggle/actions/runs/42378571735), the submitted V47-length40 baseline is `0.663`, published Lightning V47 is `0.666`, and Ozertuu dual-SVC reproductions are `0.668` Public BA. They are *different submitted systems*, not the Short-TRACE score.
