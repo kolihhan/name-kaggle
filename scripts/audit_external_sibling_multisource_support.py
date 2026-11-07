@@ -70,6 +70,7 @@ def audit(root):
     # length and cannot prove identical generation parameters.
     length_signs=collections.defaultdict(lambda: collections.Counter())
     lengths=wide.set_index("id")
+    lengths.index=lengths.index.astype(str)
     assert lengths.index.is_unique
     for (origin, row_id), models in same_source.items():
         for a,b in itertools.combinations(sorted(models),2):
@@ -90,8 +91,8 @@ def audit(root):
       "same_source_prompt_keys":len(same_source),
       "paired_sources_by_class":{
         name: [{"source":source,"pair_prompt_keys":count}
-               for (_,_,source),count in per_source.most_common()
-               if (_,_) == tuple(sorted(pair))]
+               for (ma,mb,source),count in per_source.most_common()
+               if (ma,mb) == tuple(sorted(pair))]
         for name,pair in PAIRS.items()
       },
       "paired_actual_word_length_sign":{
