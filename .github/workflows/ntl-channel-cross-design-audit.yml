@@ -1,0 +1,42 @@
+name: NTL Channel Cross-Design External Data Audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-channel-cross-design-audit.yml
+      - scripts/audit_channel_cross_design.py
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install lightweight dataset tools
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Obtain only public external corpus and inspect schema, no samples
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}" || { echo 'Missing Kaggle token'; exit 1; }
+          mkdir -p /tmp/ntl-cross-source
+          kaggle datasets download -d zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations -p /tmp/ntl-cross-source --unzip -q
+          python - <<'PY'
+          import csv,os,glob,hashlib,collections
+          files=glob.glob('/tmp/ntl-cross-source/*')
+          for f in files:
+              print('FILE',os.path.basename(f),'BYTES',os.stat(f).st_size,'SHA256',hashlib.sha256(open(f,'rb').read()).hexdigest())
+              if f.endswith('.csv'):
+                  with open(f,encoding='utf8-sig',newline='') as fd:
+                      d=csv.DictReader(fd)
+                      print('SCHEMA',d.fieldnames)
+                      rows=list(d)
+                      print('ROWS',len(rows))
+                      for field in d.fieldnames:
+                          if any(x in field.lower() for x in ('run','model','temp','reason','date','setting','source','prompt_id','id')):
+                              c=collections.Counter(str(z.get(field,'')) for z in rows)
+                              print('COLUMN_AGG',field,'UNIQUE',len(c),'NONEMPTY',sum(v for k,v in c.items() if k),'TOP',c.most_common(15) if len(c)<35 else c.most_common(4))
+          PY
