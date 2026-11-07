@@ -98,12 +98,14 @@ def fetch_kernel(ref, path):
     return md, document
 
 
-def upstream_at(folder):
+def upstream_at(folder, require_exact_counts=True):
     md, nb = fetch_kernel(f'{UPSTREAM}/47', folder)
     assert md['id'] == UPSTREAM and md['enable_gpu'] is True and md['enable_internet'] is False
     assert notebook_digest(nb) == UPSTREAM_CODE
     assert md['competition_sources'] == [COMPETITION]
-    assert tuple(len(md[k]) for k in SOURCE_KEYS) == (16, 8, 5, 1)
+    counts = tuple(len(md[k]) for k in SOURCE_KEYS)
+    if require_exact_counts and counts != (16, 8, 5, 1):
+        raise RuntimeError(f'KAGGLE_SOURCE_COUNTS_CHANGED {counts}')
     return md, nb
 
 
@@ -115,7 +117,7 @@ def prepare():
     hours = remaining_gpu_hours()
     print('NTL_GPU_HOURS_REMAINING', hours, flush=True)
     with tempfile.TemporaryDirectory() as directory:
-        md, nb = upstream_at(Path(directory))
+        md, nb = upstream_at(Path(directory), require_exact_counts=False)
     print('NTL_V47_PUBLIC_REFS', json.dumps({k: md[k] for k in SOURCE_KEYS}), flush=True)
     print('NTL_V47_METADATA_HAS_SOURCE_IDS', bool(nb.get('metadata', {}).get('kaggle', {}).get('dataSources')), flush=True)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

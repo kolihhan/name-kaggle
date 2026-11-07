@@ -37,3 +37,4 @@ jobs:
           else
             python -u .github/ntl/v47-length40.py prepare
           fi
+# Report the read-only source manifest before preparing a private upload.
