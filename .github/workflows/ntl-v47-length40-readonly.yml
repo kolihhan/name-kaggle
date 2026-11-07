@@ -12,101 +12,96 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
-      - name: Read the exact Kaggle run and official record
-        env:
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import csv, io, json, re, subprocess
-          ref = 'kolihhan/ntl-v47-length40/1'
-          def run(*args):
-              return subprocess.run(['kaggle', *args], capture_output=True, text=True, timeout=80)
-          status = run('kernels','status',ref)
-          print('EXACT_PRIVATE_STATUS', status.stdout.strip())
-          result = run('kernels','logs',ref)
-          assert result.returncode == 0, result.stderr[-300:]
-          body = result.stdout.strip()
-          # Kaggle stores notebook stdout and stderr as JSON log records.
-          records = []
-          try:
-              records = json.loads(body)
-          except json.JSONDecodeError:
-              for line in body.splitlines():
-                  try:
-                      records.append(json.loads(line.lstrip(',').rstrip(',')))
-                  except json.JSONDecodeError:
-                      pass
-          if isinstance(records, list) and records and isinstance(records[0], dict):
-              stderr = ''.join(r.get('data','') for r in records if r.get('stream_name') == 'stderr')
-          else:
-              stderr = body
-          stderr = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', stderr)
-          for line in stderr.splitlines()[-32:]:
-              if re.search(r'Cell In|Traceback|AssertionError|FileNotFoundError|RuntimeError|assert |--->|Errno|^ *[0-9]+ ', line):
-                  print('EXACT_KERNEL_TRACE', line[:600])
-          result = run('competitions','submissions','name-that-llm','-v','-q')
-          assert result.returncode == 0
-          rows = list(csv.DictReader(io.StringIO(result.stdout)))
-          matched = [r for r in rows if r.get('description','').startswith('Research V47 length40 SVC ')]
-          print('EXACT_OFFICIAL_RECORDS', json.dumps([{k:r.get(k) for k in ('ref','status','publicScore','date')} for r in matched]))
-          PY
-      - name: Locate the exact V47 numeric cache by size and dataset version
+      - name: Match V47 asset identities to selectable Kaggle versions
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
-          import re
           from concurrent.futures import ThreadPoolExecutor
+          from datetime import datetime
           from urllib.parse import unquote, urlsplit
           from kaggle.api.kaggle_api_extended import KaggleApi
           from kagglesdk.datasets.types.dataset_api_service import ApiDownloadDatasetRequest, ApiGetDatasetRequest
-          owner = 'lightningv08'
-          slug = 'ntl-olmo2-native24-final-inference-assets'
+          from kagglesdk.kernels.types.kernels_api_service import ApiDownloadKernelOutputRequest, ApiGetKernelRequest
+          
+          upstream = ('lightningv08', '0-666-qwen3-8-27b-lora-weighted-ensemble')
+          cutoff = datetime.fromisoformat('2026-11-02T19:45:48.390871')
           api = KaggleApi()
           api.authenticate()
-          with api.build_kaggle_client() as client:
-              req = ApiGetDatasetRequest()
-              req.owner_slug = owner
-              req.dataset_slug = slug
-              view = client.datasets.dataset_api_client.get_dataset(req)
-          latest = view.current_version_number
-          print('CACHE_HUB_LATEST_VERSION', latest, 'DATASET_ID', view.id)
-          print('CACHE_HUB_DATES', json.dumps([{ 'version':v.version_number, 'created':str(v.creation_date)} for v in (view.versions or []) if v.version_number >= 16]))
-          expected = {f'ntl660-prefit.part{i:03d}.bin': 25165824 if i < 11 else 963274 for i in range(12)}
-          def check(version):
-              files, token = {}, None
-              for _ in range(12):
-                  page = api.dataset_list_files(f'{owner}/{slug}/{version}', page_token=token, page_size=100)
-                  for file in page.files:
-                      name = file.name.rsplit('/', 1)[-1]
-                      if name in expected or name == 'ntl666-cache-parts.json':
-                          files[name] = [file.name, file.total_bytes]
-                  token = page.next_page_token
-                  if not token:
-                      break
-              id_value = None
-              if 'ntl660-prefit.part000.bin' in files:
+          
+          def get_kernel(owner, slug, label=None):
+              with api.build_kaggle_client() as client:
+                  req = ApiGetKernelRequest()
+                  req.user_name, req.kernel_slug = owner, slug
+                  if label is not None:
+                      req.version_label = label
+                  return client.kernels.kernels_api_client.get_kernel(req)
+          
+          def redirect_ids(url):
+              return {int(p) for p in unquote(urlsplit(url).path).split('/') if p.isdecimal()}
+          
+          source = get_kernel(*upstream, label='v47')
+          ids = json.loads(source.blob.source)['metadata']['kaggle']['dataSources']
+          dataset_ids = {r['sourceId'] for r in ids if r['sourceType'] == 'datasetVersion'}
+          kernel_ids = {r['sourceId'] for r in ids if r['sourceType'] == 'kernelVersion'}
+          assert len(dataset_ids) == 16 and len(kernel_ids) == 8
+          late = {'nuridudak/ntl-q14-lora', 'nuridudak/ntl-q14-lora-v4', 'nuridudak/ntl-svc-prefit-pool-v4n'}
+          
+          def dataset(ref):
+              owner, slug = ref.split('/')[:2]
+              with api.build_kaggle_client() as client:
+                  req = ApiGetDatasetRequest()
+                  req.owner_slug, req.dataset_slug = owner, slug
+                  view = client.datasets.dataset_api_client.get_dataset(req)
+              historical = sorted((v.version_number for v in (view.versions or [])
+                                   if v.creation_date and v.creation_date.replace(tzinfo=None) < cutoff), reverse=True)
+              for version in historical[:8]:
+                  path = f'{owner}/{slug}/{version}'
+                  listing = api.dataset_list_files(path, page_size=20)
+                  if not listing.files:
+                      continue
                   with api.build_kaggle_client() as client:
                       req = ApiDownloadDatasetRequest()
                       req.owner_slug, req.dataset_slug = owner, slug
                       req.dataset_version_number = version
-                      req.file_name = files['ntl660-prefit.part000.bin'][0]
+                      req.file_name = listing.files[0].name
                       response = client.datasets.dataset_api_client.download_dataset(req)
-                  path = unquote(urlsplit(response.url).path)
-                  # No query parameters or signed path components are logged.
-                  parts = [p if p.isdecimal() else '_' for p in path.split('/') if p]
-                  print('CACHE_HUB_REDIRECT_COMPONENTS', version, parts, flush=True)
-                  found = re.search(r'(?:/kaggle-data-sets)?/' + str(view.id) + r'/(\d+)/', path)
-                  if found:
-                      id_value = int(found.group(1))
-              return {'version':version, 'version_id':id_value, 'parts':files,
-                      'exact_660_parts':all(files.get(name, [None, None])[1] == size for name,size in expected.items()),
-                      'has_666_manifest':'ntl666-cache-parts.json' in files}
-          versions = sorted({n for n in (16,17,18,19,20,latest) if n <= latest})
-          with ThreadPoolExecutor(max_workers=4) as pool:
-              for entry in pool.map(check, versions):
-                  print('CACHE_HUB_VERSION', json.dumps(entry, sort_keys=True))
+                  match = redirect_ids(response.url) & dataset_ids
+                  if len(match) == 1:
+                      return (path, match.pop())
+              return (ref, None)
+          
+          def kernel(ref):
+              owner, slug = ref.split('/')[:2]
+              latest = get_kernel(owner, slug).metadata.current_version_number
+              for version in range(latest, max(0, latest - 8), -1):
+                  path = f'{owner}/{slug}/{version}'
+                  listing = api.kernels_list_files(path, page_size=10)
+                  if not listing.files:
+                      continue
+                  with api.build_kaggle_client() as client:
+                      req = ApiDownloadKernelOutputRequest()
+                      req.owner_slug, req.kernel_slug = owner, slug
+                      req.version_number = version
+                      req.file_path = listing.files[0].name
+                      response = client.kernels.kernels_api_client.download_kernel_output(req)
+                  match = redirect_ids(response.url) & kernel_ids
+                  if len(match) == 1:
+                      return (path, match.pop())
+              return (ref, None)
+          
+          def safe(fn, ref):
+              try:
+                  return fn(ref)
+              except Exception as error:
+                  return (ref, 'ERROR ' + type(error).__name__ + ' ' + str(getattr(getattr(error, 'response', None), 'status_code', '')))
+          
+          with ThreadPoolExecutor(max_workers=8) as pool:
+              datasets = [pool.submit(safe, dataset, ref) for ref in source.metadata.dataset_data_sources if ref not in late]
+              kernels = [pool.submit(safe, kernel, ref) for ref in source.metadata.kernel_data_sources]
+              for label, checks in [('DATASET', datasets), ('KERNEL', kernels)]:
+                  results = [item.result() for item in checks]
+                  print('PINNED_' + label + '_V47', json.dumps(results), flush=True)
           PY
