@@ -13,6 +13,10 @@ jobs:
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/audit_channel_cross_design.py
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - name: Install lightweight dataset tools
@@ -24,19 +28,4 @@ jobs:
           test -n "${KAGGLE_API_TOKEN:-}" || { echo 'Missing Kaggle token'; exit 1; }
           mkdir -p /tmp/ntl-cross-source
           kaggle datasets download -d zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations -p /tmp/ntl-cross-source --unzip -q
-          python - <<'PY'
-          import csv,os,glob,hashlib,collections
-          files=glob.glob('/tmp/ntl-cross-source/*')
-          for f in files:
-              print('FILE',os.path.basename(f),'BYTES',os.stat(f).st_size,'SHA256',hashlib.sha256(open(f,'rb').read()).hexdigest())
-              if f.endswith('.csv'):
-                  with open(f,encoding='utf-8-sig',newline='') as fd:
-                      d=csv.DictReader(fd)
-                      print('SCHEMA',d.fieldnames)
-                      rows=list(d)
-                      print('ROWS',len(rows))
-                      for field in d.fieldnames:
-                          if any(x in field.lower() for x in ('run','model','temp','reason','date','setting','source','prompt_id','id')):
-                              c=collections.Counter(str(z.get(field,'')) for z in rows)
-                              print('COLUMN_AGG',field,'UNIQUE',len(c),'NONEMPTY',sum(v for k,v in c.items() if k),'TOP',c.most_common(15) if len(c)<35 else c.most_common(4))
-          PY
+          python scripts/audit_channel_cross_design.py /tmp/ntl-cross-source/ntl_proxy_generations.csv
