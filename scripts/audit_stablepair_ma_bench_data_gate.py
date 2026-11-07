@@ -7,10 +7,8 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 import hashlib
-import io
 import json
 from pathlib import Path
-import sys
 import urllib.request
 
 SOURCE_URL="https://huggingface.co/datasets/ScaleAI/MA-Bench/resolve/main/runs/briefs.jsonl?download=true"
@@ -31,7 +29,6 @@ def metadata_audit(records, source_sha256, read_bytes):
     lengths=defaultdict(list)
     keys_seen=set()
     total=0
-    bad=0
     unique_ids=set()
     for row in records:
         total+=1
@@ -95,26 +92,6 @@ def metadata_audit(records, source_sha256, read_bytes):
         "full_stablepair_source_gate":"NOT_MET_ONE_SOURCE_ONLY",
     }
     return result
-
-def read_public_metadata(url=SOURCE_URL, *, max_bytes=RUN_MAX_BYTES):
-    # URL passed only for unit tests using fixture mock source; command line does not
-    # accept URL to avoid arbitrary remote content injection via workflow parameters.
-    sha=hashlib.sha256()
-    count=0
-    def rows(response):
-        nonlocal count
-        for line in response:
-            count+=len(line)
-            if count>max_bytes:raise RuntimeError("Source size limit")
-            sha.update(line)
-            # Parse the line and discard response text immediately after numeric length
-            data=json.loads(line)
-            yield data
-    with urllib.request.urlopen(url,timeout=80) as response:
-        return metadata_audit(rows(response),sha.hexdigest(),count)
-    
-# NOTE: sha and count are evaluated before generator exhaustion, so return
-# must be constructed after rows are consumed. Implement below in run() instead.
 
 def run(source_url=SOURCE_URL):
     sha=hashlib.sha256()
