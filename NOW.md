@@ -1,5 +1,11 @@
 # NOW
 
+## Public Areebbb 0.670 source audit — no candidate promoted (2026-11-07)
+
+**Verified:** [Read-only Kaggle source inspection](https://github.com/kolihhan/name-kaggle/actions/runs/42359768508) and [exact-code predecessor diff](https://github.com/kolihhan/name-kaggle/actions/runs/42359952735) show that `areebbb/0-670-this-actually-works` reuses a broad public ensemble. Against the author's `ntl-we-back-0-666`, it **removes a ModernBERT member weighted 1.4 and increases the already-present public DeBERTa weight from 0.8 to 2.2**. It still falls back from absent private V5 SVC to public V4n while applying the high V5 blend weights. The author's `0.670` score is not independently confirmed by our official submission history or score API. Neither honest prompt/source-disjoint transfer nor causal member contribution is established.
+
+**Decision:** Treat as a publicly reproducible baseline candidate for future comparison, **not** original research, an authorized new submission, or a reason to tune weights on Public LB. Do not mistake the 3-row FAST_COMMIT placeholder for full inference. [Method and source-level findings](artifacts/research/areebbb-0670-public-notebook-review-20261107.md)
+
 ## V47 fixed-window SVC — full preflight passed, submitted once (2026-11-07)
 
 **Official submission accepted, scoring pending.** Candidate `kolihhan/ntl-v47-length40/2` was submitted once as `58078151` at 03:54:38 UTC. Authenticated read-only recheck at **07:11:19 UTC on 2026-11-07** found `SubmissionStatus.PENDING`, blank Public/Private scores, and exactly one matching submission; no new score or scientific decision. [Latest read-only check](https://github.com/kolihhan/name-kaggle/actions/runs/42350194737) · [Accepted record and full-preflight proof](https://github.com/kolihhan/name-kaggle/actions/runs/42336749310)
