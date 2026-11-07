@@ -23,9 +23,10 @@ CONTROL_REF = '58008463'
 CONTROL_SCORE = 0.666
 UPSTREAM_CODE = 'c50abf03f5d5472dc2404f62d000df659001e2b73def475c17b45d581c4199dc'
 CANDIDATE = 'kolihhan/ntl-v47-length40'
-CODE_SHA = '61287905c2beac4a9e20ade254e97d13178e020953d3ff4d59ec48c4e84f9ccd'
-NOTEBOOK_SHA = '8ec755eae77554f086ff0914c3627fa0f750652c9ac6fe1d3bffe4250c889122'
+CODE_SHA = 'b686a03a1f792ca722cae07a289c44ea2c5314a9eacd627773a5d68c1865d75c'
+NOTEBOOK_SHA = '9942051bd6f4ad778e419f0441e9263b960114d888ac021ddbcb462bfd86f63f'
 DESCRIPTION = 'Research V47 length40 SVC 61287905 20261107'
+DESCRIPTION_PREFIX = 'Research V47 length40 SVC '
 CONTEXT = b'ntl-v47-length40-20261107'
 SOURCE_KEYS = ('dataset_sources', 'kernel_sources', 'model_sources', 'competition_sources')
 PACKET = Path('.github/ntl/v47-length40-payload.json')
@@ -51,11 +52,20 @@ LATER_DATASETS = {
     'nuridudak/ntl-q14-lora', 'nuridudak/ntl-q14-lora-v4',
     'nuridudak/ntl-svc-prefit-pool-v4n',
 }
-ARCHIVED_DATASET_VERSIONS = {
-    'lightningv08/ntl-olmo2-native24-final-inference-assets': '17',
-    'dhruvtibarewal/nlm-l24-adapters-v5': '1',
-    'dhruvtibarewal/nlm-enc-v5': '3',
-}
+ARCHIVED_DATASET_VERSIONS = {'dhruvtibarewal/nlm-l24-adapters': '7',
+ 'lightningv08/ntl-olmo2-native24-final-inference-assets': '18',
+ 'seyitkaangunes/ntl-extra-api-passages': '2',
+ 'dophuchung/ntl-proxy-generations': '1',
+ 'zbigniewkirchner/ntl-qwen3-8b-lora-claude-head': '1',
+ 'josephadamski91/ntl-atlas-qwen3-8b-v1': '3',
+ 'kirilltym/ntl-spectral-style-heads-paired-4404': '1',
+ 'dhruvtibarewal/nlm-enc-v5': '3',
+ 'nishantdahal/ntl-two-stage-lora': '1',
+ 'nishantdahal/ntl-handwriting-blend': '1',
+ 'dhruvtibarewal/nlm-l24-adapters-v5': '1',
+ 'prvsiyan/prvsiyans-extended-name-that-llm-dataset': '6',
+ 'bbucxi/qwen35-9b-safetensors': '1',
+ 'pjmathematician/ultrabert-380m-ntl': '1'}
 ARCHIVED_KERNELS = {
     'lucasboesen/name-that-llm-glm4-9b-trunc25',
     'lucasboesen/name-that-llm-extract-encoders2',
@@ -125,7 +135,7 @@ def safe_submission_row(row):
 
 
 def ensure_no_duplicate(rows):
-    assert not any(r.get('description') == DESCRIPTION for r in rows), 'Exact diagnostic already submitted'
+    assert not any(r.get('description', '').startswith(DESCRIPTION_PREFIX) for r in rows), 'Diagnostic already submitted'
 
 
 def remaining_gpu_hours():
@@ -205,6 +215,22 @@ def kernel_version(output):
     return int(found[0])
 
 
+def notebook_log_text(ref):
+    body = cli('kernels', 'logs', ref).stdout
+    try:
+        records = json.loads(body)
+    except json.JSONDecodeError:
+        records = []
+        for line in body.splitlines():
+            try:
+                records.append(json.loads(line.strip().strip(',')))
+            except json.JSONDecodeError:
+                continue
+    if isinstance(records, list) and records and isinstance(records[0], dict):
+        return ''.join(str(r.get('data', '')) for r in records)
+    return body
+
+
 def poll_kernel(ref):
     previous = None
     deadline = time.monotonic() + 180 * 60
@@ -217,9 +243,9 @@ def poll_kernel(ref):
         if result.returncode == 0 and 'KernelWorkerStatus.COMPLETE' in state:
             return
         if re.search(r'KernelWorkerStatus\.(ERROR|CANCELLED|CANCELED|FAILED)', state):
-            logs = cli('kernels', 'logs', ref, require_success=False).stdout
-            for line in logs.splitlines():
-                if re.search(r'(RuntimeError|FileNotFoundError|AssertionError|ImportError|ModuleNotFoundError|CUDA out of memory)', line):
+            logs = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', notebook_log_text(ref))
+            for line in logs.splitlines()[-100:]:
+                if re.search(r'(V47_FAILED_STAGE|V47_STAGE_TRACE|Cell In|RuntimeError|FileNotFoundError|AssertionError|ImportError|ModuleNotFoundError|CUDA out of memory)', line):
                     print('KAGGLE_PREFLIGHT_ERROR', line[:350], flush=True)
             raise RuntimeError('KAGGLE_PREFLIGHT_FAILED')
         time.sleep(30)
@@ -227,7 +253,7 @@ def poll_kernel(ref):
 
 
 def proof_from_logs(ref):
-    logs = cli('kernels', 'logs', ref).stdout
+    logs = notebook_log_text(ref)
     proofs = re.findall(r'V47_LENGTH40_REAL_PREFLIGHT_PASS\s+(\{[^\n]+\})', logs)
     assert len(proofs) == 1, 'Real fitted inference proof missing'
     proof = json.loads(proofs[0])
