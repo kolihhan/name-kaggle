@@ -1,0 +1,47 @@
+name: STABLEPAIR MA-Bench Public Data Gate (CPU only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/stablepair-ma-bench-data-gate.yml]
+permissions: {contents: read}
+jobs:
+  metadata_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/audit_stablepair_ma_bench_data_gate.py
+            tests/test_stablepair_ma_bench_data_gate.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: CPU-only fixture checks
+        run: |
+          python -m pip install -q pytest
+          python -m pytest -q tests/test_stablepair_ma_bench_data_gate.py
+          python -m py_compile scripts/audit_stablepair_ma_bench_data_gate.py
+      - name: Stream public external source and publish aggregate-only gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit_stablepair_ma_bench_data_gate.py --out /tmp/stablepair-ma-bench-data-gate.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/stablepair-ma-bench-data-gate.json')
+          a=json.loads(p.read_text())
+          assert a['dataset']=='ScaleAI/MA-Bench'
+          assert a['scientific_model_inference_performed'] is False
+          assert a['kaggle_competition_data_used'] is False
+          assert a['records']==1560, a['records']
+          assert a['matched_distinct_cases_both_conditions']<=10
+          print("STABLEPAIR_MA_GATE_VERIFIED",a['gate'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stablepair-ma-bench-aggregate-only
+          path: /tmp/stablepair-ma-bench-data-gate.json
+          if-no-files-found: warn
