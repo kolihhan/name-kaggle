@@ -36,7 +36,8 @@ Compare the following BEFORE implementation:
   generative likelihood or matched-request ranking can separate identity from
   prompt/channel nuisance. ATLAS already exists at family level in V47.
   Exact-18 source-conditioned weights are not verified available; STABLEPAIR's
-  strict protocol gate failed. No new GPU pilot/training/paid API is allowed.
+  strict protocol gate failed. No standalone GPU pilot, local GPU training or
+  paid API is allowed; CPU learning is not generally prohibited.
   Not selected: an 18-way generative test is currently less executable than
   testing a task-relevant existing source checkpoint; its restrictions are
   not turned into a permanent ban on independent candidates.
@@ -83,17 +84,28 @@ SHA256 9dc936bd31f349d874a79880549a5a9a9ca0a7ead64bebb83904cac2666cd5b9.
 Model card: MIT, RoBERTa-base 124.6M. Do not silently substitute the paper's
 mentioned larger research encoder for the actual released checkpoint.
 
-CPU inference ONLY. Torch 2.6.0+cpu; Transformers 4.48.3; sklearn 1.6.1.
-Frozen FP32 encoders, eval + inference_mode; max_length 512; dynamic padded
-batches of 16 sorted by token length; 2 CPU threads. Correct attention-masked
-mean pooling including valid special tokens, followed by row L2 normalization.
-No fine-tuning, new API generation, GPU or hidden labels.
+Frozen encoder CPU inference and the specified CPU readout fitting ONLY in
+this study. Torch 2.6.0+cpu; Transformers 4.48.3; sklearn 1.6.1. FP32 encoders,
+eval + inference_mode; max_length 512; FIXED padding to 512 for the two H-M
+models, batches of 16; 2 CPU threads. No new encoder fine-tuning, API
+generation, GPU or hidden labels in this study.
 
-Upstream text_embedding.py calls masked_fill without assigning the result.
-We explicitly define valid-token masked mean, which matches an unpadded
-single-passage forward. Verify pad/batch invariance independently BEFORE real
-predictions; do not reproduce padding-dependent feature artifacts. Both the
-source encoder and control use identical pooling and tokenization.
+PRE-ENCODING SOURCE-FAITHFULNESS AMENDMENT: upstream training pads to 512 and
+text_embedding.py calls masked_fill without assigning the result. Thus its
+published normalized representation includes padding-query hidden states.
+The valid-length divisor cancels under final L2 normalization: it equals L2
+normalization of the mean of ALL 512 states. Use that exact definition for
+H-M PRIMARY, with fixed padding so unrelated batch lengths cannot alter it.
+SimCSE and DeTeCtive use identical tokenization/pooling for each comparison.
+Also retain correct valid-token masked mean (including valid special tokens)
+from the SAME forward as a predeclared padding/length robustness control;
+no extra checkpoint or result-based pooling selection. Require positive
+DeTeCtive-minus-SimCSE masked-density deltas on official OOF and source mean
+in addition to the primary gates. A gain only in the published padded view
+does not pass. H-R uses valid-token masked mean.
+This amendment follows independently inspected source BEFORE model predictions;
+it avoids treating a changed inference recipe as the trained method's failure.
+Verify fixed-padding batch invariance and the masked-pooling implementation.
 Load checkpoints weights_only=True / safetensors and validate architecture/key
 coverage. No trust_remote_code or execution of downloaded model code.
 
@@ -143,19 +155,24 @@ The density retains multimodal reference evidence; centroid keeps its first
 moment only. Reference class frequency is normalized out. Both produce all
 18 finite scores and an argmax label. No source ID or prompt ID at inference.
 
-H-M factorial controls:
+H-M factorial controls, PRIMARY published 512-state pooling:
 B0: unsupervised SimCSE + centroid.
 B1: unsupervised SimCSE + density.
 M0: DeTeCtive + centroid.
 M1: DeTeCtive + density (PRIMARY H-M CANDIDATE).
 No selection of M0 instead of M1 after seeing results.
+Repeat the same four scorers on the predeclared masked-state view only for
+mechanism/robustness evidence; do not promote that view as a post-hoc winner.
 
 H-R, executed only after H-M fails:
 R1: LUSR + StandardScaler(train-only) + balanced multinomial logistic regression
 (C=1, max_iter=2000, lbfgs, seed=20261108).
 R0: same readout/settings on the frozen SimCSE features.
-This tests reconstruction pretraining, not a rescue of DeTeCtive, a feature
-blend or a hyperparameter search.
+This compares reconstruction-pretrained and semantic-pretrained encoder
+PACKAGES under a matched readout, not the isolated causal effect of the
+reconstruction loss or frozen semantic encoder. SimCSE is not LUSR's original
+initialization. A benefit motivates an objective-isolating follow-up; it does
+not prove why the pretraining worked. It is not a DeTeCtive rescue or sweep.
 
 ## Criteria fixed before encoding/scoring
 
@@ -163,10 +180,11 @@ Primary metric: exact-18 official grouped OOF BA, same rows as LoRA24.
 For either candidate to advance, ALL must hold:
 1. OOF BA >=0.5567611235396471 (>=+0.010 over own LoRA24);
 2. paired prompt-bootstrap candidate-minus-LoRA24 97.5% percentile interval
-   strictly above zero, 5000 replicates, seed 20261108. The 97.5% interval
-   accounts for the two predeclared model-level hypotheses;
+   strictly above zero, 5000 replicates, seed 20261108; explicit central
+   percentile quantiles [0.0125, 0.9875]. Multiplicity protection applies only
+   to these TWO predeclared candidates, not earlier adaptive project research;
 3. own matched control improvement >=0.020 (M1 vs B1, or R1 vs R0);
-4. no provider-family macro accuracy reduction >0.010 against LoRA24;
+4. no six-provider balanced accuracy reduction >0.010 against LoRA24;
    no label recall reduction >0.10;
 5. external source mean candidate-minus-matched-control BA >=0.020 and
    at least two of the three source point deltas positive.
@@ -184,6 +202,11 @@ missing third-party OOF is NOT a universal submission blocker.
 
 If H-M fails, close this frozen source-contrastive-density candidate and
 execute the predeclared H-R pivot; do not change weights, pooling, tau or data.
+Checkpoint/key coverage, fixed-padding/masked-pooling invariants, isolation
+or logistic convergence failures are INVALID engineering evidence. Discard
+affected predictions, repair only the demonstrated defect without changing
+scientific settings, and do not treat an invalid run as a scientific rejection
+or a trigger to pivot. Convergence warnings are errors, not usable results.
 If H-R fails, reconsider the global hypothesis from actual representation/
 provider/sibling evidence and pursue a materially different defensible test
 if one exists within authorized resources. Do not stop merely because a test
@@ -207,10 +230,13 @@ artifacts. Preserve earlier negative results and contracts.
 
 ## Restriction and implementation plan
 
-RESTRICTION: no new backbone training / standalone GPU / paid generation.
-WHY: current user scope; existing independently pretrained encoders permit a
-model-level geometry test. STATUS ACTIVE. PIVOT: only if current user changes
-resource authorization; CPU diagnostic failure does not authorize GPU.
+RESTRICTION: frozen backbones for this study; no standalone GPU pilot, local
+GPU training or paid API. WHY: freezing isolates existing pretraining geometry
+from new task adaptation. Only the GPU/paid prohibitions come from current
+user scope; CPU backbone training is not prohibited by the user.
+STATUS ACTIVE for this study. PIVOT: evidence that task adaptation is the
+missing capability can justify a separately contracted CPU training test;
+GPU/paid activity still needs changed user authorization.
 
 1. Implement and test masked pooling, safe checkpoint loading, unit-vector
    density/centroid scoring, true reference-fold exclusion, alignment and
