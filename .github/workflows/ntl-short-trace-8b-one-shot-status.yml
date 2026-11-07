@@ -19,11 +19,11 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN" || { echo "MISSING_AUTH"; exit 2; }
-          status="$(kaggle kernels status kolihhan/ntl-short-trace-8b-pilot 2>&1 || true)"
+          status="$(kaggle kernels status kolihhan/ntl-short-trace-8b-frozen-representation-pilot 2>&1 || true)"
           echo "SHORT_TRACE_STATUS $status"
           if grep -Eqi '(^|[^a-z])(complete|completed|success|succeeded)([^a-z]|$)' <<<"$status"; then
             mkdir -p /tmp/ntl-short-trace-output
-            kaggle kernels output kolihhan/ntl-short-trace-8b-pilot -p /tmp/ntl-short-trace-output -q || true
+            kaggle kernels output kolihhan/ntl-short-trace-8b-frozen-representation-pilot -p /tmp/ntl-short-trace-output -q || true
             if test -f /tmp/ntl-short-trace-output/short_trace_8b_result.json; then
               python - <<'PY'
           import json
@@ -36,6 +36,6 @@ jobs:
           PY
             else
               echo "SHORT_TRACE_SCORE_FILE_NOT_AVAILABLE"
-              kaggle kernels logs kolihhan/ntl-short-trace-8b-pilot || true
+              kaggle kernels logs kolihhan/ntl-short-trace-8b-frozen-representation-pilot || true
             fi
           fi
