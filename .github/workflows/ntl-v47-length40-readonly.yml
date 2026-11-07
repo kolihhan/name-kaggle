@@ -12,54 +12,33 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
-      - name: Read candidate v2 and any official submission record
+      - name: Verify exact official submission 58078151, read only
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
           set -euo pipefail
           python - <<'PY'
-          import csv, io, json, subprocess
-          def read(*args):
-              return subprocess.run(['kaggle', *args], capture_output=True, text=True, timeout=60)
-          ref = 'kolihhan/ntl-v47-length40/2'
-          status = read('kernels', 'status', ref)
-          print('EXACT_PRIVATE_STATUS', status.stdout.strip(), status.returncode)
-          result = read('competitions', 'submissions', 'name-that-llm', '-v', '-q')
-          assert result.returncode == 0
+          import csv, datetime, io, json, subprocess
+          ref = '58078151'
+          result = subprocess.run(
+              ['kaggle','competitions','submissions','name-that-llm','-v','-q'],
+              capture_output=True,text=True,timeout=90,check=True)
           rows = list(csv.DictReader(io.StringIO(result.stdout)))
-          exact = [r for r in rows if r.get('description','').startswith('Research V47 length40 SVC ')]
-          print('EXACT_OFFICIAL_RECORDS', json.dumps([{k:r.get(k) for k in ('ref','status','publicScore','date')} for r in exact]))
-          if any(v in status.stdout for v in ('COMPLETE', 'ERROR')):
-              result = read('kernels', 'logs', ref)
-              try:
-                  records = json.loads(result.stdout)
-              except json.JSONDecodeError:
-                  records = []
-              for record in records:
-                  if isinstance(record, dict):
-                      for line in record.get('data','').splitlines():
-                          if line.startswith(('V47_HUB_ROOT','V47_FAILED_STAGE','V47_STAGE_TRACE','V47_LENGTH40_REAL_PREFLIGHT_PASS')):
-                              print('EXACT_PRIVATE_EVIDENCE', line[:450])
-          PY
-      - name: Read live startup events without changing the Kaggle session
-        env:
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-        run: |
-          python - <<'PY'
-          import subprocess
-          args = ['kaggle','kernels','logs','kolihhan/ntl-v47-length40/2','--follow']
-          try:
-              result = subprocess.run(args,capture_output=True,text=True,timeout=45)
-              output = result.stdout
-              print('LIVE_STREAM_CLIENT_EXIT',result.returncode)
-          except subprocess.TimeoutExpired as error:
-              output = error.stdout or ''
-              if isinstance(output,bytes):
-                  output=output.decode(errors='replace')
-              print('LIVE_STREAM_SAMPLE_SECONDS',45)
-          print('LIVE_STREAM_OUTPUT_BYTES',len(output.encode()))
-          prefixes = ('V47_HUB_ROOT','Writing /kaggle/','V47_FAILED_STAGE','V47_STAGE_TRACE','V47_LENGTH40_REAL_PREFLIGHT_PASS','{"mode":')
-          for line in output.splitlines():
-              if line.startswith(prefixes):
-                  print('LIVE_STREAM_EVENT',line[:350])
+          matches = [r for r in rows if r.get('ref') == ref]
+          print('STATUS_CHECK_UTC',datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)
+          print('SUBMISSION_RECORD_MATCHES',len(matches),flush=True)
+          assert len(matches) == 1, 'Exact submission record missing; no score conclusion'
+          r = matches[0]
+          print('V47_LENGTH40_OFFICIAL',json.dumps(
+              {k:r.get(k) for k in ('ref','status','publicScore','privateScore','date','description')},
+              sort_keys=True),flush=True)
+          score = (r.get('publicScore') or '').strip()
+          if score:
+              delta = float(score) - 0.666
+              decision = 'FOLLOW_UP' if float(score) >= 0.671 else (
+                  'CLOSE' if float(score) <= 0.661 else 'INCONCLUSIVE')
+              print('V47_LENGTH40_DELTA_VS_FROZEN_CONTROL',round(delta,6),flush=True)
+              print('V47_LENGTH40_FROZEN_DECISION',decision,flush=True)
+          else:
+              print('V47_LENGTH40_FROZEN_DECISION','NO_SCORE_YET',flush=True)
           PY
