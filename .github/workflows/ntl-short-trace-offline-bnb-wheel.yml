@@ -29,7 +29,7 @@ jobs:
             "title":"NTL Short TRACE Offline bitsandbytes 0.50.2",
             "id":"kolihhan/ntl-short-trace-offline-bnb-0502",
             "licenses":[{"name":"MIT"}],
-            "subtitle":"Unmodified public PyPI release wheel, SHA256-pinned for internet-disabled Kaggle code submissions",
+            "subtitle":"SHA-pinned public PyPI bitsandbytes offline wheel for Kaggle",
             "description":"Public wheel from the official bitsandbytes PyPI release; no model weights, competition data or personal files."
           }
           JSON
