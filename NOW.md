@@ -1,5 +1,11 @@
 # NOW
 
+## Short-TRACE 8B real-vs-shuffled fingerprint pilot — launched, science unscored (2026-11-07)
+
+**Frozen new representation lane:** [Contract](artifacts/candidates/short-trace-8b-v1/CONTRACT.md) committed *before* scoring. Frozen pretrained Qwen3-8B-Base; **H** rank histogram; **S** histogram + shuffled rank transitions; **T** histogram + true rank transitions, on identical ranks. The shuffle exactly retains rank frequencies and passage length. Identical fixed logistic-regression readout; 17-label, 340-train/204-heldout **external-only** source-disjoint pilot; holdout sources were previously selected and are not fresh.
+
+**Verified execution:** [GitHub Actions run 42367277419](https://github.com/kolihhan/name-kaggle/actions/runs/42367277419) passed focused CPU unit tests, offline private Kaggle bundle preflight, and **Kaggle kernel push** to `kolihhan/ntl-short-trace-8b-pilot`. Actual 8B GPU fingerprint score **NOT YET VERIFIED**. [Full checkpoint](artifacts/candidates/short-trace-8b-v1/RESULT.md). No 14B launch, final official OOF, official competition data or Kaggle submission. Failed GPU quota/resource means BLOCKED, not scientific failure. The frozen first-pilot gate can only authorize *larger 8B validation*, **never automatic 14B/submit**.
+
 ## Cross-source length shortcut falsification — completed (2026-11-07)
 
 **Executed one frozen research experiment, not a leaderboard sweep.** Previously, Oleg/SWEeper matched snippets showed Sol longer than Luna **195/196** and longer than Terra **186/199**. Applying the **unchanged direction rule** to a distinct external 834-row proxy generation source, with the same bank/prompt/setting, showed no stable transfer: in the primary `rlow_t1` stratum, **Sol > Luna 20/47**, **Sol > Terra 25/47** (1 tie). These are **47 distinct prompt keys per pair**. The actual output ordering matched the independently logged target word-count direction **47/47 and 46/46** non-tied respectively, but no equal-requested-length pairs exist to separate protocol from model behavior. All-settings pairs 59/57 include 11/10 prompt duplicates and must not be treated as independent.
