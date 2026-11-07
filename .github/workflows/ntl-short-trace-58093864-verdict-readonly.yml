@@ -1,0 +1,27 @@
+name: NTL Short TRACE Official 58093864 Verdict Readonly
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-short-trace-58093864-verdict-readonly.yml]
+permissions: {contents: read}
+jobs:
+  verdict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read authoritative single submission and history without any resubmission
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?missing}"
+          echo "SHORT_TRACE_EXACT_SUBMISSION_START"
+          kaggle competitions submission 58093864
+          echo "SHORT_TRACE_EXACT_SUBMISSION_END"
+          echo "SHORT_TRACE_SUBMISSION_HISTORY_START"
+          kaggle competitions submissions name-that-llm -v | head -n 12
+          echo "SHORT_TRACE_SUBMISSION_HISTORY_END"
