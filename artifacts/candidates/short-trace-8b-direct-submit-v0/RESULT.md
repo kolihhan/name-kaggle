@@ -26,3 +26,8 @@ No control/bin/seed/classifier changes or PubLB tuning. No submission of a dummy
 - The CLI returned **`Submission ref: 58093864`** and `3 submissions remaining today`. No additional Short-TRACE official submission made.
 - **Do not claim** the hidden scoring execution, its actual H/S/T metrics, or a Public score until submission ref 58093864 resolves. See read-only status workflow `42378696638`.
 - From the same authenticated historical Kaggle submissions list on [Actions 42378571735](https://github.com/kolihhan/name-kaggle/actions/runs/42378571735), the submitted V47-length40 baseline is `0.663`, published Lightning V47 is `0.666`, and Ozertuu dual-SVC reproductions are `0.668` Public BA. They are *different submitted systems*, not the Short-TRACE score.
+
+## Official scoring recheck — 2026-11-07 13:49:28 UTC
+
+- [Authenticated read-only Kaggle CLI action 42378696638](https://github.com/kolihhan/name-kaggle/actions/runs/42378696638) returned `Submission Ref: 58093864`, `Status: PENDING`, empty Public Score and empty Private Score. The scoring rerun is **not verified complete**; no claims about final BA, GPU/runtime success, or true-vs-shuffled improvement.
+- The next action is check only this submission ref for `COMPLETE`/`ERROR`; do not tune or resubmit based on the score.
