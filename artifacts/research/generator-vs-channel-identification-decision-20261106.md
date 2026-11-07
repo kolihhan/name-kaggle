@@ -116,3 +116,33 @@ Likewise [MAABench](https://komseok0109.github.io/ATLAS/) has matched prompts an
 **Potential contribution if confirmed later:** A *protocol-stable, model-conditional evidence reliability* framework with model- versus channel-induced uncertainty explicitly decomposed. This is only an **idea**, not a demonstrated novel algorithm; overlaps with robust MAA, invariant prediction, and controlled evaluation design must be surveyed before a research novelty claim.
 
 **Final action this turn:** Research synthesis only; no original model trained, no Kaggle submitted, no GitHub Actions launched.
+
+
+## 7. Executed source-level crossed-design feasibility gate — 2026-11-07
+
+**Research action executed, no training or model inference.** Downloaded only the third-party public 834-row CSV for \`zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations\` using the existing Kaggle token in GitHub Actions. Did not download official competition files. No text, individual prompt/request payloads, API token or model checkpoint contents were printed, added to Git, or preserved as artifacts. Dataset CSV SHA-256 \`a8f61b647b5f2b2f99b73f083b7358445d93c3ebbff8607b44423850e9fb5583\`.
+
+**Evidence:** [Completed run 42361361854](https://github.com/kolihhan/name-kaggle/actions/runs/42361361854), \`scripts/audit_channel_cross_design.py\`, \`.github/workflows/ntl-channel-cross-design-audit.yml\`. This is a standard-library-only, reproducible source-coverage audit, with no trained/inference models and no competition submission.
+
+**Prespecified feasibility requirement:** At least **20 complete 2-model × 2-temperature matched prompt instances** where both models share exactly the same source-bank/prompt ID, target word count, and full request text, and each has both \`rlow_t1\` and \`rlow_t0\`. Exact requested length matters because earlier research already showed label-related length targets; temperature is not the only source of variation. The model slug remains fixed within each pair; no claims about actual immutable backend snapshots.
+
+| Observed coverage | Number |
+|---|---:|
+| Total public passages | **834** |
+| Exact model labels | **8** |
+| Distinct \`(bank, prompt_id)\` keys | **213** |
+| Keys with at least two model labels | **142** |
+| Multi-model keys with **different** target word counts | **141 / 142** |
+| Temperature \`rlow_t1\` rows | **747** |
+| Temperature \`rlow_t0\` rows | **80** |
+| Same-model T1/T0 paired keys | **10 per model × 8 models = 80** |
+| Uncontrolled model-pair × prompt 2×2 combinations (matching **prompt only**) | **280** |
+| Controlled model-pair × prompt 2×2 combinations (matching prompt **and target words**) | **2** |
+| Controlled model-pair × prompt 2×2 combinations (matching full request text too) | **2** |
+| Controlled **same-provider sibling** 2×2 combinations | **0** |
+
+Only complete strict pairs: \`google/gemini-3.1-pro-preview\` vs \`openai/gpt-6-astra\` (one prompt key) and \`google/gemini-3.1-pro-preview\` vs \`openai/gpt-5.5-2026-04-23\` (one prompt key). These are not same-provider sibling contrasts. The word-count target changes on nearly every multi-model prompt in this public dataset. It is therefore invalid to interpret the raw same-prompt panel (280) as a controlled model × protocol design.
+
+**Decision: FAIL the feasibility gate, do not run an attribution classifier / V47 transfer experiment using this source, do not retrofit the required count after seeing the result, and do not tune a mask/feature against 2 instances.** The data support a narrower but real mechanism: *requested output length is nearly always class-coupled within shared prompts in this source*. This suggests a potential generation-channel shortcut; it does **not** measure actual attribution error, show that test is similarly confounded, or prove the existing model learned the shortcut.
+
+**Global bottleneck refinement:** The critical data gap is **genuinely crossed prompt × model × protocol × matched-length support**, not just a shortage of total synthetic passages. Adding another unbalanced source or a larger backbone without this support would not settle intrinsic sibling identification. Future trustworthy data must require an **identical fixed target length per prompt across models**, recorded exact model version and settings, and a separate prompt/source-disjoint transfer cohort before any classifier fit. Existing public-source audit is now closed; do not repeat this dataset's inventories.
