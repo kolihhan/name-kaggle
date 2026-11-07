@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory() as directory:
     fitted = module.Readout(root/'ntl666-prefit/core/svc4')
     words = ('A careful researcher compares evidence across topics and records every result clearly so another '
              'reader can repeat each experiment with the same fixed method and decision rule before any outcome '
-             'is observed from the collection of ordinary short passages').split()
+             'is observed from the collection of ordinary short passages across several independent topics').split()
     assert len(words) >= 40
     block = ' '.join(words[:40])
     copies = [' '.join([block]*n) for n in (1,2,4)]

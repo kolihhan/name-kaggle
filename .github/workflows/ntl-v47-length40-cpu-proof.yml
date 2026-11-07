@@ -2,7 +2,7 @@ name: NTL V47 Frozen SVC Real Weight Check
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-v47-length40-cpu-proof.yml]
+    paths: [.github/workflows/ntl-v47-length40-cpu-proof.yml, .github/ntl/v47-length40-cpu-proof.py]
 permissions: {contents: read}
 jobs:
   proof:
