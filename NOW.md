@@ -1,5 +1,13 @@
 # NOW
 
+## Active model-level research — pretrained source geometry (2026-11-08 MYT)
+
+**Current instruction:** continue beyond the rejected source-balancing experiment; compare materially different model-level hypotheses, run the strongest defensible test, and pivot after failure. Independent candidates can validate against our own honest LoRA24 or another reproducible anchor. Missing third-party OOF limits a specific paired claim against 0.668; it is **not a universal submission blocker**. EVALUATION_POLICY.md and all data-security safeguards remain intact.
+
+**Selected first:** frozen pre-competition DeTeCtive source-contrastive encoder + class-conditional directional density. Same SimCSE backbone and centroid controls isolate representation and density assumptions. **Predeclared next hypothesis if it fails:** LUSR reconstruction-pretrained style encoder with matched linear readout; this is a different pretraining hypothesis, not a source-balancing retune. [Three-hypothesis comparison, exact assets and gates](artifacts/candidates/pretrained-source-geometry-v1/CONTRACT.md).
+
+**Execution in progress:** two real CPU encoders on 2,699 official + 3,324 transfer rows, no GPU or paid API. Own original LoRA24 hard OOF independently reverified at BA 0.546761 with exact id/prompt/model/fold alignment; no probabilities are available and no blend will be invented. Old-checkpoint position-buffer compatibility was independently repaired without changing learned weights. Exact logical 512-state pooling is preserved by duplicate-padding-query compression, checked against real full-512 inference and real tiny-RoBERTa tests. Raw embeddings/predictions remain outside Git. No scientific result or new submission is claimed while encoding is running.
+
 ## Conditional source-balanced risk — executed and REJECTED (2026-11-08 MYT)
 
 **Latest user direction:** own research → controlled CPU experiment → implementation → submit only after scientific promotion. This supersedes earlier research-only/no-execution entries below, while retaining every frozen historical contract. No local GPU training or paid API; no leaderboard tuning.

@@ -80,6 +80,32 @@ def compatible_state(state, position_count):
     return result
 
 
+def validate_cache(name, texts, arrays, meta, assets=None):
+    expected = {"model": name, "weight_sha256": SPECS[name][2],
+                "input_sha256": text_fingerprint(texts), "max_length": 512,
+                "pooling": "fixed512-published-and-valid-masked-v1", "dtype": "float32",
+                "compute_method": "duplicate-absolute-position-padding-compression-v1",
+                "torch": "2.6.0+cpu", "transformers": "4.48.3", "rows": len(texts)}
+    if assets is not None:
+        config_dir = assets / SPECS["simcse" if name == "detective" else name][0]
+        expected["config_sha256"] = sha256_file(config_dir / "config.json")
+        expected["tokenizer_files"] = {fn: sha256_file(config_dir / fn) for fn in
+                                       ["vocab.json", "merges.txt", "tokenizer_config.json", "special_tokens_map.json"]}
+    if any(meta.get(k) != value for k, value in expected.items()):
+        raise ValueError("INVALID: scoring cache provenance mismatch")
+    for field in ("canonical_full512_max_delta", "batch_invariance_max_delta"):
+        checks = meta.get(field, {})
+        if set(checks) != {"published", "masked"} or any(
+            not np.isfinite(v) or v < 0 or v > 1e-5 for v in checks.values()
+        ):
+            raise ValueError("INVALID: missing or failed real-checkpoint equivalence proof")
+    for view in ("published", "masked"):
+        x = arrays[view]
+        if (x.shape != (len(texts), 768) or x.dtype != np.float32 or not np.isfinite(x).all()
+                or not np.allclose(np.linalg.norm(x, axis=1), 1, atol=1e-5)):
+            raise ValueError("INVALID: scoring cache shape/finiteness/unit-norm failure")
+
+
 def kernel_class_scores(query, reference, y, labels, mode, tau=TAU):
     if mode not in {"density", "centroid"} or tau <= 0:
         raise ValueError("invalid density mode or temperature")
@@ -283,8 +309,24 @@ def _metrics(y, guess, labels, anchor=None):
     true_family = np.array([str(x).split("-", 1)[0] for x in y])
     pred_family = np.array([str(x).split("-", 1)[0] for x in guess])
     recall = recall_score(y, guess, labels=labels, average=None, zero_division=0)
-    result = {"ba": float(recall.mean()), "per_label_recall": dict(zip(labels, recall.tolist())),
-              "provider_ba": float(balanced_accuracy_score(true_family, pred_family))}
+    same_provider = true_family == pred_family
+    wrong = y != guess
+    sibling, cross = [], []
+    for label in labels:
+        mask = y == label
+        if not mask.any():
+            raise ValueError("INVALID: missing reported label support")
+        sibling.append(float((wrong[mask] & same_provider[mask]).mean()))
+        cross.append(float((wrong[mask] & ~same_provider[mask]).mean()))
+    recalls = dict(zip(labels, recall.tolist()))
+    families = sorted(set(true_family))
+    result = {"ba": float(recall.mean()), "per_label_recall": recalls,
+              "rows": len(y), "label_count": len(labels),
+              "provider_ba": float(balanced_accuracy_score(true_family, pred_family)),
+              "macro_sibling_error": float(np.mean(sibling)),
+              "macro_cross_provider_error": float(np.mean(cross)),
+              "provider_exact_macro_recall": {f: float(np.mean([r for label, r in recalls.items()
+                                              if str(label).split("-", 1)[0] == f])) for f in families}}
     if anchor is not None:
         result.update({"rescues": int(((guess == y) & (anchor != y)).sum()),
                        "regressions": int(((guess != y) & (anchor == y)).sum()),
@@ -303,7 +345,7 @@ def _linear_scores(fit, y, query, labels):
     return model.decision_function(query)
 
 
-def evaluate(stage, official, external, isolation, anchor_path, cache_dir, output, predictions):
+def evaluate(stage, official, external, isolation, anchor_path, cache_dir, output, predictions, assets):
     labels = sorted(official.model.unique())
     y = official.model.to_numpy(dtype=str)
     anchor = align_anchor(official, pd.read_csv(anchor_path))
@@ -316,9 +358,8 @@ def evaluate(stage, official, external, isolation, anchor_path, cache_dir, outpu
     for name in models:
         with np.load(cache_dir / f"{name}.npz", allow_pickle=False) as z:
             lineage[name] = json.loads(str(z["meta"]))
-            if lineage[name]["input_sha256"] != text_fingerprint(expected_texts):
-                raise ValueError("INVALID: row alignment/cached text drift")
             embeddings[name] = {view: z[view].copy() for view in ("published", "masked")}
+            validate_cache(name, expected_texts, embeddings[name], lineage[name], assets)
     arms = ({f"{tag}_{view}": (name, mode, view) for tag, name, mode in
              [("B0", "simcse", "centroid"), ("B1", "simcse", "density"),
               ("M0", "detective", "centroid"), ("M1", "detective", "density")]
@@ -409,7 +450,7 @@ def main():
         if any(v is None for v in (args.anchor, args.output, args.predictions)):
             parser.error("evaluate requires --anchor, --output and --predictions")
         evaluate(args.stage, official, external, isolation, args.anchor, args.cache,
-                 args.output, args.predictions)
+                 args.output, args.predictions, args.assets)
 
 
 if __name__ == "__main__":

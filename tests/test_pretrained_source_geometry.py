@@ -133,3 +133,49 @@ def test_compression_requires_a_real_padding_query_when_virtual_padding_is_neede
     from scripts import pretrained_source_geometry as geometry
     with pytest.raises(ValueError, match="padding query"):
         geometry.compressed_pool(torch.ones(1, 3, 2), torch.ones(1, 3, dtype=torch.long))
+
+
+def _cache_fixture():
+    from scripts import pretrained_source_geometry as geometry
+    text = ["first", "second"]
+    x = np.zeros((2, 768), dtype=np.float32)
+    x[0, 0], x[1, 1] = 1, 1
+    meta = {"model": "simcse", "weight_sha256": geometry.SPECS["simcse"][2],
+            "input_sha256": text_fingerprint(text), "max_length": 512,
+            "pooling": "fixed512-published-and-valid-masked-v1", "dtype": "float32",
+            "compute_method": "duplicate-absolute-position-padding-compression-v1",
+            "torch": "2.6.0+cpu", "transformers": "4.48.3", "rows": 2,
+            "canonical_full512_max_delta": {"published": 1e-7, "masked": 1e-7},
+            "batch_invariance_max_delta": {"published": 1e-7, "masked": 1e-7}}
+    return text, {"published": x, "masked": x.copy()}, meta
+
+
+@pytest.mark.parametrize("defect", ["weight", "pooling", "unverified", "nonfinite", "shape", "norm"])
+def test_scoring_rejects_same_text_cache_with_wrong_provenance_or_invalid_features(defect):
+    from scripts import pretrained_source_geometry as geometry
+    text, arrays, meta = _cache_fixture()
+    if defect == "weight": meta["weight_sha256"] = "0" * 64
+    if defect == "pooling": meta["pooling"] = "old"
+    if defect == "unverified": meta["canonical_full512_max_delta"] = {}
+    if defect == "nonfinite": meta["batch_invariance_max_delta"]["masked"] = float("nan")
+    if defect == "shape": arrays["masked"] = arrays["masked"][:, :767]
+    if defect == "norm": arrays["masked"][0] = 0
+    with pytest.raises(ValueError, match="INVALID"):
+        geometry.validate_cache("simcse", text, arrays, meta)
+
+
+def test_scoring_accepts_verified_exact_checkpoint_cache():
+    from scripts import pretrained_source_geometry as geometry
+    text, arrays, meta = _cache_fixture()
+    geometry.validate_cache("simcse", text, arrays, meta)
+
+
+def test_report_partitions_exact_label_errors_from_six_provider_accuracy():
+    from scripts import pretrained_source_geometry as geometry
+    y = np.array(["gpt-a", "gpt-a", "gpt-b", "gemini-a"])
+    guess = np.array(["gpt-a", "gpt-b", "gpt-b", "gpt-a"])
+    result = geometry._metrics(y, guess, sorted(set(y)))
+    assert result["ba"] == pytest.approx(.5)
+    assert result["macro_sibling_error"] == pytest.approx(1 / 6)
+    assert result["macro_cross_provider_error"] == pytest.approx(1 / 3)
+    assert result["provider_ba"] == pytest.approx(.5)
