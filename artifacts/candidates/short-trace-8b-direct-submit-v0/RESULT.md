@@ -1,7 +1,7 @@
 # Short-TRACE 8B Direct Official Code Submission — execution record
 
 Date: 2026-11-07  
-**Latest verified:** Official Kaggle Code Competition submission **ACCEPTED**, ID **58093864** (2026-11-07 13:48:41 UTC); same exact private v1 Notebook. 8/8 CPU tests PASSED, offline dependency published. Hidden scoring result **NOT YET KNOWN**. This is submission acceptance, not proof of model quality.
+**Latest verified 2026-11-07 15:19 UTC:** Submission **58093864 COMPLETE, Public Score 0.093**. 8B Short-TRACE frozen rank-transition **standalone candidate FAILED** relative to verified 0.668 best own submitted reproduction. Scientific H-vs-S-vs-T mechanism **INCONCLUSIVE**, because official Kaggle score observes only T, and earlier pilot H/S/T GPU arm did not complete.
 
 ## Completed
 - Frozen [contract](CONTRACT.md) before scoring.
@@ -31,3 +31,28 @@ No control/bin/seed/classifier changes or PubLB tuning. No submission of a dummy
 
 - [Authenticated read-only Kaggle CLI action 42378696638](https://github.com/kolihhan/name-kaggle/actions/runs/42378696638) returned `Submission Ref: 58093864`, `Status: PENDING`, empty Public Score and empty Private Score. The scoring rerun is **not verified complete**; no claims about final BA, GPU/runtime success, or true-vs-shuffled improvement.
 - The next action is check only this submission ref for `COMPLETE`/`ERROR`; do not tune or resubmit based on the score.
+
+## Official scoring verdict — 2026-11-07 15:19 UTC
+
+**Authenticated first-party result:** [GitHub Actions run 42385772029](https://github.com/kolihhan/name-kaggle/actions/runs/42385772029) reads Kaggle `competitions submission 58093864` and competitions submission history without resubmission or GPU. It returned `Submission Ref: 58093864`, `Status: COMPLETE`, `Public Score: 0.093`, blank Private Score. This is an actually scored submission, not an exception/pending task.
+
+| Exact submitted system | Official Public BA |
+|---|---:|
+| Short-TRACE 8B T-only standalone, 58093864 | **0.093** |
+| Ozertuu Dual-SVC reproduced, 58045266 / 58022340 | **0.668** |
+| Lightning V47 reproduced, 58008463 | **0.666** |
+| V47 length40, 58078151 | **0.663** |
+
+**Disposition: REJECT direct T-only standalone model; do not promote to champion or escalate to 14B, and do not patch/tune the candidate with this Public score.**
+
+### What was and was not tested
+
+- **Tested:** The exact frozen private 8B standalone submission path produced a valid score of 0.093. CPU tests had passed but did not establish predictive quality.
+- **Not tested:** A paired **H baseline vs S shuffled transition vs T real transition** on an independent source holdout. The external H/S/T pilot was blocked by a missing bitsandbytes package, and official hidden scoring only tested the T classifier. Therefore **cannot claim true transitions are worthless, or inferior/superior to shuffled**, only that this particular T-only representation and readout was not competitive.
+- **Known method limitation from source code:** No semantic/lexical feature view, no external multi-source training, no multi-evaluator ensemble; only nine fixed rank frequency bins and 81 adjacent rank-bin transition frequencies from a single frozen Qwen3-8B plus a linear logistic readout. These are plausible *mechanistic reasons* for weak discrimination, **not verified causal attribution** without ablation. Scores near chance may also reflect domain/protocol shift; the Kaggle score alone cannot separate those hypotheses.
+- **Validity caveat:** The public code-competition preview contains a schema-only prediction for tiny fixture test. An official `COMPLETE` + score does not expose hidden row-level predictions, rerun trace or per-class confusion here. Do not claim the hidden path was fully logged or that failure can be traced to a particular component solely from the BA.
+- **Process error:** The direct competition deployment was allowed by user direction but skipped the originally planned mechanistic H/S/T gate. A single competition score is *not* an adequate substitute for that gate and was insufficient to diagnose transition causality. No further Kaggle submissions should be used to test minor ablations of this frozen failed standalone model.
+
+### Research decision
+
+Archive `short-trace-8b-direct-submit-v0` as **negative standalone evidence**. Existing best own verified submitted Public BA remains `0.668`, reproduced from an external/public candidate, not original research. For a genuinely new attribution mechanism, predeclare a separate evaluation where marginal-only H, shuffled S and true T share one controlled dataset split and one frozen evaluator, plus source-shift check; validate *incremental/residual complementarity* to strong lexical or semantic anchor **off-leaderboard** before any competition-facing submit. A larger evaluator alone cannot be inferred to repair the lost discriminative content. If unable to run that independent evaluation, stop this lane rather than present a 14B escalation as supported.
