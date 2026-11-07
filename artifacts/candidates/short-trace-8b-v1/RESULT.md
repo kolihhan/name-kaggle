@@ -1,7 +1,7 @@
 # Short-TRACE 8B v1 — first executed checkpoint
 
 **Date:** 2026-11-07  
-**Status:** CPU checks and Kaggle upload **VERIFIED**. 8B scientific scores **NOT YET VERIFIED**.
+**Status:** CPU checks and actual Kaggle v1 push **VERIFIED**; true kernel status **QUEUED** at 2026-11-07 11:22:21 UTC. 8B scientific scores **NOT YET VERIFIED**.
 
 ## Frozen science
 - [Contract](CONTRACT.md), committed before any 8B scores.
@@ -15,7 +15,7 @@
 - Implemented `scripts/short_trace_core.py`, `scripts/run_short_trace_8b_pilot.py`, `scripts/build_short_trace_8b_pilot.py`.
 - Implemented deterministic/null-control/prompt tests in `tests/test_short_trace_core.py`.
 - GitHub Actions [run 42367277419](https://github.com/kolihhan/name-kaggle/actions/runs/42367277419): `Frozen unit checks no real source/competition data` **SUCCESS**, `Build a private internet-disabled frozen GPU kernel` **SUCCESS**, `Push exactly one Kaggle 8B pilot kernel` **SUCCESS**.
-- Kaggle private, internet-disabled research kernel: `kolihhan/ntl-short-trace-8b-pilot`. No official competition inputs, no official submission, no LLM fine-tuning or 14B.
+- Kaggle private, internet-disabled research kernel **actual resolved slug**: `kolihhan/ntl-short-trace-8b-frozen-representation-pilot` ([Notebook URL](https://www.kaggle.com/code/kolihhan/ntl-short-trace-8b-frozen-representation-pilot)). The metadata requested `kolihhan/ntl-short-trace-8b-pilot` but Kaggle rewrote the slug from the title, causing 28 status polls to show a misleading permission denial. The exact v1 push output is in [run 42367277419](https://github.com/kolihhan/name-kaggle/actions/runs/42367277419); [read-only corrected-slug check 42367892615](https://github.com/kolihhan/name-kaggle/actions/runs/42367892615) returned `KernelWorkerStatus.QUEUED` (verified). **This is not a scientific failure or a model runtime error.** No official competition inputs, no official submission, no LLM fine-tuning or 14B.
 - **Scientific outcome still unknown** until actual GPU execution completes with result JSON. A passing CPU suite or successful push is not an 8B feature-gain measurement.
 
 ## Next gate
