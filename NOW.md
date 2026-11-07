@@ -1,5 +1,11 @@
 # NOW
 
+## Source-channel bottleneck gate — tested and closed (2026-11-07)
+
+**Verified read-only data audit:** Downloaded and SHA-256-pinned only the public 834-row Kaggle Benchmarks proxy-generation corpus (8 exact labels; 213 source-bank/prompt keys). In the 142 prompt keys covering at least two models, **141 assign different requested output lengths between models**. Nominal 2-model × 2-temperature matches look plentiful (**280 pair-prompt combinations**), but matching the **same request and target words** leaves only **2 complete pair-prompt combinations** and **zero same-provider sibling pairs**. There are 80 same-model temperature pairs (10 per label), but that does not solve the crossed model-identity test.
+
+**Decision:** The frozen ≥20 complete, same-request 2×2 pairs feasibility gate **FAILED**. Do not run attribution classifier or claim a sibling identity/protocol contrast on this source. The strongest measured bottleneck is external-data **length/protocol support**, not proved architectural ceiling. This is evidence of confounding *in the external source*, not proof about Kaggle official hidden data. [Source and stop decision](artifacts/research/generator-vs-channel-identification-decision-20261106.md#7-executed-source-level-crossed-design-feasibility-gate--2026-11-07) · [Executed Actions logs](https://github.com/kolihhan/name-kaggle/actions/runs/42361361854) · [Reproducible script](scripts/audit_channel_cross_design.py)
+
 ## Public Areebbb 0.670 source audit — no candidate promoted (2026-11-07)
 
 **Verified:** [Read-only Kaggle source inspection](https://github.com/kolihhan/name-kaggle/actions/runs/42359768508) and [exact-code predecessor diff](https://github.com/kolihhan/name-kaggle/actions/runs/42359952735) show that `areebbb/0-670-this-actually-works` reuses a broad public ensemble. Against the author's `ntl-we-back-0-666`, it **removes a ModernBERT member weighted 1.4 and increases the already-present public DeBERTa weight from 0.8 to 2.2**. It still falls back from absent private V5 SVC to public V4n while applying the high V5 blend weights. The author's `0.670` score is not independently confirmed by our official submission history or score API. Neither honest prompt/source-disjoint transfer nor causal member contribution is established.
