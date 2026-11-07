@@ -1,5 +1,15 @@
 # NOW
 
+## V47 fixed-window SVC — full preflight passed, submitted once (2026-11-07)
+
+**Official submission accepted.** Candidate `kolihhan/ntl-v47-length40/2` was submitted once as `58078151` at 03:54:38 UTC. Latest authenticated status is `PENDING`, with scoring still in progress. [Verified accepted record and full-preflight proof](https://github.com/kolihhan/name-kaggle/actions/runs/42336749310)
+
+**Concrete solution.** Apply the existing pooled-external SVC to evenly spaced 40-word windows and average raw margins before its original normalization and weight. Use the published task length bound for the fixed budget. This is the sole scientific change to V47. [Frozen contract](artifacts/research/v47-length40-20261107/CONTRACT.md)
+
+**Verified execution.** All 37 code cells compile, three targeted tests pass, and a complete seven-cell executable patch applies byte-exactly. Kaggle version 2 completed the full original GPU ensemble on the three-row fixture with the preview shortcut bypassed and the final Parquet schema checked. Repeating one 40-word block 1, 2 and 4 times produced margin drift `0.218252` for the original SVC and `0` for the treatment on the real fixture. An independent fitted-weight CPU check passed with original drift `0.271407` and treatment drift `0`. The first private version's cache mount defect was independently diagnosed and repaired using original hub v18 / numeric ID `21594398`.
+
+**Frozen decision.** Compare the official result against V47 `0.666`. Follow up at score ≥`0.671`, close at ≤`0.661`, and call intermediate scores inconclusive. Follow through on submission `58078151`. This is a single diagnostic under the user's latest build-and-submit direction. Independent V47 grouped OOF remains unavailable for a validated promotion. [Exact versions, checks and current result](artifacts/research/v47-length40-20261107/RESULT.md)
+
 ## Gemini sibling attribution — requested length is a shortcut (2026-11-07)
 
 The external GPT/Gemini generator draws a target word count from the official training length distribution for the requested label. Each model keeps that target when the reasoning setting changes. In the existing Gemini 3.6/3.8 Flash pilot, the target differed between models for all 20 base prompts. [Upstream generator](https://github.com/RohanExploit/kaggle-name-that-llm-top20/blob/main/data/extra_gpt_gemini/make_tasks.py) · [Pinned data provenance](artifacts/phase2/PHASE2_EXTERNAL_DATA_RECON.md)
