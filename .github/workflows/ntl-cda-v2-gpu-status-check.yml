@@ -1,0 +1,28 @@
+name: NTL CDA L24 v2 Actual Kaggle GPU Kernel Status
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-v2-gpu-status-check.yml]
+permissions: {contents: read}
+jobs:
+  read-only-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect exactly two private source-trained Kaggle runs without resubmitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          for ref in kolihhan/ntl-cda-l24-v2-original-source-training-c1 kolihhan/ntl-cda-l24-v2-original-source-training-c0; do
+            state="$(kaggle kernels status "$ref" 2>&1)"
+            echo "CDA_GPU_TRAIN_STATUS $ref $state"
+            if grep -Eq 'KernelWorkerStatus.(ERROR|FAILED|CANCELLED)' <<<"$state"; then
+              echo "CDA_KERNEL_ENGINEERING_ERROR $ref"
+              kaggle kernels logs "$ref" 2>&1 | grep -Ei 'error|exception|traceback|assertion|failed|missing|module' | tail -25 || true
+            fi
+          done
