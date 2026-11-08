@@ -2,7 +2,7 @@ name: NTL CDA L24 v2 Launch Two Original-Source GPU Training Arms Once
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-cda-l24-v2-launch-training-once.yml]
+    paths: [.github/workflows/ntl-cda-l24-v2-launch-training-once.yml, tests/test_cda_l24_v2_packaging.py]
 permissions: {contents: read}
 concurrency:
   group: ntl-cda-v2-source-training-frozen-once
