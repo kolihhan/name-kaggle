@@ -2,7 +2,7 @@ name: NTL One-Shot Unused Multi-Label Source Cohort Feasibility
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-unused-source-cohort-once.yml, scripts/assess_unused_source_cohorts.py]
+    paths: [.github/workflows/ntl-unused-source-cohort-once.yml, scripts/assess_unused_source_cohorts.py, tests/test_assess_unused_source_cohorts.py]
 permissions: {contents: read}
 concurrency:
   group: ntl-one-shot-new-source-feasibility
