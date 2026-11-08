@@ -1,0 +1,59 @@
+name: NTL One-Shot Unused Multi-Label Source Cohort Feasibility
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-unused-source-cohort-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-one-shot-new-source-feasibility
+  cancel-in-progress: false
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install only data-processing dependencies
+        run: python -m pip install -q pandas==2.2.3 numpy==1.26.4 scikit-learn==1.6.1 scipy==1.15.2 pyarrow==19.0.1 kaggle==2.2.5 six==1.17.0 pytest
+      - name: Unit-verify leakage and capacity logic (synthetic data only)
+        run: |
+          python -m py_compile scripts/assess_unused_source_cohorts.py
+          python -m pytest -q tests/test_assess_unused_source_cohorts.py
+      - name: Download only publicly accessible labeled source datasets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/new_pool /tmp/original_pool /tmp/out
+          kaggle datasets files crtproduction/name-that-llm-open-pool
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -p /tmp/new_pool --unzip -q
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/original_pool --unzip -q
+          find /tmp/new_pool -maxdepth 3 -type f -printf 'PUBLIC_SOURCE_FILE %P %s bytes\n'
+      - name: Produce source-disjoint candidate capacity evidence (never score)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.assess_unused_source_cohorts \
+            --new-pool-dir /tmp/new_pool \
+            --known-pool /tmp/original_pool/pool_v4.parquet \
+            --official data/train.csv \
+            --output /tmp/out/source_cohort_feasibility.json
+          python - <<'PY'
+          import json
+          x=json.load(open('/tmp/out/source_cohort_feasibility.json'))
+          assert x["no_scientific_fit_performed"] is True
+          assert x["no_competition_submission"] is True
+          assert x["independent_scientific_transfer_verified"] is False
+          print("SCIENTIFIC_PROVENANCE_NOT_ASSUMED")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-one-shot-source-cohort-aggregates-only
+          path: /tmp/out/source_cohort_feasibility.json
+          if-no-files-found: warn
+          retention-days: 14
