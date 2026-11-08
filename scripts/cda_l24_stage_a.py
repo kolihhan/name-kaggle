@@ -102,6 +102,29 @@ def validate_clearance(manifest: dict[str, Any]) -> tuple[str, ...]:
     return tuple(sorted(sources))
 
 
+def reject_invalid_frozen_v1_science_cohort() -> None:
+    """Fail closed on newly verified HOST-CONDITIONED frozen source design.
+
+    Original README of reserved arxitekton transfer: provider/setting/model
+    choices were filtered with a judge using official-host OOF and prompt
+    genre conditioning. This is not a clean untouched transfer cohort.
+
+    Original README of drjcfmd training source: model-generated prompts were
+    derived using reconstructions of host official training prompts, which
+    invalidates the old 'no official validation text at Stage A' claim.
+
+    See original-owner README evidence in GitHub Actions 42482891240.
+    Preserve the frozen v1 cohort and never silently replace it.
+    A genuinely new dataset design requires a new versioned contract.
+    """
+    raise PermissionError(
+        "CDA-L24 v1 FROZEN COHORT DISQUALIFIED: reserved arxitekton "
+        "uses official-host judge/fidelity tuning; drjcfmd training source "
+        "uses reconstructed host prompts. Do not claim independent transfer. "
+        "Freeze a replacement provenance-valid protocol before new science."
+    )
+
+
 def _normalized(value: Any) -> str:
     import re
     import unicodedata
@@ -188,6 +211,7 @@ def build_clean_partitions(
 def _prepare_input(args: argparse.Namespace) -> tuple[pd.DataFrame, pd.DataFrame, list[str], dict]:
     manifest = json.loads(args.clearance_manifest.read_text())
     allowed = validate_clearance(manifest)
+    reject_invalid_frozen_v1_science_cohort()
     if _sha256(args.pool) != EXPECTED_POOL_SHA256:
         raise RuntimeError("public source pool SHA changed")
     from scripts.run_phase14_public_sparse import build_conservative_subset
