@@ -319,6 +319,54 @@ def _gpu_run(args: argparse.Namespace):
     stats["original_stage1_manifest_sha256"]=loaded["manifest_sha256"]
     stats["stage1_metrics_are_train_only"]=True
 
+    # Frozen, transfer-only scientific prediction. Never fit/test-gate on
+    # these rows. Persist row predictions privately for prompt-level paired
+    # C0/C1 bootstrap AFTER both independent arms finish.
+    from sklearn.metrics import balanced_accuracy_score
+    heldout_tokens = tokenizer(transfer["text"].astype(str).tolist(),
+        add_special_tokens=False, truncation=True,
+        max_length=int(spec["max_length_before_eos"]))["input_ids"]
+    heldout_tokens = [list(t)+[eos] for t in heldout_tokens]
+    pred_id = []
+    model.eval(); norms.eval(); plain.eval(); dropout.eval()
+    with torch.inference_mode():
+        for start in range(0,len(heldout_tokens),3):
+            ix=np.arange(start,min(start+3,len(heldout_tokens)))
+            encoded=_make_encoding(tokenizer,heldout_tokens,ix,device)
+            z=_representation(model=model,norms=norms,layers=layers,
+                              encoding=encoded,torch=torch)
+            pred_id.extend(plain(z).argmax(1).detach().cpu().tolist())
+    if len(pred_id)!=len(transfer):
+        raise RuntimeError("incomplete heldout predictions")
+    original=list(transfer["model"].astype(str))
+    predicted=[labels[i] for i in pred_id]
+    from collections import Counter
+    class_totals=Counter(original)
+    class_hit=Counter(y for y,p in zip(original,predicted) if y==p)
+    recalls={label:class_hit[label]/class_totals[label] for label in
+             sorted(class_totals)}
+    transfer_score=float(balanced_accuracy_score(original,predicted))
+    if len(recalls)<8: raise RuntimeError("too few transfer labels")
+    if args.private_eval_output.exists():
+        raise FileExistsError("refusing overwrite of private heldout predictions")
+    args.private_eval_output.parent.mkdir(parents=True,exist_ok=True)
+    private_rows=pd.DataFrame({
+        "source":list(transfer["source"]),
+        "prompt_group":list(transfer["prompt_id"]),
+        "row_index":list(range(len(transfer))),
+        "label":original,
+        "prediction":predicted,
+    })
+    private_rows.to_csv(args.private_eval_output,index=False)
+    # Aggregate score and per-class recalls may be published; no passage or
+    # original IDs or prompt data are included in summary metadata.
+    stats["transfer_source"]=RESERVED_SOURCE
+    stats["transfer_labels_present"]=len(recalls)
+    stats["transfer_balanced_accuracy"]=transfer_score
+    stats["transfer_recall_by_label"]=recalls
+    stats["transfer_prompt_groups"]=int(transfer.prompt_id.nunique())
+    stats["source_transfer_only_not_public_18class_score"]=True
+
     # Save NEW checkpoint in private runtime only; training branch never
     # uploads weights/answers to public repo or public Actions artifacts.
     out=args.private_checkpoint
@@ -358,6 +406,7 @@ def main():
     parser.add_argument("--base-snapshot",type=Path,required=True)
     parser.add_argument("--clearance-manifest",type=Path,required=True)
     parser.add_argument("--private-checkpoint",type=Path,required=True)
+    parser.add_argument("--private-eval-output",type=Path,required=True)
     args=parser.parse_args()
     # Evaluate the EXACT clearance and source disjoint gates before loading
     # expensive model weights. No quick-run override.
