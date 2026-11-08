@@ -48,3 +48,14 @@ Secondary historical coordinate: official permanent 5-fold GroupKFold(prompt_id)
 When BOTH data/source and model criteria pass: final fit on all official train, build real internet-disabled Kaggle Code Competition Notebook; verify full hidden size ~4000, under 9-hour runtime, all 18 labels, output columns id/model in submission.parquet. Submit ONE exact frozen Notebook version; report the accepted Submission ID, terminal status and Public BA, and compare with reproduced 0.668. No Public LB parameter loop. Lack of external strong-model row-aligned OOF is NOT a universal blocker for this independent candidate; do not pretend a paired result against Ozertuu is available.
 
 If any gate fails, report the actual evidence and STOP this specific training objective rather than inventing a new source/feature weight adjustment. Restriction: no local GPU/paid API, no model training before original-source lineage clearance. Pivot only if genuinely new independent evidence changes the representation/data bottleneck.
+
+
+## Implementation checkpoint — 2026-11-08, no model score
+
+**Engineering DONE:** standalone train-only [conditional source GRL code](../../scripts/conditional_domain_adversarial_lora24.py) with actual model-label-conditioned source head and full-training cell-support mask; [5 synthetic tests](../../tests/test_conditional_domain_adversarial_lora24.py) prove that lambda=0 and lambda=0.10 produce the same forward source predictions, but source-feature gradients differ, and unsupported source/model combinations are excluded. [GitHub Actions 42478060946](https://github.com/kolihhan/name-kaggle/actions/runs/42478060946) **SUCCESS**. This proves mechanism code, NOT attribution accuracy.
+
+**Upstream origin manifest check incomplete:** same Action could fetch the two named Kaggle upstream dataset metadata templates, but returned no usable original title/license/details; neither exact serving model nor sampling protocol is verified. The merged pool's four license strings are publisher-reported only. Therefore original-source authorization/provenance **FAIL-CLOSED / INCOMPLETE**, not proof of disallowed use. No GPU science run or Notebook submission was attempted.
+
+**Still required before an end-to-end candidate:** obtain original provenance/source-alias and exact model-label generation metadata; validate crossed class-source support and data license terms; fork the Stage-1 GPU training runner from the immutable LoRA24 reference, integrate this loss without altering historical v1, persist a NEW pinned adapter/head checkpoint, then run frozen C0 vs C1 Stage-A transfer. If and only if it promotes, run official fold-local Stage B and the one-shot Code Competition packaging. The current module alone is NOT a runnable complete candidate, so do not claim it has been validated or submitted.
+
+Never treat source capacity, synthetic tests, or absence of score as evidence that this architecture beats 0.520/0.668.
