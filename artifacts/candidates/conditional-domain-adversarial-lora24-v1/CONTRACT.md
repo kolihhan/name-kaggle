@@ -1,5 +1,7 @@
 # CDA-L24 — Conditional Domain-Adversarial LoRA24
 
+> **FROZEN DATA-COHORT INVALIDATED (2026-11-08): DO NOT EXECUTE CDA-L24 V1.** Original-owner source READMEs document official-host-conditioned generation and prompt reconstruction. This is an INELIGIBLE independent-transfer/source-design result, **not** an experimentally failed model objective. The frozen v1 `scripts/cda_l24_stage_a.py` now rejects science execution explicitly. See the final verified provenance review below.
+
 Date: 2026-11-08 MYT. Status: ARCHITECTURE FROZEN, DATA CAPACITY SCREEN COMPLETE, NO MODEL FIT OR SUBMISSION.
 
 ## Purpose and scientific hypothesis
@@ -77,3 +79,17 @@ Never treat source capacity, synthetic tests, or absence of score as evidence th
 **Work not completed:** No C0/C1 GPU science training, no trained CDA checkpoint, no heldout BA, no 5-fold CDA official OOF, no final Kaggle Code Competition inference notebook, and NO Submission ID. Original reproduced Public Best remains 0.668, independently trained LoRA24 Public 0.520.
 
 **Future closure criteria:** authoritative source licenses, exact served labels/versions, and independent cross-source lineages; a separately authorized accelerator runtime; actual C0/C1 matched source transfer success, then Stage-B and a verified final inference Notebook. Do not infer a benefit from capacity screening or 13 green synthetic tests.
+
+## Provenance verdict — 2026-11-08, replaces earlier OPEN license gate
+
+**Licenses are now actually visible:** Direct Kaggle first-party REST [42482794589](https://github.com/kolihhan/name-kaggle/actions/runs/42482794589) confirmed arxitekton/ntl-claude-gen-v1 **CC BY 4.0** (v1), drjcfmd/ntl-generated-v2 **CC BY-SA 4.0** (v4). Earlier Kaggle Python client searches returned None because those views omitted license fields; that was an API limitation, not proof licensing was absent.
+
+**The frozen source validity gate nevertheless FAILS on stronger scientific grounds**, from ORIGINAL `README.md` files downloaded and read in [Actions 42482891240](https://github.com/kolihhan/name-kaggle/actions/runs/42482891240):
+
+1. Frozen **heldout arxitekton** data generation uses competition-host genre distribution and per-model settings / model exclusions chosen by a *fidelity pilot measuring model-judge behavior on host OOF*. It has 1,060 new written prompts, same-prompt responses and per-row served_model / served_provider according to the README. The model-specific OOF-driven selection makes it **host-adapted**; it is NOT an untouched, independent test of generalization from the 2,699 repeatedly consumed official examples. It remains useful for descriptive/source-conditioning studies, but it cannot carry the contract's strong independent-transfer claim.
+2. Planned training **drjcfmd** README explicitly says it reconstructed prompts from the five shortest **official host train answers** before generating new prompts. This is semantic/procedural use of official fold-validation text, even when new output texts have zero normalized exact overlap. It also aggregates `ext_only` data from other participants, including Maniceet. **Do not include it as globally pretrained Stage A data before official GroupKFold**, because the old fold-local isolation assumption would fail.
+3. Earlier source-capacity study detected only exact text / recorded prompt-key overlap; those checks do **not** detect prompt derivation, host-tuned generation parameters, cross-public-pool aliases or name-to-server-version errors.
+
+**Unscored alternatives checked ONCE** [Actions 42483110273](https://github.com/kolihhan/name-kaggle/actions/runs/42483110273): `kilupy/ntl-18-model-corpus` README declares entirely authored prompts and CC BY 4.0, but Kaggle API license is `Unknown`, source is split between Claude/Anthropic on 3,338 prompts and the other 13 labels/OpenRouter on 300 different prompts (source/label and prompt-bank confounding); `trnhip/ntl-api-gen` licenses CC BY but omits served_model ids and host-trained classifier was used to evaluate class fidelity; `lxdlxdlxd/ntl-synth-generations-v1` generates prompts from a reconstructed host-prompt register; `philipvallen/ntl-pools` is a filtered compilation of other public pools and explicit host-prompt references (not a new independent data source), with public-page and README license-label inconsistency. None has yet met **the full CDA class×source provenance and unseen-source transfer gate**.
+
+**Decision:** `CDA-L24 v1` cohort is **RETIRED / INELIGIBLE**, scientific objective **UNTESTED**, no C0/C1 training, no OOF, no Kaggle submission or new Public score. The model training/Stage-B code remains as reusable engineering, but may not be activated on this frozen v1 cohort even by setting a local `provenance_status=APPROVED` JSON flag. Another experiment would require a **new, truly documented source/prompt/version design approved before any model scoring**, not retuning or reusing the invalid holdout. Current score anchors remain independently built Public 0.520 / external reproduced Best Public 0.668.
