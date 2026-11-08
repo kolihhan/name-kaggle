@@ -34,3 +34,38 @@ jobs:
               print('CDA_V2_OFFICIAL_LEDGER',json.dumps({k:r.get(k) for k in
                   ('ref','status','publicScore','description','date')},sort_keys=True))
           PY
+      - name: Read bounded C0 C1 GPU log progress without printing private text
+        shell: bash
+        run: |
+          set -euo pipefail
+          for ref in \
+            kolihhan/ntl-cda-l24-v2-original-source-training-c1/2 \
+            kolihhan/ntl-cda-l24-v2-original-source-training-c0-r1/1; do
+            temp_file="$(mktemp)"
+            if kaggle kernels logs "$ref" > "$temp_file" 2>/dev/null; then
+              python - "$temp_file" "$ref" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+          source = Path(sys.argv[1])
+          size = source.stat().st_size
+          with source.open("rb") as f:
+              f.seek(max(0, size - 2000000))
+              tail = f.read().decode("utf-8", errors="replace")
+          # Only numeric progress and milestone booleans; never print training logs, passages or IDs.
+          fractions = [(int(a), int(b)) for a,b in re.findall(r"(?<!\d)(\d{1,7})/(\d{1,7})\s*\[", tail)]
+          fractions = [(a,b) for a,b in fractions if b > 0 and 0 <= a <= b]
+          print("CDA_GPU_SAFE_PROGRESS", json.dumps({
+              "ref": sys.argv[2],
+              "log_bytes": size,
+              "last_tqdm_fraction": fractions[-1] if fractions else None,
+              "checkpoint_finished_marker": "CDA_STAGE_A_NEW_PRIVATE_CHECKPOINT" in tail,
+              "traceback_marker": "Traceback (most recent call last)" in tail
+          }, sort_keys=True))
+          PY
+            else
+              echo "CDA_GPU_SAFE_PROGRESS_UNAVAILABLE $ref"
+            fi
+            rm -f "$temp_file"
+          done
