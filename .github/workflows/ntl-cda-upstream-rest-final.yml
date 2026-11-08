@@ -64,6 +64,37 @@ jobs:
           result["license_and_versions_fully_verified"]=False
           pathlib.Path("/tmp/ntl-origin/result.json").write_text(json.dumps(result,indent=2,sort_keys=True))
           PY
+      - name: Read original README generation manifest - provenance only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,subprocess, pathlib,re
+          results=[]
+          for user,slug in [('arxitekton','ntl-claude-gen-v1'),('drjcfmd','ntl-generated-v2')]:
+            ref=user+'/'+slug
+            directory=pathlib.Path('/tmp/ntl-origin')/slug
+            directory.mkdir(parents=True,exist_ok=True)
+            cmd=['kaggle','datasets','download','-d',ref,'-f','README.md','-p',str(directory),'--unzip','-q']
+            p=subprocess.run(cmd,capture_output=True,text=True,timeout=55)
+            f=directory/'README.md'
+            record={'source':ref,'download_succeeded':p.returncode==0,'README_present':f.is_file()}
+            if f.is_file():
+              content=f.read_text(errors='replace')
+              lines=content.splitlines()
+              record['readme_sha256']=hashlib.sha256(f.read_bytes()).hexdigest()
+              record['readme_lines']=len(lines)
+              keywords=re.compile(r'licen|source|model|api|provider|origin|prompt|version|temperature|generat|sampling|request|reuse|attrib|endpoint|script|seed|reason|OpenAI|Claude',re.I)
+              # Public dataset docs; never read or print corpus rows.
+              snippets=[(i+1,line[:240]) for i,line in enumerate(lines)
+                        if keywords.search(line) and len(line.strip())>4]
+              record['matching_doc_lines']=len(snippets)
+              for num,line in snippets[:65]:
+                print('ORIGINAL_README_LINE',ref,num,line,flush=True)
+            print('ORIGINAL_README_STATUS',json.dumps({k:v for k,v in record.items() if k!='description'},sort_keys=True),flush=True)
+            results.append(record)
+          pathlib.Path('/tmp/ntl-origin/README-inspection-summary.json').write_text(json.dumps(results,indent=2,sort_keys=True)+'\\n')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
