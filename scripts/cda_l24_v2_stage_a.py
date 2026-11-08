@@ -265,6 +265,43 @@ def _prepare_input(args: argparse.Namespace) -> tuple[pd.DataFrame,pd.DataFrame,
     return train,transfer,labels,stats
 
 
+def stage_a_observed_class_weights(
+    train_models: pd.Series, official_labels: list[str]
+) -> tuple[dict[str, float], list[bool], list[str]]:
+    """Train CE only over labels with genuine external-source observations.
+
+    The original pretrained A1 checkpoint retains all 18 logits. The one
+    class missing from both direct external datasets must NEVER be fabricated
+    or treated as negative evidence during continued training. Keep its
+    logit untouched by the identity head's CE; final official Stage B will
+    train on all 18. Its transfer recall is nevertheless scored normally.
+    """
+    actual = set(train_models.astype(str))
+    missing = sorted(set(official_labels) - actual)
+    if missing not in ([], ["gemini-3.7-flash"]):
+        raise RuntimeError(f"unexpected external-label coverage change: {missing}")
+    present = [x for x in official_labels if x in actual]
+    if len(present) < 17:
+        raise RuntimeError("too few supported training labels")
+    weights = compute_class_weights(train_models.values, classes=present)
+    return ({label:float(weights.get(label,0.0)) for label in official_labels},
+            [label in actual for label in official_labels],missing)
+
+
+def stage_a_active_label_logits(model_logits, active_class_mask):
+    """Mask *only the training CE*, preserving the full 18 logits at test."""
+    import torch
+    mask=torch.as_tensor(active_class_mask,dtype=torch.bool,device=model_logits.device)
+    if model_logits.ndim!=2 or model_logits.shape[1]!=len(mask):
+        raise ValueError("model logits and active class mask are not aligned")
+    if not torch.isfinite(model_logits).all():
+        raise ValueError("identity logits contain invalid values")
+    # Logits of unsupported classes must receive zero CE gradient, not
+    # repeated synthetic negatives. The original A1 row remains initialized.
+    return model_logits.masked_fill(~mask.view(1,-1),
+                                   torch.finfo(model_logits.dtype).min / 2)
+
+
 def _gpu_run(args: argparse.Namespace):
     import torch
     from safetensors.torch import save_file
@@ -304,7 +341,8 @@ def _gpu_run(args: argparse.Namespace):
         raise RuntimeError("original train schedule changed")
     model.train(); norms.train(); plain.train(); centered.train()
     source_head.train(); dropout.train()
-    class_weights = compute_class_weights(train.model.values, classes=labels)
+    class_weights, active_mask, missing_source_labels = (
+        stage_a_observed_class_weights(train.model, labels))
     weight = torch.tensor([class_weights[label] for label in labels],
                           device=device,dtype=torch.float32)
     train_tokens = tokenizer(train["text"].astype(str).tolist(),
@@ -332,6 +370,9 @@ def _gpu_run(args: argparse.Namespace):
     scaler=torch.amp.GradScaler("cuda",init_scale=256)
     eligible_total=0
     stats={"arm":args.arm,"strength":strength,"epochs":1,
+           "stage_A_source_missing_classes":missing_source_labels,
+           "stage_A_identity_CE_uses_only_observed_classes":True,
+           "official_all_18_class_logits_retained_for_inference":True,
            "train_rows":len(train),"transfer_rows":len(transfer),
            "crossed_labels":int(support.eligible_labels.sum()),
            "train_sources":len(source_ids),"optimizer_steps_expected":total_steps}
@@ -343,14 +384,15 @@ def _gpu_run(args: argparse.Namespace):
                               encoding=encoded,torch=torch)
             targets=train_y[ix].to(device)
             sources=train_s[ix].to(device)
-            logits=plain(dropout(z))
+            logits=stage_a_active_label_logits(plain(dropout(z)),active_mask)
             loss,diag=joint_training_loss(
                 logits,targets,z,sources,source_head,support,
                 gradient_strength=strength,model_class_weights=weight)
             # Train the original centered head as in the original reference,
             # with the original objective scaling for both arms.
             from scripts.run_two_stage_lora24_gate_a import center_triplet
-            centered_logits=centered(dropout(center_triplet(z)))
+            centered_logits=stage_a_active_label_logits(
+                centered(dropout(center_triplet(z))),active_mask)
             import torch.nn.functional as F
             loss=loss+F.cross_entropy(centered_logits,targets,weight=weight)
             if not bool(torch.isfinite(loss)):raise RuntimeError("non-finite CDA loss")
