@@ -1,0 +1,70 @@
+name: NTL CDA L24 v2 C0 Exact-Slug Recovery After C1 Kernel Push
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-l24-v2-c0-recovery.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-cda-v2-control-kaggle-push-once
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      C1_REF: kolihhan/ntl-cda-l24-v2-original-source-training-c1
+      C0_REF: kolihhan/ntl-cda-l24-v2-original-source-training-c0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle client and kernel builder minimal imports
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.2.3 numpy==1.26.4
+      - name: Reconcile actual C1 private model kernel (not the stale title-independent ID)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          echo "C1_MODEL_KERNEL_VERIFICATION $C1_REF"
+          kaggle kernels status "$C1_REF" || echo "C1_STATUS_UNAVAILABLE_CHECK_RUN_LOGS"
+          echo "DO_NOT_PUSH_A_DUPLICATE_C1_KERNEL"
+      - name: Generate and compile exactly matching frozen C0 private GPU Notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m scripts.build_cda_l24_v2_training_kernel --arm C0 --output-dir /tmp/cda-v2-control
+          python -m py_compile /tmp/cda-v2-control/kernel_main.py
+          python - <<'PY'
+          import json, pathlib, os
+          d=pathlib.Path('/tmp/cda-v2-control')
+          m=json.loads((d/'kernel-metadata.json').read_text())
+          assert m['id']==os.environ['C0_REF']
+          assert m['is_private'] is True and m['enable_internet'] is False
+          assert m['competition_sources']==[]
+          assert len(m['model_sources'])==1
+          assert len(m['dataset_sources'])==6
+          assert 'C0' in (d/'kernel_main.py').read_text()
+          print("C0_FROZEN_NOTEBOOK_ARTIFACT_VERIFIED",m['id'])
+          PY
+          sha256sum /tmp/cda-v2-control/kernel_main.py
+      - name: Push new C0 control version1, never overwrite an already existing run
+        shell: bash
+        run: |
+          set -euo pipefail
+          if kaggle kernels status "$C0_REF" >/dev/null 2>&1; then
+            echo "C0_ALREADY_EXISTS_NO_DUPLICATE_PUSH"; exit 0
+          fi
+          kaggle kernels push -p /tmp/cda-v2-control --accelerator NvidiaTeslaT4 --timeout 32400
+          echo "C0_NEW_PRIVATE_GPU_NOTEBOOK_PUSH_ACCEPTED $C0_REF"
+          kaggle kernels status "$C0_REF" || echo "C0_CREATED_BUT_STATUS_CURRENTLY_UNAVAILABLE"
+      - name: Report stable private Kaggle notebook URLs; no official competition submission yet
+        run: |
+          echo "C1_URL https://www.kaggle.com/code/kolihhan/ntl-cda-l24-v2-original-source-training-c1"
+          echo "C0_URL https://www.kaggle.com/code/kolihhan/ntl-cda-l24-v2-original-source-training-c0"
+          echo "GPU_NOTEBOOK_TRAINING_LAUNCHED_NOT_OFFICIAL_SUBMISSION"
