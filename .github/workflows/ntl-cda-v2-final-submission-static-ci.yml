@@ -1,0 +1,57 @@
+name: NTL CDA L24 v2 Final Kaggle Notebook Static Verification
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-v2-final-submission-static-ci.yml]
+permissions: {contents: read}
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/
+            tests/test_cda_l24_v2_final_package.py
+            tests/test_cda_l24_v2_packaging.py
+            tests/test_conditional_domain_adversarial_lora24.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install CPU-only frozen train-code validation packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q "torch==2.6.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q "numpy==1.26.4" "pandas==2.2.3" "scipy==1.15.2" "scikit-learn==1.6.1" "pyarrow==19.0.1" pytest
+      - name: Validate final hidden 18-class kernel generator and checkpoint loader
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m py_compile \
+            scripts/cda_l24_v2_stage_a.py \
+            scripts/cda_l24_v2_checkpoint.py \
+            scripts/cda_l24_v2_submission.py \
+            scripts/build_cda_l24_v2_kaggle_submission.py
+          python -m pytest -q \
+            tests/test_conditional_domain_adversarial_lora24.py \
+            tests/test_cda_l24_v2_packaging.py \
+            tests/test_cda_l24_v2_final_package.py
+          python -m scripts.build_cda_l24_v2_kaggle_submission \
+            --output-dir /tmp/ntl-v2-final-static \
+            --stage-a-checkpoint-sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --source-manifest-sha256 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          python -m py_compile /tmp/ntl-v2-final-static/kernel_main.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/ntl-v2-final-static/kernel-metadata.json')
+          obj=json.loads(p.read_text())
+          assert obj['id']=="kolihhan/ntl-cda-l24-v2-final"
+          assert obj['competition_sources']==["name-that-llm"]
+          assert obj['enable_internet'] is False
+          assert obj['is_private'] is True
+          print("CDA_V2_FULL_FINAL_SUBMISSION_STATIC_SOURCE_PASS")
+          PY
