@@ -25,19 +25,16 @@ def sha(s: object) -> str:
     return hashlib.sha256(normalized(s).encode("utf-8")).hexdigest()
 
 def load_candidate(directory: Path):
-    # No arbitrary file mixing. If several data shards exist, require explicit
-    # provenance study rather than cherry-pick one and misname it the pool.
-    files=sorted(p for p in directory.rglob("*") if p.suffix.lower() in (".csv",".parquet"))
-    files=[p for p in files if p.stat().st_size > 500_000]
+    # Exact official filename of the public publisher's main text collection,
+    # learned from first read-only manifest. Never silently mix in
+    # gemini37_unverified.parquet, removed_rows.csv, or diagnostic tables.
+    files=list(directory.rglob("ntl_open_pool.parquet"))
     if len(files)!=1:
-        return None,{"status":"UNRESOLVED_FILE_MANIFEST","file_count":len(files),
-                     "file_extensions":[p.suffix for p in files]}
+        return None,{"status":"CANONICAL_MAIN_FILE_MISSING",
+                     "canonical_file_count":len(files)}
     p=files[0]
-    if p.suffix.lower()==".parquet":
-        frame=pd.read_parquet(p)
-    else:
-        frame=pd.read_csv(p)
-    return frame,{"status":"LOADED","file_extension":p.suffix,
+    frame=pd.read_parquet(p)
+    return frame,{"status":"LOADED","canonical_main_filename":p.name,
                   "sha256":hashlib.sha256(p.read_bytes()).hexdigest(),
                   "bytes":p.stat().st_size}
 
@@ -116,7 +113,8 @@ def main():
     candidate,manifest=load_candidate(args.new_pool_dir)
     if candidate is None:
         result={"dataset":"crtproduction/name-that-llm-open-pool",
-                "manifest":manifest,"status":"BLOCKED","no_scientific_fit_performed":True}
+                "manifest":manifest,"status":"BLOCKED","no_scientific_fit_performed":True,
+                "no_competition_submission":True,"independent_scientific_transfer_verified":False}
     else:
         from scripts.run_phase14_public_sparse import build_conservative_subset
         from scripts.run_two_stage_lora24_gate_a import build_stage1_split
