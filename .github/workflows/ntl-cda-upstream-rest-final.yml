@@ -1,0 +1,73 @@
+name: NTL CDA Original Source REST Final Check
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-upstream-rest-final.yml]
+permissions: {contents: read}
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install read-only client
+        run: python -m pip install -q kaggle==2.2.5 requests==2.32.3 six==1.17.0
+      - name: Verify actual origin metadata and available non-text provenance files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-origin
+          python - <<'PY'
+          import json, requests, subprocess, pathlib
+          refs=["arxitekton/ntl-claude-gen-v1","drjcfmd/ntl-generated-v2"]
+          result={"type":"original_source_provenance_final_metadata_check",
+                  "model_fit":False,"model_inference":False,"submission":False,
+                  "sources":[]}
+          for ref in refs:
+            obj={"source":ref}
+            url="https://www.kaggle.com/api/v1/datasets/view/"+ref
+            try:
+              r=requests.get(url,timeout=25,headers={"Accept":"application/json"})
+              obj["api_status"]=r.status_code
+              if r.ok:
+                j=r.json()
+                obj["source_title"]=str(j.get("title",""))[:180]
+                obj["license_name"]=str(j.get("licenseName",j.get("license","")))[:180]
+                obj["license_id"]=str(j.get("licenseId",""))[:80]
+                obj["created_at"]=str(j.get("creationDate",""))[:60]
+                obj["version"]=str(j.get("currentVersionNumber",""))[:30]
+                desc=str(j.get("description",""))
+                obj["description_length"]=len(desc)
+                # Do not copy data passages or secrets from descriptions.
+                obj["description_mentions_endpoint"]=any(s in desc.lower() for s in ("api","endpoint","openrouter","model id"))
+                obj["description_mentions_license"]= "licen" in desc.lower()
+                obj["description_mentions_prompts"]= "prompt" in desc.lower()
+                obj["description_sha256"]=__import__("hashlib").sha256(desc.encode()).hexdigest()
+                obj["file_names"]=[str(x.get("name",""))[:100] for x in j.get("resources",[])
+                                   if isinstance(x,dict)][:35]
+              else:obj["api_status_reason"]="NON_SUCCESS_HTTP"
+            except Exception as e:
+              obj["error_type"]=type(e).__name__
+            p=subprocess.run(["kaggle","datasets","files",ref],capture_output=True,
+                             text=True,timeout=25)
+            obj["cli_files_status"]=p.returncode
+            if p.returncode==0:
+              files=[x.strip().split()[0] for x in p.stdout.splitlines()
+                     if x.strip() and any(x.lower().strip().startswith(w) for w in
+                      ("readme","license","manifest","metadata","generation","provenance"))]
+              obj["provenance_file_candidates"]=files[:20]
+            print("SOURCE_FIRST_PARTY_REST",json.dumps(obj,sort_keys=True),flush=True)
+            result["sources"].append(obj)
+          result["license_and_versions_fully_verified"]=False
+          pathlib.Path("/tmp/ntl-origin/result.json").write_text(json.dumps(result,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cda-original-source-first-party-final-metadata
+          path: /tmp/ntl-origin/result.json
+          if-no-files-found: warn
+          retention-days: 14
