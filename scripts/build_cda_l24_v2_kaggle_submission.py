@@ -171,8 +171,18 @@ for rel, content in SOURCES.items():
 sys.path.insert(0, str(package_root))
 
 model_root = find_qwen_model_root()
-checkpoint_meta = exactly_one("**/cda-v2-C1-checkpoint/meta.json")
-checkpoint_dir = checkpoint_meta.parent
+checkpoint_archive = exactly_one("**/cda-v2-C1-checkpoint.zip")
+checkpoint_dir = Path("/kaggle/working/cda-v2-C1-checkpoint")
+if checkpoint_dir.exists():raise RuntimeError("checkpoint extraction destination unexpectedly exists")
+import zipfile
+with zipfile.ZipFile(checkpoint_archive,"r") as z:
+    for item in z.infolist():
+        rel=Path(item.filename)
+        if rel.is_absolute() or ".." in rel.parts or not rel.parts:
+            raise RuntimeError("unsafe private model checkpoint archive member")
+    z.extractall(checkpoint_dir)
+if not (checkpoint_dir/"meta.json").is_file():
+    raise FileNotFoundError("v2 private Stage A meta missing")
 train_path = first_existing([
     "/kaggle/input/name-that-llm/train.csv",
     "/kaggle/input/competitions/name-that-llm/train.csv",
