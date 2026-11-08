@@ -56,3 +56,38 @@ def test_private_kaggle_kernel_builds_exact_original_sources_no_official_competi
 def test_non_frozen_training_arm_rejected(tmp_path):
     with pytest.raises(ValueError,match="invalid frozen arm"):
         write_kernel_bundle(tmp_path,arm="C2",source_texts={p:"x" for p in REQUIRED_SOURCE_PATHS})
+
+
+def test_missing_single_external_class_preserves_18_logits_and_zero_gradient():
+    """No fake Gemini 3.7 Flash source examples or forced negative gradients."""
+    import torch
+    import torch.nn.functional as F
+    from scripts.cda_l24_v2_stage_a import (
+        stage_a_observed_class_weights,stage_a_active_label_logits
+    )
+    official=[f"example-{i}" for i in range(17)]+["gemini-3.7-flash"]
+    observed=pd.Series(official[:-1]*3)
+    weights,active,missing=stage_a_observed_class_weights(observed,official)
+    assert missing==["gemini-3.7-flash"]
+    assert sum(active)==17 and active[-1] is False
+    assert weights["gemini-3.7-flash"]==0.
+    assert all(weights[c]>0 for c in official[:-1])
+    torch.manual_seed(41)
+    raw=torch.randn(4,18,requires_grad=True)
+    x=stage_a_active_label_logits(raw,active)
+    assert x.shape==(4,18)
+    targets=torch.tensor([0,1,2,3])
+    weight=torch.tensor([weights[x] for x in official])
+    F.cross_entropy(x,targets,weight=weight).backward()
+    assert raw.grad is not None
+    assert torch.all(raw.grad[:,-1]==0)
+    assert torch.any(raw.grad[:,:17]!=0)
+    # Evaluation retains the original unmasked prediction vocabulary.
+    assert torch.isfinite(raw).all()
+
+
+def test_unexpected_source_coverage_drift_fails_before_gpu_fit():
+    from scripts.cda_l24_v2_stage_a import stage_a_observed_class_weights
+    official=[f"example-{i}" for i in range(16)]+["gemini-3.7-flash","other-missing"]
+    with pytest.raises(RuntimeError,match="unexpected external-label"):
+        stage_a_observed_class_weights(pd.Series(official[:16]),official)
