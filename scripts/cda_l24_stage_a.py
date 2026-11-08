@@ -393,6 +393,8 @@ def _gpu_run(args: argparse.Namespace):
     },indent=2,sort_keys=True)+"\n")
     # Source head deliberately discarded after Stage A checkpoint export.
     (out/"checkpoint.sha256").write_text(_sha256(out/"heads.safetensors")+"\n")
+    from scripts.cda_l24_checkpoint import directory_manifest_digest
+    stats["new_private_checkpoint_manifest_sha256"]=directory_manifest_digest(out)
     print("CDA_STAGE_A_NEW_PRIVATE_CHECKPOINT",json.dumps(stats,sort_keys=True))
 
 
