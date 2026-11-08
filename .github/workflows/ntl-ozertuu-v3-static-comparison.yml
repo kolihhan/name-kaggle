@@ -1,0 +1,93 @@
+name: NTL Ozertuu V3 Static Mechanism Audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-ozertuu-v3-static-comparison.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      REF: ozertuu/0-672-dual-svc-calibrated-blend-proven-3-lora
+      V: '3'
+      SHA: 05367a7f8efd41b2f4959505bc7e2e07a5978b85ee426c08bb5969c60945e2c2
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Read pinned public Notebook source and summarize structural metadata ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/ozertuu-v3
+          kaggle kernels pull "$REF/$V" -p /tmp/ozertuu-v3 -m
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, re
+          root=Path("/tmp/ozertuu-v3")
+          nbs=list(root.glob("*.ipynb"))
+          assert len(nbs)==1
+          actual=hashlib.sha256(nbs[0].read_bytes()).hexdigest()
+          assert actual==os.environ["SHA"],f"Notebook source drift: {actual}"
+          nb=json.loads(nbs[0].read_text())
+          meta=json.loads((root/"kernel-metadata.json").read_text())
+          assert meta["id"]==os.environ["REF"]
+          assert meta.get("enable_internet") is False
+          assert meta.get("competition_sources")==["name-that-llm"]
+          cells=["".join(cell.get("source",[])) for cell in nb.get("cells",[]) if cell.get("cell_type")=="code"]
+          lines="\n".join(cells).splitlines()
+          symbols=[]
+          for i,line in enumerate(lines,1):
+            m=re.match(r"^\s*(?:async )?(?:def|class)\s+([A-Za-z_]\w*)",line)
+            if m: symbols.append({"line":i,"symbol":m.group(1)})
+          terms=r"(SVC|ATLAS|LoRA|LORA|SINKHORN|PRIOR|CALIBR|MEMBER|CHECKPOINT|ENSEMBLE|GSQ|MARGIN|GATE|POOL|SHARE|HEAD|WEIGHT|CENT[ER]+|TWIN|TOP34|W\s*=|CLUSTER|PROB|FUSED|ALPHA)"
+          assignments=[]
+          for i,line in enumerate(lines,1):
+            s=line.strip()
+            if (len(s)<170 and re.search(terms,s,re.I) and
+                (re.match(r"^(?:[A-Za-z_][\w.\[\] ]*|[\"']\w+[\"']\s*:)\s*[:+]?=",s) or
+                 re.match(r"^[\"']\w+[\"']\s*:",s))):
+              if not any(re.search(term,s,re.I) for term in ["api_token","password","secret","authorization","kaggle_key"]):
+                assignments.append({"line":i,"text":s[:160]})
+          signals=[]
+          pats=[r"(def |class ).*(?:blend|ensemble|svc|calibr|model|infer|predict|group|atlas|gate|score|softmax|normal)",
+                r"(?i)\b(?:SVC_W|OURS_SVC_W|ATLAS_W|ATLAS_MARGIN|SINKHORN|DAMP|GSQ_W|LORA_W|SVC4|TOP34_W|FAST_COMMIT)\b",
+                r"(?i)(?:logsumexp|softmax|argmax|balanced_accuracy|LinearSVC|predict_proba|read_parquet|submission\.parquet)",
+                r"(?i)(?:weights\.npz|\.safetensors|\.pth|\.pt|checkpoint|p0 =|p1 =|ensemble)",
+               ]
+          for i,line in enumerate(lines,1):
+            if any(re.search(p,line) for p in pats) and len(line.strip())>10 and len(line.strip())<180:
+              if not any(re.search(term,line,re.I) for term in ["api_token","password","secret","authorization"]):
+                signals.append({"line":i,"text":line.strip()[:170]})
+          report={
+            "notebook_ref":os.environ["REF"],
+            "version":int(os.environ["V"]),
+            "verified_notebook_sha256":actual,
+            "code_cells":len(cells),
+            "code_lines":len(lines),
+            "metadata_input_counts":{
+              k:len(meta.get(k,[]) or []) for k in ("competition_sources","dataset_sources","kernel_sources","model_sources")
+            },
+            "metadata_accelerator":{"enable_gpu":meta.get("enable_gpu"),"enable_internet":meta.get("enable_internet")},
+            "defined_functions_and_classes":symbols[:200],
+            "configuration_and_weight_lines":assignments[:170],
+            "runtime_composition_lines":signals[:230],
+            "executed_notebook_cells":0,
+            "training_data_processed":False,
+            "model_inference_executed":False,
+            "kaggle_competition_submission":False
+          }
+          Path("/tmp/ozertuu-static.json").write_text(json.dumps(report,indent=2))
+          print("OZERTUU_V3_STATIC_AUDIT",json.dumps({"sha":actual,"cells":len(cells),"lines":len(lines),"signals":len(signals),"assignments":len(assignments),"defs":len(symbols)}))
+          for item in assignments[:110]:print("CONFIG_LINE",item["line"],item["text"])
+          for item in signals[:100]:print("SIGNAL_LINE",item["line"],item["text"])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ozertuu-v3-static-source-mechanism-only
+          path: /tmp/ozertuu-static.json
+          if-no-files-found: error
+          retention-days: 7
