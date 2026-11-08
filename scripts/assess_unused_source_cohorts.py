@@ -40,6 +40,14 @@ def load_candidate(directory: Path):
 
 def source_eligibility(new: pd.DataFrame, known_train: pd.DataFrame,
                        official: pd.DataFrame) -> dict:
+    # Publisher schema, verified against immutable main-file metadata. Keep
+    # source_dataset as the collection source, not the provider lab.
+    if "source" not in new and "source_dataset" in new:
+        new=new.rename(columns={"source_dataset":"source"})
+    if "prompt_id" not in new and "prompt_group" in new:
+        new=new.rename(columns={"prompt_group":"prompt_id"})
+    if "prompt_key" not in new and "prompt_canon" in new:
+        new=new.rename(columns={"prompt_canon":"prompt_key"})
     required={"text","model","source"}
     if not required.issubset(new.columns):
         return {"status":"INVALID_MISSING_COLUMNS",
@@ -60,7 +68,26 @@ def source_eligibility(new: pd.DataFrame, known_train: pd.DataFrame,
     official_prompts=set(official.prompt_id.astype(str))
     new=new.loc[new.model.astype(str).isin(models)].copy()
     new["origin_source"]=new.source.astype(str)
-    new["overlap_text"]=new.text.map(sha).isin(official_hashes | old_hashes)
+    new["text_hash"]=new.text.map(sha)
+    new["overlap_text"]=new.text_hash.isin(official_hashes | old_hashes)
+    risk_columns=["flag_near_train_prompt","flag_train_prompt_regen",
+                  "flag_kb_proxy","flag_gemini37_routing_risk"]
+    observed_flags=[col for col in risk_columns if col in new]
+    # Missing risk flags may be unassessed; don't misrepresent them as safe.
+    new["risky_upstream_flags"]=False
+    for col in observed_flags:
+        x=new[col]
+        bad=x.isna() | x.astype(str).str.lower().isin(
+            ["1","true","yes","y","risk","unverified"])
+        new["risky_upstream_flags"] |= bad
+    if "source_license" in new:
+        l=new["source_license"]
+        new["unknown_license"]=l.isna() | l.astype(str).str.lower().str.strip().isin(
+            ["","unknown","none","nan","null","unverified","no license"])
+        license_counts={str(k)[:75]:int(v) for k,v in l.astype(str).value_counts().items()}
+    else:
+        new["unknown_license"]=True
+        license_counts={"ABSENT":int(len(new))}
     new["overlap_prompt"]=(new.prompt_id.astype(str).isin(official_prompts)
                           if "prompt_id" in new else False)
     if "prompt_key" in new:
@@ -73,13 +100,18 @@ def source_eligibility(new: pd.DataFrame, known_train: pd.DataFrame,
       "origin_source_count":int(new.origin_source.nunique()),
       "already_trained_source_count":int(new.origin_source.isin(old_sources).groupby(new.origin_source).max().sum()),
       "new_pool_schema_columns":sorted(str(x) for x in new.columns if x not in ("text","overlap_text","overlap_prompt")),
-      "source_record_fields_present":{col:col in new for col in ["prompt_id","prompt_key","origin_dataset","dataset_ref","generation_model","served_model","model_version","temperature","created_at","license"]},
+      "source_record_fields_present":{col:col in new for col in ["prompt_id","prompt_key","source_file","origin_hint","source_license","generation_model","served_model","model_version","temperature","created_at"]},
+      "license_values":license_counts,
+      "upstream_risk_flags_checked":observed_flags,
+      "upstream_flagged_rows":int(new.risky_upstream_flags.sum()),
+      "unknown_license_rows":int(new.unknown_license.sum()),
       "source_candidates":[]}
     for source,g in new.groupby("origin_source",sort=True):
         if source in old_sources:continue
-        clean=g.loc[~g.overlap_text & ~g.overlap_prompt].copy()
+        clean=g.loc[~g.overlap_text & ~g.overlap_prompt &
+                    ~g.risky_upstream_flags & ~g.unknown_license].copy()
         # No duplicate normalized text or stable prompt reused from known fit.
-        clean=clean.drop_duplicates(subset=["text"],keep="first")
+        clean=clean.drop_duplicates(subset=["text_hash"],keep="first")
         supports=clean.model.astype(str).value_counts()
         supported=supports[supports>=MIN_PER_LABEL]
         record={"source":str(source)[:100],
@@ -90,6 +122,8 @@ def source_eligibility(new: pd.DataFrame, known_train: pd.DataFrame,
           "distinct_prompt_ids":int(clean.prompt_id.astype(str).nunique()) if "prompt_id" in clean else None,
           "exact_train_or_official_text_overlap_count":int(g.overlap_text.sum()),
           "prompt_overlap_count":int(g.overlap_prompt.sum()),
+          "publisher_flagged_rows":int(g.risky_upstream_flags.sum()),
+          "unknown_license_rows":int(g.unknown_license.sum()),
           "name_not_in_own_stage1_sources":True,
           "status":"CAPACITY_ELIGIBLE_NOT_PROVEN_INDEPENDENT" if (
              len(clean)>=MIN_SOURCE_ROWS and len(supported)>=MIN_LABELS)
@@ -99,7 +133,7 @@ def source_eligibility(new: pd.DataFrame, known_train: pd.DataFrame,
     output["count_capacity_eligible"]=len(good)
     output["selected_by_frozen_source_hash"]=(min(good,key=lambda d:hashlib.sha256(
          (SALT+"|"+d["source"]).encode()).hexdigest())["source"] if good else None)
-    output["source_integrity_verdict"]="UNPROVEN"  # no original source licenses/version manifest
+    output["source_integrity_verdict"]="UNPROVEN"  # publisher's license field is a claim, not independently verified original terms
     output["independent_scientific_transfer_verified"]=False
     return output
 
