@@ -2,7 +2,7 @@ name: NTL CDA L24 v2 Final Kaggle Notebook Static Verification
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-cda-v2-final-submission-static-ci.yml]
+    paths: [.github/workflows/ntl-cda-v2-final-submission-static-ci.yml, scripts/build_cda_l24_v2_kaggle_submission.py]
 permissions: {contents: read}
 jobs:
   validate:
