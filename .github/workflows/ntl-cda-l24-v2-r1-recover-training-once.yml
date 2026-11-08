@@ -25,7 +25,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - name: CPU model-objective tests: verify mask of absent external-only class
+      - name: CPU model-objective tests verify absent external-only class
         shell: bash
         run: |
           set -euo pipefail
