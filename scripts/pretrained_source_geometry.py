@@ -80,6 +80,13 @@ def compatible_state(state, position_count):
     return result
 
 
+def tokenizer_fingerprints(config_dir):
+    files = ["vocab.json", "merges.txt", "tokenizer_config.json", "special_tokens_map.json"]
+    if (config_dir / "tokenizer.json").exists():
+        files.append("tokenizer.json")
+    return {fn: sha256_file(config_dir / fn) for fn in files}
+
+
 def validate_cache(name, texts, arrays, meta, assets=None):
     expected = {"model": name, "weight_sha256": SPECS[name][2],
                 "input_sha256": text_fingerprint(texts), "max_length": 512,
@@ -89,8 +96,7 @@ def validate_cache(name, texts, arrays, meta, assets=None):
     if assets is not None:
         config_dir = assets / SPECS["simcse" if name == "detective" else name][0]
         expected["config_sha256"] = sha256_file(config_dir / "config.json")
-        expected["tokenizer_files"] = {fn: sha256_file(config_dir / fn) for fn in
-                                       ["vocab.json", "merges.txt", "tokenizer_config.json", "special_tokens_map.json"]}
+        expected["tokenizer_files"] = tokenizer_fingerprints(config_dir)
     if any(meta.get(k) != value for k, value in expected.items()):
         raise ValueError("INVALID: scoring cache provenance mismatch")
     for field in ("canonical_full512_max_delta", "batch_invariance_max_delta"):
@@ -220,8 +226,7 @@ def encode(name, texts, assets, cache):
             "pooling": "fixed512-published-and-valid-masked-v1", "max_length": 512,
             "dtype": "float32", "torch": torch.__version__, "transformers": transformers_version,
             "compute_method": "duplicate-absolute-position-padding-compression-v1",
-            "tokenizer_files": {fn: sha256_file(config_dir / fn) for fn in
-                                ["vocab.json", "merges.txt", "tokenizer_config.json", "special_tokens_map.json"]}}
+            "tokenizer_files": tokenizer_fingerprints(config_dir)}
     if cache.exists():
         with np.load(cache, allow_pickle=False) as z:
             recorded = json.loads(str(z["meta"]))
