@@ -1,0 +1,102 @@
+name: NTL CDA v2 C0 Matched GPU Slot Recovery
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-v2-control-slot-recovery.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-cda-v2-one-control-slot
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PRIOR_C1: kolihhan/ntl-cda-l24-v2-original-source-training-c1
+      DUPLICATE_C1: kolihhan/ntl-cda-l24-v2-original-source-training-c1-r1
+      CONTROL: kolihhan/ntl-cda-l24-v2-original-source-training-c0-r1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle read and build tools only
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==1.26.4 pandas==2.2.3
+      - name: Verify older C1 v2 source matches the real repaired training objective
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/cda-slots/original
+          kaggle kernels pull "$PRIOR_C1/2" -p /tmp/cda-slots/original -m >/dev/null
+          python - <<'PY'
+          import ast,pathlib,hashlib
+          files=list(pathlib.Path('/tmp/cda-slots/original').glob('*.py'))
+          assert len(files)==1, 'cannot resolve exact previously submitted C1 v2 code'
+          assignments=[n for n in ast.parse(files[0].read_text()).body
+              if isinstance(n,ast.Assign) and
+                 any(isinstance(t,ast.Name) and t.id=='SOURCES' for t in n.targets)]
+          assert len(assignments)==1, 'C1 v2 package not recoverable'
+          sources=ast.literal_eval(assignments[0].value)
+          expected=pathlib.Path('scripts/cda_l24_v2_stage_a.py').read_text()
+          assert sources['scripts/cda_l24_v2_stage_a.py']==expected, 'older C1 is not identical corrected science: fail closed'
+          assert 'stage_a_observed_class_weights' in expected
+          assert 'stage_a_active_label_logits' in expected
+          print('C1_ORIGINAL_VERSION2_VALIDATED_SAME_LOSS',hashlib.sha256(expected.encode()).hexdigest())
+          PY
+      - name: Retire only this conversation's redundant QUEUED C1 r1 notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          old="$(kaggle kernels status "$PRIOR_C1" 2>&1 || true)"
+          extra="$(kaggle kernels status "$DUPLICATE_C1" 2>&1 || true)"
+          echo "PRIOR_C1_STATE $old"
+          echo "DUPLICATE_C1_STATE $extra"
+          if ! grep -Eq 'KernelWorkerStatus.(RUNNING|COMPLETE|QUEUED)' <<<"$old"; then
+            echo "ORIGINAL_C1_NOT_AVAILABLE_LEAVE_REDUNDANT_UNCHANGED"
+            exit 1
+          fi
+          if grep -q 'KernelWorkerStatus.QUEUED' <<<"$extra"; then
+            kaggle kernels delete "$DUPLICATE_C1" -y
+            echo "REDUNDANT_NEVER_STARTED_C1_R1_REMOVED_ONLY_TO_RELEASE_GPU_BATCH_SLOT"
+          else
+            echo "C1_R1_NOT_QUEUED_NO_DELETION"
+          fi
+      - name: Create exactly one matched C0 control and retry if the batch queue is still full
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.build_cda_l24_v2_training_kernel --arm C0 --output-dir /tmp/cda-slots/c0
+          python -m py_compile /tmp/cda-slots/c0/kernel_main.py
+          for i in $(seq 1 12); do
+            if kaggle kernels status "$CONTROL" >/dev/null 2>&1; then
+              echo "C0_ALREADY_ACCEPTED_NO_DUPLICATE"
+              kaggle kernels status "$CONTROL"
+              exit 0
+            fi
+            echo "C0_BATCH_SLOT_ATTEMPT $i"
+            kaggle kernels push -p /tmp/cda-slots/c0 --accelerator NvidiaTeslaT4 --timeout 32400 > /tmp/cda-slots/push.log 2>&1 || true
+            grep -Ei 'Kernel version|Please check progress|session count|push error|quota' /tmp/cda-slots/push.log | tail -6 || true
+            if kaggle kernels status "$CONTROL" >/dev/null 2>&1; then
+              echo "C0_MATCHED_CONTROL_KAGGLE_GPU_ACCEPTED"
+              kaggle kernels status "$CONTROL"
+              exit 0
+            fi
+            if ! grep -Eq 'Maximum batch GPU session count|quota|sessions' /tmp/cda-slots/push.log; then
+              echo "C0_PUSH_FAILED_NOT_A_CAPACITY_LIMIT"
+              exit 1
+            fi
+            if [ "$i" -lt 12 ]; then sleep 120; fi
+          done
+          echo "C0_BATCH_SLOT_STILL_FULL"
+          exit 1
+      - name: Record only actual statuses, no fabricated competition result
+        shell: bash
+        run: |
+          kaggle kernels status "$PRIOR_C1"
+          kaggle kernels status "$CONTROL"
+          echo "C0_C1_GPU_TRAINING_READY_FOR_RESULT_VERIFICATION"
