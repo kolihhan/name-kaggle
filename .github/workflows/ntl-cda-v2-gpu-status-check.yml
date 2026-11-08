@@ -18,8 +18,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for ref in kolihhan/ntl-cda-l24-v2-original-source-training-c1 kolihhan/ntl-cda-l24-v2-original-source-training-c0; do
-            state="$(kaggle kernels status "$ref" 2>&1)"
+          for ref in kolihhan/ntl-cda-l24-v2-original-source-training-c1 kolihhan/ntl-cda-l24-v2-original-source-training-c0 kolihhan/ntl-cda-l24-v2-original-source-training-c1-r1 kolihhan/ntl-cda-l24-v2-original-source-training-c0-r1; do
+            state="$(kaggle kernels status "$ref" 2>&1 || true)"
             echo "CDA_GPU_TRAIN_STATUS $ref $state"
             if grep -Eq 'KernelWorkerStatus.(ERROR|FAILED|CANCELLED)' <<<"$state"; then
               echo "CDA_KERNEL_ENGINEERING_ERROR $ref"
@@ -29,3 +29,7 @@ jobs:
               kaggle kernels logs "$ref" 2>&1 | grep -Ei 'PRIVATE_CDA|CDA_STAGE_A_NEW|Traceback|Error|Exception' | tail -12 || true
             fi
           done
+          echo "KAGGLE_KERNEL_CLI_ACTIONS"
+          kaggle kernels --help | head -60
+          echo "KAGGLE_QUOTA"
+          kaggle quota
