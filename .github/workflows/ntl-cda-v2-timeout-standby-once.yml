@@ -51,9 +51,23 @@ jobs:
                   response = (p.stdout + "\n" + p.stderr).lower()
                   if p.returncode == 0:
                       raise RuntimeError("STANDBY_PARTIAL_STATE: "+kind)
-                  if not any(x in response for x in
-                             ("not found","404","does not exist")):
-                      raise RuntimeError("STANDBY_UNKNOWN_REMOTE_STATE: "+kind)
+                  # On Kaggle CLI 2.2.5 missing private slugs return rc=1
+                  # without the expected '404' or 'not found' text.
+                  # Verify against an authenticated owned-resource inventory.
+                  if kind == "private-checkpoint":
+                      inventory_cmd = ["kaggle","datasets","list","-m",
+                                       "-s","ntl-cda-l24-v2-c1-weights","-v"]
+                      expected = DATASET_REF
+                  else:
+                      inventory_cmd = ["kaggle","kernels","list","-m",
+                                       "-s","ntl-cda-l24-v2-final","-v"]
+                      expected = KERNEL_REF
+                  inventory = subprocess.run(
+                      inventory_cmd, capture_output=True, text=True)
+                  if inventory.returncode != 0:
+                      raise RuntimeError("STANDBY_INVENTORY_UNAVAILABLE: "+kind)
+                  if expected.lower() in inventory.stdout.lower():
+                      raise RuntimeError("STANDBY_PARTIAL_STATE_IN_INVENTORY: "+kind)
               proceed = "yes"
               print("STANDBY_RESUME_SAME_FROZEN_C0_C1", flush=True)
           with open(os.environ["GITHUB_OUTPUT"],"a") as f:
