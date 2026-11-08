@@ -1,0 +1,73 @@
+name: NTL CDA Original Datasets Search Records (Read Only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-original-source-list-record.yml]
+permissions: {contents: read}
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle read-only client
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Query official original-owner dataset list records (no passages)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/cda
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi()
+          api.authenticate()
+          refs=[
+             ('arxitekton','ntl-claude-gen-v1'),
+             ('drjcfmd','ntl-generated-v2')]
+          out={'scope':'public owner dataset metadata search','model_training':False,
+               'submission':False,'dataset_info':[]}
+          def serial_obj(x):
+              if hasattr(x,'to_dict'):return x.to_dict()
+              if hasattr(x,'model_dump'):return x.model_dump()
+              return {k:getattr(x,k,None) for k in (
+                  'ref','title','license_name','description','subtitle',
+                  'last_updated','current_version_number','total_bytes','url')}
+          for user,slug in refs:
+              ref=user+'/'+slug
+              record={'ref':ref}
+              try:
+                  found=api.dataset_list(user=user,search=slug,page=1)
+                  matches=[serial_obj(x) for x in found
+                           if str(getattr(x,'ref','')).lower()==ref]
+                  record['count_exact']=len(matches)
+                  if len(matches)==1:
+                      x=matches[0]
+                      record['title']=str(x.get('title'))[:200]
+                      record['license_name']=str(x.get('license_name'))[:90]
+                      record['last_updated']=str(x.get('last_updated'))[:70]
+                      record['current_version_number']=str(x.get('current_version_number'))[:25]
+                      record['description_available']=bool(x.get('description'))
+                  else:record['record_status']='NO_EXACT_PUBLIC_MATCH'
+              except Exception as e:
+                  record['error_type']=type(e).__name__
+                  record['error_summary']=str(e)[:150]
+              print('DATASET_OWNER_RECORD',json.dumps(record,sort_keys=True))
+              out['dataset_info'].append(record)
+          out['original_origin_protocol_verified']=False
+          out['license_and_training_rights_cleared']=False
+          Path('/tmp/cda/original_source_list_records.json').write_text(
+               json.dumps(out,indent=2,sort_keys=True)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-cda-original-source-list-records-only
+          path: /tmp/cda/original_source_list_records.json
+          if-no-files-found: warn
+          retention-days: 14
