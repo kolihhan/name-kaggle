@@ -1,0 +1,82 @@
+name: NTL CDA Original Source License and Provenance View
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-original-source-view.yml]
+permissions: {contents: read}
+jobs:
+  original_view:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle client only
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Query original first-party dataset-view metadata (no passage downloads)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/provenance
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          refs=["arxitekton/ntl-claude-gen-v1","drjcfmd/ntl-generated-v2"]
+          result={"action":"first-party Kaggle API dataset_view","model_fit":False,
+                  "competition_submission":False,"sources":[]}
+          for ref in refs:
+              rec={"ref":ref}
+              try:
+                  obj=api.dataset_view(ref)
+                  # Both Swagger and Pydantic Kaggle clients have changed
+                  # encodings; introspect fields rather than assume aliases.
+                  if hasattr(obj,"to_dict"):
+                      d=obj.to_dict()
+                  elif hasattr(obj,"model_dump"):
+                      d=obj.model_dump()
+                  elif isinstance(obj,dict):
+                      d=obj
+                  else:
+                      d={k:v for k,v in vars(obj).items() if not k.startswith("_")}
+                  rec["api_accessible"]=True
+                  rec["top_level_field_names"]=sorted(str(k) for k in d)
+                  for key in ("title","id","id_no","creator_user_id","subtitle",
+                              "current_version_number","total_bytes","usability_rating",
+                              "is_private","license_name","license","licenses",
+                              "slug","url","ref"):
+                      if key in d and d[key] is not None:
+                          val=d[key]
+                          rec[key]=str(val)[:220] if not isinstance(val,(int,float,bool)) else val
+                  license_value=getattr(obj,"license",None)
+                  if license_value is not None:
+                      rec["object_license_fields"]={
+                         k:str(getattr(license_value,k))[:120]
+                         for k in ("name","id","slug")
+                         if getattr(license_value,k,None) is not None}
+                  desc=d.get("description")
+                  rec["description_present"]=isinstance(desc,str) and len(desc)>0
+                  if isinstance(desc,str):
+                      rec["description_length"]=len(desc)
+                      rec["declares_generation"]=any(s in desc.lower() for s in (
+                          "api","generated","model","endpoint","openrouter"))
+              except Exception as e:
+                  rec["api_accessible"]=False
+                  rec["error_type"]=type(e).__name__
+                  rec["error_message"]=str(e)[:180]
+              result["sources"].append(rec)
+              print("KAGGLE_ORIGIN_VIEW",json.dumps(rec,sort_keys=True)[:1900],flush=True)
+          Path('/tmp/provenance/original_source_license_view.json').write_text(
+              json.dumps(result,sort_keys=True,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cda-original-source-kaggle-view-metadata-only
+          path: /tmp/provenance/original_source_license_view.json
+          if-no-files-found: warn
+          retention-days: 14
