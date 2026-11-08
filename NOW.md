@@ -1,5 +1,11 @@
 # NOW
 
+## Frozen pretrained geometry recovery — CPU Actions launched (2026-11-08 MYT)
+
+**Current execution is a resumed frozen study, not a new candidate or a Kaggle submission.** [GitHub Actions 42454362197](https://github.com/kolihhan/name-kaggle/actions/runs/42454362197) was started from commit `c07916d4`. The run installs exact CPU-only PyTorch and frozen model dependencies, runs `tests/test_pretrained_source_geometry.py`, recovers public pool with pinned SHA, retrieves original LoRA24 OOF archive `13125872633` as a private working file, validates pinned SimCSE/DeTeCtive/LUSR weights, then evaluates the precommitted H-M factorial. Only on H-M rejection does it evaluate H-R LUSR. No GPU training, paid APIs, automatic Kaggle submission, or Public-LB tuning. The only public artifacts permitted are aggregate JSON; model embeddings, labels/text and row-aligned predictions stay in the runner workspace and are not uploaded. **Actual model-science scores and gate decisions are UNKNOWN until job completion.** 
+
+This recovers work that previous conversations had run only in ephemeral local CPU sessions. Attached chat history claimed intermediate DeTeCtive/LUSR numbers but no audited terminal result was committed to repo, so do not promote or invent a submission from those fragments. Original frozen [research contract](artifacts/candidates/pretrained-source-geometry-v1/CONTRACT.md) remains authoritative. A subsequently frozen [conditional-denoising v1 contract](artifacts/candidates/conditional-denoising18-v1/CONTRACT.md) is **not automatically authorized for scientific evaluation until H-R formally rejects**; do not run its model training prematurely. If the running workflow has an engineering failure, repair only that failure without altering scientific controls. 
+
 ## Active model-level research — pretrained source geometry (2026-11-08 MYT)
 
 **Current instruction:** continue beyond the rejected source-balancing experiment; compare materially different model-level hypotheses, run the strongest defensible test, and pivot after failure. Independent candidates can validate against our own honest LoRA24 or another reproducible anchor. Missing third-party OOF limits a specific paired claim against 0.668; it is **not a universal submission blocker**. EVALUATION_POLICY.md and all data-security safeguards remain intact.
