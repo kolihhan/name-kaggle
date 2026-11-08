@@ -59,3 +59,21 @@ If any gate fails, report the actual evidence and STOP this specific training ob
 **Still required before an end-to-end candidate:** obtain original provenance/source-alias and exact model-label generation metadata; validate crossed class-source support and data license terms; fork the Stage-1 GPU training runner from the immutable LoRA24 reference, integrate this loss without altering historical v1, persist a NEW pinned adapter/head checkpoint, then run frozen C0 vs C1 Stage-A transfer. If and only if it promotes, run official fold-local Stage B and the one-shot Code Competition packaging. The current module alone is NOT a runnable complete candidate, so do not claim it has been validated or submitted.
 
 Never treat source capacity, synthetic tests, or absence of score as evidence that this architecture beats 0.520/0.668.
+
+
+## Continuation engineering checkpoint — 2026-11-08 (NO trained result)
+
+**Completed real executable stages (not science scores):**
+
+- Train-only class-conditioned source adversary, GRL and crossed source support: scripts/conditional_domain_adversarial_lora24.py.
+- Separate CUDA Stage-A continuation using original SHA-locked 24-layer A1 LoRA24; no mutation of v1. Fixed C0 lambda=0 vs C1 lambda=.10; source/prompt/answer exclusions, original dataset clearance manifest fail-closed, private adapter/head checkpoint output and private heldout per-row predictions. Source: scripts/cda_l24_stage_a.py.
+- Frozen paired 16-label source cohort evaluation: 5,000 prompt-group bootstrap, per-class BA, family/provider protection, rescue/regression, no Public-LB/official labels at train time. Source: scripts/cda_l24_transfer_gate.py.
+- NEW checkpoint loader keyed to full directory manifest SHA, source clearance manifest SHA, exact original A1 lineage and 18-label order. Does not weaken original v1 A1 checkpoint enforcement. Source: scripts/cda_l24_checkpoint.py.
+- Fold-isolated Stage B implementation that reuses original train_two_stage2_epochs and _infer_validation; each fold fresh child process, full 2,699 row identity / prompt split checks and private row-level output. It remains conditional on Stage A promotion and new checkpoint integrity. Source: scripts/cda_l24_stage_b.py.
+- Focused synthetic tests: tests/test_conditional_domain_adversarial_lora24.py, tests/test_cda_l24_stage_a.py, tests/test_cda_l24_transfer_and_checkpoint.py. [CI Run 42480920892](https://github.com/kolihhan/name-kaggle/actions/runs/42480920892) succeeded with **13/13 tests**, including train-only gradient reversal equivalence, strict clearance fail-close, source/prompt/text exclusion, paired prompt bootstrap and checkpoint tamper checks. Training scripts also passed import/compilation/CLI checks. Synthetic tests demonstrate engineering validity, not model quality or GPU runtime.
+
+**Source provenance remains unresolved:** [first-party owner search Actions 42478917599](https://github.com/kolihhan/name-kaggle/actions/runs/42478917599) found exact arxitekton/ntl-claude-gen-v1 and drjcfmd/ntl-generated-v2 records, but returned license_name=None and no description/served-version protocol. The earlier Kaggle dataset_view client method was unavailable. Neither publicly accessible aggregate data, publisher's asserted license strings, nor dataset-owner title proves downstream authorization, generation metadata or independent prompt/model source. An original source README/license/generation manifest or equivalent authoritative evidence is needed before training; this is DATA PROVENANCE BLOCKED, not a failed adversarial objective.
+
+**Work not completed:** No C0/C1 GPU science training, no trained CDA checkpoint, no heldout BA, no 5-fold CDA official OOF, no final Kaggle Code Competition inference notebook, and NO Submission ID. Original reproduced Public Best remains 0.668, independently trained LoRA24 Public 0.520.
+
+**Future closure criteria:** authoritative source licenses, exact served labels/versions, and independent cross-source lineages; a separately authorized accelerator runtime; actual C0/C1 matched source transfer success, then Stage-B and a verified final inference Notebook. Do not infer a benefit from capacity screening or 13 green synthetic tests.
