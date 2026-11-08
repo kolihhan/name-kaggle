@@ -9,6 +9,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build-launch:
+    # Original frozen v2 C0/C1 kernel versions failed on absent external label.
+    # This workflow must never repush older slugs after source edits.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
