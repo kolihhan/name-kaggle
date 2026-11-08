@@ -24,7 +24,9 @@ def test_two_original_prompt_blocks_preselect_without_labels_or_scores():
     assert chosen.prompt_id.groupby(chosen.block).nunique().to_dict()=={
         "claude_5models":80,"other_13models":80}
     assert len(chosen)==80*7
-    assert set(chosen.prompt_id)!=set(frame.prompt_id)
+    for block in ("claude_5models","other_13models"):
+        assert set(chosen.loc[chosen.block==block,"prompt_id"]) < set(
+            frame.loc[frame.block==block,"prompt_id"])
     # Reordering the original manifest cannot change selected original prompts.
     reordered=_stable_prompts_by_block(frame.sample(frac=1,random_state=42),per_block=80)
     assert set(map(tuple,chosen[["block","prompt_id"]].drop_duplicates().values))==set(
