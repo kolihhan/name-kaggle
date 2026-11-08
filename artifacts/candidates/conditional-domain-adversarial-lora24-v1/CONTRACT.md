@@ -1,0 +1,50 @@
+# CDA-L24 — Conditional Domain-Adversarial LoRA24
+
+Date: 2026-11-08 MYT. Status: ARCHITECTURE FROZEN, DATA CAPACITY SCREEN COMPLETE, NO MODEL FIT OR SUBMISSION.
+
+## Purpose and scientific hypothesis
+
+Current reproduced external Best Public BA is 0.668 (Ozertuu). Own independently trained LoRA24 scored 0.520 Public / 0.546761 grouped official OOF. Its source-transfer adapted-vs-frozen gain is +0.071470 BA; task-trained representations help. The +0.148 Public gap between whole pipelines is not an isolated architecture effect.
+
+H1: class-conditional gradient reversal can teach an already task-adapted LoRA24 backbone to discard text-collection/source artifacts while retaining generator-model identity. In an actually disjoint source cohort, the same-head same-compute treatment should beat the no-reversal control. It is a model-learning objective, NOT source weights, SVC tweaking, frozen author geometry, a new family gate, or a second 8B model at test. Domain-adversarial learning is established prior art: the novelty claim is only a specific falsifiable application, not invention of gradient reversal.
+
+H0: the corpus confounds source/protocol with model label or useful identity itself; source-adversarial gradients hurt or do not improve honest source transfer. A positive official OOF alone cannot validate the mechanism.
+
+Rejected/parked directions remain rejected/parked: TF-IDF source balancing befcb1c; LUSR/DeTeCtive frozen geometry; prompt-residual LDA; Short-TRACE standalone; post-hoc V47 weight tweaks; conditional-denoising18-v1 automatic next run.
+
+## Immutable source cohort, selected BEFORE model scoring
+
+New open pool: Kaggle crtproduction/name-that-llm-open-pool, main ntl_open_pool.parquet SHA256 1e4200aed80f52d655d4900a301cb427ca1341e06be31a8b7d5fde9ea3ef425f, 212,623 rows, 18 exact labels, 60 source_dataset values. Read-only CPU screening Actions 42477146980. Prior Stage-1 pool SHA256 37750e899ff6634c147daa7888bfed048e92d3fb1381fe5d21f93bf72a84e8ec, with 30,133 original Stage-1 training rows across 14 source strings. The audit found 11 capacity-eligible source IDs after excluding explicit publisher risk flags, missing/unknown license, known training/official normalized-answer matches, and known prompt-key matches.
+
+Frozen heldout selection by predeclared SHA salt: arxitekton/ntl-claude-gen-v1, 12,463 risk-filtered rows, 16 labels with >=20 examples, 1,057 publisher prompt groups and zero exact normalized answer overlap with our original Stage-1 text and official training text. These facts are NUMERIC CAPACITY ONLY. Publisher license strings are not independently verified source terms; source IDs from differently named pools can refer to the same underlying generator corpus or prompts. The merged pool lacks exact served model revisions, request protocol, temperature and timestamps. Therefore no independent transfer or causal protocol robustness is proven yet.
+
+Potential other capacity-eligible training source: drjcfmd/ntl-generated-v2, 20,400 rows with 17 supported labels and 1,377 prompt groups, no exact-answer overlap in the audit. Other training sources must be selected by frozen capacity/provenance constraints only, never by score. Exclude arxitekton from EVERY stage of fit, source statistics, class weights, augmentation and checkpoint selection. Audit the original source licenses and aliases; fail closed on ambiguous origins. Keep original raw rows and learned artifacts private/off the public Git repo.
+
+## Hard data gate BEFORE any GPU experiment
+
+1. Obtain and independently validate original dataset license, model/version mapping and source corpus relationships for both training and heldout cohorts; only use legitimately permitted public data and respect publisher output terms.
+2. Verify complete source-origin, answer and prompt-bank isolation from the reserved heldout, the original LoRA Stage-1 corpus, official training and all selected training sources.
+3. At least 8 exact model labels must occur in 2 or more genuinely distinct training sources, each with >=20 clean rows; otherwise conditional source adversary is not identifiable.
+4. Source holdout must retain >=8 eligible models and >=300 rows after all alias/prompt/key exclusions.
+5. Confirm accelerator training can be completed in a genuinely available authorized run and produce private model artifacts. No local GPU or paid API. If unavailable: BLOCKED BY RESOURCES, not rejected-science.
+6. Only ONE frozen training/evaluation sequence after these conditions pass. Do not weaken the gate to obtain a submission.
+
+## Full model architecture and fixed arms
+
+Start from the exact existing Stage-1 A1 checkpoint of Qwen3-8B-Base / 24-layer LoRA24, rank16 alpha32, pooled layers 2/4/6/8/12/16/20/24 and an 18-way plain model head. No change to 18 class names, input tokenizer or hidden model at inference.
+
+During EXTERNAL-only continued source training, attach a TRAIN-ONLY source classifier: representation z (32768 dims) -> LayerNorm -> Linear(32768,256) -> GELU, concatenate 32-dim learned embedding of known training MODEL LABEL, then Linear(288,n_sources). Apply gradient reversal with fixed strength lambda=0.10 to z. Train model CE plus class-conditional source CE. Class label is supplied to the discriminator only during training, never on hidden test. Only prequalified class/source support cells participate in source loss; all labels still participate in model CE.
+
+Control C0: identical model, data, loss terms, domain head architecture, optimizer, original Stage-1 checkpoint, number of steps and seed, but lambda=0. Source head learns source, yet its gradient does not reach identity representation. Treatment C1: lambda=0.10; nothing else changes. Train one frozen epoch external; then remove source head. Perform official Stage-2 adaptation for 2 epochs fold-local with historical training recipe. Final inference stays one 8B LoRA24 pass and plain 18-class head, no test-time source IDs, gates or extra language model.
+
+The 2026 source-balanced TF-IDF failure tested weighting without changing representation; this tests adversarial feature learning. The earlier prompt-invariant contrastive v2 was a different learning mechanism; do not reuse or retune it.
+
+## Evidence before final submission
+
+Primary independent check: C0 versus C1 on SAME risk-filtered verified-heldout source rows (16 supported labels); require exact-class BA(C1)-BA(C0)>=+0.020, 5000 prompt-group bootstrap replicates with 95% interval lower>0, no provider recall fall >0.010, all per-model recalls published in aggregate. No parameter, source or threshold changes on this result. Sixteen-label external BA is not eighteen-label Kaggle BA.
+
+Secondary historical coordinate: official permanent 5-fold GroupKFold(prompt_id), exact all 2699 rows/18 labels, fold-local Stage-2. Report matched LoRA24 hard OOF 0.546761, require C1 >=0.556761, paired prompt-group bootstrap interval lower>0, label recall degradation <=0.10 and provider BA degradation <=0.010. Official folds have been reused and cannot alone justify promotion.
+
+When BOTH data/source and model criteria pass: final fit on all official train, build real internet-disabled Kaggle Code Competition Notebook; verify full hidden size ~4000, under 9-hour runtime, all 18 labels, output columns id/model in submission.parquet. Submit ONE exact frozen Notebook version; report the accepted Submission ID, terminal status and Public BA, and compare with reproduced 0.668. No Public LB parameter loop. Lack of external strong-model row-aligned OOF is NOT a universal blocker for this independent candidate; do not pretend a paired result against Ozertuu is available.
+
+If any gate fails, report the actual evidence and STOP this specific training objective rather than inventing a new source/feature weight adjustment. Restriction: no local GPU/paid API, no model training before original-source lineage clearance. Pivot only if genuinely new independent evidence changes the representation/data bottleneck.
