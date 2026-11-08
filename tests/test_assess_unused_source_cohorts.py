@@ -26,7 +26,12 @@ def test_overlap_purged_and_label_coverage_fails_closed():
         for j in range(24):
             records.append({"source":"new-independent-name-only","model":labels[i],
                             "prompt_id":f"p{i}-{j}","prompt_key":f"n{i}-{j}",
-                            "text":f"fresh {i} {j}"})
+                            "text":f"fresh {i} {j}",
+                            "source_license":"CC BY-SA 4.0",
+                            "flag_near_train_prompt":False,
+                            "flag_train_prompt_regen":False,
+                            "flag_kb_proxy":False,
+                            "flag_gemini37_routing_risk":False})
     records[0]["text"]="training"
     records[1]["prompt_id"]="official-p"
     rows=pd.DataFrame(records)
