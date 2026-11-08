@@ -20,8 +20,8 @@ from scripts.build_two_stage_lora24_kaggle_model_kernel import (
 )
 
 KERNEL_IDS = {
-    "C0":"kolihhan/ntl-cda-l24-v2-original-source-training-c0",
-    "C1":"kolihhan/ntl-cda-l24-v2-original-source-training-c1",
+    "C0":"kolihhan/ntl-cda-l24-v2-original-source-training-c0-r1",
+    "C1":"kolihhan/ntl-cda-l24-v2-original-source-training-c1-r1",
 }
 COMPETITION = "name-that-llm"
 SOURCE_IDS = (
@@ -159,7 +159,7 @@ def write_kernel_bundle(output_dir:Path,*,arm:str,repo_root:Path=Path("."),sourc
     (output_dir/CODE_FILE).write_text(_kernel_source(arm=arm,source_texts=source_texts),encoding="utf-8")
     metadata={
         "id":KERNEL_IDS[arm],
-        "title":f"NTL CDA L24 v2 original source training {arm}",
+        "title":f"NTL CDA L24 v2 original source training {arm} r1",
         "code_file":CODE_FILE,
         "language":"python",
         "kernel_type":"script",
