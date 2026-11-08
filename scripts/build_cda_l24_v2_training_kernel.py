@@ -20,8 +20,8 @@ from scripts.build_two_stage_lora24_kaggle_model_kernel import (
 )
 
 KERNEL_IDS = {
-    "C0":"kolihhan/ntl-cda-l24-v2-control",
-    "C1":"kolihhan/ntl-cda-l24-v2-adversarial",
+    "C0":"kolihhan/ntl-cda-l24-v2-original-source-training-c0",
+    "C1":"kolihhan/ntl-cda-l24-v2-original-source-training-c1",
 }
 COMPETITION = "name-that-llm"
 SOURCE_IDS = (
