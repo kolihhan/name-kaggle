@@ -24,5 +24,8 @@ jobs:
             if grep -Eq 'KernelWorkerStatus.(ERROR|FAILED|CANCELLED)' <<<"$state"; then
               echo "CDA_KERNEL_ENGINEERING_ERROR $ref"
               kaggle kernels logs "$ref" 2>&1 | grep -Ei 'error|exception|traceback|assertion|failed|missing|module' | tail -25 || true
+            elif grep -q 'KernelWorkerStatus.COMPLETE' <<<"$state"; then
+              echo "CDA_GPU_TRAIN_COMPLETE $ref"
+              kaggle kernels logs "$ref" 2>&1 | grep -Ei 'PRIVATE_CDA|CDA_STAGE_A_NEW|Traceback|Error|Exception' | tail -12 || true
             fi
           done
