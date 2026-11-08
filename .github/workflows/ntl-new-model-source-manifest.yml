@@ -1,0 +1,49 @@
+name: NTL New Model Direct Source Schema Check
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-new-model-source-manifest.yml]
+permissions: {contents: read}
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 pandas==2.2.3 pyarrow==19.0.1 six==1.17.0
+      - name: Confirm direct public original data files and schema without displaying texts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-direct
+          for ref in arxitekton/ntl-claude-gen-v1 trnhip/ntl-api-gen kilupy/ntl-18-model-corpus; do
+            echo "SOURCE_REF $ref"
+            kaggle datasets files "$ref"
+          done
+          python - <<'PY'
+          import pathlib,json
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          a=KaggleApi();a.authenticate()
+          refs=['arxitekton/ntl-claude-gen-v1','trnhip/ntl-api-gen','kilupy/ntl-18-model-corpus']
+          for i,ref in enumerate(refs):
+            path=pathlib.Path('/tmp/ntl-direct')/str(i);path.mkdir(parents=True,exist_ok=True)
+            names=['passages.csv','ntl_18model_passages.parquet']
+            for name in names:
+              try:
+                a.dataset_download_file(ref,name,path=str(path),force=True,quiet=True)
+              except Exception as e:
+                continue
+            import pandas as pd
+            for p in path.rglob('*'):
+              if p.suffix not in ['.csv','.parquet']:continue
+              try:
+                d=pd.read_csv(p,nrows=3) if p.suffix=='.csv' else pd.read_parquet(p)
+                s={"ref":ref,"file":p.name,"rows":None if p.suffix=='.csv' else len(d),
+                   "columns":list(d.columns),"non_null_model": bool(d['model'].notna().all()) if 'model' in d else None,
+                   "model_count_sample":int(d.model.nunique()) if 'model' in d and p.suffix=='.parquet' else None}
+                print('DIRECT_SOURCE_SCHEMA',json.dumps(s))
+              except Exception as e:print('SOURCE_SCHEMA_ERROR',ref,p.name,type(e).__name__)
+          PY
