@@ -248,6 +248,7 @@ def write_kernel_bundle(
     (output_dir / "kernel-metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
+    return metadata
 
 
 def parse_args() -> argparse.Namespace:
