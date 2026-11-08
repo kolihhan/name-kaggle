@@ -96,3 +96,32 @@ jobs:
                   "response_bytes":len(response)
               },sort_keys=True),flush=True)
           PY
+      - name: Check authenticated private resource inventories for standby
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, json, re, subprocess
+          probes=[
+              ("dataset", ["kaggle","datasets","list","-m","-s",
+                           "ntl-cda-l24-v2-c1-weights","-v"],
+               "kolihhan/ntl-cda-l24-v2-c1-weights"),
+              ("kernel", ["kaggle","kernels","list","-m","-s",
+                          "ntl-cda-l24-v2-final","-v"],
+               "kolihhan/ntl-cda-l24-v2-final"),
+          ]
+          for kind,cmd,ref in probes:
+              p=subprocess.run(cmd,capture_output=True,text=True)
+              rows=list(csv.DictReader(p.stdout.splitlines())) if p.returncode==0 else []
+              exact=sum(any(str(v).lower().strip()==ref for v in row.values())
+                        for row in rows)
+              error=(p.stdout+"\n"+p.stderr).lower()
+              print("CDA_STANDBY_INVENTORY_SHAPE",json.dumps({
+                  "kind":kind,"return_code":p.returncode,"rows":len(rows),
+                  "fields":list(rows[0])[:12] if rows else [],
+                  "exact_ref_matches":exact,
+                  "error_flags":{word:(word in error) for word in
+                      ("usage:","unrecognized","error","403","404","forbidden",
+                       "permission","invalid","not found")},
+              },sort_keys=True),flush=True)
+          PY
