@@ -116,3 +116,10 @@ def test_unknown_license_rows_are_excluded():
          old_fit_text_hashes=set(),official_text_hashes=set(),old_prompt_keys=set())
     assert s["license_unknown_rows"]==1
     assert s["train_rows"]==47
+
+
+def test_frozen_v1_invalidated_even_if_user_supplies_clearance_flag():
+    """README-grounded scientific invalidity cannot be overridden by a JSON flag."""
+    from scripts.cda_l24_stage_a import reject_invalid_frozen_v1_science_cohort
+    with pytest.raises(PermissionError, match="COHORT DISQUALIFIED"):
+        reject_invalid_frozen_v1_science_cohort()
