@@ -1,0 +1,36 @@
+name: NTL CDA v2 Real-time Training and Official Submission Status
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-now-verify-official-submit-state.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Read exact C1 C0 GPU states and official ledger - no new work
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          for ref in             kolihhan/ntl-cda-l24-v2-original-source-training-c1/2             kolihhan/ntl-cda-l24-v2-original-source-training-c0-r1/1             kolihhan/ntl-cda-l24-v2-final; do
+            echo "CHECKING_KAGGLE_KERNEL $ref"
+            kaggle kernels status "$ref" 2>&1 | grep -E 'KernelWorkerStatus\.|version|not found|Error' | tail -6 || true
+          done
+          kaggle competitions submissions name-that-llm -v -q > /tmp/submission-check.csv
+          python - <<'PY'
+          import csv,json
+          with open('/tmp/submission-check.csv',newline='') as f:rows=list(csv.DictReader(f))
+          exact=[r for r in rows if 'CDA-L24 v2' in r.get('description','') or
+                'source-adversarial LoRA24' in r.get('description','')]
+          print('CDA_V2_REAL_OFFICIAL_ENTRIES',len(exact))
+          for r in exact:
+              print('CDA_V2_OFFICIAL_LEDGER',json.dumps({k:r.get(k) for k in
+                  ('ref','status','publicScore','description','date')},sort_keys=True))
+          PY
