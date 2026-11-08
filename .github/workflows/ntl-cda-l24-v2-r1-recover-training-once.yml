@@ -1,0 +1,94 @@
+name: NTL CDA v2 R1 Recovery Actual GPU Training C0 C1
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-l24-v2-r1-recover-training-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-cda-v2-r1-fixed-source-label-training
+  cancel-in-progress: false
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 27
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      C1_REF: kolihhan/ntl-cda-l24-v2-original-source-training-c1-r1
+      C0_REF: kolihhan/ntl-cda-l24-v2-original-source-training-c0-r1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/
+            tests/test_cda_l24_v2_packaging.py
+            tests/test_conditional_domain_adversarial_lora24.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: CPU model-objective tests: verify mask of absent external-only class
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q "torch==2.6.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q pandas==2.2.3 numpy==1.26.4 scipy==1.15.2 scikit-learn==1.6.1 pytest kaggle==2.2.5 six==1.17.0
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m py_compile scripts/cda_l24_v2_stage_a.py scripts/build_cda_l24_v2_training_kernel.py
+          python -m pytest -q tests/test_conditional_domain_adversarial_lora24.py tests/test_cda_l24_v2_packaging.py
+          echo "CDA_R1_17_OF_18_CE_GRADIENT_FIX_VERIFIED"
+      - name: Build two fully frozen model-training scripts with exact Kaggle title-slug IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arm in C1 C0; do
+            python -m scripts.build_cda_l24_v2_training_kernel --arm "$arm" --output-dir "/tmp/ntl-cda-r1-$arm"
+            python -m py_compile "/tmp/ntl-cda-r1-$arm/kernel_main.py"
+            sha256sum "/tmp/ntl-cda-r1-$arm/kernel_main.py"
+          done
+          python - <<'PY'
+          import json,pathlib
+          for arm in ('C1','C0'):
+              m=json.loads((pathlib.Path('/tmp/ntl-cda-r1-'+arm)/'kernel-metadata.json').read_text())
+              assert m['id']=='kolihhan/ntl-cda-l24-v2-original-source-training-'+arm.lower()+'-r1'
+              assert m['title'].lower().replace(' ','-')==m['id'].split('/')[1]
+              assert m['is_private'] and m['enable_internet'] is False
+              assert m['competition_sources']==[]
+              assert len(m['dataset_sources'])==6
+          print('FROZEN_KAGGLE_R1_IDS_MATCH_TITLES')
+          PY
+      - name: Check source assets and prevent duplicate GPU kernels
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          kaggle quota
+          kaggle datasets status kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint --format json
+          kaggle datasets status kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2 --format json
+          for ref in "$C1_REF" "$C0_REF"; do
+            if kaggle kernels status "$ref" >/dev/null 2>&1; then
+              echo "RETRY_KERNEL_ALREADY_EXISTS_NO_OVERWRITE $ref"
+              exit 1
+            fi
+          done
+      - name: Push new C1 representation-learning treatment (one actual GPU run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-cda-r1-C1 --accelerator NvidiaTeslaT4 --timeout 32400
+          echo "C1_R1_NEW_KAGGLE_GPU_ACCEPTED"
+          kaggle kernels status "$C1_REF"
+      - name: Push matched C0 control (same data/training except lambda=0)
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-cda-r1-C0 --accelerator NvidiaTeslaT4 --timeout 32400
+          echo "C0_R1_NEW_KAGGLE_GPU_ACCEPTED"
+          kaggle kernels status "$C0_REF"
+      - name: Capture true Kaggle kernel IDs (does not claim scores or submission)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for ref in "$C1_REF" "$C0_REF"; do
+            echo "ACTUAL_PRIVATE_SOURCE_TRAINING_NOTEBOOK $ref"
+            kaggle kernels status "$ref"
+          done
+          echo "TWO_SOURCE_TRAINING_JOBS_PUSHED_NO_OFFICIAL_SUBMISSION"
