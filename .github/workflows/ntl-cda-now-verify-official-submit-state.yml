@@ -201,3 +201,29 @@ jobs:
               "has_submission_marker":"submission.parquet" in content
           },sort_keys=True),flush=True)
           PY
+      - name: Audit final-v2 output schema and terminal kernel log categories
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,re,subprocess
+          ref="kolihhan/ntl-cda-l24-v2-final"
+          p=subprocess.run(["kaggle","kernels","files",ref,"-v"],capture_output=True,text=True)
+          rows=list(csv.DictReader(p.stdout.splitlines())) if p.returncode==0 else []
+          print("CDA_FINAL_RAW_FILE_SCHEMA",json.dumps({
+              "headers":list(rows[0]) if rows else [],
+              "sample_rows":rows[:22],
+              "raw_contains_submission": "submission.parquet" in p.stdout
+          },sort_keys=True),flush=True)
+          q=subprocess.run(["kaggle","kernels","logs",ref],capture_output=True,text=True)
+          try: payload=json.loads(q.stdout)
+          except Exception: payload=q.stdout
+          print("CDA_FINAL_LOG_SCHEMA",json.dumps({
+              "payload_type":type(payload).__name__,
+              "entry_types":[type(x).__name__ for x in payload[:5]] if isinstance(payload,list) else [],
+              "entry_keys":[list(x) for x in payload[:3] if isinstance(x,dict)] if isinstance(payload,list) else (list(payload) if isinstance(payload,dict) else []),
+              "contains_error":bool(re.search(r"exception|error|out.of.memory|traceback",q.stdout,re.I)),
+              "contains_parquet":"submission.parquet" in q.stdout,
+              "contains_predict":"prediction" in q.stdout.lower(),
+          },sort_keys=True),flush=True)
+          PY
