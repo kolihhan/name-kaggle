@@ -1,0 +1,77 @@
+name: NTL Public 0.681 One Quick Save Diagnostic No GPU No Training
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning-0681-one-no-run-save-diagnostic.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-public-lightning-0681-one-submission-exactly-once
+  cancel-in-progress: false
+jobs:
+  save-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/ntl_public_lightning_0681_one_shot.py
+            artifacts/candidates/public-lightning-0681-no-neural-training-repro/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Attempt one GPU-free Quick Save of pinned pretrained inference-only notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e data/train.csv
+          python -u - <<'PY'
+          import json,re,subprocess
+          from pathlib import Path
+          from scripts.ntl_public_lightning_0681_one_shot import (
+              DEST_REF, SOURCE_REF, DESCRIPTION, check_no_prior,
+              frozen_reproduction
+          )
+          check_no_prior()
+          prior=subprocess.run(["kaggle","kernels","list","-m","-v",
+                     "-s","ntl-public-lightning-0681-frozen-no-train"],
+                     capture_output=True,text=True)
+          if prior.returncode!=0 or DEST_REF.lower() in prior.stdout.lower():
+              raise RuntimeError("target exists or authenticated namespace inventory unavailable")
+          status=subprocess.run(["kaggle","kernels","status",SOURCE_REF],
+                                capture_output=True,text=True)
+          if status.returncode!=0 or "KernelWorkerStatus.COMPLETE" not in status.stdout:
+              raise RuntimeError("frozen original public Notebook not complete")
+          folder=frozen_reproduction(Path("/tmp/ntl-public-0681-norun"))
+          help_out=subprocess.run(["kaggle","kernels","push","--help"],
+                                  capture_output=True,text=True)
+          if help_out.returncode!=0 or "--no-run" not in help_out.stdout:
+              raise RuntimeError("Kaggle client lacks Quick Save --no-run")
+          # The --no-run flag must be present. No GPU session, no actual fitting,
+          # no competitor submission, no auto retry.
+          cmd=["kaggle","kernels","push","-p",str(folder["folder"]),"--no-run"]
+          assert cmd[-1]=="--no-run"
+          result=subprocess.run(cmd,capture_output=True,text=True)
+          answer=(result.stdout+"\n"+result.stderr)
+          print("NTL_0681_NO_RUN_SAVE_RESULT",json.dumps({
+              "return_code":result.returncode,
+              "saved_version_marker":bool(re.search(r"Kernel version \\d+ successfully pushed",answer)),
+              "forbidden":"403" in answer or "Forbidden" in answer,
+              "error_class":next((k for k in ("403","429","400","quota","Maximum batch GPU session count",
+                         "permission","Invalid","Error") if k.lower() in answer.lower()),None),
+              "message_tail":answer[-550:],
+              "no_run":True,"model_training_started":False,
+              "competition_submission_started":False
+          },sort_keys=True),flush=True)
+          after=subprocess.run(["kaggle","kernels","list","-m","-v",
+                      "-s","ntl-public-lightning-0681-frozen-no-train"],
+                      capture_output=True,text=True)
+          print("NTL_0681_AFTER_QUICKSAVE",json.dumps({
+              "inventory_ok":after.returncode==0,
+              "exact_slug_present":DEST_REF.lower() in after.stdout.lower()
+          },sort_keys=True),flush=True)
+          PY
