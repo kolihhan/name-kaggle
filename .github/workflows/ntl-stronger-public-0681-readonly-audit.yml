@@ -69,3 +69,27 @@ jobs:
                   "written_output":"submission.parquet" in text
               },sort_keys=True),flush=True)
           PY
+      - name: Verify final Lightning 0.681 training branch activation without executing code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re,subprocess,tempfile
+          ref="lightningv08/0-681-qwen3-embedding-lora-qwen3-8-27b"
+          with tempfile.TemporaryDirectory() as tmp:
+              proc=subprocess.run(["kaggle","kernels","pull",ref,"-p",tmp,"-m"],
+                                  capture_output=True,text=True)
+              if proc.returncode:raise RuntimeError("read only source pull failed")
+              n=json.loads(next(pathlib.Path(tmp).glob("*.ipynb")).read_text())
+              rows=[]
+              pattern=re.compile(r"train.final|train_final|gauss|\.fit\(|\.fit_transform\(|model\.train\(|optimizer|torch\.optim|subprocess\.|submission.parquet",re.I)
+              for ci,cell in enumerate(n.get("cells",[])):
+                  if cell.get("cell_type")!="code":continue
+                  ls="".join(cell.get("source",[])).splitlines()
+                  for i,line in enumerate(ls):
+                      if not pattern.search(line):continue
+                      if len(rows)>=115:break
+                      rows.append({"cell":ci,"line":i+1,"code":line.strip()[:200]})
+              print("LIGHTNING_0681_OFFICIAL_PATH_LINES",
+                    json.dumps(rows[:115],sort_keys=True),flush=True)
+          PY
