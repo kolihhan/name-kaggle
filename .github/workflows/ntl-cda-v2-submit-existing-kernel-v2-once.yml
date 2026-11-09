@@ -1,0 +1,80 @@
+name: NTL CDA v2 Submit Existing Completed Kernel v2 Only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-v2-submit-existing-kernel-v2-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-cda-v2-exactly-one-private-to-official-result
+  cancel-in-progress: false
+jobs:
+  submit-existing-output-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Submit existing complete code kernel version 2 without any training or push
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -u - <<'PY'
+          import csv,json,re,subprocess,time
+          KERNEL="kolihhan/ntl-cda-l24-v2-final"
+          VERSION=2
+          COMPETITION="name-that-llm"
+          DESC="One-shot independent CDA-L24 v2 source-adversarial LoRA24 20261108 no LB tuning"
+          def cli(*cmd):
+              p=subprocess.run(list(cmd),capture_output=True,text=True)
+              if p.returncode!=0:
+                  raise RuntimeError("Kaggle read/write CLI failed: "+str(cmd[:3])+" "+
+                                     (p.stdout+"\n"+p.stderr)[-900:])
+              return p.stdout+"\n"+p.stderr
+          def official_rows():
+              out=cli("kaggle","competitions","submissions",COMPETITION,"-v","-q")
+              return list(csv.DictReader(out.splitlines()))
+          before=official_rows()
+          if any(DESC in (x.get("description") or "") for x in before):
+              raise RuntimeError("Refusing duplicate official CDA-v2 submission")
+          kernel_status=cli("kaggle","kernels","status",KERNEL+"/"+str(VERSION))
+          if "KernelWorkerStatus.COMPLETE" not in kernel_status:
+              raise RuntimeError("Original frozen kernel version2 not COMPLETE")
+          out=cli("kaggle","kernels","files",KERNEL+"/"+str(VERSION),
+                  "-v","--page-size","200")
+          if "Next Page Token =" in out:
+              raise RuntimeError("Kaggle output pagination incomplete")
+          rows=list(csv.DictReader(out.splitlines()))
+          names={r.get("name") for r in rows}
+          if not {"submission.parquet","submission_lineage.json"}.issubset(names):
+              raise RuntimeError("Frozen v2 output missing submission or lineage file")
+          print("EXISTING_CDA_V2_FINAL_OUTPUT_VERIFIED_NO_TRAINING",flush=True)
+          # This command submits an already completed kernel output. It does not
+          # push a new kernel, change weights, start a GPU fit, or tune scores.
+          result=cli("kaggle","competitions","submit",COMPETITION,
+                     "-k",KERNEL,"-v",str(VERSION),
+                     "-f","submission.parquet","-m",DESC)
+          refs=re.findall(r"Submission ref:\s*(\d+)",result,re.I)
+          if len(refs)!=1:
+              print("KAGGLE_SUBMIT_RESPONSE",result[-900:],flush=True)
+              raise RuntimeError("Submission was requested but no unique ref confirmed")
+          ref=refs[0]
+          print("EXISTING_CDA_V2_OFFICIAL_SUBMISSION_REF",ref,flush=True)
+          for attempt in range(20):
+              matching=[r for r in official_rows() if r.get("ref")==ref]
+              if len(matching)==1:
+                  row=matching[0]
+                  if row.get("description")!=DESC:
+                      raise RuntimeError("Official ledger description mismatch")
+                  report={k:row.get(k) for k in
+                          ("ref","status","publicScore","privateScore","description","date")}
+                  print("EXISTING_CDA_V2_VERIFIED_MY_SUBMISSIONS",
+                        json.dumps(report,sort_keys=True),flush=True)
+                  break
+              time.sleep(15)
+          else:
+              raise RuntimeError("Submission accepted but official ledger not yet consistent")
+          PY
