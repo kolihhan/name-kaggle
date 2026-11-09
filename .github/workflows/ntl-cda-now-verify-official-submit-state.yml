@@ -159,3 +159,45 @@ jobs:
                   "enable_internet":data.get("enable_internet"),
               },sort_keys=True),flush=True)
           PY
+      - name: Inspect completed final v2 outputs and error class only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, json, re, subprocess
+          ref="kolihhan/ntl-cda-l24-v2-final"
+          p=subprocess.run(["kaggle","kernels","files",ref,"-v"],
+                           capture_output=True,text=True)
+          rows=list(csv.DictReader(p.stdout.splitlines())) if p.returncode==0 else []
+          names=[str(row.get("name") or row.get("Name") or
+                     row.get("fileName") or "") for row in rows]
+          print("CDA_V2_FINAL_OUTPUT_INVENTORY",json.dumps({
+              "query_return_code":p.returncode,
+              "files":names[:120],
+              "contains_submission_parquet":any("submission.parquet" in s for s in names),
+              "stdout_bytes":len(p.stdout),"stderr_bytes":len(p.stderr)
+          },sort_keys=True),flush=True)
+          log=subprocess.run(["kaggle","kernels","logs",ref],
+                             capture_output=True,text=True)
+          content=log.stdout
+          try:
+              items=json.loads(content)
+              if isinstance(items,list):
+                  streams=[str(x.get("data","")) for x in items if isinstance(x,dict)]
+                  content="\n".join(streams)
+          except (ValueError,TypeError):
+              pass
+          errors=[]
+          for line in content.splitlines():
+              ln=line.strip()
+              if re.match(r"^(?:[A-Za-z_]+(?:Error|Exception)|RuntimeError|SystemExit|OSError|AssertionError|ImportError|KeyError|TypeError|ValueError|FileNotFoundError):",ln):
+                  errors.append(ln[:220])
+          print("CDA_V2_FINAL_LOG_DIAGNOSTICS",json.dumps({
+              "logs_return_code":log.returncode,
+              "raw_log_bytes":len(log.stdout),
+              "traceback_marker":"Traceback (most recent call last)" in content,
+              "error_classes":errors[-10:],
+              "has_final_fit_marker":"submission_lineage.json" in content,
+              "has_submission_marker":"submission.parquet" in content
+          },sort_keys=True),flush=True)
+          PY
