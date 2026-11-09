@@ -87,3 +87,38 @@ jobs:
               else:
                   print("PUBLIC_0680_NOT_PULLABLE",flush=True)
           PY
+      - name: Identify public 0.680 notebook active fit-call sites only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re,subprocess,tempfile
+          ref="alexchilton/name-that-llm-0-680-all-public-what-failed"
+          with tempfile.TemporaryDirectory() as tmp:
+              p=subprocess.run(["kaggle","kernels","pull",ref,"-p",tmp,"-m"],
+                  capture_output=True,text=True)
+              if p.returncode:
+                  raise RuntimeError("unable to read public 0.680 notebook")
+              srcs=list(pathlib.Path(tmp).glob("*.ipynb"))
+              if len(srcs)!=1:raise RuntimeError("expected one public notebook")
+              nb=json.loads(srcs[0].read_text())
+              sites=[]
+              reader=[]
+              for ci,c in enumerate(nb.get("cells",[])):
+                  if c.get("cell_type")!="code":continue
+                  text="".join(c.get("source",[]))
+                  lines=text.splitlines()
+                  for i,line in enumerate(lines):
+                      if re.search(r"\.(?:fit|fit_transform|partial_fit|train)\s*\(",line):
+                          sites.append({"cell":ci,"line":i+1,
+                                        "preceding":[s.strip()[:130] for s in lines[max(0,i-2):i]],
+                                        "site":line.strip()[:250]})
+                      if re.search(r"(?:read_csv|train\.csv|train_df|fit_predict|load_weights|joblib\.load|pickle\.load)",line,re.I):
+                          reader.append({"cell":ci,"line":i+1,"site":line.strip()[:160]})
+              print("ALEX0680_ACTIVE_FIT_CALL_SITES",json.dumps(sites[:30],sort_keys=True),flush=True)
+              print("ALEX0680_TRAIN_AND_PREFIT_EVIDENCE",json.dumps({
+                  "count":len(reader),"samples":reader[:35],
+                  "fit_call_count":len(sites),
+                  "code_cells":sum(c.get("cell_type")=="code" for c in nb.get("cells",[]))
+              },sort_keys=True),flush=True)
+          PY
