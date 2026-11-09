@@ -1,0 +1,46 @@
+name: NTL Public 0.681 Model Variation Exact File Access Readonly
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning-0681-model-file-readonly.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Test exact Kaggle model file-list permission without downloading or executing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json, subprocess
+          refs=[
+            "qwen-lm/qwen-3/Transformers/8b-base/1",
+            "qwen-lm/qwen-3/Transformers/4b-base/1",
+            "qwen-lm/qwen-3/Transformers/14b-base/1",
+            "qwen-lm/qwen-3-embedding/Transformers/8b/1",
+            "qwen-lm/qwen2.5/Transformers/14b/1",
+            "qwen-lm/qwen2.5/Transformers/7b/1",
+          ]
+          results=[]
+          for ref in refs:
+              p=subprocess.run(["kaggle","models","variations","versions","files",ref,
+                               "-v","--page-size","1"],capture_output=True,text=True)
+              err=p.stderr+p.stdout
+              results.append({
+                  "ref":ref,"ok":p.returncode==0,
+                  "return_code":p.returncode,
+                  "error_kind":next((x for x in ("403","401","404","forbidden",
+                                  "permission","license","quota","usage")
+                                    if x in err.lower()),None),
+                  "bytes":len(p.stdout)
+              })
+          print("PUBLIC_0681_MODEL_FILES_PERMISSION",json.dumps(results,sort_keys=True),flush=True)
+          PY
