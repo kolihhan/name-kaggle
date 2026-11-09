@@ -145,6 +145,13 @@ def frozen_reproduction(destination: Path) -> dict:
             "External author's 0.681 is not this reproduction's score.\n"
         ],
     })
+    # Kaggle CLI's metadata contract prefers numeric id_no over textual id.
+    # A public notebook pull may include the upstream author's numeric ID;
+    # retaining it makes SaveKernel try to update THEIR notebook -> HTTP 403.
+    # Always remove inherited identity when creating a new own notebook.
+    upstream_id_no_present = "id_no" in source_meta
+    source_meta.pop("id_no", None)
+    print("PUBLIC_0681_UPSTREAM_ID_NO_PRESENT", upstream_id_no_present, flush=True)
     source_meta.update({
         "id": DEST_REF,
         "title": DEST_REF.split("/", 1)[1],
@@ -152,6 +159,8 @@ def frozen_reproduction(destination: Path) -> dict:
         "enable_internet": False,
         "machine_shape": "NvidiaTeslaT4",
     })
+    if "id_no" in source_meta or source_meta["id"] != DEST_REF:
+        raise RuntimeError("original public Notebook numeric identity leaked into new kernel")
     out_name = source_meta.get("code_file")
     if not out_name or Path(out_name).name != out_name or not out_name.endswith(".ipynb"):
         raise RuntimeError("unsafe or missing notebook code_file")
