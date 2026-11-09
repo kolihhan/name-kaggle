@@ -212,7 +212,8 @@ jobs:
           rows=list(csv.DictReader(p.stdout.splitlines())) if p.returncode==0 else []
           print("CDA_FINAL_RAW_FILE_SCHEMA",json.dumps({
               "headers":list(rows[0]) if rows else [],
-              "sample_rows":rows[:22],
+              "sample_rows":[{str(k):str(v)[:130] for k,v in row.items()}
+                             for row in rows[:22]],
               "raw_contains_submission": "submission.parquet" in p.stdout
           },sort_keys=True),flush=True)
           q=subprocess.run(["kaggle","kernels","logs",ref],capture_output=True,text=True)
