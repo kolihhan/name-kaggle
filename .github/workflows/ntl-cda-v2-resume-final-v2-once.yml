@@ -1,0 +1,60 @@
+name: NTL CDA v2 Resume Failed Final Kernel v2 One Shot
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cda-v2-resume-final-v2-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-cda-v2-exactly-one-private-to-official-result
+  cancel-in-progress: false
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/
+            tests/test_cda_l24_v2_final_package.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Validate only fixed checkpoint mount and final resume code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m pip install -q "torch==2.6.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q numpy==1.26.4 pandas==2.2.3 scipy==1.15.2 scikit-learn==1.6.1 pytest
+          python -m py_compile scripts/build_cda_l24_v2_kaggle_submission.py scripts/cda_l24_v2_resume_final_once.py
+          python -m pytest -q tests/test_cda_l24_v2_final_package.py
+          python -m scripts.build_cda_l24_v2_kaggle_submission \
+            --output-dir /tmp/cda-v2-resume-static \
+            --stage-a-checkpoint-sha256 0dc043dda8da70aa28f04ffed105bae7ac9af19b84a322524333b197a8619fbe \
+            --source-manifest-sha256 f12f5c5fce027a96ee1df84a27ca571462f9c1ec4421ed49ee61ec26040a2328
+          python -m py_compile /tmp/cda-v2-resume-static/kernel_main.py
+          echo CDA_V2_FINAL_V2_RECOVERY_STATIC_PASS
+  resume:
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle private dataset and code competition client
+        run: python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==1.26.4 pandas==2.2.3
+      - name: Reuse frozen private C1 weights; push only fixed v2 final and submit once
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -u -m scripts.cda_l24_v2_resume_final_once
