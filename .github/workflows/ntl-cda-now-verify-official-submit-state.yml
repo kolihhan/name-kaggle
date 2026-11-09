@@ -228,3 +228,25 @@ jobs:
               "contains_predict":"prediction" in q.stdout.lower(),
           },sort_keys=True),flush=True)
           PY
+      - name: Check full final v2 output inventory with 200-file pagination
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,subprocess
+          ref="kolihhan/ntl-cda-l24-v2-final/2"
+          p=subprocess.run(["kaggle","kernels","files",ref,"-v","--page-size","200"],capture_output=True,text=True)
+          lines=[s.strip() for s in p.stdout.splitlines() if s.strip()]
+          # The CSV output may prepend 'Next Page Token = ...' before headers.
+          start=next((i for i,s in enumerate(lines) if s.lower().startswith("name,")
+                      or s.lower()=="name"),None)
+          parsed=list(csv.DictReader(lines[start:])) if start is not None else []
+          names=[str(x.get("name") or x.get("Name") or "") for x in parsed]
+          print("CDA_V2_PAGED_FINAL_INVENTORY",json.dumps({
+              "return_code":p.returncode,"column_header_found":start is not None,
+              "parsed_files":len(names),"names":names[:200],
+              "has_submission_parquet":"submission.parquet" in p.stdout,
+              "has_lineage":"submission_lineage.json" in p.stdout,
+              "has_next_page_token":"Next Page Token =" in p.stdout,
+          },sort_keys=True),flush=True)
+          PY
