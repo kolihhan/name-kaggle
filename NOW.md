@@ -1,5 +1,23 @@
 # NOW
 
+## REPLAN — outcome-first Kaggle competition and independent research (2026-11-10)
+
+**This replan supersedes the operational priority implied by the historical status entries below; it does NOT modify frozen experiments or authorization.** Stable project purpose, user requirements, two-lane model and execution/stop contract are now in the research-branch README.md, section "Project mission and operating model".
+
+**North star:** Achieve a higher real own-account Kaggle score **and** develop validated understanding of exact-18 LLM attribution; these are separate reported deliverables. Current user authorization: **no new model training / supervised readout fitting**; no LB tuning and no duplicate submissions. A public reproduction is a short-term benchmark acquisition tactic, not an independent scientific discovery or a long-term novelty substitute.
+
+**P0 — CLOSE CURRENT REAL SUBMISSION:** Official Lightning public 0.681 reproduced into our private Kaggle Notebook v2; own official Submission **58167751** accepted; last authenticated check at 2026-11-09 16:34:34 UTC (2026-11-10 00:34 MYT) was still **PENDING / Public Score empty**, while notebook was COMPLETE. Existing independent status workflow 42618511398 is enough for read-only official My Submissions recheck. No new notebook, model run, or submission while pending. When terminal: compare score to verified own best **0.668**, record actual numeric score or failure, preserve exact version, decide once.
+
+**P1 — STRONGER WITHOUT NEW TRAINING:** Only if P0 is terminal, source a **materially better, complete, accessible pretrained/prefit** published candidate, not a slight score-title variant or an old duplicate. A candidate needs exact runnable source, public/legal offline assets, no active training, one frozen reproducible inference and one Kaggle submission. If no candidate meets the bar, report **NO QUALIFIED CANDIDATE** rather than spending actions/quota on guesses.
+
+**P2 — INDEPENDENT SCIENTIFIC LANE, NON-TRAINING ONLY:** Analyze existing well-aligned strong-anchor predictions/representations and independent source/prompt shifts to explain the strongest remaining sibling/provider error class. Predeclare one mechanism, counterfactual/control, expected sign, fail condition, and cost. Do not treat already-spent official OOF folds or Public scores as fresh holdouts. Do not continue rejected CDA source-transfer tuning, Short-TRACE 0.093, LUSR/DeTeCtive or sparse gating with cosmetic tweaks. If the genuine next experiment mathematically requires new fitting, mark BLOCKED_BY_USER_NO_TRAINING and seek changed authorization separately; do not reinterpret "go" as permission to train.
+
+**P3 — OPERATING MODEL:** Stop creating a new GitHub Actions YAML for every status check/incident. Existing research branch has 178 historical workflows and 92 scripts; reuse a single current candidate contract, executable runner, verified ledger/status path and archived result. Preserve existing evidence, don't delete/rewrite history. Keep READ -> DECIDE -> FREEZE -> EXECUTE ONCE -> SCORE -> LEARN / CLOSE. Default main is stale relative to this active branch; do not merge or publish data without a separate public-data safety review.
+
+**Acceptance:** The next user-facing update must state (a) best own-account official score and exact Submission ID, (b) whether real competitive target was beaten, (c) original vs reproduction status, (d) exactly one next action or precise blocker. Passing tests, completed workflows, and notebook title scores never count as a competitive win.
+
+---
+
 ## LATEST VERIFIED — Lightning 0.681 reproduction OFFICIALLY SUBMITTED, awaiting score (2026-11-09 23:59 MYT)
 
 **Own Kaggle official submission ID `58167751` accepted on 2026-11-09 14:40:53 UTC (22:40:53 MYT), currently `SubmissionStatus.PENDING`, Public Score blank** on fresh authenticated read-only status at 15:59:08 UTC (23:59:08 MYT) [status workflow #42618511398 (latest rerun)](https://github.com/kolihhan/name-kaggle/actions/runs/42618511398). Kaggle notebook `kolihhan/ntl-public-lightning-0681-frozen-no-train` **version 2 COMPLETE** and valid `submission.parquet` was found. [Original v2 inference-and-submit workflow #42618338019](https://github.com/kolihhan/name-kaggle/actions/runs/42618338019) **SUCCESS**, logged `PUBLIC_0681_OWN_OFFICIAL_SUBMISSION_ID 58167751`. [Standby existing-v2-only #42619460527](https://github.com/kolihhan/name-kaggle/actions/runs/42619460527) **SUCCESS**, observed same official submission and correctly did NOT duplicate. Description: `Frozen public Lightning 0.681 reproduction no new supervised training 20261109`.
