@@ -32,6 +32,7 @@ jobs:
           grep -q 'NO_NEW_TRAINING: supervised Gaussian fit forbidden' scripts/ntl_public_lightning_0681_one_shot.py
           grep -q 'NO_NEW_TRAINING: Atlas train mode forbidden' scripts/ntl_public_lightning_0681_one_shot.py
           grep -q 'PINNED_ORIGINAL_SHA256' scripts/ntl_public_lightning_0681_resume_saved_v1.py
+          grep -q 'PUBLIC_0681_SAVED_V1_METADATA_DIFF_DIAGNOSTIC' scripts/ntl_public_lightning_0681_resume_saved_v1.py
           echo PUBLIC_0681_RESUME_SAVED_V1_STATIC_AND_NO_TRAINING_PASS
   run-inference-and-submit:
     needs: static
