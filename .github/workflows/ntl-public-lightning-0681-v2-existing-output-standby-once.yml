@@ -1,0 +1,112 @@
+name: NTL Lightning 0.681 Existing Kernel v2 Output Standby No Retraining
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-public-lightning-0681-v2-existing-output-standby-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-public-lightning-0681-one-submission-exactly-once
+  cancel-in-progress: false
+jobs:
+  verify-and-submit-existing-output-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Await already-started v2 Kaggle inference only and submit one existing file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -u - <<'PY'
+          import csv,json,re,subprocess,time
+          REF="kolihhan/ntl-public-lightning-0681-frozen-no-train"
+          COMP="name-that-llm"
+          DESC="Frozen public Lightning 0.681 reproduction no new supervised training 20261109"
+          def cmd(*args, allow_failure=False):
+              p=subprocess.run(args, capture_output=True, text=True)
+              if p.returncode and not allow_failure:
+                  raise RuntimeError("Kaggle command failed: "+str(args[:3])+" "+
+                                     (p.stdout+"\n"+p.stderr)[-350:])
+              return p
+          def own_entries():
+              p=cmd("kaggle","competitions","submissions",COMP,"-v","-q")
+              return [r for r in csv.DictReader(p.stdout.splitlines())
+                      if r.get("description")==DESC]
+          def existing_submissions():
+              rows=own_entries()
+              if len(rows)>1:
+                  raise RuntimeError("multiple existing official 0.681 entries: refuse")
+              if len(rows)==1:
+                  print("PUBLIC_0681_ALREADY_SUBMITTED",json.dumps({
+                      k:rows[0].get(k) for k in ("ref","status","publicScore","description")
+                  },sort_keys=True),flush=True)
+                  return True
+              return False
+          if existing_submissions():
+              raise SystemExit(0)
+          # Confirm the existing private Kaggle notebook is our versioned asset.
+          import tempfile,pathlib
+          with tempfile.TemporaryDirectory() as d:
+              p=cmd("kaggle","kernels","pull",REF,"-p",d,"-m")
+              root=pathlib.Path(d)
+              meta=json.loads((root/"kernel-metadata.json").read_text())
+              if (meta.get("id")!=REF or meta.get("competition_sources")!=[COMP]
+                  or meta.get("enable_internet") is not False or
+                  len(meta.get("dataset_sources") or [])!=21 or
+                  len(meta.get("model_sources") or [])!=6):
+                  raise RuntimeError("existing kernel identity/source mismatch")
+              codefiles=list(root.glob("*.ipynb"))
+              if len(codefiles)!=1:
+                  raise RuntimeError("existing v2 notebook not pulled")
+              notebook=json.loads(codefiles[0].read_text())
+              source="\n".join("".join(c.get("source",[]))
+                        for c in notebook.get("cells",[]) if c.get("cell_type")=="code")
+              if (source.count("gauss.fit = _no_new_supervised_gaussian_fit")!=1
+                  or source.count("NO_NEW_TRAINING: Atlas train mode forbidden")!=1):
+                  raise RuntimeError("existing notebook lost no-training guards")
+          print("PUBLIC_0681_EXISTING_V2_NO_TRAINING_GUARDS_VERIFIED",flush=True)
+          # Original workflow uses same concurrency group. This standby starts
+          # ONLY after that job ends, and never publishes or re-runs a kernel.
+          for i in range(190):
+              if existing_submissions():
+                  raise SystemExit(0)
+              p=cmd("kaggle","kernels","status",REF+"/2")
+              m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+p.stderr)
+              if not m:raise RuntimeError("existing kernel v2 status unknown")
+              status=m.group(1)
+              print("PUBLIC_0681_STANDBY_V2_STATUS",i+1,status,flush=True)
+              if status=="COMPLETE":
+                  break
+              if status in ("ERROR","FAILED","CANCELLED"):
+                  raise RuntimeError("existing Kaggle v2 failed; STOP without retraining")
+              if i==189:raise RuntimeError("existing v2 remains queued or running after bounded wait")
+              time.sleep(90)
+          p=cmd("kaggle","kernels","files",REF+"/2","-v","--page-size","200")
+          if ("Next Page Token =" in p.stdout or
+              "submission.parquet" not in p.stdout):
+              raise RuntimeError("existing v2 COMPLETE but submission.parquet unavailable")
+          if existing_submissions():
+              raise SystemExit(0)
+          response=cmd("kaggle","competitions","submit",COMP,
+                       "-k",REF,"-v","2","-f","submission.parquet","-m",DESC)
+          ids=re.findall(r"Submission ref:\s*(\d+)",response.stdout+response.stderr,re.I)
+          if len(ids)!=1:
+              raise RuntimeError("official submit attempted, no unique Submission ID")
+          ref=ids[0]
+          print("PUBLIC_0681_STANDBY_OFFICIAL_ACCEPTED_REF",ref,flush=True)
+          for _ in range(25):
+              found=[r for r in own_entries() if r.get("ref")==ref]
+              if len(found)==1:
+                  print("PUBLIC_0681_STANDBY_OFFICIAL_LEDGER",json.dumps({
+                    k:found[0].get(k) for k in
+                    ("ref","status","publicScore","date","description")
+                  },sort_keys=True),flush=True)
+                  raise SystemExit(0)
+              time.sleep(12)
+          raise RuntimeError("submission accepted but ledger did not converge")
+          PY
