@@ -125,3 +125,37 @@ jobs:
                        "permission","invalid","not found")},
               },sort_keys=True),flush=True)
           PY
+      - name: Diagnose final-kernel dataset attachment and private dataset filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, json, subprocess, tempfile
+          from pathlib import Path
+          dataset="kolihhan/ntl-cda-l24-v2-c1-weights"
+          kernel="kolihhan/ntl-cda-l24-v2-final"
+          def run(argv):
+              return subprocess.run(argv, capture_output=True, text=True)
+          listing=run(["kaggle","datasets","files",dataset,"-v"])
+          files=list(csv.DictReader(listing.stdout.splitlines())) if listing.returncode==0 else []
+          print("CDA_V2_DATASET_FILE_INVENTORY",json.dumps({
+              "success":listing.returncode==0,
+              "file_count":len(files),
+              "filenames":[str(row.get("name") or row.get("Name") or "") for row in files],
+              "archive_present":any("cda-v2-C1-checkpoint.zip" in str(row)
+                                    for row in files),
+          },sort_keys=True),flush=True)
+          with tempfile.TemporaryDirectory() as tmp:
+              pull=run(["kaggle","kernels","pull",kernel,"-p",tmp,"-m"])
+              metadata=Path(tmp)/"kernel-metadata.json"
+              data=json.loads(metadata.read_text()) if metadata.is_file() else {}
+              print("CDA_V2_KERNEL_ATTACHED_SOURCE_INVENTORY",json.dumps({
+                  "pull_ok":pull.returncode==0,
+                  "metadata_found":metadata.is_file(),
+                  "dataset_sources":data.get("dataset_sources"),
+                  "competition_sources":data.get("competition_sources"),
+                  "model_sources":data.get("model_sources"),
+                  "kernel_type":data.get("kernel_type"),
+                  "enable_internet":data.get("enable_internet"),
+              },sort_keys=True),flush=True)
+          PY
