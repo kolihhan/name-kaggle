@@ -58,6 +58,14 @@ def resume_saved_once() -> None:
         existing.mkdir()
         run(["kaggle", "kernels", "pull", DEST_REF, "-p", str(existing), "-m"])
         saved_nb, saved_meta = load_one_notebook(existing)
+        print("PUBLIC_0681_SAVED_V1_METADATA_DIFF_DIAGNOSTIC", json.dumps({
+            key: {
+                "saved": str(saved_meta.get(key))[:1200],
+                "built": str(built_meta.get(key))[:1200],
+                "equal": saved_meta.get(key) == built_meta.get(key),
+            } for key in ("id", "title", "is_private", "kernel_type",
+                         "competition_sources", "dataset_sources", "model_sources")
+        }, sort_keys=True), flush=True)
         if (saved_meta.get("id") != DEST_REF or
             saved_meta.get("is_private") is not True or
             saved_meta.get("competition_sources") != ["name-that-llm"] or
