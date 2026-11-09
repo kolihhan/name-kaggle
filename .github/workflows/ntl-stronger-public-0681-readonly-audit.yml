@@ -93,3 +93,59 @@ jobs:
               print("LIGHTNING_0681_OFFICIAL_PATH_LINES",
                     json.dumps(rows[:115],sort_keys=True),flush=True)
           PY
+      - name: Prove frozen Lightning 0.681 final entrypoint excludes train-final and fitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast,json,pathlib,re,subprocess,tempfile
+          ref="lightningv08/0-681-qwen3-embedding-lora-qwen3-8-27b"
+          with tempfile.TemporaryDirectory() as tmp:
+              pr=subprocess.run(["kaggle","kernels","pull",ref,"-p",tmp,"-m"],
+                                capture_output=True,text=True)
+              if pr.returncode:raise RuntimeError("read-only pull failed")
+              n=json.loads(next(pathlib.Path(tmp).glob("*.ipynb")).read_text())
+              cells={i:"".join(c.get("source",[])).splitlines()
+                     for i,c in enumerate(n.get("cells",[])) if c.get("cell_type")=="code"}
+              marks=[]
+              for ci,ls in cells.items():
+                  for i,ln in enumerate(ls):
+                      if any(k in ln for k in ("--train-final","train_final=True","train_final=False",
+                         "if training:","source-test-conditioned","fixed-no-test-redo",
+                         "subprocess.Popen","--train","train-final","gaussian-train-features.npz")):
+                          marks.append({"cell":ci,"line":i+1,"text":ln.strip()[:185]})
+              config=None
+              for ci,ls in cells.items():
+                  for ln in ls:
+                      if ln.startswith("CONFIG = "):
+                          try: config=ast.literal_eval(ln.split("=",1)[1].strip())
+                          except Exception:pass
+              configview={}
+              if isinstance(config,dict):
+                  models=config.get("models") or []
+                  configview={
+                      "release_ready":config.get("RELEASE_READY"),
+                      "models":len(models),
+                      "gauss_weights":[(x.get("name"),x.get("gauss")) for x in models
+                                         if isinstance(x,dict) and x.get("gauss",0)],
+                      "train_flag":{k:v for k,v in config.items()
+                          if any(q in str(k).lower() for q in ("train","redo","fixed"))}
+                  }
+              # Print representative short excerpts of actual entry-point commands
+              excerpts={}
+              for ci in (26,38,41,49):
+                  ls=cells.get(ci,[])
+                  snippets=[]
+                  for i,ln in enumerate(ls):
+                      if any(x in ln for x in ("def main","--train-final",
+                           "training =","if training","subprocess.Popen",
+                           "subprocess.call","ensemble.py","cmd =","command =",
+                           "worker.py","--member","--train","model.train()")):
+                          snippets.append({"line":i+1,
+                             "context":[z.strip()[:145] for z in ls[max(0,i-2):min(len(ls),i+3)]]})
+                  excerpts[str(ci)]=snippets[:18]
+              print("LIGHTNING0681_STATIC_FINAL_ROUTE",json.dumps({
+                  "config":configview,"branch_markers":marks[:85],
+                  "entrypoint_contexts":excerpts
+              },sort_keys=True),flush=True)
+          PY
