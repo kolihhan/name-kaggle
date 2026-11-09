@@ -294,3 +294,43 @@ jobs:
               "completed_scored":len(good),"top":good[:12]
           },sort_keys=True),flush=True)
           PY
+      - name: Page through archived Kaggle kernels for existing complete candidates only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,subprocess
+          allrows=[]
+          for page in (1,2,3):
+              cmd=["kaggle","kernels","list","-m","-v","--page-size","100",
+                   "--page",str(page)]
+              x=subprocess.run(cmd,capture_output=True,text=True)
+              if x.returncode:
+                  print("ARCHIVE_PAGE_UNAVAILABLE",json.dumps({
+                      "page":page,"return_code":x.returncode,
+                      "stderr_tail":x.stderr[-200:]
+                  }),flush=True)
+                  break
+              lines=[line for line in x.stdout.splitlines() if line.strip()]
+              header=next((i for i,s in enumerate(lines)
+                           if s.strip().lower().startswith("ref,")),None)
+              rows=list(csv.DictReader(lines[header:])) if header is not None else []
+              allrows.extend(rows)
+              print("ARCHIVE_KERNEL_PAGE",json.dumps({
+                  "page":page,"rows":len(rows),
+                  "has_next":"Next Page Token" in x.stdout
+              }),flush=True)
+              if len(rows)<100:break
+          hits=[]
+          for r in allrows:
+              ref=str(r.get("ref") or "")
+              if ref.startswith("kolihhan/") and any(
+                  token in ref.lower() for token in (
+                      "ntl","name-that-llm","name-the-llm"
+                  )):
+                  hits.append(ref)
+          print("ARCHIVE_KERNEL_FROZEN_REFS",json.dumps({
+              "scanned":len(allrows),"matching_count":len(set(hits)),
+              "matching_refs":sorted(set(hits))[:180]
+          },sort_keys=True),flush=True)
+          PY
