@@ -1,0 +1,49 @@
+name: NTL 0.681 Blocked GPU Slot Cross-Project Readonly Status
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning-0681-gpu-slots-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Check status only for already-running other Kaggle project GPU sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json, subprocess
+          refs=[
+             "kolihhan/gemma4-toolcap-31b-42609260933",
+             "kolihhan/gemma4-contractpair-31b-42576094444",
+             "kolihhan/ntl-public-lightning-0681-frozen-no-train"
+          ]
+          rows=[]
+          for ref in refs:
+              p=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True)
+              rows.append({"ref":ref,"return_code":p.returncode,
+                           "status":next((z for z in (
+                               "KernelWorkerStatus.RUNNING","KernelWorkerStatus.QUEUED",
+                               "KernelWorkerStatus.COMPLETE","KernelWorkerStatus.ERROR",
+                               "KernelWorkerStatus.CANCELLED"
+                           ) if z in p.stdout+p.stderr),None),
+                           "missing":p.returncode!=0})
+          print("NTL_0681_CONCURRENT_GPU_SLOTS",json.dumps(rows,sort_keys=True),flush=True)
+          # CLI quota is read-only; no model execution.
+          q=subprocess.run(["kaggle","quota"],capture_output=True,text=True)
+          sanitized=[]
+          for ln in (q.stdout+q.stderr).splitlines():
+              if any(t in ln.lower() for t in ("gpu","hour","remaining","quota","batch","session")):
+                  sanitized.append(ln.strip()[:145])
+          print("KAGGLE_GPU_QUOTA_READONLY",json.dumps({
+              "return_code":q.returncode,"numeric_quota_lines":sanitized[:18]
+          },sort_keys=True),flush=True)
+          PY
