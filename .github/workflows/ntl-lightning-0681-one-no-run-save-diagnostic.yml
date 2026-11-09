@@ -47,6 +47,8 @@ jobs:
           if status.returncode!=0 or "KernelWorkerStatus.COMPLETE" not in status.stdout:
               raise RuntimeError("frozen original public Notebook not complete")
           folder=frozen_reproduction(Path("/tmp/ntl-public-0681-norun"))
+          built_meta=json.loads((folder["folder"]/"kernel-metadata.json").read_text())
+          assert built_meta["title"]==DEST_REF.split("/",1)[1], "Kaggle title does not resolve to ID"
           help_out=subprocess.run(["kaggle","kernels","push","--help"],
                                   capture_output=True,text=True)
           if help_out.returncode!=0 or "--no-run" not in help_out.stdout:
