@@ -1,0 +1,50 @@
+name: NTL Public 0.681 Asset Access Diagnosis Readonly
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-public-lightning-0681-asset-access-readonly.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Read-only preflight of externally hosted public assets and own kernel namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,subprocess,tempfile,pathlib
+          REF="lightningv08/0-681-qwen3-embedding-lora-qwen3-8-27b"
+          with tempfile.TemporaryDirectory() as tmp:
+              x=subprocess.run(["kaggle","kernels","pull",REF,"-p",tmp,"-m"],
+                               capture_output=True,text=True)
+              if x.returncode:raise RuntimeError("public source read unavailable")
+              metadata=json.loads((pathlib.Path(tmp)/"kernel-metadata.json").read_text())
+          output=[]
+          for ref in metadata["dataset_sources"]:
+              x=subprocess.run(["kaggle","datasets","files",ref,"-v","--page-size","1"],
+                              capture_output=True,text=True)
+              response=x.stdout+"\n"+x.stderr
+              output.append({"ref":ref,"readable":x.returncode==0,
+                             "return_code":x.returncode,
+                             "error_class":next((k for k in (
+                               "403","404","forbidden","unauthorized","not found",
+                               "permission","invalid") if k in response.lower()),None)})
+          print("LIGHTNING_0681_PUBLIC_DATASET_PERMISSION_MATRIX",
+                json.dumps(output,sort_keys=True),flush=True)
+          own=subprocess.run(["kaggle","kernels","list","-m","-s",
+                             "ntl-public-lightning-0681-frozen-no-train","-v"],
+                             capture_output=True,text=True)
+          print("LIGHTNING_0681_OWN_KERNEL_EXISTS",json.dumps({
+              "return_code":own.returncode,
+              "matching_exact":"kolihhan/ntl-public-lightning-0681-frozen-no-train" in own.stdout,
+              "stderr_tail":own.stderr[-230:]
+          },sort_keys=True),flush=True)
+          PY
