@@ -147,7 +147,7 @@ def frozen_reproduction(destination: Path) -> dict:
     })
     source_meta.update({
         "id": DEST_REF,
-        "title": "NTL public Lightning 0.681 frozen inference reproduction",
+        "title": DEST_REF.split("/", 1)[1],
         "is_private": True,
         "enable_internet": False,
         "machine_shape": "NvidiaTeslaT4",
