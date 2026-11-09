@@ -158,3 +158,32 @@ jobs:
                   "return_code":helptext.returncode,"flags":picked[:24]
               },sort_keys=True),flush=True)
           PY
+      - name: Discover highest public Kaggle competition kernels by score descending
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,subprocess
+          for sort in ("scoreDescending","hotness"):
+              cmd=["kaggle","kernels","list","--competition","name-that-llm",
+                   "--sort-by",sort,"--page-size","60","-v"]
+              p=subprocess.run(cmd,capture_output=True,text=True)
+              if p.returncode:
+                  print("PUBLIC_COMPETITION_NOTEBOOK_DISCOVERY_ERROR",json.dumps({
+                      "sort":sort,"return_code":p.returncode,
+                      "stderr_tail":(p.stdout+"\n"+p.stderr)[-350:]
+                  },sort_keys=True),flush=True)
+                  continue
+              lines=[line for line in p.stdout.splitlines() if line.strip()]
+              start=next((i for i,s in enumerate(lines)
+                         if s.lower().strip().startswith("ref,")),None)
+              rows=list(csv.DictReader(lines[start:])) if start is not None else []
+              print("PUBLIC_COMPETITION_KERNEL_SCORE_DISCOVERY",json.dumps({
+                  "sort":sort,"total_rows":len(rows),
+                  "columns":list(rows[0]) if rows else [],
+                  "first_45":[{k:str(v)[:115] for k,v in r.items()
+                              if k in ("ref","title","bestScore","score","status","lastRunTime","totalVotes")}
+                              for r in rows[:45]],
+                  "has_next":"Next Page Token" in p.stdout,
+              },sort_keys=True),flush=True)
+          PY
