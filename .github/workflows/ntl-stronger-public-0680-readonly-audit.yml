@@ -122,3 +122,39 @@ jobs:
                   "code_cells":sum(c.get("cell_type")=="code" for c in nb.get("cells",[]))
               },sort_keys=True),flush=True)
           PY
+      - name: Trace whether 0.680 Notebook calls supervised fitting in official path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re,subprocess,tempfile
+          with tempfile.TemporaryDirectory() as tmp:
+              s=subprocess.run(["kaggle","kernels","pull",
+                "alexchilton/name-that-llm-0-680-all-public-what-failed","-p",tmp,"-m"],
+                capture_output=True,text=True)
+              if s.returncode:raise RuntimeError("Notebook pull failed")
+              files=list(pathlib.Path(tmp).glob("*.ipynb"))
+              nb=json.loads(files[0].read_text())
+              spots=[]
+              pattern=re.compile(r"(?:\.fit\s*\(|fit_transform\s*\(|model\.train\s*\(|train_final|gauss\.fit\s*\(|--train-final|submission\.parquet|gaussian-train-features|__main__)",re.I)
+              for ci,c in enumerate(nb["cells"]):
+                  if c.get("cell_type")!="code":continue
+                  ls="".join(c.get("source",[])).splitlines()
+                  hits=[(i,ln.strip()) for i,ln in enumerate(ls) if pattern.search(ln)]
+                  if ci not in (11,15,17,20,28,31,46,52,54) and not hits:continue
+                  for i,line in hits[:18]:
+                      if len(spots)>=105:break
+                      spots.append({"cell":ci,"line":i+1,"text":line[:230],
+                                    "prev":ls[i-1].strip()[:110] if i else "",
+                                    "next":ls[i+1].strip()[:110] if i+1<len(ls) else ""})
+              print("ALEX0680_FINAL_PATH_STATIC_CALL_TRACE",
+                    json.dumps(spots,sort_keys=True),flush=True)
+              helptext=subprocess.run(["kaggle","kernels","list","--help"],
+                                     capture_output=True,text=True)
+              help_lines=helptext.stdout.splitlines()
+              picked=[x.strip()[:160] for x in help_lines
+                      if any(s in x.lower() for s in ("sort-by","page-size","search","competition"))]
+              print("KAGGLE_KERNEL_DISCOVERY_FLAGS",json.dumps({
+                  "return_code":helptext.returncode,"flags":picked[:24]
+              },sort_keys=True),flush=True)
+          PY
