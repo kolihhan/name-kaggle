@@ -70,7 +70,8 @@ def resume_saved_once() -> None:
             saved_meta.get("is_private") is not True or
             saved_meta.get("competition_sources") != ["name-that-llm"] or
             saved_meta.get("dataset_sources") != built_meta.get("dataset_sources") or
-            saved_meta.get("model_sources") != built_meta.get("model_sources") or
+            sorted(saved_meta.get("model_sources") or []) !=
+            sorted(built_meta.get("model_sources") or []) or
             saved_meta.get("title") != built_meta.get("title")):
             raise RuntimeError("previous Quick Save v1 identity/inputs drifted")
         if source_cells(saved_nb) != source_cells(built_nb):
