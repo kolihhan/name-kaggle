@@ -250,3 +250,47 @@ jobs:
               "has_next_page_token":"Next Page Token =" in p.stdout,
           },sort_keys=True),flush=True)
           PY
+      - name: No-training Kaggle existing notebook and official score inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,json,re,subprocess
+          def run(args):
+              return subprocess.run(args,capture_output=True,text=True)
+          # Read-only: inspect existing kernels/official ledger; no kernels push
+          # and no training or model fitting.
+          ls=run(["kaggle","kernels","list","-m","-v","--page-size","100"])
+          if ls.returncode:
+              print("EXISTING_KERNEL_LIST_UNAVAILABLE",json.dumps({
+                  "return_code":ls.returncode,"stderr_tail":ls.stderr[-300:]
+              }),flush=True)
+          else:
+              lines=[x for x in ls.stdout.splitlines() if x.strip()]
+              header=next((i for i,s in enumerate(lines)
+                           if s.strip().lower().startswith("ref,")),None)
+              rows=list(csv.DictReader(lines[header:])) if header is not None else []
+              refs=sorted(set(str(x.get("ref") or "") for x in rows
+                              if any(t in str(x.get("ref") or "").lower()
+                                     for t in ("ntl","name-that-llm","name-the-llm"))))
+              print("EXISTING_KERNEL_CANDIDATES",json.dumps({
+                  "query_ok":True,"total_rows":len(rows),"matching_refs":refs[:90],
+                  "pagination_flag":"Next Page Token" in ls.stdout
+              },sort_keys=True),flush=True)
+          led=run(["kaggle","competitions","submissions","name-that-llm","-v","-q"])
+          if led.returncode:
+              raise RuntimeError("official ledger unavailable")
+          rows=list(csv.DictReader(led.stdout.splitlines()))
+          good=[]
+          for row in rows:
+              if row.get("status")!="SubmissionStatus.COMPLETE":
+                  continue
+              try:score=float(row.get("publicScore") or "")
+              except ValueError:continue
+              good.append({"ref":row.get("ref"),"score":score,
+                           "description":str(row.get("description") or "")[:80]})
+          good.sort(key=lambda r:r["score"],reverse=True)
+          print("HISTORICAL_OFFICIAL_BEST_ENTRIES",json.dumps({
+              "completed_scored":len(good),"top":good[:12]
+          },sort_keys=True),flush=True)
+          PY
