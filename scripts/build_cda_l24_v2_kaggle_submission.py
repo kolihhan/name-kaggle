@@ -32,6 +32,26 @@ REQUIRED_SOURCE_PATHS = (
 )
 
 
+# Kaggle datasets may be automatically unpacked on publication. Keep the
+# exact same byte-hashed checkpoint whether the input is a ZIP or a mount.
+CHECKPOINT_RESOLVER_SOURCE = """def resolve_checkpoint_input(input_root, dataset_slug):
+    root = Path(input_root)
+    archives = sorted(root.rglob("cda-v2-C1-checkpoint.zip"))
+    expanded = sorted(
+        path.parent for path in root.rglob("meta.json")
+        if path.parent.name == dataset_slug
+        and (path.parent / "heads.safetensors").is_file()
+        and (path.parent / "adapter" / "adapter_model.safetensors").is_file()
+    )
+    if len(archives) + len(expanded) != 1:
+        raise RuntimeError(
+            f"expected one frozen checkpoint ZIP or expanded directory, "
+            f"found {len(archives)} archives and {len(expanded)} directories"
+        )
+    return ("zip", archives[0]) if archives else ("directory", expanded[0])
+"""
+
+
 def offline_pip_args(wheelhouse: str) -> list[str]:
     return [
         "-m",
@@ -171,18 +191,25 @@ for rel, content in SOURCES.items():
 sys.path.insert(0, str(package_root))
 
 model_root = find_qwen_model_root()
-checkpoint_archive = exactly_one("**/cda-v2-C1-checkpoint.zip")
-checkpoint_dir = Path("/kaggle/working/cda-v2-C1-checkpoint")
-if checkpoint_dir.exists():raise RuntimeError("checkpoint extraction destination unexpectedly exists")
-import zipfile
-with zipfile.ZipFile(checkpoint_archive,"r") as z:
-    for item in z.infolist():
-        rel=Path(item.filename)
-        if rel.is_absolute() or ".." in rel.parts or not rel.parts:
-            raise RuntimeError("unsafe private model checkpoint archive member")
-    z.extractall(checkpoint_dir)
+{CHECKPOINT_RESOLVER_SOURCE}
+checkpoint_mode, checkpoint_source = resolve_checkpoint_input(
+    Path("/kaggle/input"), EXPECTED_CHECKPOINT_REF.split("/", 1)[1])
+if checkpoint_mode == "directory":
+    checkpoint_dir = checkpoint_source
+else:
+    checkpoint_dir = Path("/kaggle/working/cda-v2-C1-checkpoint")
+    if checkpoint_dir.exists():
+        raise RuntimeError("checkpoint extraction destination unexpectedly exists")
+    import zipfile
+    with zipfile.ZipFile(checkpoint_source,"r") as z:
+        for item in z.infolist():
+            rel=Path(item.filename)
+            if rel.is_absolute() or ".." in rel.parts or not rel.parts:
+                raise RuntimeError("unsafe private model checkpoint archive member")
+        z.extractall(checkpoint_dir)
 if not (checkpoint_dir/"meta.json").is_file():
     raise FileNotFoundError("v2 private Stage A meta missing")
+print("CDA_V2_CHECKPOINT_INPUT_MODE", checkpoint_mode)
 train_path = first_existing([
     "/kaggle/input/name-that-llm/train.csv",
     "/kaggle/input/competitions/name-that-llm/train.csv",
