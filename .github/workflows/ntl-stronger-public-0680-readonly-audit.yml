@@ -1,0 +1,89 @@
+name: NTL Public 0.680 Notebook Static Dependency Audit (No Training)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-stronger-public-0680-readonly-audit.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect exact public Alex Chilton kernel and inputs, never run it
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import collections, json, pathlib, re, subprocess, tempfile
+          refs = [
+              "alexchilton/name-that-llm-0-680-all-public-what-failed",
+              "alexchilton/name-that-llm-0-663-all-public-what-failed",
+              "alexchilton/name-that-llm-0-662-all-public-what-failed",
+          ]
+          with tempfile.TemporaryDirectory() as temp:
+              root=pathlib.Path(temp)
+              for ref in refs:
+                  dst=root/("candidate-"+str(refs.index(ref)))
+                  dst.mkdir()
+                  p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dst),"-m"],
+                                   capture_output=True,text=True)
+                  if p.returncode:
+                      print("PUBLIC_CANDIDATE_PULL_FAILED",json.dumps({
+                          "ref":ref, "return_code":p.returncode,
+                          "stderr_tail":(p.stdout+"\n"+p.stderr)[-260:]
+                      }),flush=True)
+                      continue
+                  metadata=dst/"kernel-metadata.json"
+                  meta=json.loads(metadata.read_text()) if metadata.exists() else {}
+                  sourcefiles=[]
+                  for file in dst.iterdir():
+                      if file.suffix in (".ipynb",".py"):
+                          sourcefiles.append(file)
+                  codes=[]
+                  for file in sourcefiles:
+                      if file.suffix==".py":codes.append(file.read_text(errors="replace"))
+                      else:
+                          try:
+                              n=json.loads(file.read_text(errors="replace"))
+                              for c in n.get("cells",[]):
+                                  if c.get("cell_type")=="code":
+                                      src=c.get("source",[])
+                                      codes.append("".join(src) if isinstance(src,list) else str(src))
+                          except Exception:
+                              pass
+                  code="\n".join(codes)
+                  patterns = {
+                      "sklearn_or_library_fit_calls":r"\.(?:fit|fit_transform|partial_fit|train)\s*\(",
+                      "torch_optimizer_updates":r"\.(?:backward|step|zero_grad)\s*\(",
+                      "keras_fit_calls":r"(?:model|net)\.fit\s*\(",
+                      "pretrained_loads":r"(?:joblib\.load|torch\.load|pickle\.load|load_model|from_pretrained)\s*\(",
+                      "prediction_calls":r"\.(?:predict|predict_proba|decision_function)\s*\(",
+                      "submit_write":r"submission\.parquet",
+                      "external_sources":r"(?i)(?:dataset_sources|model_sources)",
+                  }
+                  matches={}
+                  for k,v in patterns.items():
+                      hits=re.findall(v,code)
+                      matches[k]=len(hits)
+                  funcs=re.findall(r"(?m)^\s*(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)",code)
+                  print("PUBLIC_0680_AUDIT",json.dumps({
+                      "ref":ref, "metadata":{k:meta.get(k) for k in
+                          ("id","title","is_private","enable_internet","kernel_type",
+                           "competition_sources","dataset_sources","model_sources",
+                           "machine_shape")},
+                      "source_files":[x.name for x in sourcefiles],
+                      "source_chars":len(code),"static_patterns":matches,
+                      "functions":funcs[:55],
+                      "has_competition_train_reader":bool(re.search(r"train\\.csv",code)),
+                      "has_external_datasets":len(meta.get("dataset_sources") or []),
+                  },sort_keys=True),flush=True)
+                  break
+              else:
+                  print("PUBLIC_0680_NOT_PULLABLE",flush=True)
+          PY
