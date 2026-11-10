@@ -55,7 +55,7 @@ jobs:
               k:meta.get(k) for k in ("id","is_private","enable_internet",
                   "kernel_type","machine_shape","license_name","license","license_id",
                   "licenseName","version_number","id_no")
-              if k in meta},default=str,flush=True))
+              if k in meta},default=str),flush=True)
           sources=[(i,"".join(cell.get("source",[])) if isinstance(cell.get("source",[]),list)
                    else str(cell.get("source",""))) for i,cell in enumerate(nb.get("cells",[]))
                    if cell.get("cell_type")=="code"]
