@@ -30,15 +30,15 @@ Allow only original unlabeled prompt grouping/TF-IDF fit-transform during infere
 
 ## External rights / contest rules
 
-Kaggle Code Competition allows openly and freely available pretrained assets, offline T4 inference up to 9 hours. However public source `kernel-metadata.json` has **no explicit license field**, and accessible page HTML exposed no license declaration. Do not claim Apache-2 merely because some other notebooks carry that license. Upstream-specific reuse rights and access to each necessary public checkpoint require explicit confirmation before own-kernel push. Do not make unlicensed public derivative distributions.
+Kaggle Code Competition allows openly and freely available pretrained assets, offline T4 inference up to 9 hours. However public source `kernel-metadata.json` has **no explicit license field**, and accessible page HTML exposed no license declaration. Do not claim Apache-2 merely because some other notebooks carry that license. Kaggle's [official Notebook guide](https://www.kaggle.com/docs/notebooks) expressly permits **forking any public Notebook to experiment with edits**. This project therefore allows **one private, attributed platform-native fork** for a no-training competition reproduction, without public redistribution or asserting that its SPDX license is Apache-2. The upstream-specific license identifier is still unknown and must not be invented. If a model/dataset reports restricted access or a separate license acceptance requirement, abort rather than bypass it. Do not make public derivative distributions.
 
 ## Reproduction gate
 
 1. Confirm hash, metadata, exactly one notebook, source guard insertion counts (one Gaussian, one Atlas, one core-worker).
 2. Confirm named credits and no supervised fit active; compile/test generated source scripts and guard behavior where safe.
-3. Obtain source-license evidence and audit external asset reuse permissions.
-4. Only then push **one** own private frozen Notebook and inspect preview status and `submission.parquet` without bypassing no-training guards.
-5. If preview passes, and actual 4,000-row / 9h constraints have credible evidence, accept exactly **one** new official Kaggle submission via private own Notebook; report accepted submission ref and eventual official score. No duplicate submission, repeated tuning, retraining or escape hatch.
+3. Rely only on Kaggle's documented ability to privately fork a public Notebook; retain all original notices and source credit. A specific open-source license for this source was not exposed by the API and must not be invented. Stop on any dependency-license or permission error.
+4. Push **one** own private frozen Notebook under the existing no-training authorization, then inspect its preview status and `submission.parquet` without bypassing no-training guards.
+5. If preview passes, submit this **single pre-frozen** private Notebook version once to obtain an authenticated hidden rerun. This is the required whole-size 4,000-row / 9h test, not an independently proven runtime feasibility claim. Report accepted submission ref and eventual official score. No duplicate submission, repeated tuning, retraining or escape hatch.
 
 ## Public GitHub safety
 
