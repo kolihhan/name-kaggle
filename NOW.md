@@ -1,5 +1,23 @@
 # NOW
 
+## MPCF EXECUTED — decisive negative control and generation-channel warning (2026-11-11 MYT)
+
+**FACT, actual one-shot real data:** [Actions #42855077344](https://github.com/kolihhan/name-kaggle/actions/runs/42855077344), job `129965793036`, **SUCCESS** with six passing tests and real paired inference on public external short texts. Precommitted [MPCF contract](artifacts/research/mpcf-inference-only/CONTRACT.md), results in [MPCF RESULT](artifacts/research/mpcf-inference-only/RESULT.md). **REJECT this exact hash-vector MPCF route**: with prompt-heldout same-source binary pairs, the matched result was worse than both shuffled-pair and unpaired prototypes in ALL three cases.
+
+| Pair | Heldout prompt pairs | Matched binary BA | Shuffled BA | Unpaired prototype BA | Length-only BA |
+|---|---:|---:|---:|---:|---:|
+| GPT Luna/Sol | 59 | 0.576271 | 0.584746 | 0.762712 | **0.949153** |
+| GPT Sol/Terra | 60 | 0.525000 | 0.566667 | 0.875000 | **0.829167** |
+| GLM 5.3/Flash | 60 | 0.591667 | 0.616667 | 0.800000 | 0.683333 |
+
+**Interpretation (NOT claim of score gain):** dramatic source-specific label predictability from answer length raises a serious **generator identity vs. collection protocol / length behavior confounding** hypothesis. We cannot prove protocol cause because served-version, requested response budget, system prompt and sampling evidence are absent; model-intrinsic length differences remain an alternative. All rows derive from SWEeper software-repair collection. This is **binary same-source evaluation**, not 18-class Kaggle BA, strong-anchor same-row ablation, or cross-source robustness. Dataset reports `License(s): other`; redistribution/permissive licensing not verified. No source text committed.
+
+**Global pivot, not micro-tuning:** Current evidence does not justify searching top_k, changing char n-grams, adding gates, or running a better GPU encoder merely to rescue this failed local representation. The next **identifiability gate** is obtaining controlled same-prompt, same-model answers observed under *more than one documented channel/protocol* AND sibling comparisons under identical channel, with model-version/time/length settings traceable. If such data cannot be proven, `BLOCKED_BY_IDENTIFIABILITY`. Do not assume these same-source pairs satisfy the crossed design. The prior 0.668 strong public reproduction remains an *external baseline*, not a trainable starting point.
+
+**Official Kaggle status:** Own confirmed Public best **0.668**. [Read-only ledger check #42618511398](https://github.com/kolihhan/name-kaggle/actions/runs/42618511398) at 2026-11-10 16:29:27 UTC still gives **submission `58167751` PENDING, Public Score empty**, notebook v2 COMPLETE. No score from the MPCF research study, no Kaggle submission, neural/supervised fitting, or GPU consumed here.
+
+---
+
 ## BREAKTHROUGH BET — paired-prompt counterfactual model evidence (2026-11-10)
 
 **Decision:** The user wants a **large, genuinely differentiated capability leap**, not repeated audits, marginal ensemble tuning, or copy→submit cycles. We select exactly ONE ambitious, falsifiable inference-only line: **Matched-Prompt Contrastive Fingerprinting (MPCF)**. It is an **experimental bet, not an achieved scientific breakthrough, a novel-publication claim, or a scored Kaggle result.**
