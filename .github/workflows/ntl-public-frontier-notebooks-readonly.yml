@@ -1,0 +1,73 @@
+name: NTL Public Notebook Frontier Discovery (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-public-frontier-notebooks-readonly.yml]
+permissions: {contents: read}
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle client without model runtime
+        run: python -m pip install --disable-pip-version-check -q 'six==1.17.0' 'kaggle==2.2.5'
+      - name: Read only public competition notebooks ordered by observed score
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import csv, io, json, math, re, subprocess
+          COMP="name-that-llm"
+          rows=[]
+          for page in (1, 2, 3):
+              args=["kaggle","kernels","list","--competition",COMP,
+                    "--sort-by","scoreDescending","--page-size","100",
+                    "--page",str(page),"-v"]
+              p=subprocess.run(args,capture_output=True,text=True,timeout=90)
+              if p.returncode:
+                  raise RuntimeError("Kaggle kernels list failed; page="+str(page)+
+                                     ",returncode="+str(p.returncode))
+              clean=p.stdout.lstrip("\ufeff").strip()
+              parsed=list(csv.DictReader(io.StringIO(clean)))
+              if not parsed:
+                  if page==1:raise RuntimeError("No public Kaggle kernels returned")
+                  break
+              fields=parsed[0].keys()
+              print("NTL_KAGGLE_PUBLIC_FIELDS",json.dumps(sorted(fields)),flush=True)
+              rows.extend(parsed)
+          def score(row):
+              for k in ("score","publicScore"):
+                  try:
+                      v=float(str(row.get(k,"")).strip())
+                      if math.isfinite(v) and 0<=v<=1:return v
+                  except (ValueError,TypeError):pass
+              return None
+          distinct={}
+          for row in rows:
+              ref=(row.get("ref") or row.get("kernelRef") or "").strip()
+              if not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+",ref):
+                  continue
+              x=score(row)
+              if x is None:continue
+              data={"ref":ref,"public_score":x,
+                    "title":str(row.get("title") or "")[:160],
+                    "author":str(row.get("author") or "")[:90],
+                    "last_run":str(row.get("lastRunTime") or "")[:60]}
+              if ref not in distinct or x>distinct[ref]["public_score"]:
+                  distinct[ref]=data
+          ordered=sorted(distinct.values(),
+                        key=lambda x:(-x["public_score"],x["ref"]))
+          if not ordered:raise RuntimeError("No public code scores could be parsed")
+          print("NTL_FRONTIER_COUNTS",json.dumps({
+              "entries_returned":len(rows),"unique_scored_notebooks":len(ordered),
+              "above_0668":sum(x["public_score"]>0.668 for x in ordered),
+              "at_least_068":sum(x["public_score"]>=0.680 for x in ordered)
+          },sort_keys=True),flush=True)
+          print("NTL_FRONTIER_TOP",json.dumps(ordered[:45],ensure_ascii=False),flush=True)
+          print("NTL_FRONTIER_LICENSE_NOTE","Kaggle score metadata does not establish notebook license, input accessibility, or independent score reproduction",flush=True)
+          PY
