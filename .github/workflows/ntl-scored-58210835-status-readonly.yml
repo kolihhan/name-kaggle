@@ -48,3 +48,24 @@ jobs:
           print("NTL_PRIVATE_PREVIEW_STATE",
                 json.dumps({"return_code":k.returncode,"status":state}),flush=True)
           PY
+      - name: Diagnose two exact submissions without re-submitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, subprocess
+          for ref in ("58210835","58167751"):
+              p=subprocess.run(
+                  ["kaggle","competitions","submission",ref],
+                  capture_output=True,text=True,timeout=60)
+              allow=("Submission Ref:","Status:","Public Score:","Private Score:",
+                     "Error:","Description:","Submission Date:")
+              report=[]
+              for raw in p.stdout.splitlines():
+                  line=raw.strip()
+                  if any(line.startswith(x) for x in allow):
+                      report.append(line[:700])
+              print("NTL_EXACT_SUBMISSION_DETAILS",
+                  json.dumps({"ref":ref,"return_code":p.returncode,
+                              "filtered":report},ensure_ascii=False),flush=True)
+          PY
