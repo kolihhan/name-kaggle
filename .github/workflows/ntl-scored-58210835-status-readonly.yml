@@ -1,0 +1,50 @@
+name: NTL Official Scoring Status 58210835 and 58167751 (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-scored-58210835-status-readonly.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read only exact official submitted rows
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import csv, io, json, subprocess
+          target=("58210835","58167751","58022340","58045266")
+          p=subprocess.run(
+              ["kaggle","competitions","submissions","name-that-llm","-v","-q"],
+              capture_output=True,text=True,timeout=60)
+          if p.returncode:
+              # Never print raw Kaggle CLI errors because they can contain secrets.
+              raise RuntimeError("authenticated official Kaggle submissions endpoint unavailable")
+          rows=list(csv.DictReader(io.StringIO(p.stdout)))
+          selected={}
+          for ref in target:
+              hits=[{k:r.get(k) for k in ("ref","status","publicScore","privateScore","date","description")}
+                    for r in rows if str(r.get("ref","")).strip()==ref]
+              if len(hits)>1:
+                  raise RuntimeError("ambiguous duplicate official ID "+ref)
+              selected[ref]=hits[0] if hits else {"ref":ref,"visibility":"not_in_returned_ledger"}
+          print("NTL_OFFICIAL_SCORING_LEDGER",json.dumps(selected,sort_keys=True),flush=True)
+          k=subprocess.run(["kaggle","kernels","status",
+                           "kolihhan/ntl-ozertuu-0683-guarded-no-train"],
+                           capture_output=True,text=True,timeout=60)
+          result=(k.stdout+"\n"+k.stderr)
+          state=next((s for s in ("KernelWorkerStatus.COMPLETE",
+                   "KernelWorkerStatus.ERROR","KernelWorkerStatus.RUNNING",
+                   "KernelWorkerStatus.QUEUED","KernelWorkerStatus.CANCELLED")
+                   if s in result),"UNKNOWN")
+          print("NTL_PRIVATE_PREVIEW_STATE",
+                json.dumps({"return_code":k.returncode,"status":state}),flush=True)
+          PY
