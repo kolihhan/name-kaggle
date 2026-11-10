@@ -1,0 +1,105 @@
+name: NTL 0683 public candidate licensing and runtime path audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-ozertuu-0683-readonly-preflight.yml]
+permissions: {contents: read}
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read-only Ozertuu 0683 public source and competition metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import hashlib, inspect, json, pathlib, re, subprocess, tempfile
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          ref="ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52"
+          api=KaggleApi();api.authenticate()
+          print("NTL_PREFLIGHT_REF",ref,flush=True)
+          print("NTL_PREFLIGHT_GET_SIGNATURE",str(inspect.signature(api.kernels_get)),flush=True)
+          try:
+              obj=api.kernels_get(ref)
+              allowed=("id","ref","version_number","versionNumber","script_version_id",
+                       "scriptVersionId","license","license_name","licenseName",
+                       "license_id","licenseId","last_run_time","lastRunTime")
+              print("NTL_PREFLIGHT_KERNEL_GET_FIELDS",
+                    json.dumps({k:str(getattr(obj,k,None))[:200] for k in allowed
+                                if hasattr(obj,k)},sort_keys=True),flush=True)
+              print("NTL_PREFLIGHT_KERNEL_GET_TYPE",type(obj).__name__,flush=True)
+          except Exception as exc:
+              print("NTL_PREFLIGHT_KERNEL_GET_BLOCKED",type(exc).__name__,flush=True)
+          dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-0683-public-source-"))
+          p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dest),"-m"],
+                           capture_output=True,text=True,timeout=100)
+          if p.returncode:
+              print("NTL_PREFLIGHT_PULL_FAILED",p.returncode,flush=True)
+              raise SystemExit(2)
+          files=list(dest.glob("*.ipynb"))
+          if len(files)!=1:raise RuntimeError("Expected exactly one public notebook")
+          nbbytes=files[0].read_bytes()
+          nb=json.loads(nbbytes)
+          meta=json.loads((dest/"kernel-metadata.json").read_text())
+          print("NTL_PREFLIGHT_PUBLIC_SOURCE_SHA256",hashlib.sha256(nbbytes).hexdigest(),flush=True)
+          print("NTL_PREFLIGHT_PUBLIC_METADATA",json.dumps({
+              k:meta.get(k) for k in ("id","is_private","enable_internet",
+                  "kernel_type","machine_shape","license_name","license","license_id",
+                  "licenseName","version_number","id_no")
+              if k in meta},default=str,flush=True))
+          sources=[(i,"".join(cell.get("source",[])) if isinstance(cell.get("source",[]),list)
+                   else str(cell.get("source",""))) for i,cell in enumerate(nb.get("cells",[]))
+                   if cell.get("cell_type")=="code"]
+          allcode="\n".join(s for _,s in sources)
+          signatures={
+              "supervised_training":r"(?im)^\s*(?:!.*(?:train|fit)|.*(?:\.backward\(|optimizer\.step\(|train_final|--train-final|\.fit\())",
+              "shell_execution":r"(?im)^\s*(?:!|%run|subprocess\.|os\.system)",
+              "writing_files":r"(?im)^\s*%%writefile",
+              "entry_points":r"(?im)^\s*(?:if __name__|main\(|run\(|!python\b)",
+              "pretrained_loads":r"from_pretrained\(|torch\.load\(|joblib\.load\(",
+              "competition_io":r"submission\.parquet|test\.csv|train\.csv",
+          }
+          for name,pat in signatures.items():
+              matches=[(i, len(list(re.finditer(pat,s)))) for i,s in sources if re.search(pat,s)]
+              print("NTL_PREFLIGHT_STATIC_MARKER",json.dumps({
+                  "name":name,"cells":matches[:60],"count":sum(v for _,v in matches)
+              }),flush=True)
+          # Public code only; print bounded lines around markers to distinguish
+          # dead training functions from executable inference calls.
+          pat=re.compile(r"(?im)^.*(?:\.fit\(|\.train\(|train-final|train_final|--train-final|torch\.optim|gauss\.fit|%run|!python|main\(|CONFIG\s*=|__name__|%%writefile|submission\.parquet|gsq_share).*")
+          for ix,source in sources:
+              matched=[(n,line.strip()[:170]) for n,line in enumerate(source.splitlines(),1)
+                       if pat.search(line)]
+              if matched:
+                  print("NTL_PREFLIGHT_PUBLIC_CODE_MARKERS",
+                    json.dumps({"cell":ix,"lines":matched[:18],
+                                "total":len(matched)},ensure_ascii=False),flush=True)
+          # Markdown license hints are not an OSI license grant.
+          for ix,c in enumerate(nb.get("cells",[])):
+              if c.get("cell_type")!="markdown":continue
+              body="".join(c.get("source",[]))
+              hits=[x.strip()[:240] for x in body.splitlines()
+                    if re.search(r"(?i)\blicen[sc]e\b|apache.?2|MIT license|cc by|copyright",x)]
+              if hits:print("NTL_PREFLIGHT_PUBLIC_LICENSE_HINT",
+                            json.dumps({"cell":ix,"lines":hits[:8]}),flush=True)
+          output=subprocess.run(["kaggle","kernels","files",ref,"-v"],
+                               capture_output=True,text=True,timeout=45)
+          if output.returncode:
+              print("NTL_PREFLIGHT_UPSTREAM_OUTPUT_BLOCKED",output.returncode,flush=True)
+          else:
+              lines=[x.strip()[:190] for x in output.stdout.splitlines()
+                     if "submission.parquet" in x or "Next Page Token" in x]
+              print("NTL_PREFLIGHT_UPSTREAM_OUTPUT",json.dumps(lines[:8]),flush=True)
+          # This is intentionally just an audit; no kernel push, submission,
+          # data/weights download, GPU use, or training.
+          print("NTL_PREFLIGHT_COMPLETE",json.dumps({"source_read":True,
+              "training":False,"notebook_pushed":False,
+              "submitted":False,"gpu_used":False}),flush=True)
+          PY
