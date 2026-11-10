@@ -4,49 +4,68 @@ Working repository for the Kaggle competition **Name That LLM**: identify which 
 
 Competition: https://www.kaggle.com/competitions/name-that-llm
 
-## Project mission and operating model — 2026-11-10
+## Project mission and operating model — competitive research, not a copying or auditing treadmill (2026-11-10)
 
-**Outcome first.** This repository exists to (1) produce a stronger **real, officially scored** entry for the Kaggle Name That LLM competition and (2) develop defensible research about which signals distinguish 18 similar generator models across new prompts and sources. More experiments, GitHub Actions, audits, and reports are **not** the goal.
+### North star — FOUR required outcomes
 
-**Priority:** outperform the currently verified own-account score of 0.668 using legitimately reusable public code and pre-trained / pre-fit assets. **User constraint: no new neural training or supervised readout fitting.** Do not use Public LB feedback as a tuning loop, duplicate previous submissions, or get trapped in endless research/audit cycles. The no-training restriction remains until the user explicitly changes it; a promising idea does not override it.
+1. **Competitiveness:** improve **our own actual official Kaggle result** beyond the verified 0.668 account record (or the latest higher terminal result), without targeting the observed Public leaderboard through adaptive patches. Protect against private-distribution collapse.
+2. **Technical strength:** create and substantiate a materially different **model-attribution representation, inference mechanism or decision architecture**. Reproducing a publicly stronger notebook, changing blend weights or adding audit workflows alone is not an original advance.
+3. **End-to-end delivery:** research question → falsifiable mechanism → exact runnable implementation → genuinely meaningful full-stack and transfer checks → frozen Kaggle Notebook → accepted official submission ID → terminal score / failure decision.
+4. **Resource discipline:** no further user-funded repeated model training or unnecessary GPU use; prioritize existing public/pretrained and prefit assets, existing outputs, bounded CPU checks, and the competition's inference environment. The user's standing **NO NEW TRAINING** authorization boundary remains in force; new neural training, supervised readout fitting, or calibration fitting are prohibited until they explicitly authorize otherwise. A strong hypothesis is not permission to train.
 
-### Two lanes — distinct outcomes
+The goal is **real competitive results AND independently justified technique**, not activity volume. Winning by reproducing someone else's code is useful as a benchmark or fallback, **not** the research result.
 
-| Lane | Purpose | Deliverable | Proof |
-|---|---|---|---|
-| **A. Competitive reproduction (priority now)** | Beat our last confirmed official score with already-trained public solutions. | One frozen, attributed, runnable Kaggle Notebook and one official Code Competition entry. | Unique official Submission ID, terminal score, pinned original/modified source and assets. Upstream author's score is not our score. |
-| **B. Independent research** | Explain provider/sibling confusion, distinguish genuine model identity from prompt/source artifacts, and test complementary mechanisms. | One falsifiable hypothesis, controls, independent transfer evidence, and cheapest discriminating non-training analysis based on existing outputs. | Source/prompt-disjoint comparisons, residual error patterns, controls and explicit PASS / FAIL / UNKNOWN. No unearned novelty claims. |
+### What the task actually is
 
-Do not label an upstream solution reproduction as original research, nor use an attractive offline OOF number as proof of leaderboard generalization.
+- Predict exact generator among 18 models across six providers. Balanced accuracy is mean per-label recall, so success on large easy provider families cannot hide poor sibling recall.
+- Hidden test prompts are unseen; test rows per model and per prompt are not promised to match the almost-full 18-model groups in train.
+- The observed source/domain shift and within-provider sibling ambiguity are **candidate bottleneck hypotheses**, not fully proven causal explanations.
+- The Kaggle Code Competition reruns an internet-disabled Notebook on ~4k hidden passages, max 9h CPU/GPU, requiring submission.parquet (id, model).
+- Public LB is only about 40% of the hidden test; the remaining ~60% determines Private standings. Do not treat Public score, local OOF, or a notebook title as proof of private transfer.
 
-### Outcome-oriented operating cycle
+### Four linked components
 
-DISCOVER → SCREEN → FREEZE → BUILD / STATIC VERIFY → ONE KAGGLE INFERENCE → ONE OFFICIAL SUBMISSION → SCORE / VERIFY → DECIDE / CLOSE
+| Component | Function | Required evidence |
+|---|---|---|
+| **Champion** | Exact pinned strongest *our-account terminal* submission, with external-source attribution where applicable. | Official ID, terminal score, full asset/code provenance. |
+| **Failure diagnosis** | Determine which sibling pairs/source shifts the champion fails on, and which apparent improvements are merely prompt-group shortcuts. | SAME-ROW comparison of honest held-out predictions, class/pair errors, source holdout and prompt-subset stress. No extrapolation from unavailable logits. |
+| **Mechanism research** | Pursue ONE new source of **conditional information beyond the champion**, preferably prompt-robust sibling evidence or genuinely independent representations, not post-hoc threshold/weight tuning. | Explicit hypothesis, null/negative control, what would falsify it, frozen inference rule, paired rescue-vs-regression counts, predeclared transfer gate. |
+| **Production-quality Kaggle delivery** | Package only a promoted candidate as a completely runnable offline Notebook and evaluate it once. | Full-stack integration test, stable frozen code/assets, one valid Parquet, one unique official submission, terminal score and close decision. |
 
-- **Discover:** Survey genuinely stronger public Kaggle notebooks and code repositories, capturing exact version, score evidence, license, weights, pre-fit assets and active training/inference call path. Do not trust score-themed notebook titles alone.
-- **Screen:** Confirm the full externally trained dependency chain is accessible and allowed by Kaggle, runnable with internet disabled within nine hours, and requires no new neural or supervised fitting. Distinguish inactive .fit definitions from actual active execution.
-- **Freeze:** Pin source SHA, model/data assets, execution mode, no-training guards, attribution, exact submission schema and stop rules **before** a new official score.
-- **Execute:** Reuse stable scripts and the smallest existing workflow; correct only independently proven packaging/runtime bugs. Make one intended Kaggle code submission after genuine submission.parquet exists. Never silently rerun training or replace predictions.
-- **Verify:** Confirm official acceptance, ID, terminal Public score, and comparison with the previously verified own-account best. PENDING ≠ scored. Notebook preview ≠ final hidden result.
-- **Decide:** WIN updates champion and preserves the entry; FAIL closes that candidate with evidence, without public-LB retuning. BLOCKED reports a concrete external constraint. No speculative next submission.
+A copied high-scoring notebook can improve the Champion, but **is not a substitute** for the mechanism-research component.
 
-Use one active candidate and one accountable submission path at a time. Historical one-shot workflows are audit history, not a reason to create another YAML for every check. Reuse existing checks where possible. The user wants a concrete Kaggle result or a genuinely informative research finding, not a higher count of workflows.
+### Reference-derived anti-shortcut gate: xiewenwei29, 本队踩坑记录
 
-### Success and evidence
+The public Notebook xiewenwei29/name-that-llm (read-only public Kaggle source pulled and inspected on 2026-11-10, audit workflow 42774976150) states:
 
-**Competition success:** a verified own-account official score strictly above the previous best, with reproducible lineage; the Public leaderboard covers roughly 40% of hidden test, and Private covers the other 60%, so Public progress does not guarantee final placement.
+- Its nearly complete train prompts (149 groups with 18 rows, one with 17) make one-to-one assignment methods look unusually attractive.
+- In its **SVC-only** local stress experiment simulating 1–8 rows per prompt, argmax BA was **0.4658 ± 0.0147** versus Hungarian postprocess BA **0.4556 ± 0.0144**. The full-prompt **different condition** showed 0.5742 with postprocessing. These numbers must not be compared as one controlled test across conditions.
+- The report attributes dense cluster mergers to prompt estimation and explicitly warns its SVC-only evidence **does not prove** the residual adjustment helps the full ensemble. It discloses TF-IDF previously fit before CV split in an old exploratory result and an unrun public Quick Save with incomplete pretrained assets.
 
-**Research success:** a transferable explanation and prediction supported by controls and genuinely different prompts/sources, including negative findings. Repeated reused official folds are diagnostic only. Preserve EVALUATION_POLICY.md and RESEARCH_DOCTRINE.md unchanged.
+**Mandatory consequence:** no hidden assumption of one answer per model per prompt, no promotion from complete-prompt OOF, no standalone-component result advertised as whole-system gain, no leaking full-data preprocessing into OOF, and no claimed submission success based on Quick Save or unmounted assets. Exact hidden prompt grouping is unknown.
 
-**Execution success:** score accepted and terminal, or explicit evidence of the exact blocked dependency. An audit-only or passing-CI report alone is not a deliverable.
+### Execution plan — one active innovative candidate, not infinite phases
 
-### Current source of truth and handoff
+**P0: Close the real Kaggle score.** For official submission **58167751** (Lightning public 0.681 reproduction), continue **read-only** ledger verification until terminal. Last authenticated Nov 10 15:23 MYT: Kaggle Notebook v2 COMPLETE, entry PENDING, Public Score blank. Report the actual score, not upstream author's 0.681.
 
-NOW.md on the active research/attribution-bottleneck-review-20261106 branch is the live Kaggle ledger. The default main branch is older and must not be mistaken for current research policy. Reconcile branches in a separately safety-reviewed operation; the public repository's historical official-data exposure has not been certified fixed.
+**P1: Identify genuine incremental information.** Start from our frozen champion and already-computed research results. Audit which **same-row** intermediate outputs survive (OOF predictions/logits, subgroup correctness, external source pairs); explicitly distinguish available artifacts from vanished temporary runner caches. Form one global bottleneck claim and a serious counter-hypothesis. Candidate direction: **uncertainty-targeted within-provider attribution based on an independently informative frozen representation** — only if its conditional error-correction signal can actually be demonstrated. Do not recycle rejected prompt centring, Short-TRACE, CDA, DeTeCtive/LUSR, or brittle Hungarian rules with cosmetic changes.
 
-Last verified: Lightning 0.681 published solution has been copied with no-new-training runtime guards and our submission 58167751 is officially accepted, with terminal Kaggle score **not yet verified**; our proven best remains 0.668 until official evidence says otherwise.
+**P2: Prove it before committing GPU resources.** Use existing score/prediction artifacts and cheap independent CPU contrasts where possible. Require aligned champion-vs-new component disagreements, per-label rescue/regression, prompt-disjoint and **partial-prompt / source-shift** robustness, matched control (e.g., shuffled candidate evidence), and full-stack not standalone uplift. Pre-register the comparison and stop rule. If no aligned artifacts exist, state the evidence gap; authorize at most one justified **frozen inference-only** extraction after a cost review, not repetitive training or fictitious numbers.
 
-Never commit official raw competition data, credentials, private checkpoints or hidden predictions to public GitHub. Do not rewrite history, force-push or delete historical workflows without explicit authorization.
+**P3: Engineer a different capability, not another arbitrary blend.** Freeze a rule/mechanism prior to using held-out outcomes: specify when it can override champion, why the evidence is causally or conditionally distinct, and an abstain/fallback invariant. Package with exact public weights, offline install/dependencies, 9h budget, complete hidden schema and reproducible source hashes. If independent evidence fails, CLOSE the lane, even if a Public title elsewhere looks promising.
+
+**P4: One official submission and decision.** Submit the scientific candidate exactly once when all gates pass; confirm actual ID and terminal score. A win updates Champion; a loss is evidence against that frozen candidate, not a reason to tweak coefficients using Public LB. Record external reproduction vs original technique separately.
+
+### Operating contract
+
+- Existing EVALUATION_POLICY.md and RESEARCH_DOCTRINE.md remain binding; repeatedly reused 2,699-row OOF folds and shadow folds are spent *diagnostics*, not fresh holdouts.
+- Keep one active hypothesis/contract, one set of executable code, one source of truth for official results and status, and ONE next action. Reuse scripts/CI; do not multiply job-specific workflows or status reports.
+- No new training; no repeated GPU pilots; no extrapolated gains, fabricated ranks/scores, hidden-label assumptions, or local LB tuning.
+- Reproducing a genuinely stronger full pretrained public solution is allowed as a **separately labeled competitive fallback**, not the research strategy and not an original contribution.
+- Preserve data security and Kaggle participation rules. The repository is public by user choice but historical competition-data exposure remains unresolved; no new official data/credentials/private outputs in Git.
+- Active branch research/attribution-bottleneck-review-20261106 contains the live ledger (NOW.md); default main may be stale and must not silently supersede it.
+
+**Stop conditions:** no admissible distinct evidence → report why; no mechanism-level full-stack improvement → reject; Kaggle unsupported/inaccessible assets → block; submission terminal → score and close. **Passing CI, writing research plans, or creating more workflows do not count as competitive progress.**
 
 ---
 
