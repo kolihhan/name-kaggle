@@ -1,5 +1,17 @@
 # NOW
 
+## NEW: authentic public frontier audit — candidates 0.683 / 0.682 (2026-11-11 MYT)
+
+**Performed:** [Scored-order Kaggle source scan](https://github.com/kolihhan/name-kaggle/actions/runs/42869895507), [static manifests](https://github.com/kolihhan/name-kaggle/actions/runs/42870239492) and [code-cell & preview checks](https://github.com/kolihhan/name-kaggle/actions/runs/42870549318). Detailed evidence: [artifacts/research/ntl-public-frontier-20261111.md](artifacts/research/ntl-public-frontier-20261111.md).
+
+**New candidate found:** public `ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52` (upstream Notebook COMPLETE, `submission.parquet` listed, 40 code cells, internet disabled, T4, all reference input slugs visible). Its **0.683 is author title only**: Kaggle CLI and authenticated Python object omitted numeric code-score fields. `alexchilton/name-that-llm-0-682-all-public-what-failed` also had COMPLETE and preview output; Omer 0.682 had COMPLETE but no preview `submission.parquet` listed. Ozertuu and Omer share **36/40 exact-index code cells** and 20 dataset + 8 Notebook + 6 model inputs; likely same underlying architecture, not new independent mechanism.
+
+**No score promotion:** own best remains **0.668**. No training, GPU, Kaggle submission or strong-model residual comparison. Before reproducing new 0.683: verify upstream license, exact official public score, no-supervised-training execution path and hidden-sized 9-hour feasibility; do not duplicate existing PENDING Lightning `58167751` blindly.
+
+**Corrected public-repo rule:** [PUBLIC_VISIBILITY.md](PUBLIC_VISIBILITY.md) authorizes data-safe GitHub Actions while the repo is public (2026-11-04). Do not impose private visibility as a routine blocker. Historical tracked competition-data exposure remains unresolved; do not publish further data/secrets or modify safety guards.
+
+---
+
 ## MPCF EXECUTED — decisive negative control and generation-channel warning (2026-11-11 MYT)
 
 **FACT, actual one-shot real data:** [Actions #42855077344](https://github.com/kolihhan/name-kaggle/actions/runs/42855077344), job `129965793036`, **SUCCESS** with six passing tests and real paired inference on public external short texts. Precommitted [MPCF contract](artifacts/research/mpcf-inference-only/CONTRACT.md), results in [MPCF RESULT](artifacts/research/mpcf-inference-only/RESULT.md). **REJECT this exact hash-vector MPCF route**: with prompt-heldout same-source binary pairs, the matched result was worse than both shuffled-pair and unpaired prototypes in ALL three cases.
