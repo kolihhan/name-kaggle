@@ -25,9 +25,11 @@ jobs:
           ref="ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52"
           api=KaggleApi();api.authenticate()
           print("NTL_PREFLIGHT_REF",ref,flush=True)
-          print("NTL_PREFLIGHT_GET_SIGNATURE",str(inspect.signature(api.kernels_get)),flush=True)
+          print("NTL_PREFLIGHT_KERNEL_API_METHODS",json.dumps([m for m in dir(api) if "kernel" in m.lower() and ("get" in m.lower() or "view" in m.lower() or "list" in m.lower())]),flush=True)
           try:
-              obj=api.kernels_get(ref)
+              getmeth=getattr(api,"kernels_get",None)
+              if getmeth is None:raise AttributeError("kernels_get unavailable in Kaggle CLI 2.2.5")
+              obj=getmeth(ref)
               allowed=("id","ref","version_number","versionNumber","script_version_id",
                        "scriptVersionId","license","license_name","licenseName",
                        "license_id","licenseId","last_run_time","lastRunTime")
