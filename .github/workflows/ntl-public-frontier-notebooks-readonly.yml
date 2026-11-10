@@ -172,3 +172,50 @@ jobs:
               print("NTL_PUBLIC_CANDIDATE_STATIC_AUDIT",
                     json.dumps(manifest,ensure_ascii=False,sort_keys=True),flush=True)
           PY
+      - name: Compare candidate code cells and preview artifacts (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,pathlib,subprocess,tempfile
+          refs={
+            "oz":"ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52",
+            "omer":"omerfarukmerey/0-682-0-681-qwen3-8-27b-gsq-12-mix-0-50",
+            "alex":"alexchilton/name-that-llm-0-682-all-public-what-failed",
+          }
+          cells={}
+          for key,ref in refs.items():
+              dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-comparison-"))
+              p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dest),"-m"],
+                               capture_output=True,text=True,timeout=120)
+              if p.returncode:
+                  print("NTL_CODE_DIFF_BLOCKED",json.dumps({"name":key,"returncode":p.returncode}),flush=True)
+                  continue
+              nbfile=list(dest.glob("*.ipynb"))
+              if len(nbfile)!=1:continue
+              nb=json.loads(nbfile[0].read_text())
+              cells[key]=["".join(c.get("source",[])) if isinstance(c.get("source",[]),list)
+                          else str(c.get("source",""))
+                          for c in nb.get("cells",[]) if c.get("cell_type")=="code"]
+              out=subprocess.run(["kaggle","kernels","files",ref,"-v"],
+                                 capture_output=True,text=True,timeout=60)
+              print("NTL_PREVIEW_FILE_EXISTS",json.dumps({"name":key,
+                  "status_code":out.returncode,
+                  "submission_parquet_listed":out.returncode==0 and
+                    "submission.parquet" in out.stdout}),flush=True)
+          for left,right in (("oz","omer"),("oz","alex")):
+              if left not in cells or right not in cells:continue
+              a,b=cells[left],cells[right]
+              shared=sum(hashlib.sha256(x.encode()).digest()==hashlib.sha256(y.encode()).digest()
+                         for x,y in zip(a,b))
+              changed=[i for i,(x,y) in enumerate(zip(a,b)) if x!=y]
+              print("NTL_CODE_CELL_DIFF",json.dumps({
+                "pair":[left,right],"cells_a":len(a),"cells_b":len(b),
+                "exact_same_index_cells":shared,
+                "changed_cell_indexes":changed[:35],
+                "changed_cell_count":len(changed),
+                "bytes_a":sum(len(x.encode()) for x in a),
+                "bytes_b":sum(len(x.encode()) for x in b),
+                "common_prefix_chars":sum(1 for _ in []),
+              }),flush=True)
+          PY
