@@ -105,3 +105,53 @@ jobs:
               "training":False,"notebook_pushed":False,
               "submitted":False,"gpu_used":False}),flush=True)
           PY
+      - name: Trace precise scoring path and training guards without execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, re, subprocess, tempfile
+          ref="ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52"
+          dst=pathlib.Path(tempfile.mkdtemp(prefix="ntl-trace-"))
+          p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dst),"-m"],
+                           capture_output=True,text=True,timeout=100)
+          if p.returncode:raise RuntimeError("public source pull failed")
+          nb=json.loads(next(dst.glob("*.ipynb")).read_text())
+          for ix in (6,14,17,28,43,47,51):
+              if ix>=len(nb["cells"]):continue
+              cell=nb["cells"][ix]
+              s="".join(cell.get("source",[]))
+              lines=s.splitlines()
+              anchors=[]
+              for n,line in enumerate(lines):
+                  if re.search(r"(?i)train_final|gauss\.fit|training\s*[:=]|if training|test_redo|\.train\(|fit\(|re-run|--train-final|--config|ensemble\.py|core_worker\.py|run_cmd|gsq_share|subprocess\.run|os\.system|%run|!python",line):
+                      anchors.append(n)
+              indices=set()
+              for n in anchors:
+                  for j in range(max(0,n-3),min(len(lines),n+5)):indices.add(j)
+              if ix in (47,51):
+                  indices.update(range(max(0,len(lines)-18),len(lines)))
+              selected=[[n+1,lines[n][:200]] for n in sorted(indices)][:120]
+              print("NTL_SCORING_CALLSITE",json.dumps({
+                "cell":ix,"total_lines":len(lines),
+                "anchors":len(anchors),"selection":selected
+              },ensure_ascii=False),flush=True)
+          # Public Kaggle HTML sometimes exposes code license in structured page metadata.
+          # No auth token or internal data is sent in this public-only GET.
+          try:
+              import urllib.request
+              url="https://www.kaggle.com/code/"+ref
+              rq=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
+              with urllib.request.urlopen(rq,timeout=15) as resp:
+                  html=resp.read(2000000).decode("utf-8","replace")
+                  matches=[(m.start(),m.group()) for m in
+                           re.finditer(r"(?i)(?:licenseName|license_name|licenseId|Apache.2.0|MIT License)",html)]
+                  snippets=[html[max(0,pos-45):min(len(html),pos+95)].replace("\n"," ")[:140]
+                            for pos,_ in matches[:10]]
+                  print("NTL_LICENSE_WEB_PUBLIC",json.dumps({
+                     "html_chars":len(html),"license_markers":snippets
+                  }),flush=True)
+          except Exception as exc:
+              print("NTL_LICENSE_WEB_UNAVAILABLE",type(exc).__name__,flush=True)
+          print("NTL_SCORING_TRACE_COMPLETE",flush=True)
+          PY
