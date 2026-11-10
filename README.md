@@ -34,6 +34,12 @@ The goal is **real competitive results AND independently justified technique**, 
 
 A copied high-scoring notebook can improve the Champion, but **is not a substitute** for the mechanism-research component.
 
+### One current breakthrough research bet (separate from externally copied strong baseline)
+
+**Matched-Prompt Contrastive Fingerprinting (MPCF)** is the current *unvalidated* no-training candidate. For independent reference answers to the **same prompt** by exact sibling models A and B, compare frozen embedding differences A-minus-B (a topic-controlled relative fingerprint) to an unseen query using nearest reference-pair centroids. Do **not** infer test prompt groups or require 18 hidden answers. Unlike earlier **trainable** STABLEPAIR-18 or test-batch mean-centering, the initial MPCF representation requires **zero supervised fitting**: it evaluates a pretrained encoder's pairwise geometric evidence with fixed retrieval and robust aggregation. The implementation primitive is `scripts/matched_panel_evidence.py` and its synthetic-only checks are `tests/test_matched_panel_evidence.py`. No model inference or Kaggle result has yet validated it.
+
+The referenced public Oleg corpus [audit #42362668801](https://github.com/kolihhan/name-kaggle/actions/runs/42362668801) has 196 same-source GPT Luna/Sol pairs, 199 Sol/Terra pairs and 200 GLM pairs, **but these are SWEeper software-repair traces with incomplete generation-protocol evidence**, not a verified independent 40–250-word held-out benchmark. Repeated official prompt folds are not fresh test evidence either. Stage the method only after source/protocol and champion-data-overlap checks; use matched-vs-shuffled-pair and unpaired-prototype controls plus a same-row full-system comparison. A positive standalone pairwise score is not sufficient. A target of +0.02 absolute **independent whole-system** BA is a go/no-go aspiration, never a measured or guaranteed gain. If independent matched evidence or champion-aligned predictions are unavailable, mark BLOCKED_BY_DATA instead of running a new GPU task or submitting. Never reinterpret "MPCF" as a claim of publication-level novelty without a literature/ablation audit.
+
 ### Reference-derived anti-shortcut gate: xiewenwei29, 本队踩坑记录
 
 The public Notebook xiewenwei29/name-that-llm (read-only public Kaggle source pulled and inspected on 2026-11-10, audit workflow 42774976150) states:
