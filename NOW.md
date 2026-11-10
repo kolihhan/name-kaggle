@@ -1,5 +1,13 @@
 # NOW
 
+## 2026-11-11 Ozertuu 0.683 guarded official reproduction initiated
+
+**Actionable state:** [source-preflight #42872819394](https://github.com/kolihhan/name-kaggle/actions/runs/42872819394) **SUCCESS**; no-training guards (Gaussian, Atlas, core-worker train-final) built from pinned original SHA `14d48eb60e4201cd749e0db7f6b9fae89796d4cbb10a4f2f7006300f267535c6`, yielding private Notebook SHA `49d4fdce69b4586afff6d240969ffe443f6537a5f810803e758313bb62b63574`. [One-shot Kaggle job #42873288053](https://github.com/kolihhan/name-kaggle/actions/runs/42873288053) has been launched; **do not count as a completed submission until official Kaggle ledger returns ref and status**. The public source's 0.683 is a **title claim**, not our measured score. Own verified best remains **0.668**. Complete record [PREFLIGHT_RESULT](artifacts/candidates/public-ozertuu-0683-guarded-repro/PREFLIGHT_RESULT.md).
+
+**Constraints:** one private attributed Notebook, no supervised training even on fallback, no raw Competition Data/credentials in Git, no duplicate submissions or LB tuning, no assumption that preview satisfies 4,000-row hidden 9h runtime. [PUBLIC_VISIBILITY.md](PUBLIC_VISIBILITY.md) allows safe GitHub Actions while public; historical data exposure remains unremediated. Underlying Notebook license identifier not independently read from API; private fork permission documented by Kaggle, no ungrounded Apache-2 claim.
+
+---
+
 ## NEW: authentic public frontier audit — candidates 0.683 / 0.682 (2026-11-11 MYT)
 
 **Performed:** [Scored-order Kaggle source scan](https://github.com/kolihhan/name-kaggle/actions/runs/42869895507), [static manifests](https://github.com/kolihhan/name-kaggle/actions/runs/42870239492) and [code-cell & preview checks](https://github.com/kolihhan/name-kaggle/actions/runs/42870549318). Detailed evidence: [artifacts/research/ntl-public-frontier-20261111.md](artifacts/research/ntl-public-frontier-20261111.md).
