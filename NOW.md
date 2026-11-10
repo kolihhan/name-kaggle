@@ -1,5 +1,11 @@
 # NOW
 
+## Submission status reconciliation — 2026-11-11 02:22 MYT
+
+**Authenticated official Kaggle status (not Notebook preview):** [exact-ref read-only audit #42874538415](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415) **SUCCESS**. **Our 58210835 = PENDING, score blank; 58167751 = PENDING, score blank.** Both old confirmed refs **58022340 and 58045266 = COMPLETE, Public BA 0.668**. The private `ntl-ozertuu-0683-guarded-no-train` Notebook preview is `COMPLETE`, which **does not prove the 4,000-row hidden rerun**. No new submitted version, training or GPU work; do not duplicate, relax no-training guards or turn the public author's 0.683 title into our score. Evidence [official status reconciliation](artifacts/research/ntl-official-submission-status-20261111.md). Historical public-repo Competition Data exposure remains unresolved; only data-safe actions authorized.
+
+---
+
 ## 2026-11-11 Ozertuu 0.683 guarded official reproduction initiated
 
 **Actionable state:** [source-preflight #42872819394](https://github.com/kolihhan/name-kaggle/actions/runs/42872819394) **SUCCESS**; no-training guards (Gaussian, Atlas, core-worker train-final) built from pinned original SHA `14d48eb60e4201cd749e0db7f6b9fae89796d4cbb10a4f2f7006300f267535c6`, yielding private Notebook SHA `49d4fdce69b4586afff6d240969ffe443f6537a5f810803e758313bb62b63574`. [One-shot Kaggle job #42873288053](https://github.com/kolihhan/name-kaggle/actions/runs/42873288053) **COMPLETED SUCCESS**, with own private Kaggle Notebook V1 preview COMPLETE and **official submission ref `58210835` accepted**; official ledger `SubmissionStatus.PENDING`, `publicScore=""`, `privateScore=""`. [Submission evidence](artifacts/candidates/public-ozertuu-0683-guarded-repro/PREFLIGHT_RESULT.md). Do not submit again or promote author title score before actual Kaggle scoring. The public source's 0.683 is a **title claim**, not our measured score. Own verified best remains **0.668**. Complete record [PREFLIGHT_RESULT](artifacts/candidates/public-ozertuu-0683-guarded-repro/PREFLIGHT_RESULT.md).
