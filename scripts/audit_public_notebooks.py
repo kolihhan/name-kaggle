@@ -154,13 +154,15 @@ def audit_notebook(label: str, refs: list[str], root: Path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--ref", default=None, help="Optional exact public Kaggle notebook reference")
     args = parser.parse_args()
     if not os.environ.get("KAGGLE_API_TOKEN"):
         raise RuntimeError("KAGGLE_API_TOKEN missing")
     root = Path("/tmp/ntl-public-notebooks")
     root.mkdir(parents=True, exist_ok=True)
     results = []
-    for label, refs in TARGETS:
+    chosen = [("requested-reference", [args.ref])] if args.ref else TARGETS
+    for label, refs in chosen:
         print(f"AUDIT_BEGIN {label}", flush=True)
         try:
             result = audit_notebook(label, refs, root)
@@ -168,6 +170,30 @@ def main():
             result = {"label": label, "status": "AUDIT_ERROR", "error_type": type(exc).__name__}
         results.append(result)
         print(f"AUDIT_RESULT {label} {result['status']} {result.get('pulled_ref', '')}", flush=True)
+        if args.ref and result.get("status") == "SOURCE_READ":
+            for file in sorted((root / label).glob("*.ipynb")):
+                nb = json.loads(file.read_text(encoding="utf-8"))
+                cells = nb.get("cells", [])
+                md = ["".join(x.get("source", [])) for x in cells if x.get("cell_type") == "markdown"]
+                heads = [line.strip()[:130] for section in md
+                         for line in section.splitlines()
+                         if re.match(r"^\s*#{1,6}\s+\S", line)][:85]
+                print("REFERENCE_NOTEBOOK_MARKDOWN_HEADINGS", json.dumps(heads, ensure_ascii=False), flush=True)
+                ix = next((i for i, section in enumerate(md) if "本队踩坑记录" in section), None)
+                if ix is not None:
+                    section = "\n\n".join(md[ix:ix + 5])
+                    pos = section.find("本队踩坑记录")
+                    excerpt = section[max(0, pos - 12):pos + 7200]
+                    print("REFERENCE_NOTEBOOK_PITFALLS", json.dumps(excerpt, ensure_ascii=False), flush=True)
+                else:
+                    print("REFERENCE_NOTEBOOK_PITFALLS", "NOT_FOUND_IN_MARKDOWN", flush=True)
+                print("REFERENCE_NOTEBOOK_METADATA", json.dumps({
+                    "ref": args.ref, "markdown_cell_count": len(md),
+                    "code_cell_count": sum(x.get("cell_type") == "code" for x in cells),
+                    "public_source_code_sha256": result.get("code_sha256"),
+                    "public_source_bytes": result.get("source_bytes"),
+                }, ensure_ascii=False), flush=True)
+
     report = {
         "scope": "public_notebook_source_and_metadata_only",
         "version": 1,
@@ -175,13 +201,13 @@ def main():
         "prediction_performed": False,
         "kaggle_submission_performed": False,
         "official_data_downloaded": False,
-        "target_count": len(TARGETS),
+        "target_count": len(chosen),
         "source_read_count": sum(x["status"] == "SOURCE_READ" for x in results),
         "results": results,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-    print(f"AUDIT_COMPLETE {report['source_read_count']}/{len(TARGETS)} source notebooks read")
+    print(f"AUDIT_COMPLETE {report['source_read_count']}/{len(chosen)} source notebooks read")
     if not report["source_read_count"]:
         raise SystemExit("No public notebook sources could be fetched; report retained")
 
