@@ -62,7 +62,45 @@ jobs:
                   distinct[ref]=data
           ordered=sorted(distinct.values(),
                         key=lambda x:(-x["public_score"],x["ref"]))
-          if not ordered:raise RuntimeError("No public code scores could be parsed")
+          if not ordered:
+              # CLI CSV omits score despite server-side scoreDescending sorting.
+              # Expose only public refs, not invented numeric scores.
+              unscored=[]
+              used=set()
+              for row in rows:
+                  ref=str(row.get("ref") or "").strip()
+                  if not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+",ref) or ref in used:
+                      continue
+                  used.add(ref)
+                  unscored.append({"ref":ref,
+                     "title":str(row.get("title") or "")[:160],
+                     "author":str(row.get("author") or "")[:90]})
+              print("NTL_PUBLIC_SORTED_REFS_WITHOUT_SCORES",
+                    json.dumps(unscored[:75],ensure_ascii=False),flush=True)
+              # Check whether the Python API object carries a score field hidden
+              # by CLI. Only print explicitly allowlisted public attributes.
+              try:
+                  from kaggle.api.kaggle_api_extended import KaggleApi
+                  api=KaggleApi();api.authenticate()
+                  response=api.kernels_list(
+                      competition=COMP,sort_by="scoreDescending",
+                      page=1,page_size=50)
+                  print("NTL_API_OBJECT_SCORE_PROBE",json.dumps([{
+                      "ref":str(getattr(v,"ref","")),
+                      "score":getattr(v,"score",None),
+                      "public_score":getattr(v,"public_score",None),
+                      "type":type(v).__name__,
+                      "fields":[k for k in ("ref","score","public_score",
+                              "evaluation_metric","evaluationMetric",
+                              "title") if hasattr(v,k)]
+                  } for v in response[:20]],default=str),flush=True)
+              except Exception as e:
+                  print("NTL_API_OBJECT_PROBE_BLOCKED",type(e).__name__,
+                        flush=True)
+              print("NTL_NO_VERIFIED_NUMERIC_SCORES",
+                    "CLI did not expose a score column; refs above are only sorted metadata",
+                    flush=True)
+              raise SystemExit(0)
           print("NTL_FRONTIER_COUNTS",json.dumps({
               "entries_returned":len(rows),"unique_scored_notebooks":len(ordered),
               "above_0668":sum(x["public_score"]>0.668 for x in ordered),
