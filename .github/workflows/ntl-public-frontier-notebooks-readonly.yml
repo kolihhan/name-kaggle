@@ -109,3 +109,66 @@ jobs:
           print("NTL_FRONTIER_TOP",json.dumps(ordered[:45],ensure_ascii=False),flush=True)
           print("NTL_FRONTIER_LICENSE_NOTE","Kaggle score metadata does not establish notebook license, input accessibility, or independent score reproduction",flush=True)
           PY
+      - name: Static inspect three shortlisted public notebooks (no execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,pathlib,re,subprocess,tempfile
+          candidates=[
+            "ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52",
+            "alexchilton/name-that-llm-0-682-all-public-what-failed",
+            "omerfarukmerey/0-682-0-681-qwen3-8-27b-gsq-12-mix-0-50"
+          ]
+          for i,ref in enumerate(candidates):
+              manifest={"ref":ref,"static_only":True,"model_execution":False,
+                        "submission":False,"competition_data_downloaded":False}
+              d=pathlib.Path(tempfile.mkdtemp(prefix="ntl-public-source-"))
+              try:
+                  st=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True,timeout=45)
+                  match=re.search(r"KernelWorkerStatus\.([A-Z_]+)",st.stdout+"\n"+st.stderr)
+                  manifest["upstream_kernel_status"]=match.group(1) if match else "UNKNOWN"
+                  manifest["status_rc"]=st.returncode
+                  p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(d),"-m"],capture_output=True,text=True,timeout=120)
+                  if p.returncode:
+                      manifest["pulled"]=False
+                      manifest["pull_returncode"]=p.returncode
+                  else:
+                      manifest["pulled"]=True
+                      mdfile=d/"kernel-metadata.json"
+                      md=json.loads(mdfile.read_text()) if mdfile.is_file() else {}
+                      manifest["inputs"]={k:{"count":len(md.get(k) or []),
+                                               "refs":(md.get(k) or [])[:12]}
+                                          for k in ("competition_sources","dataset_sources","model_sources","kernel_sources")}
+                      manifest["settings"]={k:md.get(k) for k in (
+                          "id","is_private","enable_internet","machine_shape",
+                          "kernel_type","enable_gpu","enable_tpu")}
+                      notebooks=list(d.glob("*.ipynb"))
+                      manifest["notebook_count"]=len(notebooks)
+                      if len(notebooks)==1:
+                          b=notebooks[0].read_bytes()
+                          nb=json.loads(b)
+                          code="\n".join("".join(c.get("source",[])) if isinstance(c.get("source",[]),list)
+                                else str(c.get("source","")) for c in nb.get("cells",[])
+                                if c.get("cell_type")=="code")
+                          manifest["sha256"]=hashlib.sha256(b).hexdigest()
+                          manifest["code_bytes"]=len(code.encode())
+                          manifest["code_cells"]=sum(c.get("cell_type")=="code" for c in nb.get("cells",[]))
+                          # These are string markers, NOT evidence that fit/train
+                          # actually executes on the hidden scoring path.
+                          manifest["markers"]={
+                              k:len(re.findall(pattern,code,re.I))
+                              for k,pattern in {
+                                  "fit_calls":r"\.fit\s*\(",
+                                  "fit_transform_calls":r"\.fit_transform\s*\(",
+                                  "train_calls":r"\.train\s*\(",
+                                  "backward_calls":r"\.backward\s*\(",
+                                  "submission_parquet":r"submission\.parquet",
+                                  "gsq_references":r"\bGSQ\b",
+                                  "qwen27_references":r"27b",
+                              }.items()}
+              except Exception as e:
+                  manifest["inspection_blocked"]=type(e).__name__
+              print("NTL_PUBLIC_CANDIDATE_STATIC_AUDIT",
+                    json.dumps(manifest,ensure_ascii=False,sort_keys=True),flush=True)
+          PY
