@@ -1,0 +1,40 @@
+name: NTL 0683 guarded public-source preflight without GPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-ozertuu-0683-source-preflight.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_public_ozertuu_0683_one_shot.py
+            artifacts/candidates/public-ozertuu-0683-guarded-repro/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: No official competition data in checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test ! -e data/sample_submission.parquet
+          python -m py_compile scripts/ntl_public_ozertuu_0683_one_shot.py
+      - name: Install official Kaggle CLI only
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Freeze public source and build fail-closed Notebook in temporary disk only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python scripts/ntl_public_ozertuu_0683_one_shot.py --source-preflight
+          echo NTL_0683_SOURCE_PREFLIGHT_COMPLETED_NO_GPU_NO_SUBMISSION
