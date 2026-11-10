@@ -2,7 +2,13 @@ name: NTL Public 18 Label Source Matched Pair Audit
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-olegzholobov-pair-audit.yml, scripts/audit_external_sibling_multisource_support.py]
+    paths:
+      - .github/workflows/ntl-olegzholobov-pair-audit.yml
+      - scripts/audit_external_sibling_multisource_support.py
+      - scripts/matched_panel_evidence.py
+      - scripts/run_matched_panel_pilot.py
+      - tests/test_matched_panel_evidence.py
+      - tests/test_mpcf_pilot.py
 permissions: {contents: read}
 jobs:
   inspect:
@@ -13,19 +19,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts/audit_external_sibling_multisource_support.py
+          sparse-checkout: |
+            scripts/__init__.py
+            scripts/audit_external_sibling_multisource_support.py
+            scripts/matched_panel_evidence.py
+            scripts/run_matched_panel_pilot.py
+            tests/test_matched_panel_evidence.py
+            tests/test_mpcf_pilot.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.2.3' 'pyarrow==19.0.1'
-      - name: Read public external corpus only, summarize matched pair metadata
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.2.3' 'pyarrow==19.0.1' 'scikit-learn==1.6.1' 'numpy==1.26.4'
+      - name: Verify fixed no-training logic and unit controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/matched_panel_evidence.py scripts/run_matched_panel_pilot.py
+          python -m unittest discover -s tests -p 'test_matched_panel_evidence.py' -v
+          python -m unittest discover -s tests -p 'test_mpcf_pilot.py' -v
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f" || { echo "Official competition data present"; exit 1; }
+          done
+      - name: Audit and compare matched / shuffled / unpaired public reference pairs once
         shell: bash
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
-          python -m py_compile scripts/audit_external_sibling_multisource_support.py
           mkdir -p /tmp/ntl-oleg
           kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -p /tmp/ntl-oleg --unzip -q
-          echo "EXTERNAL_PUBLIC_FILES"
-          find /tmp/ntl-oleg -maxdepth 2 -type f -printf "%f\\n" | head -n 30
           python scripts/audit_external_sibling_multisource_support.py /tmp/ntl-oleg
+          python -u scripts/run_matched_panel_pilot.py /tmp/ntl-oleg
+          rm -rf /tmp/ntl-oleg
