@@ -48,5 +48,5 @@ jobs:
           mkdir -p /tmp/ntl-oleg
           kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -p /tmp/ntl-oleg --unzip -q
           python scripts/audit_external_sibling_multisource_support.py /tmp/ntl-oleg
-          python -u scripts/run_matched_panel_pilot.py /tmp/ntl-oleg
+          python -u -m scripts.run_matched_panel_pilot /tmp/ntl-oleg
           rm -rf /tmp/ntl-oleg
