@@ -1,5 +1,15 @@
 # NOW
 
+## RESULT — completed real 347-row external transfer diagnostic (2026-11-11 13:30 MYT)
+
+**Done, not pending:** [Actual full-model Kaggle inference #42957145758](https://github.com/kolihhan/name-kaggle/actions/runs/42957145758) **SUCCESS**, private kernel `kolihhan/ntl-0679-fresh-transfer-diagnostic` = **COMPLETE**; 347 scored out-of-training public source rows, **260 correct / 87 wrong**, combined **12-observed-label conditional BA `0.749795`** (original unrestricted 18-class predictions). **Toan authored prompts: 107 rows, conditional BA `0.767361`**; **Nimitha public prompt bank: 240 rows, conditional BA `0.741667`**. These are **not** official 18-class Kaggle scores and cannot be compared directly with verified official champion `0.679` (submission `58210835`). No competition submission, supervised fitting, parameter change, or repeated champion inference.
+
+**Observed strongest errors:** **71 / 87 wrong predictions are within provider family**, 16 cross family; 32 predictions select an out-of-target class. Gemini 3.8 Flash recall **8/29 = 27.59%**, frequently predicted Gemini 3.7 Flash (11 cases) and Gemini 3.6 Flash (5 cases); GPT Sol/Terra each 17/29 (58.62%). Strong source effect **not** established: Toan-vs-Nimitha difference is 2.57 percentage points on tiny source-confounded prompt groups. Served-model identity is not fully verified for fresh proxy generations; source overlap beyond exact-text checks not proven absent.
+
+**Canonical result:** [RESULT_20261111.md](artifacts/research/ntl-0679-transfer-diagnostic/RESULT_20261111.md), includes exact model/class/source aggregates and failure modes. **Decision:** global bottleneck is cross-source robust sibling separation; next look for truly independent **no-training** sibling evidence with same-row predictions and source-stable rescues-minus-regressions, not public-LB weight tuning. The 347 diagnostic rows are **already inspected evidence**, not a reusable unseen holdout. Missing six target labels must be covered before claiming full 18-class transfer. The own Kaggle competition champion remains **0.679**.
+
+---
+
 ## REAL EXECUTION — frozen 0.679 on 347 external rows (2026-11-11)
 
 **CURRENT:** [Private full-model inference GitHub Action #42957145758](https://github.com/kolihhan/name-kaggle/actions/runs/42957145758) is running; independent authenticated [Kaggle status #42957328503](https://github.com/kolihhan/name-kaggle/actions/runs/42957328503) confirmed private kernel `kolihhan/ntl-0679-fresh-transfer-diagnostic` = **`RUNNING`**, not merely queued. **No numeric transfer result is available yet.** Do not count this as a Kaggle competition submission or new score.
