@@ -72,3 +72,32 @@ def test_duplicates_do_not_inflate_prompt_count():
 def test_bad_threshold_rejected():
     with pytest.raises(ValueError):
         m.audit([], min_pairs=0)
+
+
+def test_served_model_mismatch_cannot_make_false_sibling_pair():
+    rows = bank('s1', 'o1') + bank('s2', 'o2')
+    for row in rows:
+        if row['model'] == 'gpt-5.6-sol':
+            row['served_model'] = 'gpt-5.6-luna'
+    out = m.audit(rows)
+    assert out['any_pair_capacity_eligible'] is False
+    assert out['rows_excluded']['served_identity_mismatch'] == 210
+
+
+def test_conflicting_served_revisions_for_same_model_prompt_rejects_pair():
+    rows = bank('s1', 'o1', n=100) + bank('s2', 'o2', n=100)
+    extra = dict(rows[0])
+    extra['served_revision'] = 'different-revision'
+    rows.append(extra)
+    out = m.audit(rows)
+    assert out['pair_results']['gpt56:gpt-5.6-luna|gpt-5.6-sol']['source_pair_prompt_counts']['s1'] == 99
+    assert not out['any_pair_capacity_eligible']
+
+
+def test_model_specific_generation_request_breaks_pairing():
+    rows = bank('s1', 'o1') + bank('s2', 'o2')
+    for row in rows:
+        if row['model'] == 'gpt-5.6-sol':
+            row['request_hash'] = h('model-specific-sol')
+    out = m.audit(rows)
+    assert not out['any_pair_capacity_eligible']
