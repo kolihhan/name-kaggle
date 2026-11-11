@@ -1,0 +1,66 @@
+name: NTL Torch Integer Device CUDA Canary (PRIVATE, NO MODEL)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-torch-int-device-canary-20261112.yml]
+permissions: {contents: read}
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Prove torch.device(int) behavior on two T4 GPUs without weights
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,pathlib,tempfile,subprocess,re
+          src='kolihhan/ntl-wemm-cuda-env-probe-20261112'
+          dst='kolihhan/ntl-wemm-int-device-probe-20261112'
+          def call(a,t=90):
+              return subprocess.run(a,capture_output=True,text=True,timeout=t)
+          q=call(['kaggle','quota'])
+          m=re.search(r"(?m)^GPU\s+\S+\s+([0-9.]+)h",q.stdout)
+          if q.returncode or not m or float(m.group(1))<9:raise RuntimeError("GPU budget safety check failed")
+          state=call(['kaggle','kernels','status',dst])
+          if 'KernelWorkerStatus.' in state.stdout+state.stderr:raise RuntimeError("probe exists; no rerun")
+          root=pathlib.Path(tempfile.mkdtemp(prefix='ntl-int-device-'))
+          original=root/'original';original.mkdir()
+          pull=call(['kaggle','kernels','pull',src,'-p',str(original),'-m'])
+          if pull.returncode:raise RuntimeError("read source canary failed")
+          nb=json.loads(next(original.glob('*.ipynb')).read_text())
+          cs=[c for c in nb['cells'] if c.get('cell_type')=='code']
+          if len(cs)!=1:raise RuntimeError("unexpected original canary")
+          extra=[
+              'import transformers.modeling_utils as mu',
+              'devices={}',
+              "for value in (0,1,'cuda:0','cuda:1'):",
+              '    name=repr(value)',
+              '    entry={}',
+              '    try: entry["torch_device"]=str(torch.device(value))',
+              '    except Exception as exc: entry["torch_device"]=type(exc).__name__+":"+str(exc)[:100]',
+              '    try: entry["hf_is_accel"]=bool(mu.is_accelerator_device(value))',
+              '    except Exception as exc: entry["hf_is_accel"]=type(exc).__name__+":"+str(exc)[:100]',
+              '    devices[name]=entry',
+              "print('NTL_INT_DEVICE_PROBE',json.dumps({'cuda_available':torch.cuda.is_available(),'device_count':torch.cuda.device_count(),'values':devices}),flush=True)",
+          ]
+          cs[0]['source']+=['\n']+[(x+'\n') for x in extra]
+          meta=json.loads((original/'kernel-metadata.json').read_text())
+          if meta.get('id')!=src or meta.get('is_private') is not True:raise RuntimeError("wrong source")
+          meta.pop('id_no',None)
+          meta.update({'id':dst,'title':dst.split('/',1)[1],'is_private':True,'enable_internet':False,'machine_shape':'NvidiaTeslaT4'})
+          out=root/'out';out.mkdir()
+          code_file=meta.get('code_file')
+          if not code_file or '/' in code_file or not code_file.endswith('.ipynb'):raise RuntimeError("bad filename")
+          (out/code_file).write_text(json.dumps(nb,ensure_ascii=False),encoding='utf-8')
+          (out/'kernel-metadata.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          push=call(['kaggle','kernels','push','-p',str(out),'--accelerator','NvidiaTeslaT4','--timeout','300'],140)
+          if push.returncode or 'Kernel version 1 successfully pushed' not in push.stdout+push.stderr:raise RuntimeError("private canary creation failed")
+          print('NTL_INT_DEVICE_PRIVATE_CREATED',json.dumps({'ref':dst,'budget_h':float(m.group(1)),'no_model':True,'no_submission':True}),flush=True)
+          PY
