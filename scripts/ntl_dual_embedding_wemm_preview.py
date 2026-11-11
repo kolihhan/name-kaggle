@@ -90,6 +90,14 @@ def frozen_reproduction(destination: Path) -> dict:
     texts = ["".join(cell.get("source", [])) if cell.get("cell_type") == "code" else ""
              for cell in cells]
     corpus = "\n".join(texts)
+    print("NTL_WEMM_SAFE_TRAIN_PATH_INVENTORY", json.dumps({
+        "release_ready": any("CONFIG = " in s and "'RELEASE_READY': True" in s for s in texts),
+        "fit_family_count": len(re.findall(r"\\.(?:fit|fit_transform|partial_fit)\\s*\\(", corpus)),
+        "train_calls": len(re.findall(r"\\.train\\s*\\(", corpus)),
+        "backward_or_step": bool(re.search(r"\\.(?:backward|step|zero_grad)\\s*\\(",corpus)),
+        "torch_optim": bool(re.search(r"\\btorch\\.optim\\b",corpus)),
+        "gauss_prefit_markers": ("source-test-conditioned" in corpus, "fixed-no-test-redo" in corpus),
+    },sort_keys=True),flush=True)
     if (not any("CONFIG = " in s and "'RELEASE_READY': True" in s for s in texts) or
         len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(", corpus)) != 4 or
         len(re.findall(r"\.train\s*\(", corpus)) != 1 or
