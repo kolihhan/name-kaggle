@@ -107,6 +107,15 @@ def frozen_reproduction(destination: Path) -> dict:
                                       code[:match.start()].count(chr(10))+2]
                 ],
             }, sort_keys=True), flush=True)
+    for cell_id, code in enumerate(source_code_cells):
+        if cell_id == 33:
+            for line_no, line in enumerate(code.splitlines()[:112],1):
+                print("NTL_WEMM_STYLE_CELL", json.dumps({"cell":33,
+                    "line":line_no,"code":line[:170]},ensure_ascii=False),flush=True)
+        for line_no, line in enumerate(code.splitlines(),1):
+            if any(k in line for k in ("style_p", "style_specialist", "style_model", "style_probe")) and ("def " in line or "style_p" in line):
+                print("NTL_WEMM_STYLE_REFERENCE",json.dumps({"cell":cell_id,
+                    "line":line_no,"code":line[:170]},ensure_ascii=False),flush=True)
     if original_sha != 'e943174f3cfe114eeb96d9f721c675826f6ef8a91e30ae055dd86e5c48257865':
         raise RuntimeError('upstream 0.683 public source changed; do not promote')
 
