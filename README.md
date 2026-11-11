@@ -1,5 +1,22 @@
 # Name That LLM — Kaggle
 
+## Current validated Kaggle Champion — 0.679 (2026-11-11)
+
+| Field | Authenticated value |
+|---|---|
+| Our official best Public Balanced Accuracy | **0.679** |
+| Competition submission | **`58210835`** |
+| Official status | **COMPLETE**; Private Score not yet available |
+| Previous verified Public best | 0.668 (`58022340`, `58045266`) |
+| Improvement | **+0.011** absolute BA / **+1.1 percentage points** |
+| Exact official evidence | [GitHub Actions #42874538415, attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415) |
+| Candidate lineage | Attributed inference-only reproduction of Ozertuu's publicly titled "0.683" solution; **not our independent scientific invention** |
+| Historical second pending candidate | `58167751` still PENDING at latest official check |
+
+[Full reproducibility, source SHA and ledger evidence](artifacts/candidates/public-ozertuu-0683-guarded-repro/OFFICIAL_SCORE_20261111.md). This is an **our-account Public LB result**, not independent proof of hidden Private LB transfer. Do not interpret the author's 0.683 title as our score, or tune to close that gap. Existing `NO NEW TRAINING` boundary remains active.
+
+---
+
 Working repository for the Kaggle competition **Name That LLM**: identify which of 18 language models generated each passage.
 
 Competition: https://www.kaggle.com/competitions/name-that-llm
@@ -8,7 +25,7 @@ Competition: https://www.kaggle.com/competitions/name-that-llm
 
 ### North star — FOUR required outcomes
 
-1. **Competitiveness:** improve **our own actual official Kaggle result** beyond the verified 0.668 account record (or the latest higher terminal result), without targeting the observed Public leaderboard through adaptive patches. Protect against private-distribution collapse.
+1. **Competitiveness:** improve **our own actual official Kaggle result** beyond the latest verified 0.679 Kaggle account record, while distinguishing external reproductions from independent scientific progress, without targeting the observed Public leaderboard through adaptive patches. Protect against private-distribution collapse.
 2. **Technical strength:** create and substantiate a materially different **model-attribution representation, inference mechanism or decision architecture**. Reproducing a publicly stronger notebook, changing blend weights or adding audit workflows alone is not an original advance.
 3. **End-to-end delivery:** research question → falsifiable mechanism → exact runnable implementation → genuinely meaningful full-stack and transfer checks → frozen Kaggle Notebook → accepted official submission ID → terminal score / failure decision.
 4. **Resource discipline:** no further user-funded repeated model training or unnecessary GPU use; prioritize existing public/pretrained and prefit assets, existing outputs, bounded CPU checks, and the competition's inference environment. The user's standing **NO NEW TRAINING** authorization boundary remains in force; new neural training, supervised readout fitting, or calibration fitting are prohibited until they explicitly authorize otherwise. A strong hypothesis is not permission to train.
