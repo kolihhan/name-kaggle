@@ -1,0 +1,48 @@
+name: NTL One-Shot Official Pending Scores Read-Only 20261112
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pending-scores-readonly-20261112.yml]
+permissions:
+  contents: read
+jobs:
+  score_status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal Kaggle read-only client
+        run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Read only exact owned competition submission statuses
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import csv, io, json, subprocess
+          refs = ("58210835", "58167751", "58233227", "58244483")
+          p = subprocess.run(
+              ["kaggle","competitions","submissions","name-that-llm","-v","-q"],
+              text=True,capture_output=True,timeout=75
+          )
+          if p.returncode:
+              raise RuntimeError("authenticated Kaggle submissions read failed; raw errors suppressed")
+          rows = list(csv.DictReader(io.StringIO(p.stdout)))
+          for ref in refs:
+              matches = [r for r in rows if str(r.get("ref","")).strip() == ref]
+              if len(matches) != 1:
+                  print("NTL_SCORE_STATUS", json.dumps({"ref":ref,"state":"MISSING_OR_AMBIGUOUS","matches":len(matches)}),flush=True)
+                  continue
+              row = matches[0]
+              print("NTL_SCORE_STATUS",json.dumps({
+                  "ref":ref,
+                  "status":row.get("status",""),
+                  "publicScore":row.get("publicScore",""),
+                  "privateScore":row.get("privateScore",""),
+                  "date":row.get("date","")
+              },sort_keys=True),flush=True)
+          PY
