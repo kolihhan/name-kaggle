@@ -286,14 +286,43 @@ def private_preview_once() -> None:
     print("NTL_WEMM_V1_PRIVATE_PREVIEW_OUTPUT_CONFIRMED", flush=True)
 
 
+
+def competition_submit_once() -> None:
+    """One user-authorized experimental competition entry after private preview."""
+    check_no_prior()
+    anchor = [r for r in official_rows() if r.get("ref") == "58210835"]
+    if len(anchor) != 1 or anchor[0].get("publicScore") != "0.679" or anchor[0].get("status") != "SubmissionStatus.COMPLETE":
+        raise RuntimeError("0.679 control not verified")
+    private_preview_once()
+    check_no_prior()
+    response = run(["kaggle", "competitions", "submit", COMPETITION,
+                    "-k", DEST_REF, "-v", "1", "-f", "submission.parquet",
+                    "-m", DESCRIPTION])
+    refs = re.findall(r"Submission ref:\s*(\d+)", response, re.I)
+    if len(refs) != 1:
+        raise RuntimeError("ambiguous competition result: do not retry")
+    print("NTL_WEMM_OFFICIAL_ACCEPTED_REF", refs[0], flush=True)
+    for i in range(8):
+        rows = [r for r in official_rows() if r.get("ref") == refs[0]]
+        if len(rows) == 1 and rows[0].get("description") == DESCRIPTION:
+            print("NTL_WEMM_OFFICIAL_LEDGER", json.dumps({
+                k: rows[0].get(k) for k in ("ref", "status", "publicScore",
+                                            "privateScore", "date", "description")
+            }, sort_keys=True), flush=True)
+            return
+        time.sleep(12)
+    raise RuntimeError("accepted ref absent from the authenticated ledger")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--static-only", action="store_true")
     parser.add_argument("--source-preflight", action="store_true")
     parser.add_argument("--private-preview-once", action="store_true")
+    parser.add_argument("--submit-once", action="store_true")
     args = parser.parse_args()
     if sum((args.static_only, args.source_preflight,
-            args.private_preview_once)) != 1:
+            args.private_preview_once, args.submit_once)) != 1:
         parser.error("select exactly one explicit operation; no default side effects")
     if args.static_only:
         if not CONTRACT_PATH.is_file():
@@ -302,5 +331,7 @@ if __name__ == "__main__":
     elif args.source_preflight:
         frozen_reproduction(Path("/tmp/ntl-dual-wemm-source-preflight"))
         print("NTL_WEMM_V1_GUARDS_PASS_NO_GPU_NO_SUBMISSION", flush=True)
-    else:
+    elif args.private_preview_once:
         private_preview_once()
+    else:
+        competition_submit_once()
