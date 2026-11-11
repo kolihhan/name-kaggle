@@ -1,0 +1,43 @@
+name: NTL WeMM Terminal Details Read-Only 20261112
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-terminal-details-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  details:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect own exact terminal entry, without printing errors or secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json, re, subprocess
+          for ref in ("58244483", "58233227"):
+              proc=subprocess.run(
+                  ["kaggle","competitions","submission",ref],
+                  text=True,capture_output=True,timeout=75)
+              fields=("Submission Ref:","Status:","Public Score:","Private Score:","Error:","Description:","Submission Date:")
+              filtered=[s.strip()[:350] for s in proc.stdout.splitlines()
+                        if s.strip().startswith(fields)]
+              print("NTL_EXACT_ENTRY",json.dumps({
+                  "ref":ref,"return_code":proc.returncode,"official_fields":filtered
+              }),flush=True)
+          for kernel in ("kolihhan/ntl-dual-embedding-wemm-frozen-v1",
+                         "kolihhan/ntl-margin-gated-transport-v1"):
+              p=subprocess.run(["kaggle","kernels","status",kernel],
+                               text=True,capture_output=True,timeout=75)
+              m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+"\n"+p.stderr)
+              print("NTL_KERNEL",json.dumps({
+                  "ref":kernel,"return_code":p.returncode,
+                  "state":m.group(1) if m else "NOT_FOUND_OR_UNKNOWN"
+              }),flush=True)
+          PY
