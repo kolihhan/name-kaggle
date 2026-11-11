@@ -364,6 +364,34 @@ def _clone(destination: Path)->dict:
         raise RuntimeError("external query path not uniquely configured")
     if sum("CONFIG['paths']['test_csv'] = '/kaggle/temp/ntl_external_query.csv'" in c for c in new_code)!=1:
         raise RuntimeError("runtime path not uniquely configured")
+    print("NTL_TRANSFER_NOTEBOOK_FORMAT_DIAGNOSTIC",json.dumps({
+        "nbformat":nb.get("nbformat"),
+        "nbformat_minor":nb.get("nbformat_minor"),
+        "cell_count":len(cells),
+        "cells_missing_ids":sum(not c.get("id") for c in cells),
+        "duplicate_ids":len(cells)-len({c.get("id") for c in cells}),
+        "metadata_title_length":len(str(meta.get("title",""))),
+        "metadata_keys":sorted(meta.keys()),
+        "metadata_source_counts":{
+            k:len(meta.get(k) or []) for k in
+            ("dataset_sources","kernel_sources","model_sources","competition_sources")},
+        "notebook_bytes":dest_file.stat().st_size,
+    },sort_keys=True),flush=True)
+    try:
+        import nbformat
+    except ImportError:
+        print("NTL_TRANSFER_NBFORMAT_VALIDATION_UNAVAILABLE",flush=True)
+    else:
+        try:
+            nbformat.validate(nb)
+            print("NTL_TRANSFER_NBFORMAT_VALID",flush=True)
+        except Exception as e:
+            print("NTL_TRANSFER_NBFORMAT_INVALID",json.dumps({
+                "type":type(e).__name__,
+                "validator":str(getattr(e,"validator",""))[:60],
+                "path":str(getattr(e,"path",""))[:140],
+            }),flush=True)
+            raise RuntimeError("generated private Notebook fails nbformat validation") from None
     print("NTL_TRANSFER_SOURCE_CODE_SHA",digest,flush=True)
     print("NTL_TRANSFER_DIAGNOSTIC_NOTEBOOK_SHA",hashlib.sha256(dest_file.read_bytes()).hexdigest(),flush=True)
     print("NTL_TRANSFER_EXTERNAL_INPUT_REFS",json.dumps(ADDITIONAL_SOURCES),flush=True)
