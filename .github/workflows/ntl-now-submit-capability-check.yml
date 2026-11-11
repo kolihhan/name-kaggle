@@ -53,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
-          kaggle competitions leaderboard name-that-llm --show --public --page-size 20 -v -q > /tmp/ntl-public-lb.csv
+          kaggle competitions leaderboard name-that-llm --show -v -q > /tmp/ntl-public-lb.csv
           python - <<'PY'
           import csv, json
           with open('/tmp/ntl-public-lb.csv', newline='', encoding='utf-8-sig') as fh:
