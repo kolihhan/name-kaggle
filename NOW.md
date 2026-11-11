@@ -1,3 +1,9 @@
+# STABLEPAIR protocol gate — implementation checkpoint (2026-11-12 MYT)
+
+**Committed actual code and 7 locally passing synthetic tests, not another model or official submission:** [Gate report](artifacts/research/stablepair-protocol-gate-20261112.md), [auditor](scripts/stablepair_protocol_gate.py), [tests](tests/test_stablepair_protocol_gate.py). Checks matched prompt/request/settings/target length, source and upstream prompt-lineage independence, verified flags and deduplication without reading responses. **Real independent source/protocol evidence still BLOCKED; no new scientific BA, Kaggle status or training claim.** Next dependency is legally accessible source-owner metadata with original request and served-version provenance, not PPO or another old-fold contrastive sweep.
+
+---
+
 # Research checkpoint — PPO is NOT the next attribution-model objective (2026-11-12 MYT)
 
 **Decision only; no experiment/submission/score change.** The 18-label task has direct ground-truth labels, so PPO/GRPO over a one-step 18-way prediction offers no justified advantage over class-balanced supervised learning. Historical OOF→Public divergence and 71/87 within-provider errors on a spent 12-label diagnostic support a new *generator-vs-channel and sibling-representation* investigation, not incremental weights or another RL loop. **Training is REOPENED for evaluation as an architecture class, but remains execution-BLOCKED until provenance/independent-evaluation/resource gates are met.** Current official champion remains **0.679** (`58210835`); WeMM `58244483` status remains *last checked PENDING* in the ledger below. [Full research decision](artifacts/research/ppo-vs-task-aligned-objective-decision-20261112.md).
