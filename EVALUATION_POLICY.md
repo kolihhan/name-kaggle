@@ -4,6 +4,38 @@ Status: **FROZEN**
 
 Effective: 2026-11-01
 
+## Current benchmark and validation interpretation — 2026-11-11 (prospective addendum)
+
+This is a **dated prospective governance addendum**, not a rewrite of the frozen November 1 Phase 7, Phase 15 or Phase 19 science. It addresses a previously incompatible reference statement: the "Phase 7 champion" below is a **historical competition champion as of 2026-11-01**; it must not be represented as the current account-wide best.
+
+### Three different score/evidence categories
+
+| Purpose | Current reference | Inference allowed |
+| --- | --- | --- |
+| **Current best authenticated Kaggle Public BA on our account** | **0.679**, submission **58210835**, `COMPLETE` | Valid scored external-source **attributed reproduction**, not original research or Private BA |
+| Historical own Phase7-vs-Phase15 OOF experiment | Phase7 **0.370052** grouped OOF / **0.369** Public; Phase15 **0.405322** grouped OOF / **0.357** Public | Both OOF datasets have been adaptively inspected; useful historic warning, not unseen current holdout |
+| Fresh full 18-model, same-row independent transfer versus 0.679 | **NOT ESTABLISHED** as of 2026-11-11 | **BLOCKED** from model-quality promotion until a clean benchmark has passed the evidence gate |
+
+Current provenance: [official 0.679](artifacts/candidates/public-ozertuu-0683-guarded-repro/OFFICIAL_SCORE_20261111.md), [data eligibility and spent-cohort matrix](artifacts/research/ntl-18class-independent-validation-gate-20261111.md), [Kimi matched-pair negative-gate result](artifacts/research/ntl-kimi-protocol80/RESULT.md).
+
+### Prospective handling of model families (no comparison without shared rows)
+
+**Fitted/learning candidates:** The historical permanent 5-fold prompt-grouped OOF requirements below **still apply** for reproducibility and leakage control, alongside a predeclared genuinely separate transfer check. OOF on the same 2,699 known rows is development evidence; it is **not** an honest accuracy estimate for the hidden test merely because folds were held out.
+
+**Frozen public/pretrained/inference-only candidates:** A pretrained ensemble may not have retrainable components or accessible honest OOF artifacts; **do not manufacture OOF by comparing its Kaggle Public BA with Phase7 grouped OOF or by evaluating a fitted model on its training rows**. For such a candidate, record historical OOF as `N/A: unverifiable for this frozen source` and **block research promotion** unless all 18 truth classes are covered on a newly admitted independent same-row benchmark against the hash-pinned 0.679 champion, with predeclared transfer and error diagnostics. This `N/A` is a **transparency exception for comparison reporting, not a shortcut to promotion**.
+
+These two paths keep the original fold-isolation intent intact while avoiding an impossible or dishonest assertion of comparable OOF across unrelated, third-party fitted systems.
+
+### Anti-overfitting release rule
+
+- **Currently spent/diagnostic only:** 2,699 official train rows with permanent/shadow folds, 347 reviewed external texts (12/18 true classes), 80 Kimi high/off matched pairs, the old official Public scores, and any individually inspected performance slices. Another seed/split/reweight of these data is *not* new validation.
+- **Current research gate:** use [18-class holdout readiness checklist](artifacts/research/ntl-18class-independent-validation-gate-20261111.md) to verify original provenance, served versions, request/protocol parity, prompt/source disjointness including upstream datasets, 18-label truth support and sample-size precision. A collection with "18 labels" alone is **not** automatically an independent benchmark.
+- **Submission gate:** until a new, materially different candidate with a frozen inference rule has passed that gate and the applicable OOF/transfer constraints, **no new model training, source-weight tuning, blind GPU pilots or competition submissions**. The user's explicit `NO NEW TRAINING` boundary remains in force. An official Public improvement alone never overrides this process.
+- **Negative decisions are binding within their scope:** LoRA24 Stage1 A1 on the 347 rows: **24 rescues, 66 regressions**, rejected as a global replacement; Kimi 80-pair protocol test: high-minus-off +23.75 pp, exact p **0.010973563** > the prespecified 0.01 evidence gate, **not a causal or promotable outcome**. Do not selectively relax these thresholds or hide negative controls.
+- **Operational guard:** new GitHub Actions/workflow files and bulky progress logs do **not** substitute for research. Prefer a small auditable report and update the top of `NOW.md`. Preserve historical logs without repeatedly appending contradictory "current" champions.
+
+---
+
 This policy governs new competition candidates after the Phase 19 validation diagnostic and the domain-separability audit. It is a model-selection policy, not a new modeling phase.
 
 ## Why this policy exists
