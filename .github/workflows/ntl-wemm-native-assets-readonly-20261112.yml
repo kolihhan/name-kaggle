@@ -7,34 +7,51 @@ permissions: {contents: read}
 jobs:
   inspect_assets:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
-      - name: Check model and native embedding dependency existence without downloading weights
+      - name: Traverse metadata-only paginated Kaggle dataset manifest; no weights download
         shell: bash
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           python - <<'PY'
-          import json, subprocess
-          sources = (
-            ("lightningv08/ntl-olmo2-native24-final-inference-assets",
-             ["ntl-native-q8-multidepth-fivefold-0679", "ntl-native-wemm4-fivefold-0679"]),
-            ("nuridudak/ntl-svc-prefit-pool-v4n", ["svc"]),
-          )
-          for source, checks in sources:
-              proc=subprocess.run(["kaggle","datasets","files",source,"-v","--page-size","200"],
-                                  capture_output=True,text=True,timeout=70)
-              data=proc.stdout.lower()
-              print("NTL_WEMM_DATASET_FILE_EVIDENCE",json.dumps({
-                  "source":source,"exit_code":proc.returncode,
-                  "characters":len(proc.stdout),"file_listing_nonempty":len(data)>40,
-                  "requested_assets":{name:(name.lower() in data) for name in checks},
-                  "cli_error_suppressed":proc.returncode!=0,
-                  "file_list_metadata_excerpt":proc.stdout[:2500]
-              },sort_keys=True),flush=True)
+          import csv, io, json, re, subprocess
+          source="lightningv08/ntl-olmo2-native24-final-inference-assets"
+          token=None
+          seen_tokens=set()
+          filenames=[]
+          fully_scanned=False
+          for page in range(30):
+              args=["kaggle","datasets","files",source,"-v","--page-size","200"]
+              if token:args.extend(["--page-token",token])
+              proc=subprocess.run(args,capture_output=True,text=True,timeout=65)
+              if proc.returncode:raise RuntimeError("Kaggle dataset files pagination call failed; raw errors suppressed")
+              text=proc.stdout
+              marker="name,size,creationDate"
+              if marker not in text:raise RuntimeError("Dataset file list CSV header missing")
+              csv_text=marker+text.split(marker,1)[1]
+              rows=list(csv.DictReader(io.StringIO(csv_text)))
+              filenames.extend(str(x.get("name","")) for x in rows)
+              m=re.search(r"Next Page Token = (\S+)",text)
+              if not m:
+                  fully_scanned=True
+                  break
+              token=m.group(1)
+              if token in seen_tokens:raise RuntimeError("Repeated pagination cursor")
+              seen_tokens.add(token)
+          print("NTL_WEMM_NATIVE_ASSET_FULL_MANIFEST",json.dumps({
+              "source":source,
+              "pages_queried":len(seen_tokens)+1 if fully_scanned else len(seen_tokens),
+              "fully_scanned":fully_scanned,
+              "file_count":len(filenames),
+              "qwen_assets":sum("ntl-native-q8-multidepth-fivefold-0679" in x for x in filenames),
+              "wemm_assets":sum("ntl-native-wemm4-fivefold-0679" in x for x in filenames),
+              "wemm_related_paths":[x[:180] for x in filenames if "wemm" in x.lower()][:15],
+              "qwen_related_paths":[x[:180] for x in filenames if "native-q8" in x.lower()][:15],
+          },sort_keys=True),flush=True)
           PY
