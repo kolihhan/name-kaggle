@@ -1,0 +1,79 @@
+name: NTL WEMM Ensemble Error Drilldown (read-only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-ensemble-error-drilldown-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Inspect Kaggle private smoke code and sanitized traceback metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,pathlib,re,subprocess,tempfile
+          ref="kolihhan/ntl-wemm-fullpath-3row-smoke-v1"
+          def call(args):
+              return subprocess.run(args,text=True,capture_output=True,timeout=110)
+          logs=call(["kaggle","kernels","logs",ref])
+          if logs.returncode:raise RuntimeError("private Kaggle logs unavailable")
+          try:
+              parsed=json.loads(logs.stdout)
+              data=[]
+              if isinstance(parsed,list):
+                  for x in parsed:
+                      if isinstance(x,dict):
+                          d=x.get("data","")
+                          data.extend(("\n".join(map(str,d)) if isinstance(d,list) else str(d)).splitlines())
+              else:data=logs.stdout.splitlines()
+          except (TypeError,ValueError):
+              data=logs.stdout.splitlines()
+          # Restrict output to diagnostic keywords, never print response text.
+          safe_words=(
+              "exception","error","runtime","subprocess","returncode","non-zero",
+              "exit","code","stage","worker","failed","out of memory","missing",
+              "not found","none","no such","no module","cannot","could not",
+              "unable","invalid","unexpected","type","readout","calibration",
+              "device","torch","wemm","embedding","qwen","config","timeout",
+              "cuda","memory","file","path","cache","checkpoint","shape",
+              "numeric","guard","freeze","training","native","atlas","svc")
+          extract=[]
+          for raw in data[-45:]:
+              if re.search(r"(?i)traceback|error|exception|failed|returned non-zero|exit status",raw):
+                  # The counts and literal non-PII diagnostic terms are safe.
+                  found=sorted(w for w in safe_words if w in raw.lower())
+                  nums=re.findall(r"(?<![A-Za-z])\d{1,5}(?![A-Za-z])",raw)[:5]
+                  extract.append({"line_len":len(raw),"safe_terms":found,"small_numbers":nums})
+          print("NTL_ERROR_STRUCTURAL_TAIL",json.dumps(extract[-18:]),flush=True)
+          out=pathlib.Path(tempfile.mkdtemp(prefix="ntl-smoke-src-"))
+          pull=call(["kaggle","kernels","pull",ref,"-p",str(out),"-m"])
+          if pull.returncode:raise RuntimeError("private Notebook code pull failed")
+          file=next(out.glob("*.ipynb"))
+          nb=json.loads(file.read_text())
+          matches=[]
+          for idx,cell in enumerate(c for c in nb["cells"] if c.get("cell_type")=="code"):
+              x=cell.get("source",[])
+              txt="".join(x) if isinstance(x,list) else str(x)
+              if "%%writefile" in txt and ("ensemble.py" in txt.splitlines()[0]):
+                  lines=txt.splitlines()
+                  selections=[]
+                  for i in (25,81,211):
+                      lo,hi=max(1,i-5),min(len(lines),i+5)
+                      selected=[]
+                      for k in range(lo,hi+1):
+                          value=lines[k-1].strip()
+                          if re.search(r"(?i)secret|token|password|api.key|authorization",value):value="[REDACTED]"
+                          selected.append({"line":k,"code":value[:240]})
+                      selections.append({"around_line":i,"source_lines":selected})
+                  matches.append({"code_cell":idx,"lines":len(lines),"slices":selections})
+          print("NTL_ENSEMBLE_SOURCE_SLICES",json.dumps(matches[:2],ensure_ascii=False),flush=True)
+          PY
