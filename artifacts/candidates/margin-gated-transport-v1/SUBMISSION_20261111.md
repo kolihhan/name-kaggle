@@ -23,3 +23,12 @@ This was an **explicitly user-authorized one-shot exploratory official submissio
 - If score is <=0.679 or submission fails, keep scored champion `58210835` `0.679`. Do not retune this margin gate on Public LB or repeat submit.
 - No new training, weight fitting, per-label override, use of the already-inspected 347/Kimi rows, source copying into GitHub or Kaggle official raw data in Actions.
 - Previous Lightning submission `58167751` was still `PENDING` with blank Public Score in the same authenticated ledger. This is unrelated to new MGT-v1 submission.
+
+## Follow-up authenticated read-only official status — 2026-11-11 10:29:35 UTC
+
+- **Evidence:** [GitHub Actions #43004028969](https://github.com/kolihhan/name-kaggle/actions/runs/43004028969), job `130466936098`, **SUCCESS**. The existing read-only status checker was extended to print three exact submission refs; no competition submission, GPU inference, model fitting, or parameter change was made.
+- **MGT-v1 `58233227`: `SubmissionStatus.PENDING`, Public Score blank, Private Score blank.**
+- **Champion `58210835`: `SubmissionStatus.COMPLETE`, Public BA `0.679`, Private Score blank.**
+- **Earlier Lightning `58167751`: `SubmissionStatus.PENDING`, Public Score blank.**
+- Private MGT-v1 Notebook status `KernelWorkerStatus.COMPLETE` remains a **preview** result only, not official hidden scoring.
+- No leaderboard-driven MGT-v1 retuning, duplicate submission, or promotion. The latest verified Public champion is unchanged.
