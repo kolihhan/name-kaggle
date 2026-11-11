@@ -1,0 +1,86 @@
+name: NTL CUDA Device Availability Private Canary (NO MODEL)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cuda-device-canary-20261112.yml]
+permissions: {contents: read}
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Create one private 5-minute GPU environment probe without competition inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import pathlib,tempfile,json,re,subprocess
+          ref="kolihhan/ntl-wemm-cuda-env-probe-20261112"
+          def call(*args):
+              return subprocess.run(args,capture_output=True,text=True,timeout=100)
+          quota=call("kaggle","quota")
+          m=re.search(r"(?m)^GPU\s+\S+\s+([0-9.]+)h",quota.stdout)
+          if quota.returncode or not m or float(m.group(1))<9:
+              raise RuntimeError("Cannot run GPU canary: quota safety gate")
+          existing=call("kaggle","kernels","status",ref)
+          if "KernelWorkerStatus." in existing.stdout+existing.stderr:
+              raise RuntimeError("Canary already created; no repeat")
+          code="""import json,subprocess,torch
+out={'torch':torch.__version__,'torch_cuda_compiled':str(torch.version.cuda),
+     'cuda_available':bool(torch.cuda.is_available()),'cuda_count':int(torch.cuda.device_count())}
+try:
+    dev=torch.tensor([1.],dtype=torch.float32).to('cuda:0')
+    out['cuda_tensor_smoke']='PASS'
+except Exception as exc:
+    out['cuda_tensor_smoke']=type(exc).__name__
+try:
+    x=torch.empty((4,),dtype=torch.float32).pin_memory()
+    out['cpu_pin_memory_smoke']='PASS'
+except Exception as exc:
+    out['cpu_pin_memory_smoke']=type(exc).__name__
+try:
+    import transformers
+    out['transformers']=transformers.__version__
+except Exception as exc:
+    out['transformers']=type(exc).__name__
+try:
+    import accelerate
+    out['accelerate']=accelerate.__version__
+except Exception as exc:
+    out['accelerate']=type(exc).__name__
+probe=subprocess.run(['nvidia-smi','--query-gpu=name,memory.total','--format=csv,noheader'],
+    capture_output=True,text=True,timeout=20)
+out['nvidia_smi_returncode']=probe.returncode
+out['nvidia_smi_lines']=probe.stdout.strip().splitlines()[:4]
+print('NTL_CUDA_ENV_PROBE',json.dumps(out,sort_keys=True),flush=True)
+"""
+          nb={"cells":[{"cell_type":"code","execution_count":None,
+             "metadata":{},"outputs":[],"source":code.splitlines(keepends=True)}],
+             "metadata":{"kernelspec":{"display_name":"Python 3","language":"python",
+                 "name":"python3"},"language_info":{"name":"python"}},
+             "nbformat":4,"nbformat_minor":5}
+          meta={"id":ref,"title":ref.split("/",1)[1],"code_file":"cuda_probe.ipynb",
+                "language":"python","kernel_type":"notebook",
+                "is_private":True,"enable_internet":False,
+                "machine_shape":"NvidiaTeslaT4",
+                "dataset_sources":[],"competition_sources":[],
+                "kernel_sources":[],"model_sources":[]}
+          root=pathlib.Path(tempfile.mkdtemp(prefix="ntl-cuda-canary-"))
+          (root/"cuda_probe.ipynb").write_text(json.dumps(nb),encoding="utf-8")
+          (root/"kernel-metadata.json").write_text(json.dumps(meta,indent=2),encoding="utf-8")
+          launched=subprocess.run(["kaggle","kernels","push","-p",str(root),
+              "--accelerator","NvidiaTeslaT4","--timeout","300"],capture_output=True,text=True,timeout=150)
+          if launched.returncode or "Kernel version 1 successfully pushed" not in launched.stdout+launched.stderr:
+              raise RuntimeError("Failed to create one-shot private GPU canary")
+          print("NTL_CUDA_PRIVATE_CANARY_CREATED",json.dumps({
+              "ref":ref,"gpu_quota_before_h":float(m.group(1)),
+              "runtime_cap_seconds":300,"no_training":True,
+              "no_competition_data":True,"no_submission":True
+          },sort_keys=True),flush=True)
+          PY
