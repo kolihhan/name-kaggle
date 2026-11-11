@@ -219,3 +219,57 @@ jobs:
                 "common_prefix_chars":sum(1 for _ in []),
               }),flush=True)
           PY
+
+      - name: New frontier architecture manifests — no training or submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import hashlib,json,pathlib,re,subprocess,tempfile
+          refs=[
+            "omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex",
+            "kirilltym/lora-trained27-evidence-for-close-calls",
+            "prvsiyan/the-prompt-is-not-the-author",
+            "lightningv08/0-681-qwen3-embedding-lora-qwen3-8-27b",
+          ]
+          for ref in refs:
+              out={"ref":ref,"read_only":True,"trained":False,"submitted":False}
+              with tempfile.TemporaryDirectory(prefix="ntl-frontier-") as root:
+                  d=pathlib.Path(root)
+                  p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(d),"-m"],
+                      capture_output=True,text=True,timeout=100)
+                  out["pull_rc"]=p.returncode
+                  if p.returncode==0:
+                      mfile=d/"kernel-metadata.json"
+                      if mfile.exists():
+                          m=json.loads(mfile.read_text())
+                          out["meta"]={k:m.get(k) for k in ("id","is_private",
+                             "enable_internet","machine_shape","kernel_type")}
+                          out["source_counts"]={k:len(m.get(k) or []) for k in (
+                             "dataset_sources","kernel_sources","model_sources","competition_sources")}
+                          out["model_sources"]=(m.get("model_sources") or [])[:8]
+                      notebooks=list(d.glob("*.ipynb"))
+                      out["notebooks"]=len(notebooks)
+                      if len(notebooks)==1:
+                          b=notebooks[0].read_bytes()
+                          out["notebook_sha256"]=hashlib.sha256(b).hexdigest()
+                          nb=json.loads(b)
+                          code="\n".join("".join(c.get("source",[]))
+                              if isinstance(c.get("source",[]),list)
+                              else str(c.get("source",""))
+                              for c in nb.get("cells",[]) if c.get("cell_type")=="code")
+                          out["code_chars"]=len(code)
+                          out["indicators"]={name:bool(re.search(pattern,code,re.I)) for name,pattern in {
+                             "lora":r"lora|peft|adapter",
+                             "trained27":r"trained27|27b|gsq",
+                             "frozen_embedding":r"embedding",
+                             "prompt_cluster":r"cluster|centroid|prompt.group",
+                             "linear_svc":r"LinearSVC|TfidfVectorizer",
+                             "deberta":r"deberta",
+                             "sinkhorn":r"sinkhorn|balance_logits",
+                             "pair_specialist":r"pairwise|specialist",
+                             "training_marker":r"backward\\s*\\(|fit\\s*\\("
+                          }.items()}
+              print("NTL_NEW_FRONTIER_ARCH",json.dumps(out,ensure_ascii=False,sort_keys=True),flush=True)
+          PY
