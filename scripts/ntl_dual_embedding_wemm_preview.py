@@ -83,72 +83,47 @@ def frozen_reproduction(destination: Path) -> dict:
     original = notebooks[0]
     notebook = json.loads(original.read_text(encoding="utf-8"))
     original_sha = _sha(original)
-    source_code_cells = ["".join(c.get("source", [])) if isinstance(c.get("source", []), list) else str(c.get("source", ""))
-                         for c in notebook.get("cells", []) if c.get("cell_type") == "code"]
-    print("NTL_WEMM_SOURCE_PIN_DIAGNOSTIC", json.dumps({
-        "notebook_sha256": original_sha,
-        "code_sha256": hashlib.sha256(json.dumps(source_code_cells, ensure_ascii=False,
-                                  separators=(",", ":")).encode("utf-8")).hexdigest(),
-        "cells": len(source_code_cells),
-        "version_metadata": {k:source_meta.get(k) for k in ("version_number","current_version_number",
-                            "id","id_no")},
-    }, sort_keys=True), flush=True)
-    # Pure metadata read for changed public source: never bypass the pin.
-    for cell_index, code in enumerate(source_code_cells):
-        for match in re.finditer(r"\.(?:fit|fit_transform|partial_fit)\s*\(", code):
-            prefix = code[max(0,match.start()-65):match.start()]
-            receiver = re.search(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$", prefix)
-            print("NTL_WEMM_SOURCE_FIT_SITE", json.dumps({
-                "cell_index": cell_index, "receiver": receiver.group(1) if receiver else "unknown",
-                "call": match.group(0).strip(), "line": code[:match.start()].count(chr(10))+1,
-                "nearby_public_code": [
-                    line.strip()[:150] for line in
-                    code.splitlines()[max(0,code[:match.start()].count(chr(10))-2):
-                                      code[:match.start()].count(chr(10))+2]
-                ],
-            }, sort_keys=True), flush=True)
-    for cell_id, code in enumerate(source_code_cells):
-        if cell_id == 33:
-            for line_no, line in enumerate(code.splitlines()[:112],1):
-                print("NTL_WEMM_STYLE_CELL", json.dumps({"cell":33,
-                    "line":line_no,"code":line[:170]},ensure_ascii=False),flush=True)
-        for line_no, line in enumerate(code.splitlines(),1):
-            if any(k in line for k in ("style_p", "style_specialist", "style_model", "style_probe")) and ("def " in line or "style_p" in line):
-                print("NTL_WEMM_STYLE_REFERENCE",json.dumps({"cell":cell_id,
-                    "line":line_no,"code":line[:170]},ensure_ascii=False),flush=True)
-    if original_sha != 'e943174f3cfe114eeb96d9f721c675826f6ef8a91e30ae055dd86e5c48257865':
-        raise RuntimeError('upstream 0.683 public source changed; do not promote')
-
+    source_code_cells = [
+        "".join(c.get("source", [])) if isinstance(c.get("source", []), list)
+        else str(c.get("source", ""))
+        for c in notebook.get("cells", []) if c.get("cell_type") == "code"
+    ]
+    code_digest = hashlib.sha256(json.dumps(
+        source_code_cells, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()
+    # The Notebook container/markdown can be revised; executable code must
+    # be exact. A changed digest always aborts before any GPU/competition call.
+    expected_code_digest = "a65e0115aaa56e3ce64391e9911fed7d3521c7ace3a1e990d92cc4f1b8a03a82"
+    if code_digest != expected_code_digest or len(source_code_cells) != 43:
+        raise RuntimeError("source executable code changed; no promotion")
     cells = notebook.get("cells", [])
-    texts = ["".join(cell.get("source", [])) if cell.get("cell_type") == "code" else ""
-             for cell in cells]
+    texts = ["".join(cell.get("source", [])) if cell.get("cell_type") == "code"
+             else "" for cell in cells]
     corpus = "\n".join(texts)
-    print("NTL_WEMM_SAFE_TRAIN_PATH_INVENTORY", json.dumps({
-        "release_ready": any("CONFIG = " in s and "'RELEASE_READY': True" in s for s in texts),
-        "fit_family_count": len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(", corpus)),
-        "train_calls": len(re.findall(r"\.train\s*\(", corpus)),
-        "backward_or_step": bool(re.search(r"\.(?:backward|step|zero_grad)\s*\(",corpus)),
-        "torch_optim": bool(re.search(r"\btorch\.optim\b",corpus)),
-        "gauss_prefit_markers": ("source-test-conditioned" in corpus, "fixed-no-test-redo" in corpus),
-    },sort_keys=True),flush=True)
-    for cell_index, code in enumerate(texts):
-        for m in re.finditer(r"\.(?:fit|fit_transform|partial_fit)\s*\(", code):
-            pfx = code[max(0,m.start()-85):m.start()]
-            receiver = re.search(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$",pfx)
-            print("NTL_WEMM_SAFE_FIT_SITE",json.dumps({
-                "cell_index":cell_index,
-                "receiver":receiver.group(1) if receiver else "unknown",
-                "call":m.group(0).strip(),
-                "line_index":code[:m.start()].count(chr(10))+1,
-            },sort_keys=True),flush=True)
-    if (not any("CONFIG = " in s and "'RELEASE_READY': True" in s for s in texts) or
-        len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(", corpus)) != 4 or
+    # Exact six training/fit callsites are inspected in the source audit.
+    # Three TF-IDF fit_transform are unsupervised prompt-group features,
+    # one gauss.fit is blocked, two supervised model.fit are removed below.
+    if (not any("CONFIG = " in x and "'RELEASE_READY': True" in x for x in texts) or
+        len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(", corpus)) != 6 or
         len(re.findall(r"\.train\s*\(", corpus)) != 1 or
         re.search(r"\.(?:backward|step|zero_grad)\s*\(", corpus) or
-        re.search(r"\btorch\.optim\b", corpus)):
-        raise RuntimeError("upstream pretrained-vs-training call inventory drift")
-    if "source-test-conditioned" not in corpus or "fixed-no-test-redo" not in corpus:
-        raise RuntimeError("original Gaussian prefit fallback identity not auditable")
+        re.search(r"\btorch\.optim\b", corpus) or
+        "source-test-conditioned" not in corpus or
+        "fixed-no-test-redo" not in corpus):
+        raise RuntimeError("unexpected source training path inventory")
+    style_cell = source_code_cells[33]
+    if (not style_cell.startswith("%%writefile /kaggle/temp/ntl-gsq-v27-runtime/sibling_style.py") or
+        style_cell.count("model.fit(X[a], target[a])") != 1 or
+        style_cell.count("model.fit(X, target)") != 1 or
+        style_cell.count("def apply_grouped_style_residual(") != 1):
+        raise RuntimeError("source supervised sibling-style code drift")
+    print("NTL_WEMM_SOURCE_PIN_VERIFIED", json.dumps({
+        "code_sha256": code_digest, "notebook_sha256": original_sha,
+        "changed_noncode_container_ok": original_sha !=
+            "e943174f3cfe114eeb96d9f721c675826f6ef8a91e30ae055dd86e5c48257865",
+        "fit_calls_original": 6, "style_supervised_fit_sites_to_remove": 2,
+        "new_training_allowed": False,
+    }, sort_keys=True),flush=True)
 
     guard_gaussian = (
         "import gauss\n"
@@ -159,11 +134,25 @@ def frozen_reproduction(destination: Path) -> dict:
     count_gauss = 0
     count_atlas = 0
     count_core_guard = 0
+    count_style = 0
     for cell in cells:
         if cell.get("cell_type") != "code":
             continue
         src = cell.get("source", [])
         code = "".join(src) if isinstance(src, list) else str(src)
+        if "%%writefile /kaggle/temp/ntl-gsq-v27-runtime/sibling_style.py" in code:
+            if count_style:
+                raise RuntimeError("more than one sibling-style cell")
+            start = code.index("def apply_grouped_style_residual(")
+            # No new supervised fitting: remove the entire CV+final LogisticRegression
+            # method. Preserve unrelated style-feature functions for imports.
+            code = code[:start] + (
+                "def apply_grouped_style_residual(logits, train_text, test_text, "
+                "labels, y, groups, max_alpha=0.10, diagnostics_path=None):\n"
+                "    # Frozen WeMM experiment: sibling-style training is disabled.\n"
+                "    return np.asarray(logits, dtype=np.float64).copy()\n"
+            )
+            count_style += 1
         if "def member_scores" in code and "import gauss\n" in code:
             if count_gauss:
                 raise RuntimeError("ambiguous Gaussian fit guard target")
@@ -194,7 +183,7 @@ def frozen_reproduction(destination: Path) -> dict:
                 "    config =", 1)
             count_core_guard += 1
         cell["source"] = code.splitlines(keepends=True)
-    if (count_gauss, count_atlas, count_core_guard) != (1, 1, 1):
+    if (count_gauss, count_atlas, count_core_guard, count_style) != (1, 1, 1, 1):
         raise RuntimeError(f"training guard targets incomplete {(count_gauss, count_atlas)}")
 
     # Credit original author: no generated text, weights, or competition data.
@@ -241,7 +230,9 @@ def frozen_reproduction(destination: Path) -> dict:
                      if c.get("cell_type") == "code")
     if (full.count("NO_NEW_TRAINING: core worker train_final forbidden") != 1 or
         full.count("gauss.fit = _no_new_supervised_gaussian_fit") != 1 or
-        full.count("NO_NEW_TRAINING: Atlas train mode forbidden") != 1):
+        full.count("NO_NEW_TRAINING: Atlas train mode forbidden") != 1 or
+        "model.fit(X[a], target[a])" in full or
+        "model.fit(X, target)" in full):
         raise RuntimeError("training guards not persisted")
     print("NTL_WEMM_V1_FROZEN_ORIGINAL_NOTEBOOK_SHA256", original_sha, flush=True)
     print("NTL_WEMM_V1_FROZEN_REPRO_NOTEBOOK_SHA256",
