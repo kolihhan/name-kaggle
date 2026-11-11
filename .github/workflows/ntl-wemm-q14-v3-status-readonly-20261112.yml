@@ -1,0 +1,67 @@
+name: NTL WEMM CUDA Bootstrap V3 Real Path Status Read-Only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-q14-v3-status-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read existing private CUDA-fixed full inference result, never submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,re,subprocess,time,pathlib,tempfile
+          ref="kolihhan/ntl-wemm-q14-cuda-bootstrap-smoke-v3"
+          def call(args,timeout=120):
+              return subprocess.run(args,text=True,capture_output=True,timeout=timeout)
+          state="UNKNOWN"
+          for poll in range(35):
+              p=call(["kaggle","kernels","status",ref])
+              m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+"\n"+p.stderr)
+              state=m.group(1) if m else "UNKNOWN"
+              if state in ("COMPLETE","ERROR","CANCELLED","FAILED"):break
+              if poll in (0,8,20):
+                  print("NTL_BOOTSTRAP_V3_PROGRESS",json.dumps({"state":state,"poll":poll}),flush=True)
+              time.sleep(12)
+          print("NTL_BOOTSTRAP_V3_STATUS",json.dumps({"state":state,"poll":poll,"ref":ref,
+              "terminal":state in ("COMPLETE","ERROR","CANCELLED","FAILED")}),flush=True)
+          if state not in ("COMPLETE","ERROR","CANCELLED","FAILED"):
+              raise SystemExit(0)
+          output=pathlib.Path(tempfile.mkdtemp(prefix="ntl-v3-logs-"))
+          p=call(["kaggle","kernels","output",ref,"--file-pattern",r".*core-q14v5[.]log$",
+                  "-p",str(output),"-q"],150)
+          stages=[]
+          for f in output.rglob("*"):
+              if not f.is_file() or f.name!="core-q14v5.log":continue
+              txt=f.read_text(encoding="utf-8",errors="replace")
+              lines=txt.splitlines()
+              m=re.findall(r"NTL_Q14_CUDA_BOOTSTRAP\s*(\{[^\n]+\})",txt)
+              markers=[]
+              for entry in m:
+                  try:markers.append(json.loads(entry))
+                  except ValueError:pass
+              final=[ln.strip() for ln in lines if re.match(r"^(RuntimeError|ValueError|AssertionError|OSError|FileNotFoundError)\s*:",ln.strip())]
+              final_error=final[-1] if final else None
+              if final_error:
+                  final_error=re.sub(r"/kaggle/(?:input|working|temp)/[^\s]+","[REDACTED_PATH]",final_error)
+              stages.append({"line_count":len(lines),"cuda_init_markers":markers[-2:],
+                  "terminal_error":final_error[:180] if final_error else None,
+                  "had_true_inference":bool(markers)})
+          print("NTL_BOOTSTRAP_V3_Q14_RESULT",json.dumps({
+              "output_rc":p.returncode,"stages":stages
+          },sort_keys=True),flush=True)
+          x=call(["kaggle","kernels","files",ref,"-v","--page-size","200"])
+          print("NTL_BOOTSTRAP_V3_SUBMISSION_OUTPUT",json.dumps({
+              "files_rc":x.returncode,"has_submission_parquet":"submission.parquet" in x.stdout
+          }),flush=True)
+          PY
