@@ -1,5 +1,15 @@
 # NOW
 
+## Post-0.679 breakthrough research — fresh source cohort gate (2026-11-11)
+
+**Goal:** materially exceed the verified `0.679` own Kaggle champion, with stretch gate `>=0.700` Public BA **and** genuinely independent generator-identification evidence; not a copy/paste or leaderboard-tuning loop. See [fresh external data verdict](artifacts/research/ntl-fresh-12-label-cohort-triage-20261111.md) grounded in successful authenticated [Kaggle README/provenance inspection #42948566225](https://github.com/kolihhan/name-kaggle/actions/runs/42948566225) and [cohort label coverage #42948801556](https://github.com/kolihhan/name-kaggle/actions/runs/42948801556).
+
+Two newly generated, explicitly licensed cohorts found: **Nimitha Nov 10 = 240 rows / 20 prompts / exactly 12 of 18 labels (CC BY 4.0, reused Seyit prompt bank)**, and **Toan Nov 8 = 107 rows / 9 authored prompts / 12 labels (CC0-1.0)**. Neither contains a complete 18-label prompt panel; both omit Fable-5, Gemini-3.7-Flash, GLM 5.3 and Flash, Kimi-K3 and Qwen3.8-Max. Model Proxy served-model identity is not fully disclosed, and source/prompt overlap with champion prefit sources is **unproven absent**. Treat as **partial 12-label source-transfer leads**, not full-stack 18-label evidence. No model run, GPU, submission or training in this survey.
+
+**Next discriminating action, not a verified model result:** prepare one fixed no-supervised-training, source-screened `0.679` champion inference-only diagnostic on authored Toan examples, using Nimitha as different-prompt-bank source control; report 12-class conditional BA and error structures, not a new Kaggle score. If the frozen champion pipeline cannot run without unsafe training or if source independent evidence fails, close this route rather than redesigning an ensemble around Public LB feedback. Main bottleneck remains unavailable clean 18-label source-disjoint transfer and same-row strong-anchor logits. Preserve all no-new-training and public Git data safeguards.
+
+---
+
 ## VERIFIED NEW CHAMPION — Public BA 0.679 (2026-11-11 10:28 MYT)
 
 **Own official Kaggle submission `58210835` = `SubmissionStatus.COMPLETE`; Public Score **`0.679`**, Private Score blank.** This **supersedes** the older 0.668 champion by **+0.011 BA** (+1.1 percentage points; ≈1.65% relative). Verified twice via [official Kaggle ledger and exact submission endpoint, Actions #42874538415 attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415) (job `130279696484`, 2026-11-11 02:28:39 UTC). Result [OFFICIAL_SCORE_20261111.md](artifacts/candidates/public-ozertuu-0683-guarded-repro/OFFICIAL_SCORE_20261111.md). The previous refs `58022340`/`58045266` remain `COMPLETE` at 0.668. The separate `58167751` remains `PENDING` with Public Score empty at the same official check.
