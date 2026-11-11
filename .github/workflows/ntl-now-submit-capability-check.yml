@@ -47,3 +47,20 @@ jobs:
           kaggle kernels status kolihhan/name-that-llm-lora24-v1-final || true
           echo '--- FROZEN MGT-V1 PRIVATE NOTEBOOK STATUS ---'
           kaggle kernels status kolihhan/ntl-margin-gated-transport-v1 || true
+
+      - name: Read public competition leaderboard top 20 (no submissions)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          kaggle competitions leaderboard name-that-llm --show --public --page-size 20 -v -q > /tmp/ntl-public-lb.csv
+          python - <<'PY'
+          import csv, json
+          with open('/tmp/ntl-public-lb.csv', newline='', encoding='utf-8-sig') as fh:
+              rows=list(csv.DictReader(fh))
+          if not rows:
+              raise RuntimeError("official Kaggle leaderboard returned no parsed rows")
+          print("NTL_PUBLIC_LB_COLUMNS",json.dumps(list(rows[0].keys())))
+          for rank, row in enumerate(rows[:20], 1):
+              print("NTL_PUBLIC_LB_RANK",json.dumps({"rank":rank,**row},ensure_ascii=False,sort_keys=True))
+          PY
