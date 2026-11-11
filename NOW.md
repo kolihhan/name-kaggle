@@ -1,3 +1,13 @@
+# CURRENT — WeMM inference-only exploratory submission execution (2026-11-12 MYT)
+
+**One-shot Kaggle run has STARTED, not yet an accepted submission:** [GitHub Actions #43060048662](https://github.com/kolihhan/name-kaggle/actions/runs/43060048662). Source-preflight job **SUCCESS**; submit job is executing a private Notebook preview and will submit only after a valid `submission.parquet`. Until an official Kaggle ledger ID is recorded, **do not claim submitted or scored**.
+
+**Research basis:** 0.679 Public champion is an attributed public reproduction, not a demonstrated ceiling. In earlier external 347-row diagnostic, 71/87 errors were within-provider siblings; old GroupKFold gains diverged from hidden Public outcomes. A newer public dual-embedding + Tencent WeMM 4B representation supplies a distinct input. The official 0.765 leaderboard leader's source has **not** been verified public, and the WeMM candidate's Public BA is unknown. The source Notebook also included two supervised sibling-style LogisticRegression fitting calls; this candidate explicitly **removes them** by a frozen identity residual, in addition to preexisting Gaussian/Atlas/core training guards, consistent with no new training. This is a test of altered representation/inference, **not** an exact original reproduction or proven improvement.
+
+**Frozen verification:** [no-GPU code-pin and guards #43059889716](https://github.com/kolihhan/name-kaggle/actions/runs/43059889716) SUCCESS; original public executable digest `a65e0115...`; source Notebook container changed in non-executable content but executable cell digest remained identical. Signed-off [candidate contract](artifacts/candidates/dual-embedding-wemm-frozen-v1/CONTRACT.md). **Independent full-18 validation remains BLOCKED**; the user expressly authorized one exploratory official competition entry. Do not tune from Public LB, do not repeat on error, and preserve champion `58210835` `0.679`.
+
+---
+
 # NOW
 
 ## NEW OFFICIAL KAGGLE SUBMISSION — MGT-v1 accepted, score pending (2026-11-11)
