@@ -52,8 +52,10 @@ def read_pairs(path:Path)->tuple[list[dict],dict]:
                 "model_id":item["model_id"],
                 "reasoning_tokens":item.get("reasoning_tokens")
             })
-    if len(records)!=EXPECTED_ROWS or len(grouped)!=EXPECTED_PAIRS:
-        raise RuntimeError("expected exact 80 pairs and 160 rows")
+    # The trial bank also has single-setting Kimi prompts. Require exactly
+    # 80 *complete* high/off groups, not 80 total Kimi prompt keys.
+    if len(records)!=EXPECTED_ROWS:
+        raise RuntimeError("expected exact 80 complete pairs and 160 rows")
     hashes=[sha(" ".join(x["text"].split()).casefold().encode()) for x in records]
     if len(set(hashes))!=EXPECTED_ROWS:
         raise RuntimeError("repeated Kimi text among selected pairs")
