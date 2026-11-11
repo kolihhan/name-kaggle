@@ -1,5 +1,20 @@
 # Name That LLM — authenticated submission status reconciliation
 
+## Latest official result update — 10:28 MYT (supersedes 02:22 snapshot)
+
+[Authenticated read-only Kaggle check Actions #42874538415 attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415), job `130279696484`, **SUCCESS** at 2026-11-11 02:28:39 UTC:
+
+| ID | Status | Official Public BA |
+|---|---|---:|
+| `58210835` | **COMPLETE** | **0.679** |
+| `58167751` | PENDING | — |
+| `58022340` | COMPLETE | 0.668 |
+| `58045266` | COMPLETE | 0.668 |
+
+Kaggle's exact-submission endpoint independently returned `Status: COMPLETE`, `Public Score: 0.679` for `58210835`. **Our new authenticated champion is 0.679, +0.011 vs 0.668.** Old PENDING status below refers only to the earlier historical snapshot and must not be repeated as current truth. Full outcome: [OFFICIAL_SCORE_20261111.md](../candidates/public-ozertuu-0683-guarded-repro/OFFICIAL_SCORE_20261111.md). **No Private Score published.**
+
+---
+
 Verification time: **2026-11-11 02:22 MYT (2026-11-10 18:22 UTC)**.
 
 ## Canonical Kaggle evidence
