@@ -1,0 +1,45 @@
+name: NTL 0679 frozen Kimi K3 high-off protocol80 PRIVATE inference ONCE
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-kimi-protocol80-private-inference-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-0679-frozen-kimi-protocol80-one-inference
+  cancel-in-progress: false
+jobs:
+  infer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/
+            artifacts/research/ntl-kimi-protocol80/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Check one-shot contract and no official data in checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test -f artifacts/research/ntl-kimi-protocol80/CONTRACT.md
+          python -m py_compile scripts/ntl_0679_transfer_private_once.py \
+             scripts/ntl_kimi_protocol80_source.py \
+             scripts/ntl_kimi_protocol80_private_once.py
+      - name: Install CLI and offline Notebook format validator
+        run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0 nbformat==5.10.4
+      - name: Push one private 160-row frozen Kimi inference, compare within prompts; no training, no competition submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -u scripts/ntl_kimi_protocol80_private_once.py --run
