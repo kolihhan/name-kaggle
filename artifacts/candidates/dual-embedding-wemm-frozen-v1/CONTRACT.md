@@ -1,7 +1,7 @@
 # Dual-Embedding + Tencent WeMM — frozen inference-only candidate
 
 **Frozen at 2026-11-12 MYT, before any personal Kaggle score.**
-**Status:** SOURCE PREFLIGHT ONLY; no new official competition submission is authorized under this contract.
+**Status:** No-training source preflight PASSED. The user has explicitly authorized ONE exploratory official submission on 2026-11-12; this is not independent 18-label validation or promotion.
 
 ## Goal and model-class hypothesis
 
@@ -12,7 +12,7 @@ This is a **new model-input/representation candidate**, not a minor Sinkhorn hyp
 ## Immutable source and permissions
 
 - Canonical public Notebook source: `ozertuu/llm-dual-embedding-lora-qwen3-8-27b-gsq` by Ertuğrul Özer.
-- Public Notebook exact downloaded SHA256: `e943174f3cfe114eeb96d9f721c675826f6ef8a91e30ae055dd86e5c48257865`, authenticated public Kaggle read-only pull [#43056843211](https://github.com/kolihhan/name-kaggle/actions/runs/43056843211).
+- Source Notebook container SHA changed after the initial audit from `e943174f...` to `8708ba43653f262f1be3fdec423ffcb463ea07affc765e69fab7c633a09af1a1`, but the executable code-cell digest stayed identical. We pin exact executable code and all input manifests; container/markdown changes cannot relax training guards. Verified [source preflight #43059463986](https://github.com/kolihhan/name-kaggle/actions/runs/43059463986).
 - Executable cell SHA256: `a65e0115aaa56e3ce64391e9911fed7d3521c7ace3a1e990d92cc4f1b8a03a82`, lineage [#43057087250](https://github.com/kolihhan/name-kaggle/actions/runs/43057087250); exactly identical to `omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex`. Do not mistake this fork for a separate improvement.
 - Input manifest: exactly **21 dataset sources, 8 linked notebook sources, 7 model sources**, 1 competition source. Must include `dangkhoa2016/tencent-wemm-embedding-4b/Transformers/default/1`. Existing prefit SVC and OLMo assets must remain.
 - Keep author citations and all source notices in the PRIVATE Kaggle fork. No public code redistribution, no unlicensed claim, no source text, datasets, official competition files, weights or Kaggle secrets in GitHub.
@@ -20,10 +20,10 @@ This is a **new model-input/representation candidate**, not a minor Sinkhorn hyp
 
 ## No-training constraints
 
-- **No new supervised model, Gaussian, LoRA, adapter, or neural head fitting**; use fixed source artifacts. Allow only original unsupervised test-time TF-IDF prompt grouping. No paid API, no official data download to public GitHub.
-- The builder must fail closed on changed upstream source hash, input count or representation, changed expected fit inventory, unknown train paths, or failure to install exactly **three guards**: `gauss.fit` block; Atlas training-mode block; core worker `--train-final` block.
+- **No new supervised model, Gaussian, LoRA, adapter, sibling-style LogisticRegression, or neural head fitting**; use fixed source artifacts. Original source contains two `model.fit` supervised sibling-style sites, which this candidate intentionally replaces with an identity residual. This is an ablation of the published style component, not an exact reproduction. Allow only unsupervised test-time TF-IDF prompt grouping. No paid API or official-data download to public GitHub.
+- The builder must fail closed on changed **executable source digest**, changed input counts or representation, changed original training inventory, unknown training paths, or failure to install exactly **four safety interventions**: the `gauss.fit` block, Atlas training-mode block, core worker `--train-final` block, and identity bypass for grouped sibling-style supervised fitting.
 - `--source-preflight`: only builds and validates private Notebook source in ephemeral runner temporary storage, no Kaggle GPU, no publish, no competition entry.
-- `--private-preview-once`: if source-preflight passes and destination doesn't exist, create only one PRIVATE version at `kolihhan/ntl-dual-embedding-wemm-frozen-v1`, check Notebook 3-row preview and output. Never submit to official competition in this command.
+- `--private-preview-once`: if source-preflight passes and destination doesn't exist, create only one PRIVATE version at `kolihhan/ntl-dual-embedding-wemm-frozen-v1`, check Notebook preview and output. A separate user-authorized one-shot submission may proceed only after preview succeeds and no previous matching entry exists.
 - Champion `58210835` and MGT-v1 `58233227` must not be touched. The MGT-v1 public score is still unknown as of last authenticated check. No public LB weight tuning, arbitrary new blend, or duplicate submission.
 
 ## Decision boundary
