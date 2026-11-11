@@ -1,0 +1,81 @@
+name: NTL MGT-v1 margin-gated transport private Notebook & official submission ONCE
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-margin-gated-transport-v1-submit-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-margin-gated-transport-v1-one-official-submission
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_margin_gated_transport_submit_once.py
+            artifacts/candidates/margin-gated-transport-v1/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: No competition data in public workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f artifacts/candidates/margin-gated-transport-v1/CONTRACT.md
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test ! -e data/sample_submission.parquet
+          python -m py_compile scripts/ntl_margin_gated_transport_submit_once.py
+      - name: Static synthetic math invariants without model training
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check numpy==1.26.4
+          python -u scripts/ntl_margin_gated_transport_submit_once.py --static-only
+      - name: Kaggle CLI + strict Notebook validator
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 nbformat==5.10.4
+      - name: Source-hash and patch-diff gate, no model GPU, no notebook upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -u scripts/ntl_margin_gated_transport_submit_once.py --preflight
+          echo NTL_MGT_ONE_FROZEN_CANDIDATE_SAFE_TO_SUBMIT
+
+  submission:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      KAGGLE_API_TOKEN: @@SECRET@@
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_margin_gated_transport_submit_once.py
+            artifacts/candidates/margin-gated-transport-v1/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Kaggle CLI, math deps and Notebook validator
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 nbformat==5.10.4 numpy==1.26.4
+      - name: Push one private version 1; submit one official Code Competition Notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test ! -e data/sample_submission.parquet
+          python -u scripts/ntl_margin_gated_transport_submit_once.py
