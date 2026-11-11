@@ -301,6 +301,23 @@ def _clone(destination: Path)->dict:
     if len(files)!=1:
         raise RuntimeError("expected one frozen private Notebook")
     nb=json.loads(files[0].read_text(encoding="utf-8"))
+    print("NTL_TRANSFER_ORIGINAL_NBFORMAT_KEYS",json.dumps({
+        "top_level_keys":sorted(nb.keys()),
+        "format":nb.get("nbformat"),"minor":nb.get("nbformat_minor")
+    }),flush=True)
+    try:
+        import nbformat
+        try:
+            nbformat.validate(nb)
+            print("NTL_TRANSFER_ORIGINAL_NBFORMAT_VALID",flush=True)
+        except Exception as e:
+            print("NTL_TRANSFER_ORIGINAL_NBFORMAT_WARNING",json.dumps({
+                "validator":str(getattr(e,"validator",""))[:60],
+                "message":str(getattr(e,"message",""))[:220],
+                "path":str(getattr(e,"path",""))[:90]
+            }),flush=True)
+    except ImportError:
+        pass
     digest=_get_code_sha(nb)
     if digest!=SOURCE_CODE_SHA256:
         raise RuntimeError("0.679 champion source code digest drift")
@@ -344,7 +361,7 @@ def _clone(destination: Path)->dict:
             c["outputs"]=[]
     meta.pop("id_no",None)
     meta["id"]=DEST_REF
-    meta["title"]="NTL Frozen 0.679 Cross-Source Diagnostic (NO SUBMISSION)"
+    meta["title"]=DEST_REF.split("/",1)[1]  # Kaggle requires title slug == URL slug
     meta["is_private"]=True
     meta["enable_internet"]=False
     # Preserve exactly the champion original 20 dataset sources.
@@ -390,6 +407,7 @@ def _clone(destination: Path)->dict:
                 "type":type(e).__name__,
                 "validator":str(getattr(e,"validator",""))[:60],
                 "path":str(getattr(e,"path",""))[:140],
+                "message":str(getattr(e,"message",""))[:220],
             }),flush=True)
             raise RuntimeError("generated private Notebook fails nbformat validation") from None
     print("NTL_TRANSFER_SOURCE_CODE_SHA",digest,flush=True)
