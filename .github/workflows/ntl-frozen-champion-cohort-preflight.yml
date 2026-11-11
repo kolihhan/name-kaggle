@@ -1,0 +1,66 @@
+name: NTL frozen champion small-cohort schema & entrypoint preflight
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-frozen-champion-cohort-preflight.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle CLI & schema tools
+        run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' pandas
+      - name: Inspect public cohort schema and frozen notebook entrypoint (no data committed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,hashlib,json,pathlib,re,subprocess,tempfile
+          ref="ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52"
+          dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-public-nb-"))
+          p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dest),"-m"],
+                            capture_output=True,text=True,timeout=120)
+          if p.returncode:raise RuntimeError("source fetch failed")
+          nb=json.loads(next(dest.glob("*.ipynb")).read_text())
+          for ix in (0,1,2,3,4,5,6,7,45,46,47,48,49,50,51,52,53):
+              if ix>=len(nb["cells"]):continue
+              c=nb["cells"][ix]
+              s="".join(c.get("source",[]))
+              print("NTL_NOTEBOOK_BOUNDARY",json.dumps({"idx":ix,"type":c.get("cell_type"),
+                   "lines":len(s.splitlines()),"source":s[:1800] if ix<=7 or ix>=45 else ""}),flush=True)
+          for ref,file in (
+              ("nimithashreea/ntl-proxy-candidate-generations-20261110","generated_proxy_candidates.csv"),
+              ("toanplam/ntl-fresh-generation-pilot-nov08","passages.jsonl")
+          ):
+              d=pathlib.Path(tempfile.mkdtemp(prefix="ntl-public-cohort-"))
+              p=subprocess.run(["kaggle","datasets","download",ref,"-f",file,"-p",str(d),"--unzip","-q"],
+                  capture_output=True,text=True,timeout=90)
+              info={"dataset":ref,"file":file,"download_rc":p.returncode}
+              matches=list(d.rglob(file))
+              if p.returncode==0 and len(matches)==1:
+                  data=matches[0]
+                  if file.endswith(".csv"):
+                      with data.open(encoding="utf-8-sig",newline="") as ff:
+                          reader=csv.DictReader(ff)
+                          info["columns"]=reader.fieldnames
+                          n=0; counts={}
+                          for row in reader:
+                              n+=1
+                              for k in ("model","model_label","label"):
+                                  if k in row:counts[row[k]]=counts.get(row[k],0)+1;break
+                          info["count"]=n;info["label_counts"]=counts
+                  else:
+                      with data.open(encoding="utf-8") as ff:
+                          n=0;counts={};keys=set()
+                          for line in ff:
+                              v=json.loads(line);n+=1;keys.update(v.keys())
+                              for k in ("model","model_label","label","competition_label"):
+                                  if k in v:counts[str(v[k])]=counts.get(str(v[k]),0)+1;break
+                          info["columns"]=sorted(keys);info["count"]=n;info["label_counts"]=counts
+              print("NTL_COHORT_SCHEMA",json.dumps(info,sort_keys=True),flush=True)
+          PY
