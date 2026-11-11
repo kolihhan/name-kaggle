@@ -1,5 +1,15 @@
 # NOW
 
+## VERIFIED NEW CHAMPION — Public BA 0.679 (2026-11-11 10:28 MYT)
+
+**Own official Kaggle submission `58210835` = `SubmissionStatus.COMPLETE`; Public Score **`0.679`**, Private Score blank.** This **supersedes** the older 0.668 champion by **+0.011 BA** (+1.1 percentage points; ≈1.65% relative). Verified twice via [official Kaggle ledger and exact submission endpoint, Actions #42874538415 attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415) (job `130279696484`, 2026-11-11 02:28:39 UTC). Result [OFFICIAL_SCORE_20261111.md](artifacts/candidates/public-ozertuu-0683-guarded-repro/OFFICIAL_SCORE_20261111.md). The previous refs `58022340`/`58045266` remain `COMPLETE` at 0.668. The separate `58167751` remains `PENDING` with Public Score empty at the same official check.
+
+**Interpretation:** valid **attributed external-source reproduction** of public Ozertuu 0.683-title Notebook with no-new-supervised-training runtime guards, **not an original representation breakthrough**. Author title 0.683 was never our score; we measured 0.679. Do **not** tune against the difference or infer private-LB transfer. Do **not** resubmit the same code, and do not treat preview COMPLETE as hidden scoring. Previous dated 0.668/PENDING entries below are **historical checkpoints only** and are superseded by this terminal result.
+
+**Research bottleneck stays:** independently validated, same-row, source-disjoint strong-anchor complementary error correction, without additional user-funded training or leaked competition data. [PUBLIC_VISIBILITY.md](PUBLIC_VISIBILITY.md) explicitly permits data-safe GitHub Actions while public, but historic competition-data exposure remains unremediated.
+
+---
+
 ## Submission status reconciliation — 2026-11-11 02:22 MYT
 
 **Authenticated official Kaggle status (not Notebook preview):** [exact-ref read-only audit #42874538415](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415) **SUCCESS**. **Our 58210835 = PENDING, score blank; 58167751 = PENDING, score blank.** Both old confirmed refs **58022340 and 58045266 = COMPLETE, Public BA 0.668**. The private `ntl-ozertuu-0683-guarded-no-train` Notebook preview is `COMPLETE`, which **does not prove the 4,000-row hidden rerun**. No new submitted version, training or GPU work; do not duplicate, relax no-training guards or turn the public author's 0.683 title into our score. Evidence [official status reconciliation](artifacts/research/ntl-official-submission-status-20261111.md). Historical public-repo Competition Data exposure remains unresolved; only data-safe actions authorized.
