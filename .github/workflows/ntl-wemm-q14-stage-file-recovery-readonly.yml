@@ -1,0 +1,54 @@
+name: NTL WEMM Q14 Stage File Recovery (read-only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-q14-stage-file-recovery-readonly.yml]
+permissions: {contents: read}
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Retrieve prior failed diagnostic stage log if Kaggle retained it; no GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import subprocess,pathlib,tempfile,json,re,hashlib
+          ref="kolihhan/ntl-wemm-core-q14-error-probe-v2"
+          out=pathlib.Path(tempfile.mkdtemp(prefix="ntl-q14-recover-"))
+          p=subprocess.run(["kaggle","kernels","output",ref,
+             "--file-pattern",r".*core-q14v5[.]log$",
+             "-p",str(out),"-q"],capture_output=True,text=True,timeout=150)
+          found=[f for f in out.rglob("*") if f.is_file()]
+          safe=[]
+          for f in found:
+              data=f.read_text(encoding="utf-8",errors="replace").splitlines()
+              last=data[-100:]
+              names=("RuntimeError","ValueError","AssertionError","FileNotFoundError",
+                "ModuleNotFoundError","ImportError","KeyError","IndexError","TypeError",
+                "AttributeError","PermissionError","MemoryError","OutOfMemoryError",
+                "CalledProcessError","OSError","TimeoutError","HFValidationError",
+                "SafetensorError","SafetensorsError","CUDAError","ProcessGroupError")
+              traces=[]
+              for ln in last:
+                  if 'File "' in ln and '.py"' in ln:
+                      m=re.search(r'File "([^"]+[.]py)", line ([0-9]+)',ln)
+                      if m:traces.append((m.group(1).rsplit("/",1)[-1],int(m.group(2))))
+              safe.append({"suffix":f.suffix,"bytes":f.stat().st_size,
+                 "lines":len(data),"error_strings":[v for v in names if any(v in line for line in last)],
+                 "frames":traces[-12:],
+                 "has_oom":any('out of memory' in ln.lower() for ln in last),
+                 "has_training_guard":any('NO_NEW_TRAINING' in ln for ln in last),
+                 "tail_sha256":hashlib.sha256("\n".join(last[-20:]).encode()).hexdigest()})
+          print("NTL_Q14_RECOVERY_RESULT",json.dumps({
+             "return_code":p.returncode,"found_count":len(found),
+             "files":safe,"no_raw_kaggle_logs_exposed":True
+          },sort_keys=True),flush=True)
+          PY
