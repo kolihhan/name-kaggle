@@ -1,0 +1,52 @@
+name: NTL CUDA Private Canary Terminal Status Read Only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cuda-canary-terminal-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Check 5-min private CUDA canary and print hardware-only report
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,re,subprocess,time
+          ref='kolihhan/ntl-wemm-cuda-env-probe-20261112'
+          def call(args):
+              return subprocess.run(args,capture_output=True,text=True,timeout=80)
+          for i in range(24):
+              p=call(['kaggle','kernels','status',ref])
+              m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+'\n'+p.stderr)
+              state=m.group(1) if m else 'UNKNOWN'
+              if state in ('COMPLETE','ERROR','CANCELLED','FAILED'):break
+              time.sleep(8)
+          print('NTL_CUDA_PROBE_TERMINAL_STATE',json.dumps({'ref':ref,'state':state,'polls':i+1}),flush=True)
+          p=call(['kaggle','kernels','logs',ref])
+          if p.returncode:
+              print('NTL_CUDA_PROBE_LOG_STATUS',json.dumps({'return_code':p.returncode}),flush=True)
+              raise SystemExit(0)
+          matches=re.findall(r'NTL_CUDA_ENV_PROBE\s*(\{[^\n]+\})',p.stdout)
+          reports=[]
+          for x in matches:
+              try:
+                  data=json.loads(x)
+                  allowed={k:data.get(k) for k in (
+                     'torch','torch_cuda_compiled','cuda_available','cuda_count',
+                     'cuda_tensor_smoke','cpu_pin_memory_smoke','transformers',
+                     'accelerate','nvidia_smi_returncode','nvidia_smi_lines')}
+                  reports.append(allowed)
+              except ValueError:pass
+          print('NTL_CUDA_PROBE_HARDWARE_FACTS',json.dumps({
+             'reports':reports[-2:],'matched':len(reports),'notebook_state':state
+          },sort_keys=True),flush=True)
+          PY
