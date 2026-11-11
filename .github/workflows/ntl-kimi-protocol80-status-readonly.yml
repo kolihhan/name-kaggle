@@ -1,0 +1,42 @@
+name: NTL Kimi 80 private inference Kaggle status read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-kimi-protocol80-status-readonly.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Read status of private Kimi paired protocol run, no GPU or submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,re,subprocess
+          ref='kolihhan/ntl-kimi-k3-protocol80-frozen-0679'
+          p=subprocess.run(['kaggle','kernels','status',ref],
+              capture_output=True,text=True,timeout=65)
+          m=re.search(r'KernelWorkerStatus\.([A-Z_]+)',p.stdout+'\n'+p.stderr)
+          state=m.group(1) if m else 'NOT_FOUND_OR_UNKNOWN'
+          print('NTL_KIMI80_KAGGLE_PRIVATE_KERNEL_STATE',json.dumps({
+              'ref':ref,'rc':p.returncode,'status':state,
+              'no_training':True,'competition_submission':False
+          },sort_keys=True),flush=True)
+          if state=='COMPLETE':
+              q=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','200'],
+                  capture_output=True,text=True,timeout=60)
+              print('NTL_KIMI80_PRIVATE_OUTPUT_STATUS',json.dumps({
+                  'rc':q.returncode,'summary':q.returncode==0 and
+                    'ntl_kimi_protocol80_summary.json' in q.stdout,
+                  'predictions':q.returncode==0 and
+                    'ntl_kimi_protocol80_predictions.parquet' in q.stdout
+              },sort_keys=True),flush=True)
+          PY
