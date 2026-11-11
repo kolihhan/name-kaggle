@@ -1,5 +1,13 @@
 # Name That LLM — Kaggle
 
+## 2026-11-12 — WeMM official hidden rerun FAILED; no new score
+
+**Verified from Kaggle's own detailed submission record:** WeMM ref `58244483` is `COMPLETE` **with a hidden Notebook unhandled exception and NO Public Score**. The original 3-row preview took an exact-fixture shortcut and never ran the actual model ensemble. Full paginated asset metadata confirms Qwen and WeMM native directories exist; the actual exception remains unobserved. A **private, no-submission, no-training full-path 3-row smoke** `kolihhan/ntl-wemm-fullpath-3row-smoke-v1` version 1 was created with a one-hour GPU cap and initial state `QUEUED`. Do not claim it passed before checking its actual terminal status and logs. Existing best valid official Public BA stays **0.679** (`58210835`); MGT `58233227` and Lightning `58167751` were still `PENDING` at the last authenticated check. [Full failure analysis and run IDs](artifacts/research/ntl-wemm-hidden-rerun-failure-20261112.md).
+
+New **114-test matched-prompt sibling audit** is [here](artifacts/research/ntl-sibling-signals-paired114-20261112.md); purely descriptive, not a candidate/score. No Kaggle competition submission or model training occurred in this research follow-through.
+
+---
+
 ## NEW official submission — MGT-v1 `58233227` (score pending)
 
 **Authenticated Kaggle acceptance:** `58233227` submitted at **2026-11-11 09:44:14 UTC**, status **`PENDING`**, no publicScore yet, verified by [Kaggle ledger and private Notebook snapshot #42998099464](https://github.com/kolihhan/name-kaggle/actions/runs/42998099464). Private Notebook `kolihhan/ntl-margin-gated-transport-v1` preview **COMPLETE**; this does **not** prove hidden inference complete.
