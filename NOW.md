@@ -1,5 +1,17 @@
 # NOW
 
+## REAL EXECUTION — frozen 0.679 on 347 external rows (2026-11-11)
+
+**CURRENT:** [Private full-model inference GitHub Action #42957145758](https://github.com/kolihhan/name-kaggle/actions/runs/42957145758) is running; independent authenticated [Kaggle status #42957328503](https://github.com/kolihhan/name-kaggle/actions/runs/42957328503) confirmed private kernel `kolihhan/ntl-0679-fresh-transfer-diagnostic` = **`RUNNING`**, not merely queued. **No numeric transfer result is available yet.** Do not count this as a Kaggle competition submission or new score.
+
+**Locked provenance:** [preregistered 347-row diagnostic contract](artifacts/research/ntl-0679-transfer-diagnostic/CONTRACT.md), 107 Toan CC0-1.0 authored-prompt responses + 240 Nimitha CC BY 4.0 proxy prompt-bank responses, both 12/18 target labels, 29 unique source-local prompts. Original scored 0.679 private Notebook code-cell SHA `28fd128b745f0d95b70f79ea9b2c546d981edf9be08207cbf71a2d9e80ee1c86` and three no-new-supervision guards. Two source file SHA-256 `25d21134cecbddd1b556ec4c3b81fb58dd22cb3102ec7bad967d4191364e167e` and `89a9d0cec7d434dc30bfa6ad303233821eaead8800e396fab6039a7dfeafdf17`. [Strict no-GPU schema and Jupyter 4.4 preflight #42957054794](https://github.com/kolihhan/name-kaggle/actions/runs/42957054794) **SUCCESS**; latest private diagnostic source digest `25660d62a1478d8423065bbcaf38e257552bc758dc0eee5fb034efa22f44892c`.
+
+**Deployment root cause:** two earlier Kaggle private Notebook save attempts returned generic `400 Bad Request`; no model ran. Exact cause was not exposed. Validated title/slug equality, strict notebook 4.4 cell-ID normalization and preserved 20 original Kaggle dataset mounts. Data now travel as integrity-checked CC-licensed **private** Notebook capsule assembled on an ephemeral runner, never as new GitHub commits or output text. The new private Notebook was accepted and started, unlike earlier attempts. Do not retrospectively claim which specific correction fixed it.
+
+**Do not claim full-system 18-label BA** from 12-label cohorts. On completion inspect private outputs `ntl_0679_transfer_summary.json` and `ntl_0679_transfer_predictions.parquet`; report per-source conditional 12-target balanced accuracy with original 18-way model decisions, top sibling/source confusions and exact training-text hash overlap. No calibration, fine-tuning, new model training, or new official competition submission. Own verified Public BA remains **0.679** until a separately scored Kaggle entry exists.
+
+---
+
 ## Post-0.679 breakthrough research — fresh source cohort gate (2026-11-11)
 
 **Goal:** materially exceed the verified `0.679` own Kaggle champion, with stretch gate `>=0.700` Public BA **and** genuinely independent generator-identification evidence; not a copy/paste or leaderboard-tuning loop. See [fresh external data verdict](artifacts/research/ntl-fresh-12-label-cohort-triage-20261111.md) grounded in successful authenticated [Kaggle README/provenance inspection #42948566225](https://github.com/kolihhan/name-kaggle/actions/runs/42948566225) and [cohort label coverage #42948801556](https://github.com/kolihhan/name-kaggle/actions/runs/42948801556).
