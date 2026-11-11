@@ -6,6 +6,9 @@ No competition submission, no fitted model, no public examples.
 from __future__ import annotations
 import argparse,base64,hashlib,json,re,subprocess,time,zlib
 from pathlib import Path
+import sys
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts import ntl_0679_transfer_private_once as base
 from scripts.ntl_kimi_protocol80_source import read_pairs,SOURCE_REF,FILE
