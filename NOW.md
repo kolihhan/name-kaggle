@@ -1,5 +1,17 @@
 # NOW
 
+## Active Kimi K3 same-prompt reasoning-protocol experiment — 80 strict pairs (2026-11-11)
+
+**Real Kaggle private inference is RUNNING**, confirmed by independent read-only [status check #42974543343](https://github.com/kolihhan/name-kaggle/actions/runs/42974543343). One-shot no-training [execution #42974357365](https://github.com/kolihhan/name-kaggle/actions/runs/42974357365) is underway in private Notebook `kolihhan/ntl-kimi-k3-protocol80-frozen-0679`. **No prediction statistics or competition score available yet.** Predeclared [Kimi 80 contract](artifacts/research/ntl-kimi-protocol80/CONTRACT.md) and [no-GPU source preflight #42974253559](https://github.com/kolihhan/name-kaggle/actions/runs/42974253559) both valid. Original scored 0.679 champion source SHA `28fd128b745f0d95b70f79ea9b2c546d981edf9be08207cbf71a2d9e80ee1c86`, three no-supervised-training guards, original 20 data/8 notebook/6 model inputs unchanged.
+
+**Discovery:** Initial public `willrice/name-that-llm-openrouter-harvest` `calls.jsonl` had 1,000 Kimi K3 `high/off` same Prompt-ID pairs, but **988 had different target word counts**; the first preregistered 144-pair study failed eligibility with only 12 valid pairs and was **terminated before GPU**. Exact [field-by-field audit #42973523636](https://github.com/kolihhan/name-kaggle/actions/runs/42973523636) confirms served model, model_id, and provider matched in all 1,000; **target_words matched only 12**. It was a prompt-spec confound, not demonstrated provider drift.
+
+**Distinct better-controlled trial bank:** `setting_trials.jsonl`, SHA256 `a38745dd0b648773204193d2a34a9b1ccd5ce9a41cfd01b51eea49ceed56d87e`, has **80 / 80** Kimi K3 high/off pairs with matching prompt_id, target_words, `model_id=moonshotai/kimi-k3`, `served_model=moonshotai/kimi-k3`, provider Moonshot AI, finished stop, 40–250-word outputs. Source: Will Rice's CC BY 4.0 public OpenRouter Harvest; Seyit prompt bank credited. Fully source pinned, no source text in GitHub. Static text effect: high reasoning ~625 reasoning tokens vs off 0, high mean response 115.69 words vs off 109.09, em dash occurrence 51.25% vs 30%. **These are output-feature differences, not model-attribution improvements or causal isolation**. Actual classifier scoring uses 160 rows and paired McNemar + 4 source-order blocks, not 0.679 official BA.
+
+**Do not interpret** GitHub run in_progress as kernel complete or score improvement. Current best official Kaggle **0.679**, submission `58210835`. No new competition submission, no new training or model-weight updates. On private kernel completion inspect `ntl_kimi_protocol80_summary.json` for high/off recall, discordance counts, actual p-value, and four-block direction; fail closed if missing. Dataset lacks independent validation of exact served weight revision and unchanged request rendering.
+
+---
+
 ## A1 independent companion verification COMPLETE — REJECT global verifier (2026-11-11)
 
 **Real independent private GPU experiment:** [GitHub Actions #42968916125](https://github.com/kolihhan/name-kaggle/actions/runs/42968916125), preflight + GPU both **SUCCESS**; new private inference `kolihhan/ntl-a1-paired347-inference` `COMPLETE`. Used existing own frozen Qwen3-8B LoRA24 **Stage-1 A1** prefit checkpoint, NOT re-training and NOT the own Stage-2 0.520 model. Compared exact private predictions to the existing scored **0.679** champion on the same 347 rows (12 truth classes / 18 prediction classes).
