@@ -1,5 +1,15 @@
 # Name That LLM — Kaggle
 
+## NEW verified Kaggle competition submission — WeMM `58244483` (score pending)
+
+**Authenticated one-shot Kaggle entry:** `58244483`, submitted **2026-11-11 16:38:25 UTC / 2026-11-12 00:38 MYT**, status `PENDING`, no Public/Private score yet. [Independent official ledger #43060338073](https://github.com/kolihhan/name-kaggle/actions/runs/43060338073) and [complete preflight + private Notebook + competition submission #43060048662](https://github.com/kolihhan/name-kaggle/actions/runs/43060048662). The private Notebook preview is COMPLETE, but hidden official evaluation has not yet scored.
+
+**Candidate:** frozen public Ozertuu dual-embedding + Tencent WeMM 4B representation with an explicit no-new-supervised-training sibling-style ablation. Exact executable source hash, preexisting three training guards, and the removal of two supervised LogisticRegression fit sites were verified. This is one user-authorized exploratory competition test, not a claim of transfer, independent model development, or an exact reproduction of the original public Notebook. [Detailed research provenance and status](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/candidates/dual-embedding-wemm-frozen-v1/SUBMISSION_20261112.md).
+
+**Best verified Public BA remains `0.679` (`58210835`, COMPLETE)** until an authenticated numeric score for `58244483` is published. MGT-v1 `58233227` still PENDING on the latest check. No repeat submissions or leaderboard-driven retuning.
+
+---
+
 ## NEW official submission — MGT-v1 `58233227` (score pending)
 
 **Authenticated Kaggle acceptance:** `58233227` submitted at **2026-11-11 09:44:14 UTC**, status **`PENDING`**, no publicScore yet, verified by [Kaggle ledger and private Notebook snapshot #42998099464](https://github.com/kolihhan/name-kaggle/actions/runs/42998099464). Private Notebook `kolihhan/ntl-margin-gated-transport-v1` preview **COMPLETE**; this does **not** prove hidden inference complete.
