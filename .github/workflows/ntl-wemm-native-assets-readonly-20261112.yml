@@ -27,7 +27,7 @@ jobs:
             ("nuridudak/ntl-svc-prefit-pool-v4n", ["svc"]),
           )
           for source, checks in sources:
-              proc=subprocess.run(["kaggle","datasets","files",source,"-v"],
+              proc=subprocess.run(["kaggle","datasets","files",source,"-v","--page-size","200"],
                                   capture_output=True,text=True,timeout=70)
               data=proc.stdout.lower()
               print("NTL_WEMM_DATASET_FILE_EVIDENCE",json.dumps({
