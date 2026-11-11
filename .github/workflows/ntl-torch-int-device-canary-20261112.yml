@@ -50,7 +50,10 @@ jobs:
               '    devices[name]=entry',
               "print('NTL_INT_DEVICE_PROBE',json.dumps({'cuda_available':torch.cuda.is_available(),'device_count':torch.cuda.device_count(),'values':devices}),flush=True)",
           ]
-          cs[0]['source']+=['\n']+[(x+'\n') for x in extra]
+          current=cs[0].get('source',[])
+          if isinstance(current,list):cs[0]['source']=current+['\n']+[(x+'\n') for x in extra]
+          elif isinstance(current,str):cs[0]['source']=current+'\n'+'\n'.join(extra)+'\n'
+          else:raise RuntimeError('unexpected Notebook cell source type')
           meta=json.loads((original/'kernel-metadata.json').read_text())
           if meta.get('id')!=src or meta.get('is_private') is not True:raise RuntimeError("wrong source")
           meta.pop('id_no',None)
