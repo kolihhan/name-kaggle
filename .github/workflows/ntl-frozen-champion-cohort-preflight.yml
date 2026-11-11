@@ -25,8 +25,17 @@ jobs:
           dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-public-nb-"))
           p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dest),"-m"],
                             capture_output=True,text=True,timeout=120)
-          if p.returncode:raise RuntimeError("source fetch failed")
-          nb=json.loads(next(dest.glob("*.ipynb")).read_text())
+          if p.returncode:
+              print("NTL_CHAMPION_SOURCE_FETCH_BLOCKED",json.dumps({
+                  "returncode":p.returncode,
+                  "http_403":"403" in p.stderr,"http_429":"429" in p.stderr,
+                  "not_found":"not found" in p.stderr.lower(),
+                  "auth_required":"auth" in p.stderr.lower(),
+                  "error_class":p.stderr.splitlines()[-1][:160] if p.stderr else ""
+              }),flush=True)
+              nb={"cells":[]}
+          else:
+              nb=json.loads(next(dest.glob("*.ipynb")).read_text())
           for ix in (0,1,2,3,4,5,6,7,45,46,47,48,49,50,51,52,53):
               if ix>=len(nb["cells"]):continue
               c=nb["cells"][ix]
