@@ -113,12 +113,46 @@ def destination_absent() -> None:
                 safe.append(line[:220])
         print("NTL_MGT_DESTINATION_STATUS_DIAGNOSTIC",
               json.dumps({"rc": p.returncode,"safe_lines":safe[-5:]}), flush=True)
-    if p.returncode == 0 or "403" in raw or "401" in raw or "429" in raw:
-        raise RuntimeError("destination Notebook status ambiguous or unauthorized")
-    # Expected normal 404/no kernel found is safe to create new.
-    if not re.search(r"not found|404|does not exist|cannot be found", raw, re.I):
-        raise RuntimeError("destination kernel status error not recognized as 404")
-    print("NTL_MGT_NEW_DESTINATION_CONFIRMED", DEST_KERNEL, flush=True)
+    if p.returncode == 0:
+        raise RuntimeError("destination returned success without a worker status")
+    if "401" in raw or "429" in raw:
+        raise RuntimeError("destination permission/rate limit ambiguous")
+    # Kaggle 2.2.5 returns this *specific* access-denied message for a
+    # never-created kernel, instead of a conventional HTTP 404. Treat it as
+    # potential absence ONLY after an authenticated full owned-kernel listing.
+    denied_missing_slug = (
+        ("Cannot access kernel '" + DEST_KERNEL + "'") in raw
+        and "Permission 'kernels.get' was denied" in raw
+        and "most likely cause is a wrong kernel slug" in raw
+    )
+    other_missing = bool(re.search(
+        r"not found|404|does not exist|cannot be found", raw, re.I
+    ))
+    if not (denied_missing_slug or other_missing):
+        raise RuntimeError("destination inaccessible for unknown reason")
+    owner = DEST_KERNEL.split("/", 1)[0]
+    matched = False
+    listed = 0
+    for page in range(1, 21):
+        k = cli(["kaggle", "kernels", "list", "--user", owner,
+                 "--page-size", "100", "--page", str(page), "-v"], timeout=80)
+        entries = list(csv.DictReader(k.stdout.lstrip("\\ufeff").splitlines()))
+        for row in entries:
+            if str(row.get("ref", "")).strip().lower() == DEST_KERNEL.lower():
+                matched = True
+        listed += len(entries)
+        if len(entries) < 100:
+            break
+    else:
+        raise RuntimeError("owned-kernel listing exceeded audited pagination")
+    if matched:
+        raise RuntimeError("existing owned Notebook detected; refuse overwrite")
+    print("NTL_MGT_NEW_DESTINATION_CONFIRMED", json.dumps({
+        "kernel": DEST_KERNEL, "status_code_nonzero": True,
+        "slug_denied_message": denied_missing_slug,
+        "owned_kernels_listed": listed,
+        "exact_slug_absent_from_owned_listing": True,
+    }, sort_keys=True), flush=True)
 
 
 def math_synthetic_gate() -> None:
