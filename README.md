@@ -14,6 +14,18 @@ The other reproduction, `58167751`, was still PENDING at the 2026-11-11 10:28 MY
 
 ---
 
+## Research evidence gate — 2026-11-11
+
+The best **authenticated Kaggle Public** score is still **0.679** (submission `58210835`, attributed public-source reproduction). The private score and a new original-method gain are unverified.
+
+The no-training **Kimi K3 protocol study completed**, not running: high `42/80` versus off `23/80` correctly identified, a +23.75-percentage-point matched difference, but **exact p = 0.010973563 did not pass the original p < 0.01 gate**. It is a diagnostic, not a new classifier or Kaggle competition submission.
+
+**Active research blocker:** no verified fresh, source/prompt-independent, protocol-documented **18-label** same-row validation benchmark against the 0.679 champion. Do not interpret repeatedly examined 12-label cohorts, historical CV splits, or Public LB scores as independent transfer proof. No new supervised training, blend tuning or model submission is authorized by this note.
+
+[Full independent evidence gate](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/research/ntl-18class-independent-validation-gate-20261111.md) · [Kimi final result](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/research/ntl-kimi-protocol80/RESULT.md) · [Data-qualification issue #1](https://github.com/kolihhan/name-kaggle/issues/1) · [Research-branch evaluation policy](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/EVALUATION_POLICY.md)
+
+---
+
 Working repository for the Kaggle competition **Name That LLM**: identify which of 18 language models generated each passage.
 
 Competition: https://www.kaggle.com/competitions/name-that-llm
