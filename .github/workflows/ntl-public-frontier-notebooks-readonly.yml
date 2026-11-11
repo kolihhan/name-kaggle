@@ -232,6 +232,10 @@ jobs:
             "kirilltym/lora-trained27-evidence-for-close-calls",
             "prvsiyan/the-prompt-is-not-the-author",
             "lightningv08/0-681-qwen3-embedding-lora-qwen3-8-27b",
+            "areebbb/0-684-i-m-better",
+            "wadigongren/name-that-llm-0684-clean-baseline",
+            "mathleteutd/0-683-qwen3-wemm-embedding-experts",
+            "ozertuu/llm-dual-embedding-lora-qwen3-8-27b-gsq",
           ]
           for ref in refs:
               out={"ref":ref,"read_only":True,"trained":False,"submitted":False}
