@@ -277,3 +277,49 @@ jobs:
                           }.items()}
               print("NTL_NEW_FRONTIER_ARCH",json.dumps(out,ensure_ascii=False,sort_keys=True),flush=True)
           PY
+
+      - name: Verify candidate executable code lineage and novelty
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import hashlib,json,pathlib,subprocess,tempfile
+          refs={
+             "areeb":"areebbb/0-684-i-m-better",
+             "wadi":"wadigongren/name-that-llm-0684-clean-baseline",
+             "prv":"prvsiyan/the-prompt-is-not-the-author",
+             "omkar":"omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex",
+             "math":"mathleteutd/0-683-qwen3-wemm-embedding-experts",
+             "oz_dual":"ozertuu/llm-dual-embedding-lora-qwen3-8-27b-gsq",
+          }
+          codes={}
+          for key,ref in refs.items():
+              with tempfile.TemporaryDirectory() as root:
+                  p=subprocess.run(["kaggle","kernels","pull",ref,
+                                    "-p",root,"-m"],capture_output=True,text=True,timeout=110)
+                  if p.returncode:
+                      print("NTL_PUBLIC_CORE_PULL_BLOCKED",key,p.returncode,flush=True)
+                      continue
+                  files=list(pathlib.Path(root).glob("*.ipynb"))
+                  if len(files)!=1:continue
+                  nb=json.loads(files[0].read_text())
+                  code=["".join(c.get("source",[])) if isinstance(c.get("source"),list)
+                        else str(c.get("source",""))
+                        for c in nb.get("cells",[]) if c.get("cell_type")=="code"]
+                  codes[key]=code
+                  digest=hashlib.sha256(json.dumps(code,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()
+                  print("NTL_PUBLIC_CORE_FINGERPRINT",json.dumps({
+                      "source":ref,"code_sha256":digest,"code_cells":len(code),
+                      "code_chars":sum(map(len,code))},sort_keys=True),flush=True)
+          for a,b in (("areeb","wadi"),("areeb","prv"),("omkar","oz_dual"),("math","oz_dual"),("omkar","math")):
+              if a not in codes or b not in codes:continue
+              x,y=codes[a],codes[b]
+              changed=sum(i>=len(y) or c!=y[i] for i,c in enumerate(x))
+              changed+=max(0,len(y)-len(x))
+              print("NTL_PUBLIC_CODE_LINEAGE",json.dumps({
+                  "pair":[a,b],"identical_executable_code":x==y,
+                  "left_code_cells":len(x),"right_code_cells":len(y),
+                  "changed_index_cells":changed
+              },sort_keys=True),flush=True)
+          PY
