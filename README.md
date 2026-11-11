@@ -1,5 +1,19 @@
 # Name That LLM — Kaggle
 
+## Latest verified Kaggle Public leaderboard result — 0.679
+
+**2026-11-11 — Our Kaggle submission `58210835`: COMPLETE, Public Balanced Accuracy 0.679.** This improves the previously verified best of 0.668 (`58022340` / `58045266`) by **+0.011** (1.1 percentage points).
+
+This is a hash-pinned, no-new-supervised-training **reproduction of an existing public Ozertuu Notebook**, not an independently developed model. The author's 0.683 title is not our score. **No Private Score has been published.**
+
+The other reproduction, `58167751`, was still PENDING at the 2026-11-11 10:28 MYT official check. No duplicate submissions or leaderboard-driven retuning.
+
+- [Official Kaggle status evidence — Actions #42874538415, attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415)
+- [Full score, provenance and safety report (research branch)](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/candidates/public-ozertuu-0683-guarded-repro/OFFICIAL_SCORE_20261111.md)
+- [Research status and original-method development (research branch)](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/NOW.md)
+
+---
+
 Working repository for the Kaggle competition **Name That LLM**: identify which of 18 language models generated each passage.
 
 Competition: https://www.kaggle.com/competitions/name-that-llm
