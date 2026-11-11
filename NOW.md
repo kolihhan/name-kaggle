@@ -1,5 +1,17 @@
 # NOW
 
+## A1 independent companion verification COMPLETE — REJECT global verifier (2026-11-11)
+
+**Real independent private GPU experiment:** [GitHub Actions #42968916125](https://github.com/kolihhan/name-kaggle/actions/runs/42968916125), preflight + GPU both **SUCCESS**; new private inference `kolihhan/ntl-a1-paired347-inference` `COMPLETE`. Used existing own frozen Qwen3-8B LoRA24 **Stage-1 A1** prefit checkpoint, NOT re-training and NOT the own Stage-2 0.520 model. Compared exact private predictions to the existing scored **0.679** champion on the same 347 rows (12 truth classes / 18 prediction classes).
+
+**Outcome:** Champion **260/347 correct**, A1 **218/347**; A1 **12-target conditional BA 0.628387** vs champion **0.749795**, **24 rescues / 66 regressions = −42 net**. Source-wise: **Toan +5 rescues / −19 regressions = −14**; **Nimitha +19 / −47 = −28**. **Fail sourcewise gate**; no blend, no retuning, no official Kaggle submission. **19/24 rescues** were within-provider sibling mistakes. A1 recognizes Gemini 3.8 Flash on **13/29**, vs champion **8/29**; class-specific insight emerged on an inspected evaluation set and cannot authorize a new Gemini gate without genuinely fresh evidence.
+
+**Canonical result:** [A1 paired 347 RESULT](artifacts/research/ntl-lora24-a1-paired347/RESULT.md), and original [predeclared contract](artifacts/research/ntl-lora24-a1-paired347/CONTRACT.md). **Next global bottleneck:** a family-specific new signal might exist, but old A1 is too noisy. Do not confuse “some sibling rescues” with a deployable verifier. Use an explicitly new independent source/protocol-documented dataset or a truly new pretrained evidence mechanism; refuse reusing these 347 rows as unseen tuning data. The user-facing Kaggle **best official score remains 0.679**, submission `58210835`.
+
+**Parallel data-source provenance:** [Read-only Kaggle 18-label coverage audit](https://github.com/kolihhan/name-kaggle/actions/runs/42969227541) found `willrice/name-that-llm-openrouter-harvest`: a licensed, official-provider October dataset with **14/18 model classes**, and an explicit **generation-protocol/reasoning-setting confound** (Kimi K3 protocol selection is especially important). It is **not proven absent from champion's indirect pretraining pool**; its prompt bank overlaps Seyit, so it cannot be promoted as an untouched 18-class transfer source. `maniceet/name-that-llm-openrouter-openai-generations` was visible in public search but the authenticated Kaggle files API returned nonzero; treat as unavailable until proven otherwise. Neither is a clean full-18-label panel. No new data trained or submitted.
+
+---
+
 ## RESULT — completed real 347-row external transfer diagnostic (2026-11-11 13:30 MYT)
 
 **Done, not pending:** [Actual full-model Kaggle inference #42957145758](https://github.com/kolihhan/name-kaggle/actions/runs/42957145758) **SUCCESS**, private kernel `kolihhan/ntl-0679-fresh-transfer-diagnostic` = **COMPLETE**; 347 scored out-of-training public source rows, **260 correct / 87 wrong**, combined **12-observed-label conditional BA `0.749795`** (original unrestricted 18-class predictions). **Toan authored prompts: 107 rows, conditional BA `0.767361`**; **Nimitha public prompt bank: 240 rows, conditional BA `0.741667`**. These are **not** official 18-class Kaggle scores and cannot be compared directly with verified official champion `0.679` (submission `58210835`). No competition submission, supervised fitting, parameter change, or repeated champion inference.
