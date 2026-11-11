@@ -98,6 +98,16 @@ def frozen_reproduction(destination: Path) -> dict:
         "torch_optim": bool(re.search(r"\btorch\.optim\b",corpus)),
         "gauss_prefit_markers": ("source-test-conditioned" in corpus, "fixed-no-test-redo" in corpus),
     },sort_keys=True),flush=True)
+    for cell_index, code in enumerate(texts):
+        for m in re.finditer(r"\.(?:fit|fit_transform|partial_fit)\s*\(", code):
+            pfx = code[max(0,m.start()-85):m.start()]
+            receiver = re.search(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$",pfx)
+            print("NTL_WEMM_SAFE_FIT_SITE",json.dumps({
+                "cell_index":cell_index,
+                "receiver":receiver.group(1) if receiver else "unknown",
+                "call":m.group(0).strip(),
+                "line_index":code[:m.start()].count(chr(10))+1,
+            },sort_keys=True),flush=True)
     if (not any("CONFIG = " in s and "'RELEASE_READY': True" in s for s in texts) or
         len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(", corpus)) != 4 or
         len(re.findall(r"\.train\s*\(", corpus)) != 1 or
