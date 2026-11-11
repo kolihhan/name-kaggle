@@ -1,5 +1,19 @@
 # Ozertuu 0.683-title candidate — guarded source preflight
 
+## Terminal official Kaggle score (supersedes earlier PENDING receipt)
+
+**Verified 2026-11-11 10:28 MYT** by [Kaggle official ledger and exact-ID endpoint, Actions #42874538415 attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415), job `130279696484`:
+
+- `58210835` **`SubmissionStatus.COMPLETE`**, **Public BA `0.679`**, Private Score not yet published.
+- New **own-account, official Public champion = 0.679**, beating previous 0.668 by **0.011 absolute BA**.
+- External author's title-claimed 0.683 is **not** our score; do not attribute difference to specific guards without causal evidence.
+- Independent scientific result remains unproven; no additional supervised training and no duplicate submission.
+- Separate `58167751` remains PENDING with blank score.
+
+**Full terminal report:** [OFFICIAL_SCORE_20261111.md](OFFICIAL_SCORE_20261111.md). All preceding PENDING statements in this file are **historical** and superseded by the above confirmed result.
+
+---
+
 Date: 2026-11-11 MYT. **SOURCE GATE PASS; ONE-OFF KAGGLE SUBMISSION ACCEPTED; SCORE PENDING.**
 
 ## Verified execution
