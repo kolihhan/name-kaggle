@@ -1,0 +1,59 @@
+name: NTL source-disjoint cohort and public frontier survey (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-independent-cohort-frontier-readonly.yml]
+permissions: {contents: read}
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Survey official leaderboard and public datasets, no downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import csv,io,json,re,subprocess,math
+          def call(args,timeout=90):
+              x=subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=timeout)
+              if x.returncode:
+                  print("NTL_DISCOVERY_COMMAND_BLOCKED",
+                        json.dumps({"command":args[:3],"returncode":x.returncode}),flush=True)
+                  return []
+              return list(csv.DictReader(io.StringIO(x.stdout.lstrip("\ufeff"))))
+          # Never touch official competition examples/answers or download leaderboard.
+          leaders=call(["competitions","leaderboard","name-that-llm","--show","--public","-v"])
+          print("NTL_LEADERBOARD_FIELDS",json.dumps(list(leaders[0]) if leaders else []),flush=True)
+          print("NTL_LEADERBOARD_TOP",json.dumps([
+              {k:row.get(k) for k in list(row)[:8]} for row in leaders[:20]
+          ],ensure_ascii=False),flush=True)
+          corp=["name-that-llm","llm-generations","model-attribution","gpt-5.6","glm-5.3"]
+          allrows={}
+          for search in corp:
+              args=["datasets","list","--sort-by","updated","-s",search,"-v"]
+              rows=call(args)
+              print("NTL_DATASET_SEARCH",json.dumps({"query":search,"count":len(rows),
+                     "fields":list(rows[0]) if rows else []}),flush=True)
+              for x in rows:
+                  slug=(x.get("ref") or x.get("id") or "").strip()
+                  if not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+",slug):continue
+                  allrows[slug]=x
+          def brief(x):
+              allowed=("ref","title","size","lastUpdated","downloadCount",
+                       "voteCount","usabilityRating","license","licenseName",
+                       "totalBytes","created","last_updated")
+              return {k:str(x.get(k,""))[:180] for k in allowed if x.get(k) is not None}
+          print("NTL_PUBLIC_DATASET_CANDIDATES",json.dumps(
+              [brief(x) for x in list(allrows.values())[:100]],
+              ensure_ascii=False),flush=True)
+          print("NTL_SCIENCE_QUALIFICATION",
+            "dataset listings are discovery leads only; no license, source-disjointness or exact 18-label eligibility has been verified",
+            flush=True)
+          PY
