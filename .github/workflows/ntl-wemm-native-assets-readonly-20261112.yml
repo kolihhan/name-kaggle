@@ -1,0 +1,39 @@
+name: NTL WeMM Native Asset Metadata Audit (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-native-assets-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect_assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Check model and native embedding dependency existence without downloading weights
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json, subprocess
+          sources = (
+            ("lightningv08/ntl-olmo2-native24-final-inference-assets",
+             ["ntl-native-q8-multidepth-fivefold-0679", "ntl-native-wemm4-fivefold-0679"]),
+            ("nuridudak/ntl-svc-prefit-pool-v4n", ["svc"]),
+          )
+          for source, checks in sources:
+              proc=subprocess.run(["kaggle","datasets","files",source,"-v"],
+                                  capture_output=True,text=True,timeout=70)
+              data=proc.stdout.lower()
+              print("NTL_WEMM_DATASET_FILE_EVIDENCE",json.dumps({
+                  "source":source,"exit_code":proc.returncode,
+                  "characters":len(proc.stdout),"file_listing_nonempty":len(data)>40,
+                  "requested_assets":{name:(name.lower() in data) for name in checks},
+                  "cli_error_suppressed":proc.returncode!=0
+              },sort_keys=True),flush=True)
+          PY
