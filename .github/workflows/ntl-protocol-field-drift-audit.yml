@@ -1,0 +1,73 @@
+name: NTL protocol pairs exact field drift and alternate trial controls
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-protocol-field-drift-audit.yml]
+permissions: {contents: read}
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Compare exact same-model prompt field equality for preset protocol pairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import collections,json,pathlib,subprocess,tempfile
+          ref='willrice/name-that-llm-openrouter-harvest'
+          d=pathlib.Path(tempfile.mkdtemp(prefix='ntl-protocol-field-'))
+          for filename in ('calls.jsonl','trials.jsonl','setting_trials.jsonl'):
+              p=subprocess.run(['kaggle','datasets','download',ref,'-f',filename,'-p',str(d),'--unzip','-q'],
+                 capture_output=True,text=True,timeout=90)
+              if p.returncode:raise RuntimeError('public file fetch failed rc='+str(p.returncode))
+              rows=[json.loads(line) for line in (d/filename).read_text().splitlines() if line.strip()]
+              bykey=collections.defaultdict(lambda:collections.defaultdict(list))
+              for row in rows:
+                  if row.get('model')=='kimi-k3':
+                      key=(str(row.get('model')),str(row.get('prompt_id')))
+                      bykey[key][str(row.get('setting'))].append(row)
+              pairs={}
+              for a,b in (('high','off'),('low','off'),('default','high'),
+                          ('default','low'),('default','off')):
+                  eligible=[(settings[a][0],settings[b][0]) for settings in bykey.values()
+                      if len(settings.get(a,[]))==1 and len(settings.get(b,[]))==1]
+                  if not eligible:continue
+                  checks={}
+                  for field in ('served_model','served_provider','model_id','target_words'):
+                      same=sum(x.get(field)==y.get(field) and x.get(field) not in (None,'')
+                        for x,y in eligible)
+                      checks[field]=same
+                  checks['all_four']=sum(all(x.get(k)==y.get(k) and x.get(k) not in (None,'')
+                     for k in ('served_model','served_provider','model_id','target_words'))
+                     for x,y in eligible)
+                  checks['both_finish_stop']=sum(x.get('finish_reason')=='stop'
+                    and y.get('finish_reason')=='stop' for x,y in eligible)
+                  checks['both_text_nonempty']=sum(isinstance(x.get('text'),str) and x['text'].strip()
+                    and isinstance(y.get('text'),str) and y['text'].strip() for x,y in eligible)
+                  checks['word_band_both']=sum(all(isinstance(v.get('n_words'),int)
+                    and 40<=v['n_words']<=250 for v in (x,y)) for x,y in eligible)
+                  checks['same_target_and_stop_band']=sum(
+                    x.get('target_words')==y.get('target_words') and
+                    x.get('finish_reason')=='stop' and y.get('finish_reason')=='stop' and
+                    all(isinstance(v.get('n_words'),int) and 40<=v['n_words']<=250
+                        for v in (x,y)) for x,y in eligible)
+                  pairs[f'{a}_vs_{b}']={'prompt_pair_keys':len(eligible),'matched':checks}
+              keys=collections.Counter()
+              for row in rows:
+                  if row.get('model')=='kimi-k3':
+                      keys.update({k:1 for k in ('served_model','served_provider','model_id','target_words')
+                                   if row.get(k) not in (None,'')})
+              print('NTL_KIMI_PROTOCOL_PAIR_FIELD_DRIFT',json.dumps({
+                  'file':filename,'total':len(rows),
+                  'kimi_rows':sum(x.get('model')=='kimi-k3' for x in rows),
+                  'kimi_prompt_ids':len(bykey),
+                  'populated_metadata_field_row_counts':dict(keys),
+                  'setting_pair_checks':pairs
+              },sort_keys=True),flush=True)
+          PY
