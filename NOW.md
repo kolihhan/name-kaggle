@@ -1,3 +1,11 @@
+## 2026-11-12 — WeMM official hidden rerun FAILED; no new score
+
+**Verified from Kaggle's own detailed submission record:** WeMM ref `58244483` is `COMPLETE` **with a hidden Notebook unhandled exception and NO Public Score**. The original 3-row preview took an exact-fixture shortcut and never ran the actual model ensemble. Full paginated asset metadata confirms Qwen and WeMM native directories exist; the actual exception remains unobserved. A **private, no-submission, no-training full-path 3-row smoke** `kolihhan/ntl-wemm-fullpath-3row-smoke-v1` version 1 was created with a one-hour GPU cap and initial state `QUEUED`. Do not claim it passed before checking its actual terminal status and logs. Existing best valid official Public BA stays **0.679** (`58210835`); MGT `58233227` and Lightning `58167751` were still `PENDING` at the last authenticated check. [Full failure analysis and run IDs](artifacts/research/ntl-wemm-hidden-rerun-failure-20261112.md).
+
+New **114-test matched-prompt sibling audit** is [here](artifacts/research/ntl-sibling-signals-paired114-20261112.md); purely descriptive, not a candidate/score. No Kaggle competition submission or model training occurred in this research follow-through.
+
+---
+
 # Independent challenge — length shortcut falsified; source-only story weakened (2026-11-12 MYT)
 
 **Executed against real official training metadata (descriptive only):** 2,699 passages / 150 prompts / 18 models. Under same-prompt pairing, Luna was longer than Sol 74/150, Sol longer 75/150, 1 tie; Sol vs Terra likewise 74/75/1. The prior source-specific deterministic length order is not a transferable shortcut. Read [full aggregate audit](artifacts/research/ntl-official-sibling-length-negative-control-20261112.md). A historical Phase 15 domain-separability audit also weakens the simplistic thesis that more obvious source cues explain its worse Public transfer. **No new model BA or Submission**.
