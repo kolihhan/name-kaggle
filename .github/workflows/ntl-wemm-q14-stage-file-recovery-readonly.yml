@@ -64,6 +64,22 @@ jobs:
                 "child_log_lines":len(lines),
                 "no_model_training_or_gpu_call":True
               },ensure_ascii=False),flush=True)
+          for f in found:
+              if f.name!="core-q14v5.log":continue
+              lines=f.read_text(encoding="utf-8",errors="replace").splitlines()
+              tokens=("cuda","gpu","device_count","device_capabilities","nvidia","accelerator","torch","device_map","pin_memory","meta")
+              markers=[]
+              for ln in lines[:65]:
+                  clean=ln.strip()
+                  if clean.startswith(("NTL_","CUDA","GPU","DEVICE")) or (
+                      any(x in clean.lower() for x in tokens)
+                      and len(clean)<500 and not re.search(r"(?i)prompt|response text|content:",clean)
+                  ):
+                      clean=re.sub(r"/kaggle/(?:input|working|temp)/[^\s\'\"]+","[REDACTED_PATH]",clean)
+                      clean=re.sub(r"https?://[^\s]+","[REDACTED_URL]",clean)
+                      clean=re.sub(r"\b[a-fA-F0-9]{32,}\b","[REDACTED_HASH]",clean)
+                      markers.append(clean[:400])
+              print("NTL_Q14_ACCELERATOR_EVIDENCE",json.dumps({"early_log_signals":markers[:20],"log_count":len(lines)},ensure_ascii=False),flush=True)
           print("NTL_Q14_RECOVERY_RESULT",json.dumps({
              "return_code":p.returncode,"found_count":len(found),
              "files":safe,"no_raw_kaggle_logs_exposed":True
