@@ -34,6 +34,7 @@ jobs:
                   "source":source,"exit_code":proc.returncode,
                   "characters":len(proc.stdout),"file_listing_nonempty":len(data)>40,
                   "requested_assets":{name:(name.lower() in data) for name in checks},
-                  "cli_error_suppressed":proc.returncode!=0
+                  "cli_error_suppressed":proc.returncode!=0,
+                  "file_list_metadata_excerpt":proc.stdout[:2500]
               },sort_keys=True),flush=True)
           PY
