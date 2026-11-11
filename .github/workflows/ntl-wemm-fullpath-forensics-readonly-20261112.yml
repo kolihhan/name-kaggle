@@ -1,0 +1,89 @@
+name: NTL WEMM Full-Path Smoke Forensic Status (read-only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-fullpath-forensics-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Query owned private Notebook; safe aggregate-only execution forensics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json, re, subprocess
+          ref="kolihhan/ntl-wemm-fullpath-3row-smoke-v1"
+          def call(argv):
+              p=subprocess.run(argv, text=True, capture_output=True, timeout=150)
+              return p.returncode, p.stdout, p.stderr
+          rc,stdout,stderr=call(["kaggle","kernels","status",ref])
+          m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",stdout+"\n"+stderr)
+          state=m.group(1) if m else "UNKNOWN"
+          print("NTL_SMOKE_FORENSIC_STATUS",json.dumps({
+              "ref":ref,"state":state,"status_rc":rc
+          },sort_keys=True),flush=True)
+          if state in ("QUEUED","RUNNING"):
+              print("NTL_SMOKE_FORENSIC_NOTE","still running; no terminal diagnosis",flush=True)
+              raise SystemExit(0)
+          rc2,log,err=call(["kaggle","kernels","logs",ref])
+          # Never print raw logs. Notebook outputs, prompts, examples, secrets and
+          # hidden dataset contents must not be transferred to public Git logs.
+          try:
+              parsed=json.loads(log)
+              if isinstance(parsed,list):
+                  lines=[]
+                  for item in parsed:
+                      if isinstance(item,dict):
+                          d=item.get("data","")
+                          if isinstance(d,list):
+                              d="\n".join(str(v) for v in d)
+                          lines.extend(str(d).splitlines())
+              else:lines=log.splitlines()
+          except (ValueError,TypeError):
+              lines=log.splitlines()
+          types=sorted(set(re.findall(
+              r"\b(?:AssertionError|RuntimeError|ValueError|FileNotFoundError|"
+              r"ModuleNotFoundError|ImportError|KeyError|IndexError|TypeError|"
+              r"AttributeError|PermissionError|MemoryError|OutOfMemoryError|"
+              r"CalledProcessError|OSError|TimeoutError|SystemExit)\b",
+              "\n".join(lines)
+          )))
+          traceback=[]
+          for line in lines:
+              match=re.search(r'File "([^"]+\.py)", line ([0-9]+)',line)
+              if match:
+                  path=match.group(1)
+                  traceback.append({"module_basename":path.rsplit("/",1)[-1],
+                      "line":int(match.group(2))})
+          markers=("test ", "ATLAS predictions", "WeMM", "WEMM", "embedding",
+                   "cache", "stage", "MEMORY", "starting", "finished")
+          safe_markers=[]
+          for ln in lines:
+              lower=ln.lower()
+              for marker in markers:
+                  if marker.lower() in lower:
+                      safe_markers.append(marker)
+                      break
+          print("NTL_SMOKE_FORENSIC_LOG_SUMMARY",json.dumps({
+              "logs_rc":rc2,"log_line_count":len(lines),
+              "log_bytes":len(log),"types":types,
+              "traceback_last_modules":traceback[-12:],
+              "last_stage_categories":safe_markers[-16:],
+              "has_cuda_oom":bool(re.search(r"CUDA out of memory|CUDA error: out of memory",log,re.I)),
+              "has_no_submission":True
+          },sort_keys=True),flush=True)
+          rc3,listing,_=call(["kaggle","kernels","files",ref,"-v","--page-size","200"])
+          print("NTL_SMOKE_FORENSIC_OUTPUT",json.dumps({
+              "file_list_rc":rc3,"has_submission_parquet":"submission.parquet" in listing,
+              "file_count_estimate":max(0,len(listing.splitlines())-1),
+          },sort_keys=True),flush=True)
+          PY
