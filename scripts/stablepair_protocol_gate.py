@@ -55,6 +55,11 @@ def audit(rows: list[dict[str, str]], *, min_pairs: int = 100) -> dict:
         if any(not _digest(x[key]) for key in ('prompt_hash', 'request_hash', 'settings_hash')):
             excluded['invalid_hash'] += 1
             continue
+        # Fail closed on provider routing/alias ambiguity. A provider alias
+        # needs a separately audited, explicit mapping before admission.
+        if x['served_model'] != x['model']:
+            excluded['served_identity_mismatch'] += 1
+            continue
         if x['rights_verified'] != 'true' or x['prefit_exposure'] != 'none':
             excluded['unverified_rights_or_prefit_exposure'] += 1
             continue
