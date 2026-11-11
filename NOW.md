@@ -1,5 +1,13 @@
 # NOW
 
+## Current data-gate audit outcome — nine public sources, no eligible clean 18-class holdout
+
+**Latest authenticated source intake 2026-11-11:** [existing metadata workflow #42993607587](https://github.com/kolihhan/name-kaggle/actions/runs/42993607587) **SUCCESS**, nine source refs, **0/9 admitted** for new independent full-18 validation. `prvsiyan`: 18 labels, 300 complete 18-model blocks, but a **direct current champion input**; `nishantdahal` (18-class) and `seyitkaangunes` (5-class) also directly mounted. `lxdlxdlxd`: 4,758 per-call generated responses, 13 classes, no GPT; better documented provenance but insufficient and indirect training exposure unknown. `crtproduction`: merged 18-class pool with latest files/version not verified by current Kaggle metadata parser; do **not** treat its empty parsed file list as no data or as eligibility. `willrice` 14 classes, `nimithashreea`/`toanplam` 12 and spent, `maniceet` 10 and current CLI rc=1. [Complete signed-off source ledger](artifacts/research/ntl-18class-independent-validation-gate-20261111.md#authenticated-nine-source-recheck--2026-11-11) · [active blocking Issue #1](https://github.com/kolihhan/name-kaggle/issues/1).
+
+**Action:** Stop searching these exact nine as independent 18-label holdouts. Only new original model/prompt/protocol provenance with demonstrable prefit-source non-exposure could reopen the scientific full-18 claim. We may later authorize a frozen single Kaggle competition experiment as **exploratory** even if a pristine 18-class holdout is infeasible, but must label it accordingly rather than adapting to Public LB. **No new GPU, training or competition submission in this intake.** Official champion remains `0.679`.
+
+---
+
 ## CURRENT DECISION — Kimi completed; 18-label independent validation BLOCKED (2026-11-11)
 
 **As of 2026-11-11 16:34 MYT recheck:** **No new candidate promoted**. Authenticated [read-only Kaggle ledger, job 130413899671](https://github.com/kolihhan/name-kaggle/actions/runs/42874538415) again verifies `58210835` = `COMPLETE`, Public `0.679`; separate `58167751` remains `PENDING`, score blank (do not infer its outcome). Official account Public BA champion remains **0.679** (Kaggle `58210835` `COMPLETE`), an **attributed external source reproduction**, not our independent breakthrough. Private BA is not known.
