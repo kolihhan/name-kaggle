@@ -42,6 +42,14 @@ jobs:
               s="".join(c.get("source",[]))
               print("NTL_NOTEBOOK_BOUNDARY",json.dumps({"idx":ix,"type":c.get("cell_type"),
                    "lines":len(s.splitlines()),"source":s[:1800] if ix<=7 or ix>=45 else ""}),flush=True)
+          code=["".join(c.get("source",[])) for c in nb.get("cells",[]) if c.get("cell_type")=="code"]
+          digest=hashlib.sha256(json.dumps(code,ensure_ascii=False,separators=(",",":")).encode("utf-8")).hexdigest()
+          print("NTL_CHAMPION_CODE_CELL_SHA256",digest,flush=True)
+          print("NTL_CHAMPION_SAFETY_GUARDS",json.dumps({
+              "gauss":sum("gauss.fit = _no_new_supervised_gaussian_fit" in c for c in code),
+              "atlas":sum("NO_NEW_TRAINING: Atlas train mode forbidden" in c for c in code),
+              "core":sum("NO_NEW_TRAINING: core worker train_final forbidden" in c for c in code)
+          }),flush=True)
           for ix in (5,7,8,52):
               if ix>=len(nb["cells"]):continue
               lines="".join(nb["cells"][ix].get("source",[])).splitlines()
