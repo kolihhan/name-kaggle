@@ -29,7 +29,7 @@ jobs:
           test ! -e data/test.csv
           python -m py_compile scripts/ntl_0679_transfer_private_once.py
       - run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 nbformat==5.10.4
-      - name: Private licensed corpus capsule source smoke check
+      - name: Kaggle slug-consistent metadata and corpus capsule smoke check
         run: python -m py_compile scripts/ntl_0679_transfer_private_once.py
       - name: Frozen Kaggle private-source test; no GPU or submission
         shell: bash
