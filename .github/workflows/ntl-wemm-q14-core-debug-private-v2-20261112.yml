@@ -1,0 +1,120 @@
+name: NTL WeMM Core Q14 Failure Trace Private V2 (NO SUBMISSION)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-q14-core-debug-private-v2-20261112.yml]
+permissions: {contents: read}
+jobs:
+  launch_one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Freeze precise one-change debug instrumentation; private GPU limit 1800s
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,pathlib,subprocess,tempfile,re,hashlib
+          src="kolihhan/ntl-wemm-fullpath-3row-smoke-v1"
+          dst="kolihhan/ntl-wemm-core-q14-error-probe-v2"
+          def call(args,secs=120):
+              return subprocess.run(args,text=True,capture_output=True,timeout=secs)
+          quota=call(["kaggle","quota"])
+          if quota.returncode:raise RuntimeError("Cannot verify GPU budget")
+          m=re.search(r"(?m)^GPU\s+\S+\s+([0-9.]+)h",quota.stdout)
+          if not m or float(m.group(1)) < 10:raise RuntimeError("Preserved GPU budget guard rejects debug run")
+          print("NTL_DEBUG_Q14_GPU_BUDGET",json.dumps({"remaining_h":float(m.group(1)),"min_h":10}),flush=True)
+          exists=call(["kaggle","kernels","status",dst])
+          if "KernelWorkerStatus." in exists.stdout+exists.stderr:
+              raise RuntimeError("Diagnostic v2 destination exists; never rerun")
+          smoke=call(["kaggle","kernels","status",src])
+          if "KernelWorkerStatus.ERROR" not in smoke.stdout+smoke.stderr:
+              raise RuntimeError("Source v1 smoke not verified in ERROR state")
+          root=pathlib.Path(tempfile.mkdtemp(prefix="ntl-q14-debug-"))
+          source=root/"original";source.mkdir()
+          p=call(["kaggle","kernels","pull",src,"-p",str(source),"-m"])
+          if p.returncode:raise RuntimeError("Private smoke source pull failed")
+          nbs=list(source.glob("*.ipynb"))
+          if len(nbs)!=1:raise RuntimeError("Notebook source ambiguous")
+          nb=json.loads(nbs[0].read_text(encoding="utf-8"))
+          code_cells=[c for c in nb["cells"] if c.get("cell_type")=="code"]
+          if len(code_cells)!=43:raise RuntimeError("Source not pinned 43 cells")
+          def source_text(cell):
+              s=cell.get("source",[])
+              return "".join(s) if isinstance(s,list) else str(s)
+          combined="\n".join(map(source_text,code_cells))
+          before_sha=hashlib.sha256(combined.encode()).hexdigest()
+          if before_sha!="bdbbba6ac34ffa114f3c1c9d2c14299821e38d20f25842104d520ce697359979":
+              raise RuntimeError("Private smoke v1 code drift")
+          if "preview = False  # SMOKE ONLY" not in combined:
+              raise RuntimeError("Preview shortcut bypass absent")
+          for guard in (
+              "gauss.fit = _no_new_supervised_gaussian_fit",
+              "NO_NEW_TRAINING: Atlas train mode forbidden",
+              "NO_NEW_TRAINING: core worker train_final forbidden",
+              "Frozen WeMM experiment: sibling-style training is disabled",
+          ):
+              if guard not in combined:raise RuntimeError("Guard missing")
+          all_en=[c for c in code_cells if source_text(c).startswith(
+             "%%writefile /kaggle/temp/ntl-gsq-v27-runtime/ensemble.py")]
+          if len(all_en)!=1:raise RuntimeError("Ensemble source cannot be uniquely instrumented")
+          cell=all_en[0]
+          original=source_text(cell)
+          old="""if code:
+        raise RuntimeError(f'{stage} failed with exit code {code}; see its stage log')"""
+          replacement="""if code:
+        import re
+        stage_log=logs / (stage + '.log')
+        output=stage_log.read_text(encoding='utf-8',errors='replace').splitlines() if stage_log.is_file() else []
+        error_types=sorted(set(re.findall(r'\\b(?:RuntimeError|ValueError|AssertionError|FileNotFoundError|ModuleNotFoundError|ImportError|KeyError|IndexError|TypeError|AttributeError|PermissionError|MemoryError|OutOfMemoryError|CalledProcessError|OSError|TimeoutError|HFValidationError)\\b','\\n'.join(output[-160:]))))
+        frames=[]
+        for raw in output[-160:]:
+            m=re.search(r'File "([^"]+\\.py)", line ([0-9]+)', raw)
+            if m:
+                frames.append({'module':m.group(1).rsplit('/',1)[-1], 'line':int(m.group(2))})
+        report={'stage':stage,'exit_code':int(code),'child_log_lines':len(output),
+                'errors':error_types,'last_frames':frames[-12:],
+                'has_cuda_oom':any('out of memory' in ln.lower() for ln in output[-160:]),
+                'has_offline_missing':any('not found in the cache' in ln.lower() or 'local_files_only' in ln.lower() for ln in output[-160:]),
+                'has_checkpoint_failure':any('safetensors' in ln.lower() and ('error' in ln.lower() or 'failed' in ln.lower()) for ln in output[-160:]),
+                'has_training_guard':any('NO_NEW_TRAINING' in ln for ln in output[-160:]),
+                'has_cuda_device_assert':any('device-side assert' in ln.lower() for ln in output[-160:])}
+        print('NTL_PRIVATE_Q14_CHILD_ERROR',json.dumps(report,sort_keys=True),flush=True)
+        raise RuntimeError(f'{stage} failed with exit code {code}; see its stage log')"""
+          if original.count(old)!=1:
+              raise RuntimeError("Stage failure-code injection point drift")
+          cell["source"]=original.replace(old,replacement).splitlines(keepends=True)
+          after="\n".join(map(source_text,code_cells))
+          if after.count("NTL_PRIVATE_Q14_CHILD_ERROR")!=1 or after.replace(replacement,old)!=combined:
+              raise RuntimeError("Non-diagnostic changes detected")
+          meta_path=source/"kernel-metadata.json"
+          meta=json.loads(meta_path.read_text())
+          if meta.get("id")!=src or meta.get("is_private") is not True:
+              raise RuntimeError("Private Notebook source identity mismatch")
+          meta.pop("id_no",None)
+          meta.update({"id":dst,"title":dst.split("/",1)[1],"is_private":True,"enable_internet":False,"machine_shape":"NvidiaTeslaT4"})
+          out=root/"candidate";out.mkdir()
+          code_file=meta.get("code_file")
+          if not code_file or "/" in code_file or not code_file.endswith(".ipynb"):
+              raise RuntimeError("Unsafe code filename")
+          (out/code_file).write_text(json.dumps(nb,ensure_ascii=False),encoding="utf-8")
+          (out/"kernel-metadata.json").write_text(json.dumps(meta,indent=2),encoding="utf-8")
+          print("NTL_DEBUG_Q14_FROZEN_VARIANT",json.dumps({"source":src,"target":dst,
+               "one_change":"print redacted subprocess failure metadata before raising",
+               "no_training":True,"no_competition_submission":True,
+               "private_timeout_seconds":1800,
+               "source_code_sha256":before_sha,
+               "diagnostic_sha256":hashlib.sha256(after.encode()).hexdigest()
+          },sort_keys=True),flush=True)
+          launched=call(["kaggle","kernels","push","-p",str(out),"--accelerator","NvidiaTeslaT4","--timeout","1800"],180)
+          if launched.returncode:raise RuntimeError("Kaggle private debug push failed")
+          if "Kernel version 1 successfully pushed" not in launched.stdout+launched.stderr:
+              raise RuntimeError("Ambiguous Kaggle push; do not resubmit")
+          print("NTL_DEBUG_Q14_PRIVATE_ONLY_LAUNCHED",dst,flush=True)
+          PY
