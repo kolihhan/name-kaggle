@@ -51,4 +51,12 @@ jobs:
                   seen.append((cell_no,line_no,trimmed[:195]))
             print('NTL_WEMM_AUDIT_CATEGORY',json.dumps({
               'category':key,'matches':len(seen),'sample':seen[:25]},ensure_ascii=False),flush=True)
+          for cell_no in (1, 42):
+              if cell_no >= len(cells):continue
+              selected=cells[cell_no].splitlines()
+              print('NTL_WEMM_CONTROL_FLOW',json.dumps({
+                'code_cell':cell_no,'line_count':len(selected),
+                'lines':[[i+1,line[:260]] for i,line in enumerate(selected[:85])
+                         if len(line)<1000 and not any(s in line.lower() for s in ('token=','secret=','password=','authorization:'))]
+              },ensure_ascii=False),flush=True)
           PY
