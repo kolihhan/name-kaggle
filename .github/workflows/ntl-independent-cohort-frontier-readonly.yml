@@ -57,3 +57,47 @@ jobs:
             "dataset listings are discovery leads only; no license, source-disjointness or exact 18-label eligibility has been verified",
             flush=True)
           PY
+      - name: Verify fresh candidate metadata, licenses and filenames (no dataset rows)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import csv,io,json,pathlib,subprocess,tempfile
+          refs=[
+            "nimithashreea/ntl-proxy-candidate-generations-20261110",
+            "toanplam/ntl-fresh-generation-pilot-nov08",
+            "emmanuelocheme/ntl-oof-mistral-olmo-lora",
+            "alessandrolair/ntl-kaggle-benchmarks-generated-passages",
+            "zeminglii/ntl-own-exact-route-generations"
+          ]
+          for ref in refs:
+              out={"ref":ref,"public_metadata_only":True,"rows_downloaded":False}
+              d=pathlib.Path(tempfile.mkdtemp(prefix="ntl-meta-"))
+              try:
+                  p=subprocess.run(["kaggle","datasets","metadata",ref,"-p",str(d)],
+                                   capture_output=True,text=True,timeout=55)
+                  out["meta_rc"]=p.returncode
+                  mdfile=d/"dataset-metadata.json"
+                  if mdfile.exists():
+                      m=json.loads(mdfile.read_text())
+                      out["license"]=m.get("licenses")
+                      out["title"]=m.get("title")
+                      out["subtitle"]=str(m.get("subtitle",""))[:300]
+                      out["description"]=str(m.get("description",""))[:550]
+                      out["resources"]=[{"path":v.get("path"),
+                                         "schema":v.get("schema",{}).get("fields",[])[:25]}
+                                        for v in m.get("resources",[])[:20]]
+                  p=subprocess.run(["kaggle","datasets","files",ref,"-v"],
+                                   capture_output=True,text=True,timeout=55)
+                  out["files_rc"]=p.returncode
+                  if p.returncode==0:
+                      rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+                      out["files_fields"]=list(rows[0]) if rows else []
+                      out["files"]=[{k:v for k,v in row.items()
+                                    if k in ("name","size","creationDate","ref")}
+                                   for row in rows[:25]]
+              except Exception as e:
+                  out["error_type"]=type(e).__name__
+              print("NTL_SOURCE_LICENSE_MANIFEST",json.dumps(out,ensure_ascii=False),flush=True)
+          PY
