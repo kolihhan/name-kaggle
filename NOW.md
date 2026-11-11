@@ -1,3 +1,9 @@
+# Research checkpoint — PPO is NOT the next attribution-model objective (2026-11-12 MYT)
+
+**Decision only; no experiment/submission/score change.** The 18-label task has direct ground-truth labels, so PPO/GRPO over a one-step 18-way prediction offers no justified advantage over class-balanced supervised learning. Historical OOF→Public divergence and 71/87 within-provider errors on a spent 12-label diagnostic support a new *generator-vs-channel and sibling-representation* investigation, not incremental weights or another RL loop. **Training is REOPENED for evaluation as an architecture class, but remains execution-BLOCKED until provenance/independent-evaluation/resource gates are met.** Current official champion remains **0.679** (`58210835`); WeMM `58244483` status remains *last checked PENDING* in the ledger below. [Full research decision](artifacts/research/ppo-vs-task-aligned-objective-decision-20261112.md).
+
+---
+
 # NEW AUTHENTICATED OFFICIAL KAGGLE SUBMISSION — WeMM #58244483 (2026-11-12 MYT)
 
 **VERIFIED new Kaggle competition entry:** `58244483`, official status `SubmissionStatus.PENDING`, Public Score blank, Private Score blank at **2026-11-11 16:38:43 UTC**, confirmed by independent authenticated [read-only ledger #43060338073](https://github.com/kolihhan/name-kaggle/actions/runs/43060338073) **SUCCESS**. [One-shot private Notebook + official submission #43060048662](https://github.com/kolihhan/name-kaggle/actions/runs/43060048662) both jobs **SUCCESS**; private `kolihhan/ntl-dual-embedding-wemm-frozen-v1` preview **COMPLETE**. Official hidden rerun scoring is separate, not yet finished. [Full immutable source/provenance/submission report](artifacts/candidates/dual-embedding-wemm-frozen-v1/SUBMISSION_20261112.md).
