@@ -355,6 +355,13 @@ def _clone(destination: Path)->dict:
           "champion, exact 18-class outputs, two public 12-label external cohorts; "
           "no supervised training, no Kaggle submission. Original upstream "
           "attributions preserved."]})
+    # The already-scored upstream notebook is nbformat 4.4, but has one
+    # post-4.5 cell id on its attribution markdown. Strip ONLY cell metadata
+    # ids for strict 4.4 validity; executable cell sources remain identical.
+    if nb.get("nbformat")!=4 or nb.get("nbformat_minor")!=4:
+        raise RuntimeError("champion Jupyter format unexpectedly changed")
+    for c in cells:
+        c.pop("id",None)
     for c in cells:
         if c.get("cell_type")=="code":
             c["execution_count"]=None
