@@ -1,0 +1,65 @@
+name: NTL Q14 Private Debug Terminal Evidence (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-q14-v2-terminal-evidence-readonly.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Poll only existing privately launched v2; classify redacted child traceback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,subprocess,time,re
+          ref="kolihhan/ntl-wemm-core-q14-error-probe-v2"
+          def call(args):
+              return subprocess.run(args,capture_output=True,text=True,timeout=75)
+          state=None
+          for poll in range(46):
+              p=call(["kaggle","kernels","status",ref])
+              m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+"\n"+p.stderr)
+              state=m.group(1) if m else "UNKNOWN"
+              if state in ("ERROR","COMPLETE","CANCELLED","FAILED"):
+                  break
+              if poll in (0,5,15,30):
+                  print("NTL_Q14_V2_POLL",json.dumps({"poll":poll,"state":state}),flush=True)
+              time.sleep(12)
+          print("NTL_Q14_V2_TERMINAL_STATUS",json.dumps({"ref":ref,"state":state,"poll":poll,"terminal":state in ("ERROR","COMPLETE","CANCELLED","FAILED")}),flush=True)
+          if state not in ("ERROR","COMPLETE","CANCELLED","FAILED"):
+              raise SystemExit(0)
+          p=call(["kaggle","kernels","logs",ref])
+          if p.returncode:raise RuntimeError("Private Notebook logs unavailable")
+          try:
+              contents=json.loads(p.stdout)
+              lines=[]
+              if isinstance(contents,list):
+                  for item in contents:
+                      if not isinstance(item,dict):continue
+                      d=item.get("data","")
+                      lines.extend(("\n".join(map(str,d)) if isinstance(d,list) else str(d)).splitlines())
+              else:lines=p.stdout.splitlines()
+          except (ValueError,TypeError):
+              lines=p.stdout.splitlines()
+          matches=[]
+          for line in lines:
+              m=re.search(r"NTL_PRIVATE_Q14_CHILD_ERROR\s*(\{.*\})",line)
+              if m:
+                  try:
+                      obj=json.loads(m.group(1))
+                      allowed={k:obj.get(k) for k in ("stage","exit_code","child_log_lines","errors","last_frames","has_cuda_oom","has_offline_missing","has_checkpoint_failure","has_training_guard","has_cuda_device_assert")}
+                      matches.append(allowed)
+                  except ValueError:pass
+          print("NTL_Q14_V2_CHILD_CAUSE",json.dumps({"marker_count":len(matches),"last_report":matches[-1] if matches else None,"log_line_count":len(lines)},sort_keys=True),flush=True)
+          files=call(["kaggle","kernels","files",ref,"-v","--page-size","200"])
+          print("NTL_Q14_V2_OUTPUT",json.dumps({"file_list_rc":files.returncode,"has_submission":"submission.parquet" in files.stdout}),flush=True)
+          PY
