@@ -269,7 +269,7 @@ jobs:
                              "deberta":r"deberta",
                              "sinkhorn":r"sinkhorn|balance_logits",
                              "pair_specialist":r"pairwise|specialist",
-                             "training_marker":r"backward\\s*\\(|fit\\s*\\("
+                             "training_marker":r"backward\s*\(|fit\s*\("
                           }.items()}
               print("NTL_NEW_FRONTIER_ARCH",json.dumps(out,ensure_ascii=False,sort_keys=True),flush=True)
           PY
