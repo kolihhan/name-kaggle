@@ -1,0 +1,54 @@
+name: NTL WeMM Hidden-Scale Static Failure Audit (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-hidden-scale-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Pull owned private Notebook source only; search hidden-scale failure patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/ntl-wemm-source
+          kaggle kernels pull kolihhan/ntl-dual-embedding-wemm-frozen-v1 -p /tmp/ntl-wemm-source -m >/dev/null
+          python - <<'PY'
+          import collections, json, pathlib, re
+          path=next(pathlib.Path('/tmp/ntl-wemm-source').glob('*.ipynb'))
+          nb=json.loads(path.read_text(encoding='utf-8'))
+          cells=[(''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source','')))
+                 for c in nb['cells'] if c.get('cell_type')=='code']
+          patterns={
+            'read_test':r'test\.csv|read_csv\(|read_parquet\(',
+            'rowcount':r'len\(test|n_test|test\.shape|test_text|len\(X_test|\[:3\]|head\(3\)',
+            'batch':r'batch_size|chunk_size|batch_size=|range\(0,.*batch|DataLoader',
+            'gpu':r'\.cuda\(|torch\.cuda|device_map|empty_cache|memory|CUDA|GPU|cpu_offload',
+            'shape':r'reshape\(|view\(|np\.concatenate|torch\.cat|np\.stack',
+            'submission':r'submission\.parquet|to_parquet\(|write_parquet',
+            'exceptions':r'raise RuntimeError|raise ValueError|assert |except |raise Exception',
+            'external':r'os\.system|subprocess\.run|!python|!bash|%%writefile',
+          }
+          print('NTL_WEMM_CODE_META',json.dumps({'source_notebook':path.name,'code_cells':len(cells),
+             'code_characters':sum(len(x) for x in cells)}),flush=True)
+          for key,pattern in patterns.items():
+            seen=[]
+            for cell_no,cell in enumerate(cells):
+              for line_no,line in enumerate(cell.splitlines(),start=1):
+                if re.search(pattern,line,re.I):
+                  trimmed=line.strip()
+                  if not trimmed or len(trimmed)>220:continue
+                  if any(x in trimmed.lower() for x in ('token=','password=','secret=','authorization:')):
+                      continue
+                  seen.append((cell_no,line_no,trimmed[:195]))
+            print('NTL_WEMM_AUDIT_CATEGORY',json.dumps({
+              'category':key,'matches':len(seen),'sample':seen[:25]},ensure_ascii=False),flush=True)
+          PY
