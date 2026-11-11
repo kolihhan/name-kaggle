@@ -63,7 +63,7 @@ jobs:
           data=[line for line in raw if line.strip() and
                 not line.lstrip().startswith(("Next Page Token", "Next Page"))]
           print("NTL_PUBLIC_LB_FIRST_ROWS",json.dumps(data[:4],ensure_ascii=False))
-          rows=list(csv.DictReader(io.StringIO("\\n".join(data))))
+          rows=list(csv.DictReader(io.StringIO(chr(10).join(data))))
           if not rows or not any("score" in str(k).lower() for k in rows[0]):
               raise RuntimeError("Kaggle leaderboard rows could not be safely parsed")
           print("NTL_PUBLIC_LB_COLUMNS",json.dumps(list(rows[0].keys())))
