@@ -38,6 +38,9 @@ jobs:
                   raise RuntimeError('ambiguous official submission ref '+ref)
               x=hits[0] if hits else {'ref':ref,'status':'NOT_IN_RETURNED_LEDGER'}
               print('NTL_EXACT_STATUS',json.dumps({k:x.get(k) for k in ('ref','status','publicScore','privateScore','date')},sort_keys=True))
+          for x in rows:
+              if x.get('description','').startswith('WEMM frozen dual embedding exploratory no-training 20261112'):
+                  print('NTL_WEMM_OFFICIAL_SUBMISSION_STATUS',json.dumps({k:x.get(k) for k in ('ref','status','publicScore','privateScore','date','description')},sort_keys=True))
           PY
           echo '--- OWNED_STAGE_A_MODEL_AND_WHEELHOUSE ---'
           for ref in kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2; do
@@ -47,6 +50,8 @@ jobs:
           kaggle kernels status kolihhan/name-that-llm-lora24-v1-final || true
           echo '--- FROZEN MGT-V1 PRIVATE NOTEBOOK STATUS ---'
           kaggle kernels status kolihhan/ntl-margin-gated-transport-v1 || true
+          echo NTL_WEMM_NOTEBOOK_STATUS
+          kaggle kernels status kolihhan/ntl-dual-embedding-wemm-frozen-v1 || true
 
       - name: Read public competition leaderboard top 20 (no submissions)
         shell: bash
