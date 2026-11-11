@@ -36,19 +36,22 @@ jobs:
               print('NTL_CUDA_PROBE_LOG_STATUS',json.dumps({'return_code':p.returncode}),flush=True)
               raise SystemExit(0)
           try:
-              payload=json.loads(p.stdout)
+              entries=json.loads(p.stdout)
               chunks=[]
-              if isinstance(payload,list):
-                  for event in payload:
+              if isinstance(entries,list):
+                  for event in entries:
                       if isinstance(event,dict):
                           data=event.get('data','')
-                          chunks.append('\\n'.join(map(str,data)) if isinstance(data,list) else str(data))
+                          chunks.extend(map(str,data) if isinstance(data,list) else [str(data)])
               else:
                   chunks=[p.stdout]
-              flattened='\\n'.join(chunks)
           except (ValueError,TypeError):
-              flattened=p.stdout
-          matches=re.findall(r'NTL_CUDA_ENV_PROBE\\s*(\\{[^\\n]+\\})',flattened)
+              chunks=[p.stdout]
+          matches=[]
+          for chunk in chunks:
+              for line in chunk.splitlines():
+                  if 'NTL_CUDA_ENV_PROBE' in line:
+                      matches.append(line.split('NTL_CUDA_ENV_PROBE',1)[1].strip())
           reports=[]
           for x in matches:
               try:
