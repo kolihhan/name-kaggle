@@ -79,6 +79,13 @@ jobs:
                   "cell":ix,"total_lines":len(lines),
                   "hits":len(hits),"selected":filtered[:185]
               },ensure_ascii=False),flush=True)
+          for ix,ranges in ((9,((72,106),)),(44,((38,57),(135,155))), (51,((30,57),))):
+              if ix>=len(nb["cells"]):continue
+              body="".join(nb["cells"][ix].get("source",[])).splitlines()
+              selected=[{"line":j+1,"code":body[j][:200]} for a,b in ranges
+                  for j in range(a,min(b,len(body)))]
+              print("NTL_FROZEN_FINAL_MATH",json.dumps({
+                  "cell":ix,"lines":selected},ensure_ascii=False),flush=True)
           print("NTL_CHAMPION_METADATA",json.dumps({
               "id":json.loads((dest/"kernel-metadata.json").read_text()).get("id"),
               "dataset_source_count":len(json.loads((dest/"kernel-metadata.json").read_text()).get("dataset_sources") or []),
