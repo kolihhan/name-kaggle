@@ -1,0 +1,72 @@
+name: NTL WeMM frozen safe candidate - Kaggle submission ONCE
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-frozen-submit-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-wemm-frozen-one-official-submission
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_dual_embedding_wemm_preview.py
+            artifacts/candidates/dual-embedding-wemm-frozen-v1/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Ensure competition files absent and code compiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test ! -e data/sample_submission.parquet
+          python -m py_compile scripts/ntl_dual_embedding_wemm_preview.py
+      - name: Kaggle client, no models or GPU
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 nbformat==5.10.4
+      - name: Independently verify exact frozen code and no-training guards
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -u scripts/ntl_dual_embedding_wemm_preview.py --source-preflight
+          echo NTL_WEMM_USER_AUTHORIZED_CANDIDATE_SAFE_TO_ATTEMPT
+
+  submit:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_dual_embedding_wemm_preview.py
+            artifacts/candidates/dual-embedding-wemm-frozen-v1/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Kaggle client for remote private notebook and competition submission
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 nbformat==5.10.4
+      - name: Submit ONE fixed no-training private Kaggle Notebook after preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test ! -e data/sample_submission.parquet
+          python -u scripts/ntl_dual_embedding_wemm_preview.py --submit-once
