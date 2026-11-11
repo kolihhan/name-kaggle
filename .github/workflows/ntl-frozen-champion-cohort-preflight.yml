@@ -61,6 +61,24 @@ jobs:
                       "if not" in line or "CONFIG, EXPLICIT" in line)]
               print("NTL_CHAMPION_CONTROLLED_LINES",
                   json.dumps({"cell":ix,"filtered":filtered[:60]},ensure_ascii=False),flush=True)
+          # Read-only static audit of final decision rule and all Sinkhorn call sites.
+          for ix,c in enumerate(nb.get("cells",[])):
+              if c.get("cell_type")!="code":continue
+              body="".join(c.get("source",[]))
+              if not any(t in body for t in ("%%writefile /kaggle/temp/ntl-gsq-v27-runtime/ensemble.py",
+                                            "def soft_sinkhorn", "def sinkhorn",
+                                            "sinkhorn_target", "target_mix")):continue
+              lines=body.splitlines()
+              hits=[j for j,line in enumerate(lines) if re.search(
+                  r"(?i)sinkhorn|target_mix|native_mixture|argmax|softmax|score|predict|output|calibrat",line)]
+              selected=set()
+              for j in hits:
+                  for k in range(max(0,j-3),min(len(lines),j+4)):selected.add(k)
+              filtered=[{"n":j+1,"s":lines[j][:190]} for j in sorted(selected)]
+              print("NTL_NEW_CANDIDATE_DECISION_PATH",json.dumps({
+                  "cell":ix,"total_lines":len(lines),
+                  "hits":len(hits),"selected":filtered[:185]
+              },ensure_ascii=False),flush=True)
           print("NTL_CHAMPION_METADATA",json.dumps({
               "id":json.loads((dest/"kernel-metadata.json").read_text()).get("id"),
               "dataset_source_count":len(json.loads((dest/"kernel-metadata.json").read_text()).get("dataset_sources") or []),
