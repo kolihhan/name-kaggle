@@ -47,6 +47,23 @@ jobs:
                  "has_oom":any('out of memory' in ln.lower() for ln in last),
                  "has_training_guard":any('NO_NEW_TRAINING' in ln for ln in last),
                  "tail_sha256":hashlib.sha256("\n".join(last[-20:]).encode()).hexdigest()})
+          for f in found:
+              if f.name!="core-q14v5.log":continue
+              lines=f.read_text(encoding="utf-8",errors="replace").splitlines()
+              errors=[ln.strip() for ln in lines if re.match(r"^(RuntimeError|ValueError|AssertionError|FileNotFoundError|ModuleNotFoundError|OSError|SafetensorError|ImportError|TypeError|AttributeError)\s*:",ln.strip())]
+              last=errors[-1] if errors else "(no standard exception line)"
+              # Exception raised during AutoModel.from_pretrained; never print raw dataset or prompt text.
+              msg=re.sub(r"/kaggle/(?:input|working|temp)/[^\s\'\"\]\}]+","[REDACTED_PATH]",last)
+              msg=re.sub(r"https?://[^\s]+","[REDACTED_URL]",msg)
+              msg=re.sub(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b","[REDACTED_EMAIL]",msg)
+              msg=re.sub(r"\b[a-fA-F0-9]{32,}\b","[REDACTED_DIGEST]",msg)
+              msg=re.sub(r"(?i)(?:api[_ -]?key|password|access[_ -]?token)\s*[:=]\s*\S+","[REDACTED_SECRET]",msg)
+              print("NTL_Q14_SANITIZED_TERMINAL_EXCEPTION",json.dumps({
+                "exception_count":len(errors),
+                "last":msg[:850],
+                "child_log_lines":len(lines),
+                "no_model_training_or_gpu_call":True
+              },ensure_ascii=False),flush=True)
           print("NTL_Q14_RECOVERY_RESULT",json.dumps({
              "return_code":p.returncode,"found_count":len(found),
              "files":safe,"no_raw_kaggle_logs_exposed":True
