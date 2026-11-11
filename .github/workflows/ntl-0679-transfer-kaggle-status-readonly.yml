@@ -1,0 +1,39 @@
+name: NTL 0679 private transfer Kaggle status read only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-0679-transfer-kaggle-status-readonly.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Query only own private 347-row diagnostic status and output filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,subprocess
+          ref="kolihhan/ntl-0679-fresh-transfer-diagnostic"
+          p=subprocess.run(["kaggle","kernels","status",ref],
+             capture_output=True,text=True,timeout=65)
+          match=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+"\n"+p.stderr)
+          state=match.group(1) if match else "NOT_FOUND_OR_UNKNOWN"
+          print("NTL_0679_REAL_INFERENCE_KERNEL_STATE",json.dumps({
+              "ref":ref,"rc":p.returncode,"state":state}),flush=True)
+          if state=="COMPLETE":
+              q=subprocess.run(["kaggle","kernels","files",ref,"-v",
+                                "--page-size","200"],
+                                capture_output=True,text=True,timeout=65)
+              print("NTL_0679_RESULT_FILE_FLAGS",json.dumps({
+                  "rc":q.returncode,
+                  "has_summary":q.returncode==0 and "ntl_0679_transfer_summary.json" in q.stdout,
+                  "has_predictions":q.returncode==0 and "ntl_0679_transfer_predictions.parquet" in q.stdout
+              }),flush=True)
+          PY
