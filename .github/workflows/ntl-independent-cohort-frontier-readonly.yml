@@ -153,3 +153,36 @@ jobs:
                         json.dumps(summary,ensure_ascii=False),flush=True)
           print("NTL_NO_NEW_DATASET_ROWS_READ",True,flush=True)
           PY
+      - name: Resolve 18-label eligibility from small public generation manifests only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,subprocess,tempfile
+          cases=[
+             ("nimithashreea/ntl-proxy-candidate-generations-20261110",
+              "generated_proxy_candidates_manifest.json",
+              ("rows","counts_by_label","excluded_exact_text_matches_to_official_train",
+               "excluded_exact_text_matches_to_existing_proxy_pool","deduplication","license_note")),
+             ("toanplam/ntl-fresh-generation-pilot-nov08",
+              "qc_report.json",
+              ("rows","per_label_rows","target_labels","missing_labels",
+               "complete_18_label_panels","prompt_count","domains",
+               "training_admission","host_rows_screened","limitations"))
+          ]
+          for ref,filename,allowed in cases:
+              dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-candidate-aggregate-"))
+              p=subprocess.run(["kaggle","datasets","download",ref,"-f",filename,
+                "-p",str(dest),"--unzip","-q"],capture_output=True,text=True,timeout=60)
+              files=list(dest.rglob(filename))
+              if p.returncode or len(files)!=1:
+                  print("NTL_COHORT_SCHEMA_BLOCKED",
+                    json.dumps({"ref":ref,"rc":p.returncode,"files":len(files)}),flush=True)
+                  continue
+              j=json.loads(files[0].read_text(encoding="utf-8"))
+              payload={key:j.get(key) for key in allowed if key in j}
+              payload["ref"]=ref
+              payload["metadata_only"]=True
+              print("NTL_COHORT_ELIGIBILITY_AGGREGATES",
+                json.dumps(payload,ensure_ascii=False,default=str),flush=True)
+          PY
