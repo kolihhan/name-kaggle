@@ -30,6 +30,14 @@ jobs:
           print('SUBMISSION_COUNT',len(rows))
           for x in sorted(rows,key=lambda r:int(r['ref']),reverse=True)[:12]:
               print('OFFICIAL_SUBMISSION',json.dumps({k:x.get(k) for k in ('ref','status','publicScore','description','date')},sort_keys=True))
+          # Exact refs keep our new experimental candidate visible even if other
+          # submissions arrive; listing is read-only and never submits a model.
+          for ref in ('58233227','58210835','58167751'):
+              hits=[x for x in rows if str(x.get('ref','')).strip()==ref]
+              if len(hits)>1:
+                  raise RuntimeError('ambiguous official submission ref '+ref)
+              x=hits[0] if hits else {'ref':ref,'status':'NOT_IN_RETURNED_LEDGER'}
+              print('NTL_EXACT_STATUS',json.dumps({k:x.get(k) for k in ('ref','status','publicScore','privateScore','date')},sort_keys=True))
           PY
           echo '--- OWNED_STAGE_A_MODEL_AND_WHEELHOUSE ---'
           for ref in kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint kolihhan/name-that-llm-two-stage-lora24-v1-runtime-py313-v2; do
