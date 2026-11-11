@@ -102,6 +102,17 @@ def destination_absent() -> None:
     raw = p.stdout + "\n" + p.stderr
     if re.search(r"KernelWorkerStatus\.[A-Z_]+", raw):
         raise RuntimeError("destination Notebook already exists; refuse resubmit")
+    if p.returncode:
+        # Strictly redact credentials and only report local CLI error category.
+        safe = []
+        for line in raw.splitlines()[-8:]:
+            if re.search(r"(?i)error|exception|kernel|not|404|status|invalid|permission|access", line):
+                line = re.sub(r"(?i)(?:authorization|token|api[_ -]?key|secret|password)\\s*[:=]\\s*\\S+",
+                              "[redacted]", line)
+                line = re.sub(r"[A-Za-z0-9_=-]{50,}", "[redacted-long-value]", line)
+                safe.append(line[:220])
+        print("NTL_MGT_DESTINATION_STATUS_DIAGNOSTIC",
+              json.dumps({"rc": p.returncode,"safe_lines":safe[-5:]}), flush=True)
     if p.returncode == 0 or "403" in raw or "401" in raw or "429" in raw:
         raise RuntimeError("destination Notebook status ambiguous or unauthorized")
     # Expected normal 404/no kernel found is safe to create new.
