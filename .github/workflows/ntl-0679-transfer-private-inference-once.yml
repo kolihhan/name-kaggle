@@ -35,6 +35,19 @@ jobs:
           python -m py_compile scripts/ntl_0679_transfer_private_once.py
       - name: Official Kaggle CLI
         run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Check target private Kaggle notebook exists before any new push
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess,re,json
+          ref="kolihhan/ntl-0679-fresh-transfer-diagnostic"
+          p=subprocess.run(["kaggle","kernels","status",ref],
+             capture_output=True,text=True,timeout=60)
+          m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+"\n"+p.stderr)
+          print("NTL_TRANSFER_PRE_PUSH_PRIVATE_STATE",
+                json.dumps({"return_code":p.returncode,
+                            "state":m.group(1) if m else "NOT_FOUND_OR_UNKNOWN"}),flush=True)
+          PY
       - name: Push private diagnostic, run 347 full-model inferences, no competition submission
         shell: bash
         run: |
