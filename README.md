@@ -16,6 +16,8 @@ The other reproduction, `58167751`, was still PENDING at the 2026-11-11 10:28 MY
 
 ## Research evidence gate — 2026-11-11
 
+**Latest nine-source evidence (2026-11-11):** [authenticated read-only scan #42993607587](https://github.com/kolihhan/name-kaggle/actions/runs/42993607587) qualified **0/9 public candidates** for a new, unseen, source/served-model-qualified 18-label holdout. `prvsiyan` has 18-label 300-prompt blocks but is a **direct incumbent input**; `lxdlxdlxd` has strong per-call provenance but only **13/18** labels; `crtproduction` merged 18-class source's latest file/version metadata remains unverified. [Detailed matrix](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/research/ntl-18class-independent-validation-gate-20261111.md) and [Issue #1](https://github.com/kolihhan/name-kaggle/issues/1). No new GPU, training or competition submission.
+
 The best **authenticated Kaggle Public** score is still **0.679** (submission `58210835`, attributed public-source reproduction). The private score and a new original-method gain are unverified.
 
 The no-training **Kimi K3 protocol study completed**, not running: high `42/80` versus off `23/80` correctly identified, a +23.75-percentage-point matched difference, but **exact p = 0.010973563 did not pass the original p < 0.01 gate**. It is a diagnostic, not a new classifier or Kaggle competition submission.
