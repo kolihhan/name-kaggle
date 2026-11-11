@@ -44,7 +44,7 @@ jobs:
                   'ref':name,'files_api_rc':p.returncode,
                   'file_list':names[:20],
                   'anchor_direct_dataset_dependency':name in deps,
-              },ensure_ascii=False,flush=True))
+              },ensure_ascii=False),flush=True)
               if p.returncode or not any(x['name']=='README.md' for x in names):continue
               d=pathlib.Path(tempfile.mkdtemp(prefix='ntl-readme-'))
               p=subprocess.run(['kaggle','datasets','download',name,
@@ -58,6 +58,6 @@ jobs:
                   ][:36]
               print('NTL_18LABEL_SOURCE_README_META',json.dumps({
                  'ref':name,'total_chars':len(s),'high_level_lines':filtered
-              },ensure_ascii=False,flush=True))
+              },ensure_ascii=False),flush=True)
           print('NTL_18LABEL_PROVENANCE_NO_TEXT_OR_MODEL_EXECUTION',True,flush=True)
           PY
