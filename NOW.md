@@ -1,5 +1,19 @@
 # NOW
 
+## CURRENT DECISION — Kimi completed; 18-label independent validation BLOCKED (2026-11-11)
+
+**As of 2026-11-11 16:27 MYT audit:** **No new candidate promoted**. Official account Public BA champion remains **0.679** (Kaggle `58210835` `COMPLETE`), an **attributed external source reproduction**, not our independent breakthrough. Private BA is not known.
+
+**Kimi protocol80 terminal result, SUPERSEDES earlier RUNNING status below:** [one-shot private inference #42974357365](https://github.com/kolihhan/name-kaggle/actions/runs/42974357365), job `130369860929` **SUCCESS** / private Notebook **COMPLETE**. Frozen champion true-model Kimi 80 high/off pairs: high **42/80 (52.50%)**, off **23/80 (28.75%)**, +23.75 percentage points; discordance **35 high-only correct / 16 off-only correct**; exact two-sided paired p **0.010973563**; identity changed **73/80**. Four 20-prompt blocks favor high (+3, +2, +9, +5 correct). **Prespecified p < 0.01 criterion FAILS**. Sign/difference are suggestive but not causal proof; source selection was adaptive after a different `calls.jsonl` paired-cohort failed; no Kimi routing/threshold and no competition submission. [Final report](artifacts/research/ntl-kimi-protocol80/RESULT.md). **This sampled cohort is now spent diagnostic evidence.**
+
+**Adversarial research decision:** Historic Phase7 OOF comparison `0.370052` versus Phase15 `0.405322`, while real Public went `0.369` to `0.357`, demonstrates local validation gains did not guarantee hidden transfer. The 347 external texts are **12/18-class consumed diagnostics**; A1 LoRA24 loses (24 rescues / 66 regressions). Full-18 data pools exist but are affected by prior training exposure/provenance concerns and do not constitute a qualified fresh benchmark. **No independently validated full-18 same-row transfer dataset currently established**. The [readiness ledger](artifacts/research/ntl-18class-independent-validation-gate-20261111.md) and [prospective Evaluation Policy addendum](EVALUATION_POLICY.md) clarify this without rewriting historical Phase7 frozen policies.
+
+**Only active execution gate:** [GitHub issue #1 — qualifying independent 18-label source](https://github.com/kolihhan/name-kaggle/issues/1). No blind new workflow, no GPU training, no new official submission, no post-hoc per-sibling patch from inspected evidence, no new fake "unseen" split. An authenticated Public score and a controlled small experiment cannot be added together as one comparable metric.
+
+**Read this section first.** All historical "RUNNING", "PENDING", "champion", and earlier "next" sections below are dated snapshots and do **not** supersede these terminal results.
+
+---
+
 ## Active Kimi K3 same-prompt reasoning-protocol experiment — 80 strict pairs (2026-11-11)
 
 **Real Kaggle private inference is RUNNING**, confirmed by independent read-only [status check #42974543343](https://github.com/kolihhan/name-kaggle/actions/runs/42974543343). One-shot no-training [execution #42974357365](https://github.com/kolihhan/name-kaggle/actions/runs/42974357365) is underway in private Notebook `kolihhan/ntl-kimi-k3-protocol80-frozen-0679`. **No prediction statistics or competition score available yet.** Predeclared [Kimi 80 contract](artifacts/research/ntl-kimi-protocol80/CONTRACT.md) and [no-GPU source preflight #42974253559](https://github.com/kolihhan/name-kaggle/actions/runs/42974253559) both valid. Original scored 0.679 champion source SHA `28fd128b745f0d95b70f79ea9b2c546d981edf9be08207cbf71a2d9e80ee1c86`, three no-supervised-training guards, original 20 data/8 notebook/6 model inputs unchanged.
