@@ -101,3 +101,55 @@ jobs:
                   out["error_type"]=type(e).__name__
               print("NTL_SOURCE_LICENSE_MANIFEST",json.dumps(out,ensure_ascii=False),flush=True)
           PY
+      - name: Read fresh dataset READMEs and manifests only, keep row text out of logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re,subprocess,tempfile
+          probes={
+             "nimithashreea/ntl-proxy-candidate-generations-20261110":
+                ("README.md","generated_proxy_candidates_manifest.json",
+                 "generation_manifest.json"),
+             "toanplam/ntl-fresh-generation-pilot-nov08":
+                ("README.md","qc_report.json","publication_checksums.json"),
+          }
+          def load_file(ref,name):
+              dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-meta-file-"))
+              p=subprocess.run(["kaggle","datasets","download",ref,"-f",name,
+                "-p",str(dest),"--unzip","-q"],capture_output=True,text=True,timeout=75)
+              hits=list(dest.rglob(name))
+              if p.returncode!=0 or len(hits)!=1:
+                  return None,{"rc":p.returncode,"files_found":len(hits)}
+              b=hits[0].read_bytes()
+              return b,{"rc":0,"bytes":len(b)}
+          for ref,names in probes.items():
+              for name in names:
+                  b,info=load_file(ref,name)
+                  summary={"ref":ref,"file":name,"result":info}
+                  if b and name.lower().endswith(".md"):
+                      s=b.decode("utf-8","replace")
+                      summary["sections"]=[x.strip()[:140] for x in s.splitlines()
+                          if x.lstrip().startswith("#")][:25]
+                      summary["license_provenance_lines"]=[
+                          x.strip()[:250] for x in s.splitlines()
+                          if re.search(r"(?i)licen[sc]e|model.version|model.version|generat|source|date|condition|sampl|prompt|temperature",x)][:28]
+                  elif b and name.endswith(".json"):
+                      try:
+                          j=json.loads(b)
+                          if isinstance(j,dict):
+                              summary["keys"]=list(j.keys())
+                              allow=("rows","row_count","count","models","model_ids",
+                                     "labels","source","sources","provider","license",
+                                     "generation_date","created_at","prompts","num_prompts",
+                                     "temperature","top_p","max_tokens","seed","publications",
+                                     "status","duplicates","unique_prompt_count")
+                              summary["safe_fields"]={k:str(v)[:450] for k,v in j.items()
+                                  if k.lower() in allow}
+                          elif isinstance(j,list):
+                              summary["top_level_list_length"]=len(j)
+                      except Exception as e:summary["parse_error"]=type(e).__name__
+                  print("NTL_FRESH_COHORT_PROVENANCE",
+                        json.dumps(summary,ensure_ascii=False),flush=True)
+          print("NTL_NO_NEW_DATASET_ROWS_READ",True,flush=True)
+          PY
