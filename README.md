@@ -17,6 +17,16 @@
 
 ---
 
+## Current research decision — independent evaluation gate (2026-11-11)
+
+**Research promotion status: BLOCKED, not failed as a scored model.** The existing 0.679 champion is a verified Kaggle **Public** result but is an **attributed external reproduction**. No admissible, still-unseen, protocol-documented **18-label** same-row independent benchmark has been established against this champion. Historical OOF and previously inspected external datasets do not become fresh by being re-split.
+
+Most recent finished Kimi control (80 matched high/off pairs, 160 examples): **52.50% vs 28.75% Kimi recall**, paired difference **+23.75 pp**, exact McNemar **p = 0.010973563**; the **prespecified requirement p < 0.01 was not met**. This is exploratory evidence of generation-channel sensitivity, **not causal attribution, a new model, or a competition score**. [Exact result and unchanged decision rule](artifacts/research/ntl-kimi-protocol80/RESULT.md).
+
+Next work is strictly **data/provenance qualification**, not another micro-experiment, source-weight patch, GPU training or Kaggle submission. [18-label evidence readiness audit](artifacts/research/ntl-18class-independent-validation-gate-20261111.md) · [Updated evaluation-policy interpretation](EVALUATION_POLICY.md) · [Single actionable data-gate issue #1](https://github.com/kolihhan/name-kaggle/issues/1). Current **NO NEW TRAINING** restriction remains binding.
+
+---
+
 Working repository for the Kaggle competition **Name That LLM**: identify which of 18 language models generated each passage.
 
 Competition: https://www.kaggle.com/competitions/name-that-llm
