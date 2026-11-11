@@ -83,6 +83,25 @@ def frozen_reproduction(destination: Path) -> dict:
     original = notebooks[0]
     notebook = json.loads(original.read_text(encoding="utf-8"))
     original_sha = _sha(original)
+    source_code_cells = ["".join(c.get("source", [])) if isinstance(c.get("source", []), list) else str(c.get("source", ""))
+                         for c in notebook.get("cells", []) if c.get("cell_type") == "code"]
+    print("NTL_WEMM_SOURCE_PIN_DIAGNOSTIC", json.dumps({
+        "notebook_sha256": original_sha,
+        "code_sha256": hashlib.sha256(json.dumps(source_code_cells, ensure_ascii=False,
+                                  separators=(",", ":")).encode("utf-8")).hexdigest(),
+        "cells": len(source_code_cells),
+        "version_metadata": {k:source_meta.get(k) for k in ("version_number","current_version_number",
+                            "id","id_no")},
+    }, sort_keys=True), flush=True)
+    # Pure metadata read for changed public source: never bypass the pin.
+    for cell_index, code in enumerate(source_code_cells):
+        for match in re.finditer(r"\.(?:fit|fit_transform|partial_fit)\s*\(", code):
+            prefix = code[max(0,match.start()-65):match.start()]
+            receiver = re.search(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$", prefix)
+            print("NTL_WEMM_SOURCE_FIT_SITE", json.dumps({
+                "cell_index": cell_index, "receiver": receiver.group(1) if receiver else "unknown",
+                "call": match.group(0).strip(), "line": code[:match.start()].count(chr(10))+1
+            }, sort_keys=True), flush=True)
     if original_sha != 'e943174f3cfe114eeb96d9f721c675826f6ef8a91e30ae055dd86e5c48257865':
         raise RuntimeError('upstream 0.683 public source changed; do not promote')
 
