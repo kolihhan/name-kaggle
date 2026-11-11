@@ -1,0 +1,161 @@
+name: NTL independent frozen A1 347-row same-row comparison (NO TRAIN)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-a1-paired347-inference-only.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-independent-a1-frozen347-v1
+  cancel-in-progress: false
+
+jobs:
+  source-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/
+            artifacts/research/ntl-lora24-a1-paired347/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: No official competition data in checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test -f artifacts/research/ntl-lora24-a1-paired347/CONTRACT.md
+          python -m py_compile scripts/ntl_lora24_a1_paired347_inference.py scripts/build_ntl_a1_347_kernel.py scripts/ntl_a1_347_compare.py
+      - name: Validate exact frozen private Kaggle source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/build_ntl_a1_347_kernel.py --repo-root . --output-dir /tmp/ntl-a1-347
+          python - <<'PY'
+          import json,pathlib,hashlib
+          d=pathlib.Path('/tmp/ntl-a1-347')
+          m=json.loads((d/'kernel-metadata.json').read_text())
+          code=(d/'kernel_main.py').read_text()
+          compile(code,'kernel_main.py','exec')
+          assert m['id']==m['title'].join(('kolihhan/',''))
+          assert m['is_private'] and not m['enable_internet']
+          assert m['enable_gpu'] and m['competition_sources']==[]
+          assert len(m['dataset_sources'])==4 and len(m['model_sources'])==1
+          assert 'kolihhan/name-that-llm-two-stage-lora24-v1-a1-checkpoint' in m['dataset_sources']
+          assert 'from scripts.ntl_lora24_a1_paired347_inference import run' in code
+          assert 'model = find_qwen()' in code
+          assert 'pool = unique(' not in code
+          assert "run_final_fit(" not in code
+          print('NTL_A1_347_PRECHECK_PASS',json.dumps({
+              'sha256':hashlib.sha256(code.encode()).hexdigest(),
+              'code_bytes':len(code.encode()),
+              'label_count':18,'frozen':True,'new_training':False,
+              'competition_submission':False,'scored_kaggle_champion':0.679
+          },sort_keys=True),flush=True)
+          PY
+
+  gpu-inference:
+    needs: source-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/
+            artifacts/research/ntl-lora24-a1-paired347/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Kaggle CLI and pairing-only deps
+        run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0 numpy pandas pyarrow
+      - name: Push one independent, private, no-training A1 model diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python - <<'PY'
+          import json,re,subprocess,sys
+          ref='kolihhan/ntl-a1-paired347-inference'
+          status=subprocess.run(['kaggle','kernels','status',ref],
+             capture_output=True,text=True,timeout=60)
+          has=re.search(r'KernelWorkerStatus\.[A-Z_]+',status.stdout+'\n'+status.stderr)
+          print('NTL_A1_PRIVATE_KAGGLE_EXISTS',bool(has),flush=True)
+          if has:sys.exit('one-shot already created; refuse to overwrite or rerun')
+          if status.returncode==0:sys.exit('ambiguous private Kaggle state')
+          PY
+          python scripts/build_ntl_a1_347_kernel.py --repo-root . --output-dir /tmp/ntl-a1-347
+          python - <<'PY'
+          import json,subprocess,sys
+          p=subprocess.run(['kaggle','kernels','push','-p','/tmp/ntl-a1-347',
+              '--accelerator','NvidiaTeslaT4','--timeout','32400'],
+              capture_output=True,text=True,timeout=150)
+          lines=[v.strip() for v in (p.stdout+'\n'+p.stderr).splitlines()
+                 if 'Kernel version' in v and 'successfully pushed' in v]
+          print('NTL_A1_PRIVATE_PUSH',json.dumps({
+              'accepted':p.returncode==0 and len(lines)==1,
+              'returncode':p.returncode,'kernel_ref':'kolihhan/ntl-a1-paired347-inference'
+          },sort_keys=True),flush=True)
+          if p.returncode or len(lines)!=1:
+              raise RuntimeError('Private Kaggle SaveKernel failed; do not retry blindly')
+          PY
+      - name: Observe exact private GPU kernel until terminal
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,subprocess,time
+          ref='kolihhan/ntl-a1-paired347-inference'
+          for i in range(1,151):
+              p=subprocess.run(['kaggle','kernels','status',ref],
+                 capture_output=True,text=True,timeout=60)
+              m=re.search(r'KernelWorkerStatus\.([A-Z_]+)',p.stdout+'\n'+p.stderr)
+              state=m.group(1) if m else 'UNKNOWN'
+              print('NTL_A1_PRIVATE_KERNEL_STATUS',i,state,flush=True)
+              if state in ('ERROR','FAILED','CANCELLED'):
+                  raise RuntimeError('frozen independent A1 failed; no training/retry')
+              if state=='COMPLETE':break
+              time.sleep(40)
+          else:raise RuntimeError('A1 private inference unfinished: attach only, do not rerun')
+          out=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','200'],
+              capture_output=True,text=True,timeout=60)
+          if out.returncode or not all(x in out.stdout for x in (
+               'ntl_a1_347_predictions.parquet','ntl_a1_347_summary.json')):
+              raise RuntimeError('A1 inference completed but paired files missing')
+          print('NTL_A1_PRIVATE_FULL_347_INFERENCE_COMPLETE',flush=True)
+          PY
+      - name: Paired comparison with frozen 0.679 champion, aggregate logs only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-private-a1 /tmp/ntl-private-champion
+          kaggle kernels output kolihhan/ntl-a1-paired347-inference \
+            -p /tmp/ntl-private-a1 --file-pattern ntl_a1_347_predictions.parquet >/dev/null
+          kaggle kernels output kolihhan/ntl-0679-fresh-transfer-diagnostic \
+            -p /tmp/ntl-private-champion --file-pattern ntl_0679_transfer_predictions.parquet >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          for dir,name in [
+              ('/tmp/ntl-private-a1','ntl_a1_347_predictions.parquet'),
+              ('/tmp/ntl-private-champion','ntl_0679_transfer_predictions.parquet')]:
+              paths=list(Path(dir).rglob(name))
+              if len(paths)!=1:
+                  raise RuntimeError('paired private predictions were not retrieved')
+          PY
+          python scripts/ntl_a1_347_compare.py \
+            --champion /tmp/ntl-private-champion/ntl_0679_transfer_predictions.parquet \
+            --candidate /tmp/ntl-private-a1/ntl_a1_347_predictions.parquet
+          rm -rf /tmp/ntl-private-a1 /tmp/ntl-private-champion
+          echo NTL_A1_AGGREGATE_ONLY_NO_TRAIN_NO_COMPETITION_SUBMISSION
