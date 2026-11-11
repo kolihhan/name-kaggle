@@ -44,7 +44,14 @@ def build(path:Path):
             fails["identical_response"]+=1;continue
         eligible.append((pid,high,off))
     eligible.sort(key=lambda p:(sha(("ntl-kimi-v1:"+p[0]).encode()),p[0]))
-    if len(eligible)<PAIRS:raise RuntimeError("fewer than frozen 144 eligible Kimi pairs")
+    if len(eligible)<PAIRS:
+        print("NTL_KIMI_STRICT_ELIGIBILITY_FAILURE",json.dumps({
+            "raw_unique_kimi_prompt_ids":len(grouped),
+            "strict_eligible_pairs":len(eligible),
+            "predeclared_required_pairs":PAIRS,
+            "discard_reasons":dict(fails)
+        },sort_keys=True),flush=True)
+        raise RuntimeError("fewer than frozen 144 eligible Kimi pairs")
     selected=eligible[:PAIRS];seen=set();records=[]
     for i,(pid,high,off) in enumerate(selected):
         for code,entry in (("h",high),("o",off)):
