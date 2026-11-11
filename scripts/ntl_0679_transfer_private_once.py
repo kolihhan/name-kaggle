@@ -214,6 +214,20 @@ def _run(args: list[str],*, timeout: int=120, check: bool=True) -> subprocess.Co
     p=subprocess.run(args,capture_output=True,text=True,timeout=timeout)
     if check and p.returncode:
         # Do not publish provider errors, which could expose auth tokens.
+        raw=(p.stdout+"\n"+p.stderr)
+        safe=[]
+        for line in raw.splitlines():
+            if re.search(r"(?i)error|failed|invalid|400|403|404|429|quota|dataset|permission|not found|limit|source",line):
+                line=re.sub(r"(?i)(?:authorization|token|api[_ -]?key|secret|password)\s*[:=]\s*\S+",
+                            "[redacted-credential]",line)
+                line=re.sub(r"[A-Za-z0-9_=-]{46,}","[redacted-long-value]",line)
+                safe.append(line.strip()[:300])
+        print("NTL_TRANSFER_DEPLOY_FAILURE",json.dumps({
+            "op":args[:3],"rc":p.returncode,"error_lines":safe[-8:],
+            "http_400":"400" in raw,"http_403":"403" in raw,
+            "http_429":"429" in raw,"quota":"quota" in raw.lower(),
+            "dataset":"dataset" in raw.lower(),
+        },ensure_ascii=False),flush=True)
         raise RuntimeError(f"private Kaggle operation returned code={p.returncode}; opcode={args[:3]}")
     return p
 
