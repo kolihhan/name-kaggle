@@ -43,9 +43,19 @@ jobs:
           files=list(pathlib.Path('/tmp/kimi-meta').glob('*.json'))
           assert len(files)==1
           m=json.loads(files[0].read_text())
+          print("NTL_KIMI_METADATA_PUBLIC_KEYS",sorted(m.keys()),flush=True)
           print("NTL_KIMI_DATASET_LICENSE",json.dumps({
              "dataset":m.get("id"),"licenses":m.get("licenses"),
              "title":m.get("title")},sort_keys=True),flush=True)
+          PY
+          kaggle datasets download willrice/name-that-llm-openrouter-harvest \
+            -f README.md -p /tmp/kimi-dataset --unzip -q
+          python - <<'PY'
+          import pathlib,re,json
+          s=(pathlib.Path('/tmp/kimi-dataset')/'README.md').read_text()
+          lines=[line.strip()[:250] for line in s.splitlines() if
+                 re.search(r'(?i)license|licence|copyright|attribution|cc.by|mit|apache',line)]
+          print("NTL_KIMI_README_LICENSE_LINES",json.dumps(lines[:25]),flush=True)
           PY
           kaggle datasets download willrice/name-that-llm-openrouter-harvest \
             -f calls.jsonl -p /tmp/kimi-dataset --unzip -q
