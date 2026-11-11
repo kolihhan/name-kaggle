@@ -13,9 +13,19 @@ Does the exact source-pinned, no-new-supervised-training `0.679` champion (`5821
 3. Six missing labels: `claude-fable-5`, `gemini-3.7-flash`, `glm-5.3`, `glm-5.3-flash`, `kimi-k3`, `qwen3.8-max`. **No full 18-class BA claims.**
 4. Source-frozen own Kaggle Notebook: `kolihhan/ntl-ozertuu-0683-guarded-no-train`, original Kaggle submission `58210835` Public BA `0.679`, source **code-cells SHA-256 `28fd128b745f0d95b70f79ea9b2c546d981edf9be08207cbf71a2d9e80ee1c86`** established by [preflight #42955249204](https://github.com/kolihhan/name-kaggle/actions/runs/42955249204). The three source guards must each appear exactly once.
 
+## Infrastructure-only amendment BEFORE any predictions (2026-11-11)
+
+The first private Notebook upload was rejected with Kaggle `400 Bad Request` before a kernel could be created; no GPU and no predictions were produced. The exact rejected metadata field is **unknown**, although adding two dataset-source refs to the already 20-dataset champion is a plausible compatibility cause, not a proven one.
+
+Allowed deployment-only substitute: obtain the **same exact two public, explicitly licensed generation files** on an ephemeral authenticated GitHub Actions runner, compress and embed their byte content inside a **private Kaggle Notebook** as an integrity-checked, temporary in-memory/data-file capsule. Preserve all **20 original champion data sources**, eight Notebook sources and six model sources unchanged. The two public datasets are not uploaded to GitHub, committed into the public repo, printed in logs, or used for supervised fitting. The private Kaggle Notebook includes source names and CC BY attribution. Verify the same row counts, labels, prompts, text hash overlap, deterministic order, and frozen 18-way scoring prescribed above.
+
+This changes **transport only**, not scientific sample membership or candidate behavior. It is explicitly frozen prior to any external prediction results. Do not repeat Kaggle saves after a working diagnostic merely to improve its score.
+
+---
+
 ## Predeclared single-run protocol
 
-- Clone code from our **own scored private** Notebook with the same prefit weights, all 18 output classes, all original configs, and all no-training guards. Attach two public generation datasets as Kaggle inputs; set `is_private=true`; **do not create a Kaggle competition submission**.
+- Clone code from our **own scored private** Notebook with the same prefit weights, all 18 output classes, all original configs, and all no-training guards. Load the two public generation datasets into a temporary private-source capsule (see infrastructure amendment) without changing model inputs; set `is_private=true`; **do not create a Kaggle competition submission**.
 - In an early new cell, read only the two public datasets locally in Kaggle. Validate label set/counts and unique prompt counts; produce exactly 347 query rows with `id,text`, plus separate ground truth `id,source,model,prompt_id`. Predeclare deterministic interleave/shuffle seed `20261111`.
 - Exact UTF-8 whitespace-normalized text SHA overlap with official **training** rows and between the two fresh cohorts must be zero; otherwise abort without scoring. This cannot prove semantic non-overlap, that pretrained weights did not see examples, or exact served-model identities.
 - Replace **only** the source Notebook's `DATA` pointer (currently official sample) and `CONFIG['paths']['test_csv']` (after its intact original input audit) with local query. Preserve original model logic and `gsq_share=0.15`, native share `0.43`, target mix `0.52`, and original 18-way decoding. No labels enter model input.
