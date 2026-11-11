@@ -1,0 +1,108 @@
+name: NTL WeMM Full Inference 3-Row Private Smoke (NO SUBMISSION)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-fullpath-private-smoke-20261112.yml]
+permissions: {contents: read}
+jobs:
+  private_smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Freeze exact original source with ONLY preview shortcut disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json, pathlib, re, subprocess, tempfile, hashlib
+          source="kolihhan/ntl-dual-embedding-wemm-frozen-v1"
+          target="kolihhan/ntl-wemm-fullpath-3row-smoke-v1"
+          def safe(args, timeout=90):
+              return subprocess.run(args,capture_output=True,text=True,timeout=timeout)
+          quota=safe(["kaggle","quota"])
+          if quota.returncode:raise RuntimeError("Kaggle quota could not be verified; no launch")
+          m=re.search(r"(?m)^GPU\s+\S+\s+([0-9.]+)h",quota.stdout)
+          if not m or float(m.group(1)) < 11:
+              raise RuntimeError("GPU free quota below reserved safety gate; no launch")
+          print("NTL_WEMM_SMOKE_GPU_QUOTA_PREFLIGHT",json.dumps({
+              "remaining_hours":float(m.group(1)),"minimum_required":11}),flush=True)
+          existing=safe(["kaggle","kernels","status",target])
+          if "KernelWorkerStatus." in (existing.stdout+existing.stderr):
+              raise RuntimeError("smoke destination already exists; refusing duplicate GPU execution")
+          root=pathlib.Path(tempfile.mkdtemp(prefix="ntl-wemm-smoke-"))
+          own=root/"source"
+          own.mkdir()
+          p=safe(["kaggle","kernels","pull",source,"-p",str(own),"-m"])
+          if p.returncode:raise RuntimeError("owned private source pull failed; no launch")
+          nb_files=list(own.glob("*.ipynb"))
+          if len(nb_files)!=1:raise RuntimeError("unexpected number of Notebook files")
+          notebook=json.loads(nb_files[0].read_text(encoding="utf-8"))
+          cells=[c for c in notebook["cells"] if c.get("cell_type")=="code"]
+          if len(cells)!=43:raise RuntimeError("source code cell count drift")
+          def text(c):
+              s=c.get("source",[])
+              return "".join(s) if isinstance(s,list) else str(s)
+          original="\n".join(map(text,cells))
+          required=(
+             "gauss.fit = _no_new_supervised_gaussian_fit",
+             "NO_NEW_TRAINING: Atlas train mode forbidden",
+             "NO_NEW_TRAINING: core worker train_final forbidden",
+             "Frozen WeMM experiment: sibling-style training is disabled",
+          )
+          if not all(s in original for s in required):
+              raise RuntimeError("no-training guard absent; no GPU launch")
+          cell=cells[1]
+          before=text(cell)
+          old="preview = emit_known_preview(DATA,None,OUTPUT)"
+          if before.count(old)!=1 or "if not preview:" not in text(cells[42]):
+              raise RuntimeError("preview and inference routing drift; no launch")
+          new=before.replace(old,"preview = False  # SMOKE ONLY: execute real inference on visible 3 rows")
+          cell["source"]=new.splitlines(keepends=True)
+          after="\n".join(map(text,cells))
+          if after.count("SMOKE ONLY:")!=1 or after.replace(
+                  "preview = False  # SMOKE ONLY: execute real inference on visible 3 rows",old)!=original:
+              raise RuntimeError("more than one executable code edit; no launch")
+          meta_path=own/"kernel-metadata.json"
+          meta=json.loads(meta_path.read_text(encoding="utf-8"))
+          if meta.get("id")!=source or not meta.get("is_private"):
+              raise RuntimeError("wrong source Notebook")
+          meta.pop("id_no",None)
+          meta.update({"id":target,"title":target.split("/",1)[1],
+                       "is_private":True,"enable_internet":False,
+                       "machine_shape":"NvidiaTeslaT4"})
+          dst=root/"candidate";dst.mkdir()
+          code_file=str(meta.get("code_file") or nb_files[0].name)
+          if "/" in code_file or not code_file.endswith(".ipynb"):
+              raise RuntimeError("unsafe notebook filename")
+          (dst/code_file).write_text(json.dumps(notebook,ensure_ascii=False),encoding="utf-8")
+          (dst/"kernel-metadata.json").write_text(json.dumps(meta,indent=2),encoding="utf-8")
+          print("NTL_WEMM_FULLPATH_SMOKE_INVARIANTS",json.dumps({
+              "source_code_cells":len(cells),
+              "single_delta":"disable exact public fixture shortcut",
+              "training_guard_count":len(required),
+              "official_competition_submission":False,
+              "max_private_gpu_runtime_seconds":3600,
+              "target":target,
+              "source_code_sha256":hashlib.sha256(original.encode()).hexdigest(),
+              "smoke_code_sha256":hashlib.sha256(after.encode()).hexdigest()
+          },sort_keys=True),flush=True)
+          launch=safe(["kaggle","kernels","push","-p",str(dst),
+                       "--accelerator","NvidiaTeslaT4","--timeout","3600"],
+                       timeout=180)
+          if launch.returncode:
+              raise RuntimeError("private Notebook push failed; raw Kaggle error suppressed")
+          if "Kernel version 1 successfully pushed" not in launch.stdout+launch.stderr:
+              raise RuntimeError("Notebook push response ambiguous; do not re-run")
+          print("NTL_WEMM_FULLPATH_SMOKE_PRIVATE_VERSION1_CREATED",target,flush=True)
+          state=safe(["kaggle","kernels","status",target])
+          m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",state.stdout+state.stderr)
+          print("NTL_WEMM_FULLPATH_SMOKE_INITIAL_STATUS",json.dumps({
+              "target":target,"state":m.group(1) if m else "UNKNOWN",
+              "return_code":state.returncode}),flush=True)
+          PY
