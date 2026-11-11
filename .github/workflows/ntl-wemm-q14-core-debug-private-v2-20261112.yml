@@ -51,7 +51,8 @@ jobs:
           combined="\n".join(map(source_text,code_cells))
           before_sha=hashlib.sha256(combined.encode()).hexdigest()
           if before_sha!="bdbbba6ac34ffa114f3c1c9d2c14299821e38d20f25842104d520ce697359979":
-              raise RuntimeError("Private smoke v1 code drift")
+              print("NTL_DEBUG_Q14_SOURCE_SHA_MISMATCH",json.dumps({"sha256":before_sha,"cells":len(code_cells),"text_length":len(combined),"guard_1":("NO_NEW_TRAINING: core worker train_final forbidden" in combined),"guard_2":("gauss.fit = _no_new_supervised_gaussian_fit" in combined),"preview_bypass":("preview = False  # SMOKE ONLY" in combined)}),flush=True)
+              raise RuntimeError("Private smoke v1 code digest changed on Kaggle pull; halted before GPU")
           if "preview = False  # SMOKE ONLY" not in combined:
               raise RuntimeError("Preview shortcut bypass absent")
           for guard in (
