@@ -1,0 +1,63 @@
+name: NTL 18-label external coverage source integrity survey
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-18label-coverage-provenance-readonly.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Authenticated public dataset provenance and prefit direct-input overlap (no passages)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,pathlib,re,subprocess,tempfile
+          candidates=[
+             'maniceet/name-that-llm-openrouter-openai-generations',
+             'willrice/name-that-llm-openrouter-harvest',
+             'nimithashreea/ntl-proxy-candidate-generations-20261110',
+             'toanplam/ntl-fresh-generation-pilot-nov08',
+          ]
+          root=pathlib.Path(tempfile.mkdtemp(prefix='ntl-no-text-'))
+          ref='kolihhan/ntl-ozertuu-0683-guarded-no-train'
+          proc=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(root),'-m'],
+             capture_output=True,text=True,timeout=90)
+          if proc.returncode:raise RuntimeError('own frozen model metadata unavailable')
+          metadata=json.loads((root/'kernel-metadata.json').read_text())
+          deps=[str(v) for v in metadata.get('dataset_sources',[])]
+          print('NTL_FROZEN_ANCHOR_DIRECT_DATASET_COUNT',len(deps),flush=True)
+          for name in candidates:
+              p=subprocess.run(['kaggle','datasets','files',name,'-v'],
+                  capture_output=True,text=True,timeout=55)
+              rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff')))) if p.returncode==0 else []
+              names=[{'name':r.get('name'), 'size':r.get('size')}
+                     for r in rows if r.get('name','').lower().endswith(('.md','.json','.csv','.parquet','.jsonl'))]
+              print('NTL_18LABEL_SOURCE_METADATA',json.dumps({
+                  'ref':name,'files_api_rc':p.returncode,
+                  'file_list':names[:20],
+                  'anchor_direct_dataset_dependency':name in deps,
+              },ensure_ascii=False,flush=True))
+              if p.returncode or not any(x['name']=='README.md' for x in names):continue
+              d=pathlib.Path(tempfile.mkdtemp(prefix='ntl-readme-'))
+              p=subprocess.run(['kaggle','datasets','download',name,
+                    '-f','README.md','-p',str(d),'--unzip','-q'],
+                     capture_output=True,text=True,timeout=50)
+              files=list(d.rglob('README.md'))
+              if p.returncode or len(files)!=1:continue
+              s=files[0].read_text(encoding='utf-8',errors='replace')
+              filtered=[line.strip()[:260] for line in s.splitlines()
+                  if re.search(r'(?i)^(?:#|-\s|\*)|license|licence|generated|model|provider|served|prompt',line)
+                  ][:36]
+              print('NTL_18LABEL_SOURCE_README_META',json.dumps({
+                 'ref':name,'total_chars':len(s),'high_level_lines':filtered
+              },ensure_ascii=False,flush=True))
+          print('NTL_18LABEL_PROVENANCE_NO_TEXT_OR_MODEL_EXECUTION',True,flush=True)
+          PY
