@@ -19,6 +19,8 @@
 
 ## Current research decision — independent evaluation gate (2026-11-11)
 
+**Latest nine-source evidence (2026-11-11):** [authenticated read-only scan #42993607587](https://github.com/kolihhan/name-kaggle/actions/runs/42993607587) qualified **0/9 public candidates** for a new, unseen, source/served-model-qualified 18-label holdout. `prvsiyan` has 18-label 300-prompt blocks but is a **direct incumbent input**; `lxdlxdlxd` has strong per-call provenance but only **13/18** labels; `crtproduction` merged 18-class source's latest file/version metadata remains unverified. [Detailed matrix](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/research/ntl-18class-independent-validation-gate-20261111.md) and [Issue #1](https://github.com/kolihhan/name-kaggle/issues/1). No new GPU, training or competition submission.
+
 **Research promotion status: BLOCKED, not failed as a scored model.** The existing 0.679 champion is a verified Kaggle **Public** result but is an **attributed external reproduction**. No admissible, still-unseen, protocol-documented **18-label** same-row independent benchmark has been established against this champion. Historical OOF and previously inspected external datasets do not become fresh by being re-split.
 
 Most recent finished Kimi control (80 matched high/off pairs, 160 examples): **52.50% vs 28.75% Kimi recall**, paired difference **+23.75 pp**, exact McNemar **p = 0.010973563**; the **prespecified requirement p < 0.01 was not met**. This is exploratory evidence of generation-channel sensitivity, **not causal attribution, a new model, or a competition score**. [Exact result and unchanged decision rule](artifacts/research/ntl-kimi-protocol80/RESULT.md).
