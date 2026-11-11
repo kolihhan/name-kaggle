@@ -6,9 +6,11 @@ committed into Git. Refuses to mutate any Kaggle notebook that already exists.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import re
+import zlib
 import subprocess
 import sys
 import time
@@ -42,16 +44,12 @@ _NTL_LABELS = set([
     'gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.8-flash',
     'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra'])
 def _ntl_public_attached_file(owner, slug, filename):
-    root = _ep('/kaggle/input')
-    candidates = [
-        root/'datasets'/owner/slug/filename,
-        root/slug/filename,
-        root/owner/slug/filename,
-    ]
-    hits = [p for p in candidates if p.is_file()]
-    if not hits:
-        raise RuntimeError('NTL_EXTERNAL_INPUT_NOT_ATTACHED:'+slug+'/'+filename)
-    return hits[0]
+    # Exact public dataset bytes are in a PRIVATE Notebook source capsule.
+    # Keep the champion's original 20 data sources fully unchanged.
+    path = _ep('/kaggle/temp/ntl_external_capsule')/filename
+    if not path.is_file():
+        raise RuntimeError('NTL_EXTERNAL_PRIVATE_CAPSULE_MISSING:'+filename)
+    return path
 
 _NTL_NIM = _epd.read_csv(_ntl_public_attached_file(
     'nimithashreea', 'ntl-proxy-candidate-generations-20261110',
@@ -238,6 +236,47 @@ def _get_code_sha(nb: dict) -> str:
            separators=(",",":")).encode("utf-8")).hexdigest()
 
 
+
+def _make_private_capsule(destination: Path) -> str:
+    """Download CC-licensed source files on ephemeral runner, embed bytes only
+    in PRIVATE Kaggle Notebook; never commit or log raw public passages."""
+    entries=(
+        (ADDITIONAL_SOURCES[0],"generated_proxy_candidates.csv",180000,380000),
+        (ADDITIONAL_SOURCES[1],"passages.jsonl",140000,360000),
+    )
+    source_lines=[
+        "import base64 as _cb64, zlib as _cz, hashlib as _ch",
+        "from pathlib import Path as _cp",
+        "_CAP=_cp('/kaggle/temp/ntl_external_capsule')",
+        "_CAP.mkdir(parents=True,exist_ok=False)"
+    ]
+    for i,(ref,filename,minimum,maximum) in enumerate(entries):
+        folder=destination/("cohort_"+str(i))
+        folder.mkdir(parents=True,exist_ok=False)
+        _run(["kaggle","datasets","download",ref,"-f",filename,
+              "-p",str(folder),"--unzip","-q"],timeout=110)
+        files=list(folder.rglob(filename))
+        if len(files)!=1:
+            raise RuntimeError("external source file missing/ambiguous: "+filename)
+        original=files[0].read_bytes()
+        if not minimum<=len(original)<=maximum:
+            raise RuntimeError("source corpus size outside frozen envelope")
+        digest=hashlib.sha256(original).hexdigest()
+        compressed=base64.b64encode(zlib.compress(original,9)).decode("ascii")
+        source_lines.extend([
+            "_bytes=_cz.decompress(_cb64.b64decode("+repr(compressed)+"))",
+            "if _ch.sha256(_bytes).hexdigest()!="+repr(digest)+
+            ":raise RuntimeError('EXTERNAL_SOURCE_CAPSULE_CORRUPTION')",
+            "(_CAP/"+repr(filename)+").write_bytes(_bytes)",
+            "del _bytes"
+        ])
+        print("NTL_TRANSFER_PUBLIC_SOURCE_CAPSULE_MANIFEST",json.dumps({
+            "ref":ref,"filename":filename,"bytes":len(original),
+            "sha256":digest,"compressed_base64_chars":len(compressed),
+            "ephemeral_runner_only":True,"github_commit_data":False
+        }),flush=True)
+    return "\n".join(source_lines)+"\n"
+
 def _clone(destination: Path)->dict:
     if not CONTRACT.is_file():
         raise RuntimeError("predeclared transfer contract missing")
@@ -291,7 +330,9 @@ def _clone(destination: Path)->dict:
     # Appending diagnostics after the existing original full model inference.
     cells[52]["source"]=(idx52.rstrip()+"\n"+SCORE_DIAGNOSTIC.strip()+"\n").splitlines(keepends=True)
     # Insert before original DATA/preview assignment, preserving old logic.
-    cells.insert(5,_new_cell(PREPARE_INPUTS))
+    capsule_source=_make_private_capsule(destination)
+    cells.insert(5,_new_cell(capsule_source))
+    cells.insert(6,_new_cell(PREPARE_INPUTS))
     cells.insert(0,{"cell_type":"markdown","metadata":{},
        "source":["**Private source-transfer diagnostic only.** Frozen scored 0.679 "
           "champion, exact 18-class outputs, two public 12-label external cohorts; "
@@ -306,7 +347,8 @@ def _clone(destination: Path)->dict:
     meta["title"]="NTL Frozen 0.679 Cross-Source Diagnostic (NO SUBMISSION)"
     meta["is_private"]=True
     meta["enable_internet"]=False
-    meta["dataset_sources"]=(meta["dataset_sources"]+list(ADDITIONAL_SOURCES))
+    # Preserve exactly the champion original 20 dataset sources.
+    assert len(meta["dataset_sources"])==20
     code_file=meta.get("code_file")
     if not code_file or Path(code_file).name!=code_file or not code_file.endswith(".ipynb"):
         raise RuntimeError("invalid Notebook path")
