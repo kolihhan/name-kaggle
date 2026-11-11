@@ -1,0 +1,92 @@
+name: NTL generation-protocol pairing audit (read-only public data)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-openrouter-protocol-pairs-audit.yml]
+permissions: {contents: read}
+jobs:
+  protocol-pairs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Lightweight Kaggle CLI
+        run: python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect same-prompt same-model reasoning settings without publishing passages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import collections, csv, hashlib, io, json, pathlib, re, subprocess, tempfile
+          ref="willrice/name-that-llm-openrouter-harvest"
+          dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-protocol-public-"))
+          files=("trials.jsonl","setting_trials.jsonl","calls.jsonl")
+          data={}
+          for fn in files:
+              p=subprocess.run(["kaggle","datasets","download",ref,"-f",fn,
+                   "-p",str(dest),"--unzip","-q"],
+                   capture_output=True,text=True,timeout=100)
+              if p.returncode:
+                  raise RuntimeError("public protocol file fetch failed "+fn+" rc="+str(p.returncode))
+              paths=list(dest.rglob(fn))
+              if len(paths)!=1:raise RuntimeError("ambiguous protocol file "+fn)
+              raw=paths[0].read_bytes()
+              rows=[json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
+              if not rows or not all(isinstance(x,dict) for x in rows):
+                  raise RuntimeError("invalid public JSONL "+fn)
+              data[fn]=rows
+              schema=sorted(set().union(*(x.keys() for x in rows[:min(30,len(rows))])))
+              allowed=("label","model","requested_model","served_model",
+                       "served_provider","prompt_id","setting","reasoning",
+                       "reasoning_effort","temperature","top_p","target_words",
+                       "n_words","finish_reason","provider","reasoning_setting")
+              first={k:str(rows[0][k])[:100] for k in allowed if k in rows[0]}
+              print("NTL_PROTOCOL_FILE_SCHEMA",json.dumps({"file":fn,
+                 "rows":len(rows),"sha256":hashlib.sha256(raw).hexdigest(),
+                 "keys":schema,"first_metadata":first},ensure_ascii=False),flush=True)
+          def safe_str(x):
+              if isinstance(x,dict):return json.dumps(x,sort_keys=True,default=str)[:1000]
+              return str(x or "")
+          for fn,rows in data.items():
+              fields=collections.Counter()
+              valuecounts={k:collections.Counter() for k in (
+                "setting","reasoning","reasoning_effort","finish_reason")}
+              pairmap=collections.defaultdict(lambda:collections.defaultdict(list))
+              seen_requests={}
+              for item in rows:
+                  for key in ("label","model","requested_model","served_model","prompt_id",
+                      "setting","reasoning","reasoning_effort","temperature","top_p",
+                      "prompt","request","messages","system_prompt","text","response",
+                      "content","completion","passage","target_words"):
+                      if key in item and item[key] not in (None,""):fields[key]+=1
+                  for k,c in valuecounts.items():
+                      if k in item:c[safe_str(item[k])[:80]]+=1
+                  label=safe_str(item.get("label") or item.get("model") or item.get("requested_model"))
+                  pid=safe_str(item.get("prompt_id") or item.get("prompt_idx"))
+                  setting=safe_str(item.get("setting") or item.get("reasoning_setting") or item.get("reasoning_effort"))
+                  key=(label,pid)
+                  if label and pid and setting:pairmap[key][setting].append(item)
+              multi={k:v for k,v in pairmap.items() if len(v)>=2}
+              overlaps=collections.Counter()
+              labels=collections.Counter()
+              for (label,pid),settings in multi.items():
+                  labels[label]+=1
+                  names=sorted(settings)
+                  for ix,a in enumerate(names):
+                      for b in names[ix+1:]:overlaps[(a,b)]+=1
+              print("NTL_PROTOCOL_PAIR_COVERAGE",json.dumps({
+                  "file":fn,"presence":dict(fields),
+                  "setting_counts":{k:dict(v.most_common(20)) for k,v in valuecounts.items()},
+                  "unique_model_prompt_keys":len(pairmap),
+                  "same_model_prompt_multiple_settings":len(multi),
+                  "overlap_setting_pairs":[{"a":a,"b":b,"pairs":n}
+                     for (a,b),n in overlaps.most_common(30)],
+                  "paired_keys_per_label":dict(labels.most_common(25)),
+                  "warning":"same prompt_id alone may not guarantee same actual request or decoding settings; this is coverage only"
+              },ensure_ascii=False),flush=True)
+          print("NTL_PROTOCOL_AUDIT_NO_RAW_TEXT_NO_TRAINING_NO_SUBMISSION",True,flush=True)
+          PY
