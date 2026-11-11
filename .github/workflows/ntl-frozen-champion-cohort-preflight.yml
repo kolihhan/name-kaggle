@@ -21,7 +21,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import csv,hashlib,json,pathlib,re,subprocess,tempfile
-          ref="ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52"
+          ref="kolihhan/ntl-ozertuu-0683-guarded-no-train"
           dest=pathlib.Path(tempfile.mkdtemp(prefix="ntl-public-nb-"))
           p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dest),"-m"],
                             capture_output=True,text=True,timeout=120)
