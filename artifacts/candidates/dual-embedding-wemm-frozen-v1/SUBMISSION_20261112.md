@@ -1,3 +1,11 @@
+# Terminal official result — WeMM hidden rerun FAILED (verified 2026-11-12 01:44 MYT)
+
+**SUPERSEDES the original PENDING entry below.** Exact submission `58244483` returned `Status: COMPLETE` **with `Error: Your notebook hit an unhandled error while rerunning your code`**, empty Public and Private Scores. `COMPLETE` here is **not a successful scored submission**. Independently authenticated [read-only exact-details workflow #43071058170](https://github.com/kolihhan/name-kaggle/actions/runs/43071058170), job `130698716843`, succeeded. Prior [read-only status workflow #43070833655](https://github.com/kolihhan/name-kaggle/actions/runs/43070833655) saw COMPLETE with blank score, prompting this investigation. The owned private Notebook's **three-example preview was COMPLETE**, but Kaggle's **hidden test rerun failed**; the exact exception traceback is not available from this official generic error category. No new submission, model fit, GPU run or Kaggle quota was consumed by these checks. **Keep champion `58210835` = 0.679 Public BA.**
+
+**Decision:** Do not repeat the same Notebook or speculate that WeMM's representation is worse/better; this is a deployment failure, not an accuracy measurement. Audit hidden-size behavior, memory/shape/checkpoints and runtime source without using hidden labels, then only consider a separately frozen defensive revision after credible reproducible diagnosis and new one-shot authorization.
+
+---
+
 # Dual Embedding + WeMM — verified Kaggle submission
 
 **Date:** 2026-11-12 00:38 MYT (2026-11-11 16:38 UTC).
