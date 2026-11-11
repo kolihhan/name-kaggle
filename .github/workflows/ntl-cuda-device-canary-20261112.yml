@@ -31,35 +31,37 @@ jobs:
           existing=call("kaggle","kernels","status",ref)
           if "KernelWorkerStatus." in existing.stdout+existing.stderr:
               raise RuntimeError("Canary already created; no repeat")
-          code="""import json,subprocess,torch
-out={'torch':torch.__version__,'torch_cuda_compiled':str(torch.version.cuda),
-     'cuda_available':bool(torch.cuda.is_available()),'cuda_count':int(torch.cuda.device_count())}
-try:
-    dev=torch.tensor([1.],dtype=torch.float32).to('cuda:0')
-    out['cuda_tensor_smoke']='PASS'
-except Exception as exc:
-    out['cuda_tensor_smoke']=type(exc).__name__
-try:
-    x=torch.empty((4,),dtype=torch.float32).pin_memory()
-    out['cpu_pin_memory_smoke']='PASS'
-except Exception as exc:
-    out['cpu_pin_memory_smoke']=type(exc).__name__
-try:
-    import transformers
-    out['transformers']=transformers.__version__
-except Exception as exc:
-    out['transformers']=type(exc).__name__
-try:
-    import accelerate
-    out['accelerate']=accelerate.__version__
-except Exception as exc:
-    out['accelerate']=type(exc).__name__
-probe=subprocess.run(['nvidia-smi','--query-gpu=name,memory.total','--format=csv,noheader'],
-    capture_output=True,text=True,timeout=20)
-out['nvidia_smi_returncode']=probe.returncode
-out['nvidia_smi_lines']=probe.stdout.strip().splitlines()[:4]
-print('NTL_CUDA_ENV_PROBE',json.dumps(out,sort_keys=True),flush=True)
-"""
+          code=(
+              "import json,subprocess,torch\n"
+              "out={'torch':torch.__version__,'torch_cuda_compiled':str(torch.version.cuda),\n"
+              "     'cuda_available':bool(torch.cuda.is_available()),'cuda_count':int(torch.cuda.device_count())}\n"
+              "try:\n"
+              "    dev=torch.tensor([1.],dtype=torch.float32).to('cuda:0')\n"
+              "    out['cuda_tensor_smoke']='PASS'\n"
+              "except Exception as exc:\n"
+              "    out['cuda_tensor_smoke']=type(exc).__name__\n"
+              "try:\n"
+              "    x=torch.empty((4,),dtype=torch.float32).pin_memory()\n"
+              "    out['cpu_pin_memory_smoke']='PASS'\n"
+              "except Exception as exc:\n"
+              "    out['cpu_pin_memory_smoke']=type(exc).__name__\n"
+              "try:\n"
+              "    import transformers\n"
+              "    out['transformers']=transformers.__version__\n"
+              "except Exception as exc:\n"
+              "    out['transformers']=type(exc).__name__\n"
+              "try:\n"
+              "    import accelerate\n"
+              "    out['accelerate']=accelerate.__version__\n"
+              "except Exception as exc:\n"
+              "    out['accelerate']=type(exc).__name__\n"
+              "probe=subprocess.run(['nvidia-smi','--query-gpu=name,memory.total','--format=csv,noheader'],\n"
+              "    capture_output=True,text=True,timeout=20)\n"
+              "out['nvidia_smi_returncode']=probe.returncode\n"
+              "out['nvidia_smi_lines']=probe.stdout.strip().splitlines()[:4]\n"
+              "print('NTL_CUDA_ENV_PROBE',json.dumps(out,sort_keys=True),flush=True)\n"
+              ""
+          )
           nb={"cells":[{"cell_type":"code","execution_count":None,
              "metadata":{},"outputs":[],"source":code.splitlines(keepends=True)}],
              "metadata":{"kernelspec":{"display_name":"Python 3","language":"python",
