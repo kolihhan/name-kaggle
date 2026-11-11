@@ -48,8 +48,8 @@ jobs:
                      for x,y in eligible)
                   checks['both_finish_stop']=sum(x.get('finish_reason')=='stop'
                     and y.get('finish_reason')=='stop' for x,y in eligible)
-                  checks['both_text_nonempty']=sum(isinstance(x.get('text'),str) and x['text'].strip()
-                    and isinstance(y.get('text'),str) and y['text'].strip() for x,y in eligible)
+                  checks['both_text_nonempty']=sum(bool(isinstance(x.get('text'),str) and x['text'].strip()
+                    and isinstance(y.get('text'),str) and y['text'].strip()) for x,y in eligible)
                   checks['word_band_both']=sum(all(isinstance(v.get('n_words'),int)
                     and 40<=v['n_words']<=250 for v in (x,y)) for x,y in eligible)
                   checks['same_target_and_stop_band']=sum(
