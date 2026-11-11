@@ -1,5 +1,11 @@
 # Name That LLM — Kaggle
 
+## 2026-11-12 — WeMM Q14 model-loader failure isolated; CUDA bootstrap V3 PRIVATE test
+
+**Authenticated forensic result (not a competition score):** WeMM ref `58244483` is `COMPLETE` **with an unhandled hidden inference error, Public Score BLANK**. Real full-path private smoke v1/v2 ended `ERROR` at the first `core-q14v5` stage. The recovered child log shows `RuntimeError: Cannot access accelerator device when none is available.` at `transformers.modeling_utils.is_accelerator_device → torch.device(device)` during Q14 `from_pretrained(device_map='auto')`. Independent private CUDA and integer-device canaries passed with two visible T4 GPUs, so the exact child-process initialization mechanism is still a **hypothesis**, not proven. One frozen **private, 20-minute-cap, no-training, no-submission** CUDA bootstrap smoke v3 `kolihhan/ntl-wemm-q14-cuda-bootstrap-smoke-v3` was created; **do not claim it passed before the terminal report**. [Full forensic evidence and actionable decision](artifacts/research/ntl-wemm-q14-cuda-bootstrap-forensics-20261112.md). Champion remains **0.679** (`58210835`).
+
+---
+
 ## 2026-11-12 — WeMM official hidden rerun FAILED; no new score
 
 **Verified from Kaggle's own detailed submission record:** WeMM ref `58244483` is `COMPLETE` **with a hidden Notebook unhandled exception and NO Public Score**. The original 3-row preview took an exact-fixture shortcut and never ran the actual model ensemble. Full paginated asset metadata confirms Qwen and WeMM native directories exist; the actual exception remains unobserved. A **private, no-submission, no-training full-path 3-row smoke** `kolihhan/ntl-wemm-fullpath-3row-smoke-v1` version 1 was created with a one-hour GPU cap and initial state `QUEUED`. Do not claim it passed before checking its actual terminal status and logs. Existing best valid official Public BA stays **0.679** (`58210835`); MGT `58233227` and Lightning `58167751` were still `PENDING` at the last authenticated check. [Full failure analysis and run IDs](artifacts/research/ntl-wemm-hidden-rerun-failure-20261112.md).
