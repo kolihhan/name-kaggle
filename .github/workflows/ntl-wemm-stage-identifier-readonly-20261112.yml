@@ -1,0 +1,79 @@
+name: NTL WEMM Exact Child Stage And Log Path (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-stage-identifier-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Extract exact failure stage, child-log location, and GPU runtime metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import json,re,subprocess, pathlib,tempfile
+          ref='kolihhan/ntl-wemm-fullpath-3row-smoke-v1'
+          def run(*args):
+              return subprocess.run(list(args),capture_output=True,text=True,timeout=120)
+          logs=run('kaggle','kernels','logs',ref)
+          if logs.returncode:raise RuntimeError("Kaggle logs unavailable")
+          try:
+              o=json.loads(logs.stdout)
+              lines=[]
+              for row in o if isinstance(o,list) else []:
+                  if not isinstance(row,dict):continue
+                  d=row.get('data','')
+                  lines.extend(('\n'.join(map(str,d)) if isinstance(d,list) else str(d)).splitlines())
+          except (ValueError,TypeError):lines=logs.stdout.splitlines()
+          matches=[]
+          for line in lines:
+              m=re.search(r'(?i)(core-[a-z0-9_-]+|(?:atlas|gsq|native|wemm|svc)[a-z0-9_-]*) failed with exit code (\d+)',line)
+              if m:matches.append({"stage":m.group(1),"exit_code":int(m.group(2))})
+          import datetime
+          times=[]
+          for row in (o if isinstance(o,list) else []):
+              if isinstance(row,dict):
+                  for key in ('time','timestamp'):
+                      if row.get(key):times.append(str(row[key])[:32])
+          print('NTL_WEMM_CORE_STAGE_FAILURE',json.dumps({
+             "matching_failure_signatures":matches[-10:],
+             "first_log_time":times[0] if times else None,
+             "last_log_time":times[-1] if times else None,
+             "line_count":len(lines)
+          },sort_keys=True),flush=True)
+          root=pathlib.Path(tempfile.mkdtemp(prefix='ntl-code-'))
+          pull=run('kaggle','kernels','pull',ref,'-p',str(root),'-m')
+          if pull.returncode:raise RuntimeError("Private source unavailable")
+          nb=json.loads(next(root.glob('*.ipynb')).read_text())
+          code=[]
+          for c in nb['cells']:
+              if c.get('cell_type')!='code':continue
+              s=c.get('source',[])
+              code.append(''.join(s) if isinstance(s,list) else str(s))
+          ensemble=next((c for c in code if c.startswith('%%writefile /kaggle/temp/ntl-gsq-v27-runtime/ensemble.py')),None)
+          if not ensemble:raise RuntimeError("Ensemble source absent")
+          ls=ensemble.splitlines()
+          pairs=[]
+          for i in list(range(1,28))+list(range(52,77)):
+              if i>len(ls):continue
+              v=ls[i-1].strip()
+              if any(k in v.lower() for k in ('token','secret','key=','password')):v='[REDACTED]'
+              pairs.append({"line":i,"code":v[:250]})
+          print('NTL_WEMM_ENSEMBLE_PATH_AND_RUN_CODE',json.dumps(pairs),flush=True)
+          # Check for stage log files through KAGGLE OUTPUT API metadata only.
+          files=run('kaggle','kernels','files',ref,'-v','--page-size','200')
+          print('NTL_WEMM_LOG_FILE_AVAILABILITY',json.dumps({
+             "files_rc":files.returncode,
+             "has_stage_log":bool(re.search(r'core-[a-z0-9_-]+\.log',files.stdout)),
+             "has_submission":'submission.parquet' in files.stdout
+          }),flush=True)
+          PY
