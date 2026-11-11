@@ -1,7 +1,7 @@
 # Dual-Embedding + Tencent WeMM — frozen inference-only candidate
 
 **Frozen at 2026-11-12 MYT, before any personal Kaggle score.**
-**Status:** No-training source preflight PASSED. The user has explicitly authorized ONE exploratory official submission on 2026-11-12; this is not independent 18-label validation or promotion.
+**Status:** No-training source preflight PASSED; one explicitly user-authorized Kaggle submission **58244483 accepted 2026-11-12 MYT, official status PENDING, score blank**. See [submission evidence](SUBMISSION_20261112.md). This is not independent 18-label validation or promotion.
 
 ## Goal and model-class hypothesis
 
