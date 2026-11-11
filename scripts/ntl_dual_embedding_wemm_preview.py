@@ -100,7 +100,12 @@ def frozen_reproduction(destination: Path) -> dict:
             receiver = re.search(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$", prefix)
             print("NTL_WEMM_SOURCE_FIT_SITE", json.dumps({
                 "cell_index": cell_index, "receiver": receiver.group(1) if receiver else "unknown",
-                "call": match.group(0).strip(), "line": code[:match.start()].count(chr(10))+1
+                "call": match.group(0).strip(), "line": code[:match.start()].count(chr(10))+1,
+                "nearby_public_code": [
+                    line.strip()[:150] for line in
+                    code.splitlines()[max(0,code[:match.start()].count(chr(10))-2):
+                                      code[:match.start()].count(chr(10))+2]
+                ],
             }, sort_keys=True), flush=True)
     if original_sha != 'e943174f3cfe114eeb96d9f721c675826f6ef8a91e30ae055dd86e5c48257865':
         raise RuntimeError('upstream 0.683 public source changed; do not promote')
