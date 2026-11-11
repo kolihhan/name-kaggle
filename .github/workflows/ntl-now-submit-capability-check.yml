@@ -37,3 +37,5 @@ jobs:
           done
           echo '--- EXISTING_OWN_MODEL_KAGGLE_NOTEBOOK ---'
           kaggle kernels status kolihhan/name-that-llm-lora24-v1-final || true
+          echo '--- FROZEN MGT-V1 PRIVATE NOTEBOOK STATUS ---'
+          kaggle kernels status kolihhan/ntl-margin-gated-transport-v1 || true
