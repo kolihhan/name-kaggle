@@ -6,8 +6,8 @@ This is the execution follow-through to [PPO vs task-aligned decision](ppo-vs-ta
 
 ## Delivered
 
-- [`scripts/stablepair_protocol_gate.py`](../../scripts/stablepair_protocol_gate.py): fail-closed CSV metadata check of matched sibling pairs, identical prompt fingerprint, model-agnostic request fingerprint, generation-settings fingerprint and requested target length; source lineage and upstream prompt origin independence; single served-model/revision consistency; license and prior-source-exposure fields.
-- [`tests/test_stablepair_protocol_gate.py`](../../tests/test_stablepair_protocol_gate.py): 7 synthetic tests for eligible metadata capacity, shared prompt origin, reused exact prompts, mismatched requested lengths, unverified exposure, invalid hashes, duplicate inflation and invalid threshold. **7/7 passed locally**, Python pytest, 2026-11-12. No real dataset was run in this checkpoint.
+- [`scripts/stablepair_protocol_gate.py`](../../scripts/stablepair_protocol_gate.py): fail-closed CSV metadata check of matched sibling pairs, identical prompt fingerprint, model-agnostic request fingerprint, generation-settings fingerprint and requested target length; source lineage and upstream prompt origin independence; single served-model/revision consistency; exact-label served-model equality (fail closed on unmapped aliases); license and prior-source-exposure fields.
+- [`tests/test_stablepair_protocol_gate.py`](../../tests/test_stablepair_protocol_gate.py): 10 synthetic tests for eligible metadata capacity, shared prompt origin, reused exact prompts, mismatched requested lengths, unverified exposure, invalid hashes, duplicate inflation, invalid threshold, mismatched served identity, contradictory served revisions and mismatched requests. **10/10 passed locally**, Python pytest, 2026-11-12. No real dataset was run in this checkpoint.
 - The gate **only checks metadata capacity**; even a `CAPACITY_ONLY_NOT_VALIDATED` result is NOT independent scientific validation, source-owner permission proof, 18-label benchmarking or authorization to train.
 
 ## Input schema (metadata-only CSV)
@@ -46,3 +46,8 @@ No public Git file should include raw official competition data, private model w
 5. No automatic leaderboard or extra Notebook submission. Only independently validated positive residuals can motivate a frozen, one-shot official experiment.
 
 **This commit is research infrastructure, not model quality.**
+## 2026-11-12 actual audit follow-through
+
+- The tests were executed locally against the reconstructed source implementation, passing **10/10** in 0.11 seconds. The repository's exact bytes have been updated with the same fail-closed served-model guard and three new pytest cases; **no GitHub CI pass has been claimed**.
+- Added [official matched-prompt sibling length negative control](ntl-official-sibling-length-negative-control-20261112.md): the official 2,699-row training corpus has **74 Luna-longer / 75 Sol-longer / 1 equal** among 150 same-prompt pairs; the fixed sibling length-order hypothesis is not supported there. Existing domain-separability diagnostics further challenge a simple source-style causal story.
+- The source/protocol gate remains **capacity-only**, not actual evidence that one licensed independent 18-label holdout exists. Training stays blocked. No new candidate score or Kaggle submission.
