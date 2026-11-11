@@ -1,5 +1,15 @@
 # Name That LLM — Kaggle
 
+## NEW official submission — MGT-v1 `58233227` (score pending)
+
+**Authenticated Kaggle acceptance:** `58233227` submitted at **2026-11-11 09:44:14 UTC**, status **`PENDING`**, no publicScore yet, verified by [Kaggle ledger and private Notebook snapshot #42998099464](https://github.com/kolihhan/name-kaggle/actions/runs/42998099464). Private Notebook `kolihhan/ntl-margin-gated-transport-v1` preview **COMPLETE**; this does **not** prove hidden inference complete.
+
+This is an **exploratory, no-new-training inference change**, not a second copy of the same champion and not a new pretrained model: one continuous, label-agnostic confidence gate shrinks the existing Sinkhorn category-prior correction on high-margin rows, retaining original pretrained weights, all source inputs and three hard no-training guards. Strict synthetic and source-hash preflight succeeded. The user expressly authorized one new official submission despite the missing independent full-18 held-out benchmark. [Frozen algorithm contract](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/candidates/margin-gated-transport-v1/CONTRACT.md) · [Exact submission report](https://github.com/kolihhan/name-kaggle/blob/research/attribution-bottleneck-review-20261106/artifacts/candidates/margin-gated-transport-v1/SUBMISSION_20261111.md).
+
+**Best VERIFIED Public BA remains 0.679** (`58210835`). Do not infer new MGT-v1 Public BA, Private BA or generalization until Kaggle publishes them. Do not retune or resubmit MGT-v1 based on the Public leaderboard.
+
+---
+
 ## Current validated Kaggle Champion — 0.679 (2026-11-11)
 
 | Field | Authenticated value |
