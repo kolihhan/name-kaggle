@@ -1,0 +1,101 @@
+name: NTL Q14 CUDA Bootstrap Private Smoke V3 (NO SUBMISSION)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-q14-cuda-bootstrap-smoke-v3-20261112.yml]
+permissions: {contents: read}
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Push one pinned private source with CUDA bootstrap before 14B loading
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python - <<'PY'
+          import pathlib,json,tempfile,subprocess,re,hashlib
+          src="kolihhan/ntl-wemm-core-q14-error-probe-v2"
+          dst="kolihhan/ntl-wemm-q14-cuda-bootstrap-smoke-v3"
+          def call(args,t=90):
+              return subprocess.run(args,text=True,capture_output=True,timeout=t)
+          quota=call(["kaggle","quota"])
+          m=re.search(r"(?m)^GPU\s+\S+\s+([0-9.]+)h",quota.stdout)
+          if quota.returncode or not m or float(m.group(1))<10:
+              raise RuntimeError("GPU budget safeguard blocked test")
+          exists=call(["kaggle","kernels","status",dst])
+          if "KernelWorkerStatus." in exists.stdout+exists.stderr:
+              raise RuntimeError("Candidate already exists; refuse repeat")
+          check=call(["kaggle","kernels","status",src])
+          if "KernelWorkerStatus.ERROR" not in (check.stdout+check.stderr):
+              raise RuntimeError("Pinned v2 error source not verified")
+          tmp=pathlib.Path(tempfile.mkdtemp(prefix="ntl-cuda-bootstrap-"))
+          source=tmp/"source";source.mkdir()
+          pulled=call(["kaggle","kernels","pull",src,"-p",str(source),"-m"])
+          if pulled.returncode:raise RuntimeError("Private source pull failed")
+          nb_files=list(source.glob("*.ipynb"))
+          if len(nb_files)!=1:raise RuntimeError("Source count ambiguous")
+          nb=json.loads(nb_files[0].read_text(encoding="utf-8"))
+          cells=[c for c in nb["cells"] if c.get("cell_type")=="code"]
+          if len(cells)!=43:raise RuntimeError("Code cell count drift")
+          def txt(c):
+              s=c.get("source",[])
+              return "".join(s) if isinstance(s,list) else str(s)
+          allcode="\n".join(map(txt,cells))
+          sha=hashlib.sha256(allcode.encode()).hexdigest()
+          expected="0f0fabff8abbb4a96216ef74a0ecdb4e3be3e5599efff111631f30fb5988882a"
+          if sha!=expected:raise RuntimeError("Pinned error probe source drift")
+          for guard in ("gauss.fit = _no_new_supervised_gaussian_fit",
+              "NO_NEW_TRAINING: Atlas train mode forbidden",
+              "NO_NEW_TRAINING: core worker train_final forbidden",
+              "Frozen WeMM experiment: sibling-style training is disabled",
+              "preview = False  # SMOKE ONLY",
+              "NTL_PRIVATE_Q14_CHILD_ERROR"):
+              if guard not in allcode:raise RuntimeError("Safety guard or diagnostic lost")
+          target=[c for c in cells if txt(c).startswith(
+              "%%writefile /kaggle/temp/ntl-gsq-v27-runtime/core_worker.py")]
+          if len(target)!=1:raise RuntimeError("Core worker cell missing or repeated")
+          cell=target[0];before=txt(cell)
+          old="    m = AutoModel.from_pretrained(spec['path'], config=cfg, dtype=torch.float16, device_map='auto', **placement).eval()"
+          add=(
+            "    if not torch.cuda.is_available(): raise RuntimeError('NTL_Q14_GPU_BOOTSTRAP: CUDA unavailable')\n"
+            "    torch.cuda.init()\n"
+            "    torch.cuda.set_device(0)\n"
+            "    check_device = str(torch.device(0))\n"
+            "    print('NTL_Q14_CUDA_BOOTSTRAP', json.dumps({'cuda_count':torch.cuda.device_count(),'int0_device':check_device}), flush=True)\n"
+            + old
+          )
+          if before.count(old)!=1:raise RuntimeError("Q14 single-line injection drift")
+          cell["source"]=before.replace(old,add).splitlines(keepends=True)
+          after="\n".join(map(txt,cells))
+          if after.replace(add,old)!=allcode or after.count("NTL_Q14_CUDA_BOOTSTRAP")!=1:
+              raise RuntimeError("More than one code change detected")
+          meta_path=source/"kernel-metadata.json"
+          meta=json.loads(meta_path.read_text())
+          if meta.get("id")!=src or meta.get("is_private") is not True or meta.get("enable_internet") is not False:
+              raise RuntimeError("Source Notebook privacy or identity invalid")
+          meta.pop("id_no",None)
+          meta.update({"id":dst,"title":dst.split("/",1)[1],"is_private":True,"enable_internet":False,"machine_shape":"NvidiaTeslaT4"})
+          out=tmp/"package";out.mkdir()
+          code_file=meta.get("code_file")
+          if not code_file or "/" in code_file or not code_file.endswith(".ipynb"):raise RuntimeError("Unsafe code file")
+          (out/code_file).write_text(json.dumps(nb,ensure_ascii=False),encoding="utf-8")
+          (out/"kernel-metadata.json").write_text(json.dumps(meta,indent=2),encoding="utf-8")
+          print("NTL_CUDA_BOOTSTRAP_VARIANT",json.dumps({
+             "original_sha":sha,"new_sha":hashlib.sha256(after.encode()).hexdigest(),
+             "target":dst,"change":"initialize current cuda device before auto Q14 loader",
+             "gpu_quota_remaining_before_h":float(m.group(1)),
+             "no_training":True,"no_submission":True,"max_private_gpu_seconds":1200
+          },sort_keys=True),flush=True)
+          p=call(["kaggle","kernels","push","-p",str(out),
+             "--accelerator","NvidiaTeslaT4","--timeout","1200"],180)
+          if p.returncode or "Kernel version 1 successfully pushed" not in (p.stdout+p.stderr):
+              raise RuntimeError("One-shot private test push failed; no retry")
+          print("NTL_CUDA_BOOTSTRAP_PRIVATE_CREATED",dst,flush=True)
+          PY
