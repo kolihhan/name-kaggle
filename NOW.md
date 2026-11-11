@@ -1,3 +1,11 @@
+# Independent challenge — length shortcut falsified; source-only story weakened (2026-11-12 MYT)
+
+**Executed against real official training metadata (descriptive only):** 2,699 passages / 150 prompts / 18 models. Under same-prompt pairing, Luna was longer than Sol 74/150, Sol longer 75/150, 1 tie; Sol vs Terra likewise 74/75/1. The prior source-specific deterministic length order is not a transferable shortcut. Read [full aggregate audit](artifacts/research/ntl-official-sibling-length-negative-control-20261112.md). A historical Phase 15 domain-separability audit also weakens the simplistic thesis that more obvious source cues explain its worse Public transfer. **No new model BA or Submission**.
+
+**Gate strengthened:** code now rejects served-model/claimed-label mismatches; **10/10** local synthetic tests pass (GitHub CI not claimed). [Source gate](scripts/stablepair_protocol_gate.py) · [tests](tests/test_stablepair_protocol_gate.py). The actual fresh paired source-evidence gate is still not met. Current official champion last verified: **0.679**.
+
+---
+
 # STABLEPAIR protocol gate — implementation checkpoint (2026-11-12 MYT)
 
 **Committed actual code and 7 locally passing synthetic tests, not another model or official submission:** [Gate report](artifacts/research/stablepair-protocol-gate-20261112.md), [auditor](scripts/stablepair_protocol_gate.py), [tests](tests/test_stablepair_protocol_gate.py). Checks matched prompt/request/settings/target length, source and upstream prompt-lineage independence, verified flags and deduplication without reading responses. **Real independent source/protocol evidence still BLOCKED; no new scientific BA, Kaggle status or training claim.** Next dependency is legally accessible source-owner metadata with original request and served-version provenance, not PPO or another old-fold contrastive sweep.
