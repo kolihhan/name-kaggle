@@ -1,0 +1,105 @@
+name: NTL clean versus inherited Kaggle GPU kernel metadata two controlled tests
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-gpu-clean-vs-inherited-metadata-controls-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-gpu-clean-vs-inherited-metadata-controls-nov12
+  cancel-in-progress: false
+jobs:
+  compare:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_GPU_CLEAN_VS_INHERITED_METADATA_CONTROLS_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Two factorial checks with identical GPU script, no weights read
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-gpu-confound-source
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-gpu-confound-source -m >/tmp/ntl-confound-get.log 2>&1
+          python - <<'PY'
+          import os,json,time,subprocess,collections
+          from pathlib import Path
+          original=json.loads(Path("/tmp/ntl-gpu-confound-source/kernel-metadata.json").read_text())
+          sources={key:original.get(key) or [] for key in (
+            "dataset_sources","kernel_sources","model_sources","competition_sources")}
+          if [len(sources[x]) for x in (
+              "dataset_sources","kernel_sources","model_sources","competition_sources")]!=[21,8,6,1]:
+            raise SystemExit("STOP_ORIGINAL_MOUNT_TOPOLOGY_CHANGED")
+          print("NTL_ORIGINAL_NATIVE_METADATA_KEYS="+json.dumps(sorted(original.keys())),flush=True)
+          print("NTL_ORIGINAL_NATIVE_HARDWARE_FIELDS="+json.dumps({
+            k:v for k,v in original.items()
+            if any(s in k.lower() for s in ("gpu","tpu","machine","accelerator","internet","type","language"))
+            and isinstance(v,(str,int,float,bool,type(None)))
+          },sort_keys=True),flush=True)
+          base=Path("/tmp/ntl-gpu-confound-probes");base.mkdir()
+          slugprefix="kolihhan/ntl-gpu-confound-"
+          tests=(
+            ("clean-allmounts",True,True),
+            ("inherited-nomounts",False,False)
+          )
+          source=(
+            "import os,subprocess,json\nfrom pathlib import Path\nimport torch\n"
+            "r=subprocess.run(['nvidia-smi','-L'],capture_output=True,text=True,timeout=30)\n"
+            "d={'torch_version':torch.__version__,'cuda_build':torch.version.cuda,"
+            "'cuda_available':bool(torch.cuda.is_available()),'device_count':int(torch.cuda.device_count()),"
+            "'smi_rc':r.returncode,'smi_count':sum(x.startswith('GPU ') for x in r.stdout.splitlines()),"
+            "'no_weights_loaded':True}\n"
+            "Path('/kaggle/working/confound_gpu.json').write_text(json.dumps(d,sort_keys=True))\n"
+            "print('NTL_CONFOUND_GPU='+json.dumps(d,sort_keys=True),flush=True)\n"
+          )
+          def cmd(args,timeout=100):
+            return subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=timeout)
+          for name,clean,attach in tests:
+            slug=slugprefix+name+"-nov12"
+            folder=base/name;folder.mkdir()
+            if clean:
+              meta={"id":slug,"title":slug.split("/",1)[1],
+                "code_file":"probe.py","language":"python",
+                "kernel_type":"script","is_private":True,"enable_gpu":True,
+                "enable_tpu":False,"enable_internet":False,
+                "machine_shape":"NvidiaTeslaT4",
+                "competition_sources":sources["competition_sources"]}
+            else:
+              meta=dict(original)
+              meta.pop("id_no",None)
+              meta.update({"id":slug,"title":slug.split("/",1)[1],
+                "code_file":"probe.py","language":"python",
+                "kernel_type":"script","is_private":True,
+                "enable_gpu":True,"enable_tpu":False,"enable_internet":False,
+                "machine_shape":"NvidiaTeslaT4"})
+            for k in ("dataset_sources","kernel_sources","model_sources"):
+              meta[k]=sources[k] if attach else []
+            if not attach:meta["competition_sources"]=sources["competition_sources"]
+            (folder/"kernel-metadata.json").write_text(json.dumps(meta,sort_keys=True,indent=2)+"\n")
+            (folder/"probe.py").write_text(source)
+            p=cmd(["kernels","status",slug],timeout=70)
+            if p.returncode==0 or "KernelWorkerStatus." in p.stdout+p.stderr:
+              raise SystemExit("STOP_DUPLICATE_CONFOUND_KERNEL_"+name)
+            p=cmd(["kernels","push","-p",str(folder),"--accelerator","NvidiaTeslaT4","--timeout","800"],timeout=130)
+            if p.returncode:
+              print("NTL_CONFOUND_PUSH_FAILED="+name,flush=True)
+              continue
+            state="PENDING"
+            for i in range(90):
+              p=cmd(["kernels","status",slug],timeout=65)
+              s=(p.stdout+p.stderr).upper()
+              if "KERNELWORKERSTATUS.COMPLETE" in s:state="COMPLETE";break
+              if any(x in s for x in ("KERNELWORKERSTATUS.ERROR","KERNELWORKERSTATUS.FAILED","KERNELWORKERSTATUS.CANCELLED")):
+                state="ERROR";break
+              time.sleep(7)
+            out=base/(name+"-out");out.mkdir()
+            saved=cmd(["kernels","output",slug,"-p",str(out),"-o"],timeout=100)
+            probe=out/"confound_gpu.json"
+            result={"case":name,"clean_metadata":clean,"attach_all_resources":attach,
+                    "status":state,"output_success":saved.returncode==0}
+            if probe.exists():result.update(json.loads(probe.read_text()))
+            print("NTL_GPU_CONFOUND_CONTROL_RESULT="+json.dumps(result,sort_keys=True),flush=True)
+          print("NTL_GPU_CONFOUND_CONTROLS_NO_TRAINING_OR_SUBMISSION=TRUE",flush=True)
+          PY
