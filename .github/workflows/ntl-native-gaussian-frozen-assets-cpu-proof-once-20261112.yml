@@ -1,0 +1,136 @@
+name: NTL Native Gaussian frozen head assets one private CPU-only filesystem proof
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-gaussian-frozen-assets-cpu-proof-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-frozen-gaussian-assets-one-cpu-probe-nov12
+  cancel-in-progress: false
+jobs:
+  prove:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_NATIVE_FROZEN_GAUSSIAN_ASSET_READONLY_CPU_ONCE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      TARGET: kolihhan/ntl-gaussian-prefit-asset-proof-nov12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Frozen Gaussian paths and metadata verifier, no model training, no GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-gaussian-asset-probe/source /tmp/ntl-gaussian-asset-probe/kernel
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-gaussian-asset-probe/source -m >/tmp/ntl-private-source-pull.log 2>&1
+          python - <<'PY'
+          import os,json,ast,subprocess
+          from pathlib import Path
+          folder=Path("/tmp/ntl-gaussian-asset-probe/source")
+          old=json.loads((folder/"kernel-metadata.json").read_text())
+          if [len(old.get(k) or []) for k in ("dataset_sources","kernel_sources","model_sources","competition_sources")]!=[21,8,6,1]:
+            raise SystemExit("STOP_ORIGINAL_MOUNTS_NOT_EXACT")
+          nb=json.loads(next(folder.glob("*.ipynb")).read_text())
+          src=nb["cells"][5]["source"]
+          code="".join(src) if isinstance(src,list) else str(src)
+          tree=ast.parse(code)
+          vals=[n.value for n in ast.walk(tree) if isinstance(n,ast.Assign) and
+            any(isinstance(t,ast.Name) and t.id=="CONFIG" for t in n.targets)]
+          if len(vals)!=1:raise SystemExit("STOP_SOURCE_CONFIG_DUPLICATED")
+          d=ast.literal_eval(vals[0])
+          gauss={k:d["paths"][k] for k in ("gaussian_q14v5","gaussian_q8v5")}
+          if any(not isinstance(v,str) or not v.startswith("/kaggle/input/") for v in gauss.values()):
+            raise SystemExit("STOP_PREFIT_PATHS_NOT_MOUNTED_INPUTS")
+          slug=os.environ["TARGET"]
+          checked=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=75)
+          if checked.returncode==0 or "KernelWorkerStatus." in checked.stdout+checked.stderr:
+            raise SystemExit("STOP_PROBE_KERNEL_ALREADY_EXISTS")
+          meta={
+             "id":slug,"title":slug.split("/",1)[1],"code_file":"probe.py",
+             "language":"python","kernel_type":"script","is_private":True,
+             "enable_gpu":False,"enable_tpu":False,"enable_internet":False,
+             **{key:old[key] for key in ("dataset_sources","kernel_sources","model_sources","competition_sources")}
+          }
+          probe=Path("/tmp/ntl-gaussian-asset-probe/kernel")
+          (probe/"kernel-metadata.json").write_text(json.dumps(meta,indent=2,sort_keys=True)+"\n")
+          logic=(
+            "from pathlib import Path\n"
+            "import os,json\n"
+            "paths="+repr(gauss)+"\n"
+            "result={}\n"
+            "for name,string in paths.items():\n"
+            "  path=Path(string)\n"
+            "  metadata=path/'meta.json'\n"
+            "  parameters=path/'parameters.npz'\n"
+            "  item={'dir_exists':path.is_dir(),'meta_json_exists':metadata.is_file(),"
+            "'parameters_npz_exists':parameters.is_file()}\n"
+            "  if parameters.is_file():item['parameters_bytes']=parameters.stat().st_size\n"
+            "  if metadata.is_file():\n"
+            "    m=json.loads(metadata.read_text())\n"
+            "    branch=m.get('branch') or {}\n"
+            "    item.update({'gaussian_branch':branch.get('gaussian_branch'),"
+            "'test_redo':branch.get('test_redo'),"
+            "'train_redo':branch.get('train_redo'),"
+            "'model_name_is_expected':m.get('member')==name.removeprefix('gaussian_')})\n"
+            "  result[name]=item\n"
+            "print('NTL_GAUSSIAN_PREFIT_ASSET_MOUNT_PROOF='+json.dumps(result,sort_keys=True),flush=True)\n"
+            "Path('/kaggle/working/ntl_gauss_asset_proof.json').write_text(json.dumps(result,sort_keys=True))\n"
+          )
+          (probe/"probe.py").write_text(logic)
+          print("NTL_GAUSS_FROZEN_INPUT_PATHS_EXTRACTED=2",flush=True)
+          print("NTL_GAUSS_PROBE_CPU_ONLY_NO_MODEL_WEIGHTS_LOADED_OR_DATA_TEXT=TRUE",flush=True)
+          PY
+      - name: Launch exactly one private CPU-only no-training asset check
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-gaussian-asset-probe/kernel --accelerator None --timeout 500 >/tmp/ntl-gauss-probe-push.log 2>&1 || {
+            echo STOP_NTL_GAUSS_PRIVATE_CPU_PROBE_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_GAUSS_PRIVATE_ASSET_PROBE_PUSHED=TRUE
+      - name: Observe exact existing private CPU check, do not retry
+        id: terminal
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            x="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+            s="$(printf '%s' "$x" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$s";then
+              echo 'result=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_GAUSS_ASSET_CPU_TERMINAL=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$s";then
+              echo 'result=error' >> "$GITHUB_OUTPUT"
+              echo NTL_GAUSS_ASSET_CPU_TERMINAL=ERROR
+              exit 0
+            fi
+            sleep 8
+          done
+          echo 'result=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_GAUSS_ASSET_CPU_TERMINAL=PENDING
+      - name: Collect only allowed prefit file-presence and branch metadata booleans
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-gaussian-asset-output
+          kaggle kernels output "$TARGET" -p /tmp/ntl-gaussian-asset-output -o >/tmp/ntl-gauss-private-pull.log 2>&1 || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("/tmp/ntl-gaussian-asset-output/ntl_gauss_asset_proof.json")
+          if not p.is_file():
+            print("NTL_GAUSSIAN_PREFIT_ASSETS_RESULT=NO_OUTPUT",flush=True)
+          else:
+            d=json.loads(p.read_text())
+            if set(d)!={"gaussian_q14v5","gaussian_q8v5"}:
+              raise SystemExit("STOP_WRONG_GAUSSIAN_ASSET_KEYS")
+            print("NTL_GAUSSIAN_PREFIT_ASSETS_RESULT="+json.dumps(d,sort_keys=True),flush=True)
+          print("NTL_GAUSSIAN_PREFIT_ASSETS_AUDIT_NO_SUPERVISED_FIT_OR_SUBMISSION=TRUE")
+          PY
