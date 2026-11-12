@@ -1,0 +1,35 @@
+name: NTL Native prefit-only no-training config CPU source preflight
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-prefit-only-ast-cpu-preflight-20261112.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_prefit_only_gpu_mapfix_20261112.py
+            tests/test_ntl_native_prefit_only_gpu_mapfix_20261112.py
+            tests/test_ntl_native_gpu_mapfix_realpath_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Run AST regression tests and build exact frozen candidate without executing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -q tests.test_ntl_native_gpu_mapfix_realpath_20261112 tests.test_ntl_native_prefit_only_gpu_mapfix_20261112
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -u -m scripts.ntl_native_prefit_only_gpu_mapfix_20261112 --out /tmp/ntl-prefit-candidate-v1
+          echo NTL_NATIVE_PREFIT_ONLY_NO_NEW_TRAINING_STATIC_GATE=PASS
+          echo NTL_NATIVE_PREFIT_ONLY_NO_GPU_MODEL_OR_KAGGLE_SUBMISSION=TRUE
