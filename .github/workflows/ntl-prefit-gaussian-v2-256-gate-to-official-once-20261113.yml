@@ -295,3 +295,5 @@ jobs:
           else:
             raise SystemExit("NTL_V2_REF_RECEIVED_LEDGER_DELAY_DO_NOT_RETRY")
           PY
+
+# Re-run after syntax-only correction in v2 frozen readout builder; no prior Kaggle job launched.
