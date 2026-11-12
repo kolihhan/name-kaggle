@@ -80,10 +80,10 @@ jobs:
           for cell_ix,c in enumerate(nb["cells"]):
             src=c.get("source",[])
             code="".join(src) if isinstance(src,list) else str(src)
-            if not re.search(r"def topic_groups\\s*\\(",code):continue
+            if not ("def topic_groups(" in code):continue
             start_lines=code.splitlines()
             for pos,line in enumerate(start_lines):
-              if re.search(r"def topic_groups\\s*\\(",line):
+              if ("def topic_groups(" in line):
                 region=[]
                 for k in range(pos,min(pos+24,len(start_lines))):
                   v=" ".join(start_lines[k].strip().split())[:200]
