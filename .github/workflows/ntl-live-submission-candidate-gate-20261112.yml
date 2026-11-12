@@ -1,0 +1,56 @@
+name: NTL live best public code candidates and official owned quota read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-live-submission-candidate-gate-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Authenticate and query latest public code scores / owned slots (metadata only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,datetime,io,json,subprocess
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          lim=api.competition_get_submission_limits("name-that-llm")
+          print("NTL_ACCOUNT_QUOTA="+json.dumps({
+            "utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "num_allowed_now":lim.num_allowed_now,
+            "limited_by_total":lim.limited_by_total,
+          },sort_keys=True,default=str),flush=True)
+          cmd=["kaggle","competitions","submissions","name-that-llm","-v","-q"]
+          r=subprocess.run(cmd,capture_output=True,text=True,timeout=110,check=True)
+          rows=list(csv.DictReader(io.StringIO(r.stdout)))
+          selected=[{
+            "ref":x.get("ref"),"status":x.get("status"),
+            "publicScore":x.get("publicScore"),
+            "description":(x.get("description") or "")[:95],
+            "date":x.get("date")
+          } for x in rows[:15]]
+          print("NTL_CURRENT_OWNED_SUBMISSIONS="+json.dumps(selected,sort_keys=True),flush=True)
+          print("NTL_TOTAL_OWNED_RECORDS="+str(len(rows)),flush=True)
+          help_cmd=subprocess.run(["kaggle","kernels","list","--help"],capture_output=True,text=True,timeout=40)
+          help_text=help_cmd.stdout or ""
+          arguments=["kaggle","kernels","list","--competition","name-that-llm","-v"]
+          if "--sort-by" in help_text: arguments+=["--sort-by","score"]
+          if "--page-size" in help_text: arguments+=["--page-size","25"]
+          scan=subprocess.run(arguments,capture_output=True,text=True,timeout=130)
+          if scan.returncode:
+            print("NTL_PUBLIC_CODE_DISCOVERY_FAILED="+str(scan.returncode),flush=True)
+          else:
+            public=list(csv.DictReader(io.StringIO(scan.stdout)))
+            safe=[{k:row.get(k) for k in ("ref","title","author","votes","totalVotes","lastRunTime","lastRunStatus","bestPublicScore","publicScore","score","kernelId","scriptUrl","language","versionNumber")} for row in public[:25]]
+            print("NTL_PUBLIC_CODE_DISCOVERY="+json.dumps({"count_returned":len(public),"records":safe},sort_keys=True,default=str),flush=True)
+          print("NTL_DISCOVERY_ONLY_NO_GPU_MODEL_OR_SUBMISSION=TRUE")
+          PY
