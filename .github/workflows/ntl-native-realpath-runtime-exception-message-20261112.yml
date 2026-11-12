@@ -1,0 +1,62 @@
+name: NTL Native fullpath exact allocator error class and safe message
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-realpath-runtime-exception-message-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read existing failed private GPU logs and strip all user/data literals
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-fullpath-existing-log-read
+          kaggle kernels output kolihhan/ntl-native-realpath-smoke-20261112 -p /tmp/ntl-native-fullpath-existing-log-read -o >/tmp/ntl-safe-get.log 2>&1
+          python - <<'PY'
+          import re,json,hashlib
+          from pathlib import Path
+          root=Path("/tmp/ntl-native-fullpath-existing-log-read")
+          def scrub(text):
+            text=re.sub(r'\x1b\[[0-9;]*m','',text)
+            text=re.sub(r'https?://\S+','<URL>',text)
+            text=re.sub(r'\b[\w.+-]+@[\w.-]+\b','<EMAIL>',text)
+            text=re.sub(r'[\x22\x27][^\x22\x27]{4,}[\x22\x27]','<QUOTED>',text)
+            text=re.sub(r'(?<!\w)(?:/[^\s\x22\x27:]+){2,}','<PATH>',text)
+            text=re.sub(r'\b[0-9a-f]{20,}\b','<ID>',text)
+            return ' '.join(text.split())[:500]
+          records=[]
+          for file in root.rglob('*.log'):
+            text=file.read_text(encoding="utf-8",errors="replace")
+            lines=text.splitlines()
+            errors=[]
+            for i,line in enumerate(lines):
+              s=re.sub(r'\x1b\[[0-9;]*m','',line)
+              if re.search(r'\b(?:RuntimeError|ValueError|TypeError|OSError|FileNotFoundError|ImportError|CalledProcessError|PapermillExecutionError):',s):
+                # Include only original sanitized RuntimeError and last two wrapper errors.
+                if re.search(r'RuntimeError:',s) or i>len(lines)-25:
+                  errors.append({"line":i+1,"sanitized":scrub(s)})
+            flags={
+              key:sum(1 for l in lines if re.search(regex,l,re.I)) for key,regex in {
+                "cuda_unavailable":r"CUDA is not available|CUDA unavailable|no CUDA GPUs",
+                "device_map":r"device_map|device map",
+                "allocator":r"caching_allocator_warmup|is_accelerator_device",
+                "no_accelerator":r"accelerator device|No GPU found",
+                "oom":r"out of memory|OOM|failed to allocate",
+                "model_weight_file":r"safetensors|model\.safetensors",
+                "cpu_model_load":r"low_cpu_mem_usage|offload",
+                "bfloat16":r"bfloat16",
+              }.items()
+            }
+            records.append({"file_lines":len(lines),"log_sha256":hashlib.sha256(file.read_bytes()).hexdigest(),
+               "sanitized_exceptions":errors[-10:],"keyword_counts":flags})
+          print("NTL_EXACT_NATIVE_RUNTIME_EXCEPTION="+json.dumps(records,sort_keys=True),flush=True)
+          print("NTL_LOG_CLASSIFICATION_READ_ONLY_NO_MODEL_GPU_OR_SUBMISSION=TRUE")
+          PY
