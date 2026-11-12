@@ -75,8 +75,8 @@ def make(out:Path)->dict:
         if code.count(guard)!=1:raise ValueError("no training guard must remain unchanged")
     if code.count("NTL_GAUSS_PREFIT_RUNTIME_BOUND=")!=1 or code.count("NTL_GAUSS_PREFIT_SCORES=")!=1:
         raise ValueError("no observable nonzero Gaussian evidence")
-    if "gauss.fit(training[" in code or "train_frame = None" not in code or
-       "if False and not train_final" not in code:
+    if ("gauss.fit(training[" in code or "train_frame = None" not in code or
+        "if False and not train_final" not in code):
         raise ValueError("supervised Gaussian fitting no longer fail-closed")
     metadata_path=kernel/"kernel-metadata.json"
     meta=json.loads(metadata_path.read_text(encoding="utf-8"))
