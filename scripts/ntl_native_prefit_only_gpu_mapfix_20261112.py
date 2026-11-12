@@ -113,9 +113,26 @@ def make(out: Path) -> dict:
         raise ValueError("Compatibility patch or real-path gate lost")
     meta_path=kernel/"kernel-metadata.json"
     meta=json.loads(meta_path.read_text(encoding="utf-8"))
-    meta.update({"id":DEST,"title":TITLE,"is_private":True,
-          "enable_gpu":True,"enable_internet":False})
-    meta_path.write_text(json.dumps(meta,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+    if (len(meta.get("model_sources") or [])!=6 or
+        len(meta.get("dataset_sources") or [])!=21 or
+        len(meta.get("kernel_sources") or [])!=8 or
+        meta.get("competition_sources")!=["name-that-llm"]):
+        raise ValueError("pretrained asset provenance missing")
+    # The original pulled Notebook carries stale docker_image metadata.
+    # Paired Kaggle probes showed old metadata => CPU-only, clean allowlist
+    # with ALL source assets => two Tesla T4 and CUDA.
+    clean={
+        "id":DEST,"title":TITLE,
+        "code_file":meta["code_file"],"language":"python",
+        "kernel_type":"notebook","is_private":True,
+        "enable_gpu":True,"enable_tpu":False,"enable_internet":False,
+        "machine_shape":"NvidiaTeslaT4",
+        **{k:meta[k] for k in (
+             "competition_sources","dataset_sources","kernel_sources","model_sources")},
+    }
+    if any(k in clean for k in ("docker_image","keywords","id_no")):
+        raise ValueError("legacy CPU runtime metadata leaked")
+    meta_path.write_text(json.dumps(clean,indent=2,sort_keys=True)+"\\n",encoding="utf-8")
     return {**record,
         "destination":DEST,
         "notebook_sha256":hashlib.sha256(final).hexdigest(),
