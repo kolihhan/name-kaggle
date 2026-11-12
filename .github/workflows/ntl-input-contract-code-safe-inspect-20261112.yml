@@ -1,0 +1,45 @@
+name: NTL exact input contract syntax safe inspect READ-ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-input-contract-code-safe-inspect-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect own notebook input config and schema checks ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-contract-source
+          kaggle kernels pull kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-contract-source -m >/tmp/pull.log 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-contract-source").glob("*.ipynb")).read_text())
+          for i,ranges in {
+            3:[(1,10),(32,41)],
+            5:[(1,4)],
+            6:[(1,45)],
+            43:[(60,85),(140,155)],
+            45:[(1,18)],
+            47:[(1,15)],
+            51:[(1,16)]
+          }.items():
+            c=nb["cells"][i];s=c.get("source",[])
+            lines=("".join(s) if isinstance(s,list) else str(s)).splitlines()
+            result=[]
+            for lo,hi in ranges:
+              for n in range(lo,min(hi,len(lines))+1):
+                v=" ".join(lines[n-1].strip().split())[:210]
+                v=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT>",v)
+                v=re.sub(r"(?i)(secret|password|api[_-]?token)\s*[:=].*","<REDACTED>",v)
+                result.append({"line":n,"code":v})
+            print("NTL_PRIVATE_CODE_STRUCTURE="+json.dumps({"cell":i,"lines":result},sort_keys=True),flush=True)
+          PY
