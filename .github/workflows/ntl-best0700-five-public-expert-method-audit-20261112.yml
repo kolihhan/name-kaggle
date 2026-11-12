@@ -1,0 +1,75 @@
+name: NTL five public independent frozen expert METHOD and provenance audit read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-best0700-five-public-expert-method-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Pull five publicly published notebooks READ ONLY; report methods, runtime, and weights sources, no source code or data
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,re,hashlib,subprocess
+          from pathlib import Path
+          refs=(
+            "prvsiyan/a-fable-of-residual-voices",
+            "prvsiyan/the-prompt-is-not-the-author",
+            "alexchilton/name-that-llm-0-684-all-public-what-failed",
+            "lightningv08/0-683-five-fold-embeddings-qwen3-8-27b-lora",
+            "omerfarukmerey/0-682-0-681-qwen3-8-27b-gsq-12-mix-0-50",
+          )
+          root=Path("/tmp/ntl-public-code-methods");root.mkdir()
+          features={
+            "new_supervised_fit":r"(?i)(?<!\.)(?:trainer\.train\s*\(|\.fit\s*\(|optimizer\.step\s*\(|train_final|gauss\.fit\s*\()",
+            "frozen_prefit":r"(?i)\b(from_pretrained|load_state_dict|safetensors|joblib\.load|pickle\.load|torch\.load)\b",
+            "within_family":r"(?i)\b(sibling|family|conditional|pairwise|contrastive|residual|expert)\b",
+            "style":r"(?i)\b(stylometry|tf.?idf|char.?ngram|embedding|semantic|likelihood|rank|top2)\b",
+            "assignment":r"(?i)(sinkhorn|hungarian|linear_sum_assignment|optimal.transport|quota|balance)",
+            "data_from_train":r"(?i)(train\.csv|train_parquet|TRAIN_PATH|training_labels)",
+            "benchmark_only":r"(?i)(public.*score|balanced_accuracy|validation)",
+          }
+          for ref in refs:
+            dst=root/ref.split("/")[1];dst.mkdir()
+            p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(dst),"-m"],capture_output=True,text=True,timeout=140)
+            report={"ref":ref,"pull_rc":p.returncode,"score_verified":False}
+            if p.returncode==0:
+              f=list(dst.glob("kernel-metadata.json"))
+              if len(f)==1:
+                m=json.loads(f[0].read_text())
+                for key in ("dataset_sources","kernel_sources","model_sources","competition_sources"):
+                  report[key+"_count"]=len(m.get(key) or [])
+                # References are public resource identifiers, not text or secrets.
+                report["model_sources"]=m.get("model_sources") or []
+                report["kernel_type"]=m.get("kernel_type")
+                report["enable_gpu"]=m.get("enable_gpu")
+                report["enable_internet"]=m.get("enable_internet")
+                report["legacy_docker_metadata"]=bool(m.get("docker_image"))
+              nb=list(dst.glob("*.ipynb"))
+              if len(nb)==1:
+                notebook=json.loads(nb[0].read_text(encoding="utf-8"))
+                source="\n".join(
+                  ("".join(c.get("source",[])) if isinstance(c.get("source",[]),list) else str(c.get("source","")))
+                  for c in notebook.get("cells",[]) if c.get("cell_type")=="code"
+                )
+                report["cells"]=len(notebook.get("cells",[]))
+                report["source_sha256"]=hashlib.sha256(source.encode()).hexdigest()
+                report["source_kchars"]=round(len(source)/1000,2)
+              else:
+                scripts=[x for x in dst.glob("*.py") if x.name!="kernel-metadata.json"]
+                source="\n".join(x.read_text(encoding="utf-8",errors="replace") for x in scripts)
+                report["source_sha256"]=hashlib.sha256(source.encode()).hexdigest() if source else None
+                report["source_kchars"]=round(len(source)/1000,2)
+              report["static_feature_flags"]={k:len(re.findall(v,source)) for k,v in features.items()}
+              report["has_exact_18_class_label_refs"]=bool(re.search(r"gemini-3\.8-flash",source) and re.search(r"gpt-5\.6-terra",source) and re.search(r"kimi-k3",source))
+            print("NTL_PUBLIC_EXPERT_METHOD_AUDIT="+json.dumps(report,sort_keys=True),flush=True)
+          print("NTL_PUBLIC_METHOD_AUDIT_NO_EXECUTION_NO_GPU_OR_OFFICIAL_SUBMISSION=TRUE")
+          PY
