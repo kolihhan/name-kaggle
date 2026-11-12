@@ -1,0 +1,46 @@
+name: NTL Native static pip installer and GPU-runtime dependency check
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-pip-cuda-install-static-check-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Source-only inspect CUDA hidden and wheel installation exact lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-pip-static
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-native-pip-static -m > /tmp/ntl-pip-pull.log 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          data=json.loads(next(Path("/tmp/ntl-native-pip-static").glob("*.ipynb")).read_text())
+          patterns=r'pip install|--no-index|--no-deps|torch==|torchvision|nvidia-smi|CUDA_VISIBLE_DEVICES|--accelerator|torch.version.cuda'
+          hits=[]
+          for ci,cell in enumerate(data["cells"]):
+            if cell.get("cell_type")!="code":continue
+            src=cell.get("source",[])
+            lines=("".join(src) if isinstance(src,list) else src).splitlines()
+            for i,line in enumerate(lines):
+              if re.search(patterns,line,re.I):
+                hits.append({"cell":ci,"line":i+1,"code":" ".join(line.strip().split())[:200]})
+          print("NTL_CUDA_PIP_STATIC_CODE="+json.dumps(hits[:130],sort_keys=True),flush=True)
+          # The runtime launcher is a subprocess, torch build in core may differ
+          # from the top-level Notebook. No code execution or inputs.
+          cell=data["cells"][43]
+          raw=cell.get("source",[])
+          lines=("".join(raw) if isinstance(raw,list) else raw).splitlines()
+          print("NTL_RUNTIME_INSTALLER_CONTEXT="+json.dumps([
+            {"line":i,"code":" ".join(lines[i-1].strip().split())[:180]}
+            for i in range(109,min(len(lines),119)+1)
+          ],sort_keys=True),flush=True)
+          print("NTL_SOURCE_ONLY_NO_MODEL_INFERENCE_OR_TRAINING=TRUE")
+          PY
