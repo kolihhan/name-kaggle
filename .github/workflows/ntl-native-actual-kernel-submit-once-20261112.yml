@@ -82,9 +82,9 @@ jobs:
               for c in source.get("cells",[]) if c.get("cell_type")=="markdown")
           if "shakshamkarkiii/ntl-native-ensemble" not in markdown:
             raise SystemExit("STOP_ORIGINAL_NATIVE_NOTEBOOK_ATTRIBUTION_MISSING")
-          if meta.get("competition_sources")!=[contest] or
-             len(meta.get("model_sources") or [])!=6 or
-             len(meta.get("dataset_sources") or [])!=21:
+          if (meta.get("competition_sources")!=[contest] or
+              len(meta.get("model_sources") or [])!=6 or
+              len(meta.get("dataset_sources") or [])!=21):
             raise SystemExit("STOP_SOURCE_ASSET_PROVENANCE_DRIFT")
           print("NTL_ACTUAL_COMPLETED_V1_AND_NO_NEW_TRAINING_GUARDS_VERIFIED=TRUE",flush=True)
           print("NTL_ACTUAL_KAGGLE_NATIVE_CODE_SOURCE_PROVENANCE_VERIFIED=TRUE",flush=True)
