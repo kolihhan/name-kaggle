@@ -54,3 +54,27 @@ jobs:
             print("NTL_PUBLIC_CODE_DISCOVERY="+json.dumps({"count_returned":len(public),"records":safe},sort_keys=True,default=str),flush=True)
           print("NTL_DISCOVERY_ONLY_NO_GPU_MODEL_OR_SUBMISSION=TRUE")
           PY
+
+      - name: Public Kaggle code frontier via authenticated API, metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import inspect,json
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          print("KERNELS_LIST_PARAMETERS="+str(inspect.signature(api.kernels_list)),flush=True)
+          for sort_by in ("score","hotness"):
+            try:
+              data=api.kernels_list(competition="name-that-llm",sort_by=sort_by,page=1,page_size=25)
+              safe=[]
+              for k in data[:25]:
+                d=k.to_dict() if hasattr(k,"to_dict") else dict(k)
+                safe.append({field:d.get(field) for field in (
+                  "ref","title","author","bestPublicScore","totalVotes",
+                  "kernelId","id","lastRunTime","lastRunStatus","currentVersionNumber",
+                  "competitionScore") if field in d})
+              print("NTL_PUBLIC_API_FRONTIER="+json.dumps({"sort":sort_by,"returned":len(data),"records":safe},sort_keys=True,default=str),flush=True)
+            except Exception as e:
+              print("NTL_PUBLIC_API_PROBE_FAILURE="+json.dumps({"sort":sort_by,"error_type":type(e).__name__}),flush=True)
+          PY
