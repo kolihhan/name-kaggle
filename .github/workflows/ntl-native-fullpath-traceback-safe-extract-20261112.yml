@@ -1,0 +1,69 @@
+name: NTL exact failed fullpath smoke safe traceback extract read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-fullpath-traceback-safe-extract-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Extract ONLY exception and code-location metadata from failed existing private kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-realpath-existing-private-output
+          kaggle kernels output kolihhan/ntl-native-realpath-smoke-20261112 -p /tmp/ntl-realpath-existing-private-output -o >/tmp/ntl-realpath-fetch.log 2>&1
+          python - <<'PY'
+          import re,json,hashlib
+          from pathlib import Path
+          root=Path("/tmp/ntl-realpath-existing-private-output")
+          files=[x for x in root.rglob("*") if x.is_file()]
+          reports=[]
+          exception_pat=re.compile(r'(?i)\b(?:[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)|SystemExit|KeyboardInterrupt|CUDA out of memory|out of memory|killed process|segmentation fault|OOMKilled)\b')
+          trace_pat=re.compile(r'^\s*(?:File [\x22\x27].*?[\x22\x27], line \d+, in \S+|Traceback \(most recent call last\):|Cell In\[\d+\], line \d+|\x1b\[[0-9;]*m)',re.I)
+          for f in files:
+            if f.suffix.lower() not in (".log",".txt"):continue
+            text=f.read_text(encoding="utf-8",errors="replace")
+            lines=text.splitlines()
+            error_rows=[]
+            traceback_locations=[]
+            for i,line in enumerate(lines):
+              clean=re.sub(r'\x1b\[[0-9;]*m','',line)
+              if exception_pat.search(clean):
+                types=sorted(set(re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)\b',clean)))
+                flags=[k for k in ("CUDA out of memory","out of memory","OOMKilled","killed process","segmentation fault") if k.lower() in clean.lower()]
+                if types or flags:
+                  error_rows.append({"line":i+1,"types":types[:10],"flags":flags[:6],
+                       "message_class":("missing_module" if "No module named" in clean else
+                          "file_missing" if "No such file" in clean else
+                          "cuda_unavailable" if "CUDA is not available" in clean else
+                          "memory_alloc" if "allocate" in clean.lower() and ("memory" in clean.lower() or "CUDA" in clean) else
+                          "other")})
+              if trace_pat.search(clean):
+                m=re.search(r'File [\x22\x27]([^\x22\x27]+)[\x22\x27], line (\d+), in ([A-Za-z0-9_<>]+)',clean)
+                if m:
+                  traceback_locations.append({"line":i+1,"basename":Path(m.group(1)).name[:90],
+                           "source_line":int(m.group(2)),"function":m.group(3)[:100]})
+            # No literal error message, commands, source code, official data, trace text or paths exported.
+            reports.append({
+              "suffix":f.suffix.lower(),
+              "size_bytes":f.stat().st_size,
+              "line_count":len(lines),
+              "sha256":hashlib.sha256(f.read_bytes()).hexdigest(),
+              "error_matches":error_rows[-28:],
+              "traceback_code_locations":traceback_locations[-28:],
+              "traceback_marker_count":text.count("Traceback (most recent call last)"),
+              "has_ipykernel_exception":("Exception in" in text or "IPython" in text),
+              "last_line_lengths":[len(s) for s in lines[-6:]],
+            })
+          print("NTL_NATIVE_REALPATH_SAFE_ERROR_DIAGNOSTIC="+json.dumps(reports,sort_keys=True),flush=True)
+          print("NTL_NATIVE_EXISTING_LOG_READ_ONLY_NO_GPU_OR_SUBMISSION=TRUE",flush=True)
+          PY
