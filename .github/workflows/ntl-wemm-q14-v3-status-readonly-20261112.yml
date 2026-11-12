@@ -7,61 +7,136 @@ permissions: {contents: read}
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 12
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
-      - name: Read existing private CUDA-fixed full inference result, never submit
+      - run: python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Recover existing evidence once without GPU or submission
         shell: bash
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           python - <<'PY'
-          import json,re,subprocess,time,pathlib,tempfile
-          ref="kolihhan/ntl-wemm-q14-cuda-bootstrap-smoke-v3"
-          def call(args,timeout=120):
-              return subprocess.run(args,text=True,capture_output=True,timeout=timeout)
-          state="UNKNOWN"
-          for poll in range(35):
-              p=call(["kaggle","kernels","status",ref])
-              m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",p.stdout+"\n"+p.stderr)
-              state=m.group(1) if m else "UNKNOWN"
-              if state in ("COMPLETE","ERROR","CANCELLED","FAILED"):break
-              if poll in (0,8,20):
-                  print("NTL_BOOTSTRAP_V3_PROGRESS",json.dumps({"state":state,"poll":poll}),flush=True)
-              time.sleep(12)
-          print("NTL_BOOTSTRAP_V3_STATUS",json.dumps({"state":state,"poll":poll,"ref":ref,
-              "terminal":state in ("COMPLETE","ERROR","CANCELLED","FAILED")}),flush=True)
-          if state not in ("COMPLETE","ERROR","CANCELLED","FAILED"):
-              raise SystemExit(0)
-          output=pathlib.Path(tempfile.mkdtemp(prefix="ntl-v3-logs-"))
-          p=call(["kaggle","kernels","output",ref,"--file-pattern",r".*core-q14v5[.]log$",
-                  "-p",str(output),"-q"],150)
-          stages=[]
-          for f in output.rglob("*"):
-              if not f.is_file() or f.name!="core-q14v5.log":continue
-              txt=f.read_text(encoding="utf-8",errors="replace")
-              lines=txt.splitlines()
-              m=re.findall(r"NTL_Q14_CUDA_BOOTSTRAP\s*(\{[^\n]+\})",txt)
-              markers=[]
-              for entry in m:
-                  try:markers.append(json.loads(entry))
-                  except ValueError:pass
-              final=[ln.strip() for ln in lines if re.match(r"^(RuntimeError|ValueError|AssertionError|OSError|FileNotFoundError)\s*:",ln.strip())]
-              final_error=final[-1] if final else None
-              if final_error:
-                  final_error=re.sub(r"/kaggle/(?:input|working|temp)/[^\s]+","[REDACTED_PATH]",final_error)
-              stages.append({"line_count":len(lines),"cuda_init_markers":markers[-2:],
-                  "terminal_error":final_error[:180] if final_error else None,
-                  "had_true_inference":bool(markers)})
-          print("NTL_BOOTSTRAP_V3_Q14_RESULT",json.dumps({
-              "output_rc":p.returncode,"stages":stages
-          },sort_keys=True),flush=True)
-          x=call(["kaggle","kernels","files",ref,"-v","--page-size","200"])
-          print("NTL_BOOTSTRAP_V3_SUBMISSION_OUTPUT",json.dumps({
-              "files_rc":x.returncode,"has_submission_parquet":"submission.parquet" in x.stdout
-          }),flush=True)
+          import ast, csv, datetime, hashlib, json, pathlib, re, subprocess, tempfile
+          REF = "kolihhan/ntl-wemm-q14-cuda-bootstrap-smoke-v3"
+          def call(args, timeout=120):
+              return subprocess.run(args, text=True, capture_output=True, timeout=timeout)
+          def emit(key, value):
+              print(key, json.dumps(value, sort_keys=True), flush=True)
+          def source(cell):
+              value = cell.get("source", "")
+              return "".join(value) if isinstance(value, list) else str(value)
+          
+          quota = call(["kaggle", "quota"])
+          gpu = re.search(r"(?m)^GPU\s+\S+\s+([0-9.]+)h", quota.stdout)
+          emit("SESSION_QUOTA", {"return_code":quota.returncode,
+              "gpu_remaining_hours":float(gpu.group(1)) if gpu else None})
+          sub = call(["kaggle", "competitions", "submissions", "name-that-llm", "-v", "-q"])
+          rows = list(csv.DictReader(sub.stdout.splitlines())) if sub.returncode == 0 else []
+          rows.sort(key=lambda r:int(r["ref"]), reverse=True)
+          numeric = []
+          for row in rows:
+              try: numeric.append((float(row["publicScore"]), row["ref"]))
+              except (ValueError, KeyError, TypeError): pass
+          emit("SESSION_OFFICIAL", {"return_code":sub.returncode,
+              "checked_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "total":len(rows), "best":max(numeric) if numeric else None,
+              "latest":[{k:r.get(k) for k in ("ref","status","publicScore","privateScore","date")} for r in rows[:8]]})
+          for ref in ("58244483","58233227","58167751","58210835"):
+              p = call(["kaggle","competitions","submission",ref])
+              lines = [s.strip() for s in p.stdout.splitlines()]
+              values = {}
+              for key in ("Status:","Public Score:","Private Score:","Submission Date:"):
+                  values[key.rstrip(":")] = next((s[len(key):].strip() for s in lines if s.startswith(key)), None)
+              values.update({"ref":ref, "rc":p.returncode,
+                  "has_hidden_runtime_error":"unhandled error" in p.stdout.lower(),
+                  "has_error_field":any(s.startswith("Error:") and s != "Error:" for s in lines)})
+              emit("SESSION_EXACT",values)
+          
+          status = call(["kaggle","kernels","status",REF])
+          m = re.search(r"KernelWorkerStatus\.([A-Z_]+)",status.stdout+status.stderr)
+          state = m.group(1) if m else "UNKNOWN"
+          emit("SESSION_KERNEL",{"ref":REF,"state":state,"rc":status.returncode})
+          tmp = pathlib.Path(tempfile.mkdtemp(prefix="ntl-existing-evidence-"))
+          p = call(["kaggle","kernels","pull",REF,"-p",str(tmp),"-m"])
+          if p.returncode: raise RuntimeError("Owned source pull failed; raw output withheld")
+          nb = json.loads(next(tmp.glob("*.ipynb")).read_text())
+          cells = [source(c) for c in nb["cells"] if c.get("cell_type") == "code"]
+          code = "\n".join(cells)
+          meta = json.loads((tmp/"kernel-metadata.json").read_text())
+          emit("SESSION_SOURCE",{"code_sha256":hashlib.sha256(code.encode()).hexdigest(),
+              "code_cells":len(cells),"gpu":meta.get("enable_gpu"),
+              "machine_shape":meta.get("machine_shape"),"private":meta.get("is_private"),
+              "internet":meta.get("enable_internet"),
+              "forces_real_path":"preview = False" in code,
+              "guards":[x in code for x in ("gauss.fit = _no_new_supervised_gaussian_fit",
+                "NO_NEW_TRAINING: Atlas train mode forbidden","NO_NEW_TRAINING: core worker train_final forbidden",
+                "Frozen WeMM experiment: sibling-style training is disabled")]})
+          # Report derived runtime facts only. Never echo private source, data, paths or traces.
+          runtime = []
+          for i,cell in enumerate(cells):
+              runtime_terms = ("pip install","pip', 'install","pip\", \"install","PYTHONPATH",
+                  "CUDA_VISIBLE_DEVICES","LD_LIBRARY_PATH","nvidia","--target","sys.path")
+              if not any(t in cell for t in runtime_terms): continue
+              runtime.append({"cell":i,"is_written_module":cell.startswith("%%writefile"),
+                  "has_pip_install":"pip" in cell and "install" in cell,
+                  "has_target_install":"--target" in cell,
+                  "has_torch_wheel":bool(re.search(r"torch[-_][0-9][^\s'\"]*[.]whl",cell)),
+                  "mentions_cpu_wheel":"+cpu" in cell or "/cpu" in cell,
+                  "sets_cuda_mask":"CUDA_VISIBLE_DEVICES" in cell,
+                  "sets_python_path":"PYTHONPATH" in cell or "sys.path" in cell,
+                  "sets_library_path":"LD_LIBRARY_PATH" in cell})
+          emit("SESSION_RUNTIME_STATIC",runtime)
+          # Literal environment assignments reveal whether installation and GPU mapping change,
+          # without exposing values, arbitrary source strings, assets, or model content.
+          envs=[]
+          for i,cell in enumerate(cells):
+              body = cell.split("\n",1)[1] if cell.startswith("%%writefile") else cell
+              try: tree=ast.parse(body)
+              except SyntaxError: continue
+              for node in ast.walk(tree):
+                  if not isinstance(node,ast.Call): continue
+                  if isinstance(node.func,ast.Attribute) and node.func.attr in ("run","call","check_call","check_output"):
+                      for kw in node.keywords:
+                          if kw.arg=="env":
+                              envs.append({"cell":i,"env_expression_type":type(kw.value).__name__,
+                                  "env_name":kw.value.id if isinstance(kw.value,ast.Name) and kw.value.id in ("env","ENV") else None})
+          emit("SESSION_CHILD_ENV",envs)
+          logs = call(["kaggle","kernels","logs",REF])
+          try:
+              parsed=json.loads(logs.stdout)
+              data=[str(x.get("data","")) for x in parsed if isinstance(x,dict)] if isinstance(parsed,list) else [logs.stdout]
+          except ValueError: data=[logs.stdout]
+          joined="\n".join(data)
+          emit("SESSION_LOG_FACTS",{"rc":logs.returncode,
+              "elapsed_seconds":max([float(x.get("time",0)) for x in parsed if isinstance(x,dict) and isinstance(x.get("time"),(int,float))],default=0) if isinstance(locals().get("parsed"),list) else None,
+              "cpu_torch_marker":bool(re.search(r"torch[^\n]{0,80}\+cpu",joined)),
+              "gpu_driver_warning":"driver" in joined.lower() and "cuda" in joined.lower(),
+              "cuda_mask_mentioned":"CUDA_VISIBLE_DEVICES" in joined,
+              "pip_install_mentions":joined.lower().count("install"),
+              "torch_wheel_names":sorted(set(re.findall(r"\btorch-[0-9][A-Za-z0-9_.+%-]*\.whl",joined)))[:10],
+              "runtime_dependency_versions":sorted(set(re.findall(r"\b(?:torch|transformers|accelerate|nvidia-cuda-runtime-cu1[23])[-= ][0-9][A-Za-z0-9_.+%-]*",joined)))[:20]})
+          if state in ("ERROR","COMPLETE","FAILED","CANCELLED"):
+              out=tmp/"stage"
+              fetched=call(["kaggle","kernels","output",REF,"--file-pattern",r".*core-q14v5[.]log$","-p",str(out),"-q"],150)
+              stage="\n".join(f.read_text(errors="replace") for f in out.rglob("core-q14v5.log"))
+              emit("SESSION_STAGE_FACTS",{"rc":fetched.returncode,"found":bool(stage),
+                  "bootstrap_cuda_unavailable":"NTL_Q14_GPU_BOOTSTRAP: CUDA unavailable" in stage,
+                  "cuda_initialization_warning":"CUDA initialization" in stage,
+                  "cuda_unknown_error":"CUDA unknown error" in stage,
+                  "driver_too_old":"driver on your system is too old" in stage,
+                  "cuda_error_803":"803" in stage,
+                  "no_nvidia_driver":"Found no NVIDIA driver" in stage,
+                  "libcuda_missing":"libcuda.so" in stage,
+                  "cpu_torch_marker":"+cpu" in stage,
+                  "oom":"out of memory" in stage.lower(),
+                  "training_guard":"NO_NEW_TRAINING:" in stage,
+                  "bootstrap_pass_marker":"NTL_Q14_CUDA_BOOTSTRAP {" in stage})
+              listing=call(["kaggle","kernels","files",REF,"-v","--page-size","200"])
+              emit("SESSION_OUTPUT",{"has_submission":"submission.parquet" in listing.stdout,"rc":listing.returncode})
+          emit("SESSION_BUDGET",{"gpu_runs":0,"new_submissions":0,"poll_count":1,"new_training":False})
+          
           PY
