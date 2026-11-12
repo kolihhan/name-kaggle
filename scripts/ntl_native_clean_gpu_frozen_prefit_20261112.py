@@ -33,6 +33,9 @@ def make(out:Path)->dict:
     path=nbpaths[0]
     nb=json.loads(path.read_text(encoding="utf-8"))
     before="\n".join(text(c) for c in nb["cells"] if c.get("cell_type")=="code")
+    # This is the exact already-observed, preview-disabled private source.
+    if hashlib.sha256(before.encode()).hexdigest() != "a588221cec3db8b1fc1ad4b525614fc28dc70582f4f45f5268c58e8bf2373eef":
+        raise ValueError("frozen Native source-code SHA changed; no silent source substitution")
     changed=[]
     for cell in nb["cells"]:
         if cell.get("cell_type")!="code":continue
