@@ -77,6 +77,19 @@ jobs:
                 v=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT_MOUNT>",v)
                 safe.append({"line":ln,"code":v})
             print("NTL_GAUSSIAN_PREFIT_READ_BRANCH_CODE="+json.dumps({"cell":idx,"lines":safe},sort_keys=True),flush=True)
+          for cell_ix,c in enumerate(nb["cells"]):
+            src=c.get("source",[])
+            code="".join(src) if isinstance(src,list) else str(src)
+            if not re.search(r"def topic_groups\\s*\\(",code):continue
+            start_lines=code.splitlines()
+            for pos,line in enumerate(start_lines):
+              if re.search(r"def topic_groups\\s*\\(",line):
+                region=[]
+                for k in range(pos,min(pos+24,len(start_lines))):
+                  v=" ".join(start_lines[k].strip().split())[:200]
+                  if "/kaggle/input/" in v:v="<redacted mount>"
+                  region.append({"line":k+1,"syntax":v})
+                print("NTL_TOPIC_GROUPS_EXACT_SOURCE="+json.dumps({"cell":cell_ix,"lines":region},sort_keys=True),flush=True)
           # Check actual Native execution-mode and prompt grouping before any official submission.
           for idx,spans in {5:[(1,25)],17:[(58,70),(114,136),(164,205)],43:[(1,49),(68,110),(137,161)],47:[(1,15)]}.items():
             src=nb["cells"][idx].get("source",[])
