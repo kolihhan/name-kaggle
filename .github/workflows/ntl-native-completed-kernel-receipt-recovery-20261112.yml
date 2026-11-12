@@ -1,0 +1,103 @@
+name: NTL native one-shot single receipt recovery after existing workflow, no re-push
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-completed-kernel-receipt-recovery-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  # Same group as original one-shot, so this cannot run until original exits.
+  group: ntl-native-frozen-nov12-one-official-attempt
+  cancel-in-progress: false
+jobs:
+  recover_or_verify:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_NATIVE_ONLY_EXISTING_KERNEL_RECEIPT_RECOVERY_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 285
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read official prior receipt and already-created private kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,re,subprocess,time
+          from kaggle.api.kaggle_api_extended import KaggleApi
+
+          CONTEST="name-that-llm"
+          SLUG="kolihhan/ntl-native-frozen-nov12-one-shot"
+          MARKER="NTL frozen native pretrained ensemble guarded no supervised fitting 20261112"
+
+          def ledger():
+            p=subprocess.run(["kaggle","competitions","submissions",CONTEST,"-v","-q"],
+                            capture_output=True,text=True,timeout=120,check=True)
+            return list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+          def check_receipt():
+            matching=[r for r in ledger() if (r.get("description") or "")==MARKER]
+            if len(matching)>1:
+              raise RuntimeError("MULTIPLE_NTL_NATIVE_MATCHING_RECEIPTS_STOP")
+            if matching:
+              r=matching[0]
+              print("NTL_NATIVE_OFFICIAL_EXACT_RECEIPT="+json.dumps(
+                {k:r.get(k) for k in ("ref","status","publicScore","privateScore","date")},
+                sort_keys=True),flush=True)
+              return True
+            return False
+          def status():
+            p=subprocess.run(["kaggle","kernels","status",SLUG],
+                             capture_output=True,text=True,timeout=90)
+            text=(p.stdout+" "+p.stderr).upper()
+            m=re.search(r"KERNELWORKERSTATUS\.([A-Z_]+)",text)
+            if p.returncode or not m:
+              raise RuntimeError("ORIGINAL_NTL_PRIVATE_KERNEL_MISSING_OR_INACCESSIBLE_STOP_NO_REPUSH")
+            return m.group(1)
+
+          if check_receipt():
+            print("NTL_NATIVE_RECOVERY_NOT_NEEDED_EXISTING_OFFICIAL_ENTRY=TRUE")
+            raise SystemExit(0)
+
+          # No kernel creation and no training; only the version 1 from the original job.
+          for i in range(145):
+            state=status()
+            if state=="COMPLETE":
+              print("NTL_NATIVE_EXISTING_KERNEL_COMPLETE=TRUE",flush=True)
+              break
+            if state in ("ERROR","FAILED","CANCELLED"):
+              raise RuntimeError("ORIGINAL_NTL_PREVIEW_ERROR_NO_BLIND_RETRY")
+            if i%12==0:
+              print("NTL_NATIVE_RECOVERY_CHECK_EXISTING_PREVIEW="+str(i+1),flush=True)
+            time.sleep(90)
+          else:
+            raise TimeoutError("ORIGINAL_NTL_PRIVATE_PREVIEW_UNFINISHED_NO_DUPLICATE")
+          p=subprocess.run(["kaggle","kernels","files",SLUG,"-v","--page-size","200"],
+                           capture_output=True,text=True,timeout=120,check=True)
+          if "submission.parquet" not in p.stdout or "Next Page Token =" in p.stdout:
+            raise RuntimeError("ORIGINAL_NTL_PREVIEW_OUTPUT_NOT_VERIFIED")
+          if check_receipt():
+            print("NTL_NATIVE_RECOVERY_NOT_NEEDED_EXISTING_OFFICIAL_ENTRY=TRUE")
+            raise SystemExit(0)
+          api=KaggleApi();api.authenticate()
+          limits=api.competition_get_submission_limits(CONTEST)
+          if int(limits.num_allowed_now or 0)<1:
+            raise RuntimeError("NO_NTL_OFFICIAL_SUBMISSION_QUOTA")
+          p=subprocess.run(["kaggle","competitions","submit",CONTEST,
+                            "-k",SLUG,"-v","1","-f","submission.parquet","-m",MARKER],
+                           capture_output=True,text=True,timeout=170)
+          if p.returncode:
+            raise RuntimeError("EXISTING_NTL_PRIVATE_KERNEL_SUBMIT_API_FAILED_NO_AUTORETRY")
+          refs=re.findall(r"Submission ref:\s*(\d+)",p.stdout+"\n"+p.stderr,re.I)
+          if len(refs)!=1:
+            raise RuntimeError("EXISTING_NTL_CODE_ENTRY_SENT_BUT_REF_UNKNOWN_NO_RETRY")
+          print("NTL_NATIVE_RECOVERY_ACTUAL_OFFICIAL_REF="+refs[0],flush=True)
+          for i in range(15):
+            if check_receipt():
+              print("NTL_NATIVE_RECOVERY_FULL_LEDGER_VERIFIED=TRUE",flush=True)
+              break
+            time.sleep(10)
+          else:
+            raise RuntimeError("EXISTING_NTL_OFFICIAL_ACCEPTED_BUT_LEDGER_PENDING_NO_RETRY")
+          PY
