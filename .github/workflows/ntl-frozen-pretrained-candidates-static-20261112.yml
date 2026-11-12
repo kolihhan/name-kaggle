@@ -1,0 +1,65 @@
+name: NTL frozen pretrained novel inference candidates source audit (no training)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-frozen-pretrained-candidates-static-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read-only examine six published native alternatives no source execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,hashlib,re
+          from pathlib import Path
+          refs=(
+            "shakshamkarkiii/ntl-native-blend",
+            "shakshamkarkiii/ntl-native-ensemble",
+            "krshs90/qwen-embedding-clean-lora-ensemble-v14",
+            "helen0/ntl-v22-native-first",
+            "galangcakrabuana/name-that-llm-apex-v3-safe",
+            "parushkin/e44-fork683-pinned",
+          )
+          for index,ref in enumerate(refs):
+            folder=Path("/tmp/ntl-native-candidates")/str(index)
+            folder.mkdir(parents=True,exist_ok=True)
+            p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(folder),"-m"],
+                capture_output=True,text=True,timeout=95)
+            if p.returncode:
+              print("NTL_FROZEN_SOURCE="+json.dumps({"ref":ref,"state":"pull_failed","rc":p.returncode}),flush=True)
+              continue
+            files=list(folder.glob("*.ipynb"))
+            if len(files)!=1 or not (folder/"kernel-metadata.json").is_file():
+              print("NTL_FROZEN_SOURCE="+json.dumps({"ref":ref,"state":"files_incomplete"}),flush=True)
+              continue
+            src=files[0].read_bytes()
+            nb=json.loads(src)
+            meta=json.loads((folder/"kernel-metadata.json").read_text())
+            blocks=["".join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source",""))
+                for c in nb.get("cells",[]) if c.get("cell_type")=="code"]
+            code="\n".join(blocks)
+            row={
+              "ref":ref,"state":"available",
+              "sha256":hashlib.sha256(src).hexdigest(),"code_sha256":hashlib.sha256(code.encode()).hexdigest(),
+              "code_chars":len(code),
+              "fit_transform_calls":len(re.findall(r"\.(?:fit|partial_fit|fit_transform)\s*\(",code)),
+              "neural_update_call_sites":len(re.findall(r"\.(?:backward|zero_grad|step)\s*\(",code)),
+              "submission_file":bool(re.search(r"submission\.parquet",code)),
+              "source_private":meta.get("is_private"),"enable_internet":meta.get("enable_internet"),
+              "model_count":len(meta.get("model_sources") or []),
+              "dataset_count":len(meta.get("dataset_sources") or []),
+              "kernel_count":len(meta.get("kernel_sources") or []),
+              "kernel_type":meta.get("kernel_type"),
+              "code_file":meta.get("code_file"),
+            }
+            print("NTL_FROZEN_SOURCE="+json.dumps(row,sort_keys=True),flush=True)
+          print("NTL_ALTERNATE_AUDIT_READ_ONLY=TRUE",flush=True)
+          PY
