@@ -1,0 +1,120 @@
+name: NTL Kaggle GPU accelerator isolate Native source categories without model loading
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-gpu-mount-category-isolation-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-mount-category-isolation-single-v1
+  cancel-in-progress: false
+jobs:
+  isolate:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_GPU_NATIVE_ATTACHMENT_CAUSE_ISOLATION_ONCE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 64
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Pull original exact Native mount metadata, no official dataset materialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-source-assettype
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-source-assettype -m >/tmp/ntl-assettype-metadata-pull.log 2>&1
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("/tmp/ntl-source-assettype/kernel-metadata.json").read_text())
+          if (len(m.get("dataset_sources") or [])!=21 or len(m.get("kernel_sources") or [])!=8
+               or len(m.get("model_sources") or [])!=6
+               or m.get("competition_sources")!=["name-that-llm"]):
+             raise SystemExit("STOP_ASSET_TYPES_CHANGED")
+          print("NTL_GPU_MOUNT_TYPES_FROZEN_COUNTS="+json.dumps({
+            "dataset":21,"kernel":8,"model":6,"competition":1
+          },sort_keys=True),flush=True)
+          PY
+      - name: Three separate private GPU hardware tests, one mount category each
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,time,csv,io
+          from pathlib import Path
+          old=json.loads(Path("/tmp/ntl-source-assettype/kernel-metadata.json").read_text())
+          orig={k:old.get(k) or [] for k in
+             ("dataset_sources","kernel_sources","model_sources","competition_sources")}
+          groups=(("datasets","dataset_sources"),
+                  ("kernels","kernel_sources"),
+                  ("models","model_sources"))
+          base=Path("/tmp/ntl-native-category-isolation")
+          base.mkdir()
+          def proc(args,timeout=120):
+            return subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=timeout)
+          probe_source=(
+            "import os,subprocess,json\n"
+            "from pathlib import Path\n"
+            "import torch\n"
+            "r=subprocess.run(['nvidia-smi','-L'],capture_output=True,text=True,timeout=40)\n"
+            "v={'torch_version':torch.__version__,'torch_cuda_build':torch.version.cuda,"
+            "'cuda_available':bool(torch.cuda.is_available()),"
+            "'device_count':int(torch.cuda.device_count()),"
+            "'nvidia_smi_exit':r.returncode,"
+            "'nvidia_smi_gpu_count':sum(x.startswith('GPU ') for x in r.stdout.splitlines()),"
+            "'no_model_data_opened':True}\n"
+            "Path('/kaggle/working/category_gpu_probe.json').write_text(json.dumps(v,sort_keys=True))\n"
+            "print('NTL_CATEGORY_CUDA='+json.dumps(v,sort_keys=True),flush=True)\n"
+          )
+          for name,field in groups:
+            slug=f"kolihhan/ntl-gpu-only-{name}-mounts-nov12"
+            dest=base/name
+            dest.mkdir()
+            z=dict(old)
+            z.pop("id_no",None)
+            z.update({
+             "id":slug,"title":slug.split("/",1)[1],
+             "code_file":"probe.py","language":"python","kernel_type":"script",
+             "is_private":True,"enable_gpu":True,"enable_tpu":False,
+             "enable_internet":False,"machine_shape":"NvidiaTeslaT4",
+             "competition_sources":orig["competition_sources"],
+             "dataset_sources":orig[field] if field=="dataset_sources" else [],
+             "kernel_sources":orig[field] if field=="kernel_sources" else [],
+             "model_sources":orig[field] if field=="model_sources" else [],
+            })
+            (dest/"kernel-metadata.json").write_text(json.dumps(z,indent=2,sort_keys=True)+"\n")
+            (dest/"probe.py").write_text(probe_source)
+            status=proc(["kernels","status",slug],timeout=70)
+            if status.returncode==0 or "KernelWorkerStatus." in status.stdout+status.stderr:
+              raise RuntimeError("STOP_DUPLICATE_CATEGORY_PROBE_"+name)
+            push=proc(["kernels","push","-p",str(dest),"--accelerator","NvidiaTeslaT4","--timeout","800"],timeout=150)
+            if push.returncode:
+              print("NTL_CATEGORY_KERNEL_PUSH_FAILED="+name,flush=True)
+              continue
+            print("NTL_CATEGORY_KERNEL_STARTED="+name,flush=True)
+            state="PENDING"
+            for attempt in range(100):
+              r=proc(["kernels","status",slug],timeout=70)
+              out=(r.stdout+r.stderr).upper()
+              if "KERNELWORKERSTATUS.COMPLETE" in out:
+                state="COMPLETE";break
+              if any(x in out for x in ("KERNELWORKERSTATUS.ERROR",
+                  "KERNELWORKERSTATUS.FAILED","KERNELWORKERSTATUS.CANCELLED")):
+                state="ERROR";break
+              time.sleep(6)
+            folder=base/(name+"-output")
+            folder.mkdir()
+            output=proc(["kernels","output",slug,"-p",str(folder),"-o"],timeout=110)
+            probe=folder/"category_gpu_probe.json"
+            result={"name":name,"type":field,"mount_count":len(orig[field]),
+                 "kernel_status":state,"output_rc":output.returncode,
+                 "no_model_training_or_competition_submission":True}
+            if probe.is_file():
+              d=json.loads(probe.read_text())
+              result.update({k:d.get(k) for k in ("torch_version","torch_cuda_build",
+                 "cuda_available","device_count","nvidia_smi_exit","nvidia_smi_gpu_count")})
+            print("NTL_CATEGORY_GPU_ISOLATION_RESULT="+json.dumps(result,sort_keys=True),flush=True)
+          print("NTL_ALL_CATEGORY_PROBES_FINISHED_NO_OFFICIAL_SUBMISSION=TRUE",flush=True)
+          PY
