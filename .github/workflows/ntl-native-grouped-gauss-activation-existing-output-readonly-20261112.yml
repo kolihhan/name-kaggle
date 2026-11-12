@@ -1,0 +1,58 @@
+name: NTL native frozen Gaussian activation gate from existing 3row model output READ ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-grouped-gauss-activation-existing-output-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Existing 3row inference grouping counts only; no raw text, no model running or fitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4
+          mkdir -p /tmp/ntl-native-groups-3row-output
+          kaggle kernels output kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-native-groups-3row-output -o >/tmp/ntl-groups-private-output.log 2>&1
+          python - <<'PY'
+          import json,collections
+          from pathlib import Path
+          import numpy as np
+          root=Path("/tmp/ntl-native-groups-3row-output")
+          files=list(root.rglob("*"))
+          groups=[p for p in files if p.is_file() and p.name=="Gte.npy"]
+          report={"source":"completed_private_real_model_3row",
+                  "source_gaussian_disabled":True,
+                  "group_file_count":len(groups),
+                  "training_or_inference_executed_here":False,
+                  "new_competition_submission":False}
+          if len(groups)==1:
+            a=np.load(groups[0],allow_pickle=False)
+            unique,counts=np.unique(a,return_counts=True)
+            counts_by_size=collections.Counter(int(n) for n in counts)
+            report.update({
+                "row_count":len(a),"group_count":len(unique),
+                "group_size_histogram":dict(sorted(counts_by_size.items())),
+                "head_active_rows":int(sum(n for n in counts if 2<=n<=18)),
+                "head_scoring_activation_possible":bool(any(2<=n<=18 for n in counts)),
+            })
+            if len(a)!=3:raise SystemExit("STOP_FROZEN_3ROW_GROUP_COUNT_DRIFT")
+          else:
+            report["group_activation_unknown"]=True
+          branches={}
+          for folder in ("q14v5","q8v5"):
+            matches=[x for x in files if x.is_file() and x.name=="feature-metadata.json"
+               and x.parent.name==folder]
+            if len(matches)==1:
+              m=json.loads(matches[0].read_text(encoding="utf-8"))
+              branches[folder]={key:m.get(key) for key in ("gaussian_branch","test_redo","train_redo")}
+            else:branches[folder]={"present":False}
+          report["feature_branch_metadata"]=branches
+          print("NTL_GAUSS_3ROW_GROUP_ACTIVATION_PROOF="+json.dumps(report,sort_keys=True),flush=True)
+          print("NTL_GAUSS_READ_ONLY_NO_TRAINING_OR_PUBLIC_ENTRY=TRUE")
+          PY
