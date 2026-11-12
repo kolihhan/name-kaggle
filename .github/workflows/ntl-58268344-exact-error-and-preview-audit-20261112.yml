@@ -1,0 +1,63 @@
+name: NTL 58268344 exact Kaggle error and existing preview dynamic-path audit read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-58268344-exact-error-and-preview-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read official exact error and published Notebook preview code path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,subprocess,json,re,hashlib
+          from pathlib import Path
+          slug="kolihhan/frozen-native-ntl-ensemble-no-new-training"
+          p=subprocess.run(["kaggle","competitions","submission","58268344"],capture_output=True,text=True,timeout=100)
+          if p.returncode:raise SystemExit("STOP_NTL_EXACT_ENTRY_NOT_AVAILABLE")
+          lines=p.stdout.splitlines()
+          fields=[x.strip()[:500] for x in lines if x.lstrip().startswith((
+             "Submission Ref:","Status:","Error:","Public Score:","Private Score:","Description:","Submission Date:"))]
+          print("NTL_EXACT_OFFICIAL_SUBMISSION_DETAILS="+json.dumps(fields),flush=True)
+          target=Path("/tmp/ntl58268344-source")
+          target.mkdir()
+          p=subprocess.run(["kaggle","kernels","pull",slug,"-p",str(target),"-m"],
+            capture_output=True,text=True,timeout=130)
+          if p.returncode:raise SystemExit("STOP_PRIVATE_PREVIEW_PULL_FAILED")
+          files=list(target.glob("*.ipynb"))
+          if len(files)!=1:raise SystemExit("STOP_PRIVATE_PREVIEW_AMBIGUOUS")
+          nb=json.loads(files[0].read_text(encoding="utf-8"))
+          blocks=[(idx,("".join(c.get("source",[])) if isinstance(c.get("source"),list)
+               else str(c.get("source","")))) for idx,c in enumerate(nb.get("cells",[])) if c.get("cell_type")=="code"]
+          allcode="\n".join(x for _,x in blocks)
+          features={
+            "cells":len(blocks),"code_chars":len(allcode),
+            "known_preview_match":sum("emit_known_preview" in s for _,s in blocks),
+            "preview_guard":sum("if not preview:" in s for _,s in blocks),
+            "release_ready_true":allcode.count("'RELEASE_READY': True"),
+            "source_guard_gauss":allcode.count("NO_NEW_TRAINING: supervised Gaussian fitting forbidden"),
+            "source_guard_atlas":allcode.count("NO_NEW_TRAINING: Atlas training mode forbidden"),
+            "source_guard_core":allcode.count("NO_NEW_TRAINING: core_worker train-final forbidden"),
+          }
+          print("NTL_NATIVE_PRIVATE_STATIC_FLAGS="+json.dumps(features,sort_keys=True),flush=True)
+          hotspots=[]
+          for idx,src in blocks:
+            for ln,line in enumerate(src.splitlines(),start=1):
+              s=line.strip()
+              if ("emit_known_preview(" in s or "preview =" in s or
+                  "if not preview" in s or "RELEASE_READY" in s or
+                  "len(test)" in s or "len(frame)" in s or
+                  "sample_submission" in s or "DATA" in s and "test.parquet" in s or
+                  "gauss.fit(" in s or "train_final" in s):
+                hotspots.append({"cell":idx,"line":ln,"code":s[:180]})
+          print("NTL_NATIVE_PRIVATE_CODE_HOTSPOTS="+json.dumps(hotspots[:80],sort_keys=True),flush=True)
+          print("NTL_NATIVE_DIAGNOSTIC_READ_ONLY_NO_RETRAIN_RESUBMIT=TRUE")
+          PY
