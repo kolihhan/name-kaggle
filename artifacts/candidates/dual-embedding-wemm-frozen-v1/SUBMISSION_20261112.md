@@ -1,3 +1,15 @@
+# Current execution checkpoint — 2026-11-12 13:34 MYT
+
+- **FAILED:** `58244483` remains an unscored hidden runtime failure, freshly authenticated in [Action 43149001011](https://github.com/kolihhan/name-kaggle/actions/runs/43149001011).
+- **FAILED:** CUDA bootstrap v3 ended ERROR before Q14 load, with no output. [Recovered evidence 43162254900](https://github.com/kolihhan/name-kaggle/actions/runs/43162254900) rejects lazy initialization as a sufficient fix; underlying visibility/build/mapping cause remains unknown.
+- **DONE (CPU only):** builder no longer allows the precomputed 3-row fixture to stand in for real inference. Three focused regression tests pass. Existing Kaggle versions and model/scientific configuration were not changed.
+- **NOT EXECUTED:** new GPU run or official submission. Expected advantage versus 0.679 is unmeasured; real full-pipeline and increasing-size inference have not passed. Submission quota is available (5), so quota is not the reason to abstain.
+- Session cost: 2 read-only Actions; no new model download, training, GPU run or submission.
+
+The records below remain historical provenance.
+
+---
+
 # Terminal official result — WeMM hidden rerun FAILED (verified 2026-11-12 01:44 MYT)
 
 **SUPERSEDES the original PENDING entry below.** Exact submission `58244483` returned `Status: COMPLETE` **with `Error: Your notebook hit an unhandled error while rerunning your code`**, empty Public and Private Scores. `COMPLETE` here is **not a successful scored submission**. Independently authenticated [read-only exact-details workflow #43071058170](https://github.com/kolihhan/name-kaggle/actions/runs/43071058170), job `130698716843`, succeeded. Prior [read-only status workflow #43070833655](https://github.com/kolihhan/name-kaggle/actions/runs/43070833655) saw COMPLETE with blank score, prompting this investigation. The owned private Notebook's **three-example preview was COMPLETE**, but Kaggle's **hidden test rerun failed**; the exact exception traceback is not available from this official generic error category. No new submission, model fit, GPU run or Kaggle quota was consumed by these checks. **Keep champion `58210835` = 0.679 Public BA.**

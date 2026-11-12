@@ -1,8 +1,15 @@
 # Name That LLM — Kaggle
 
-## 2026-11-12 — WeMM Q14 model-loader failure isolated; CUDA bootstrap V3 PRIVATE test
+## 2026-11-12 13:34 MYT — runtime failure verified; no justified new submission
 
-**Authenticated forensic result (not a competition score):** WeMM ref `58244483` is `COMPLETE` **with an unhandled hidden inference error, Public Score BLANK**. Real full-path private smoke v1/v2 ended `ERROR` at the first `core-q14v5` stage. The recovered child log shows `RuntimeError: Cannot access accelerator device when none is available.` at `transformers.modeling_utils.is_accelerator_device → torch.device(device)` during Q14 `from_pretrained(device_map='auto')`. Independent private CUDA and integer-device canaries passed with two visible T4 GPUs, so the exact child-process initialization mechanism is still a **hypothesis**, not proven. One frozen **private, 20-minute-cap, no-training, no-submission** CUDA bootstrap smoke v3 `kolihhan/ntl-wemm-q14-cuda-bootstrap-smoke-v3` was created; **do not claim it passed before the terminal report**. [Full forensic evidence and actionable decision](artifacts/research/ntl-wemm-q14-cuda-bootstrap-forensics-20261112.md). Champion remains **0.679** (`58210835`).
+- **DONE — authenticated Public best remains 0.679:** baseline `58210835`; MGT `58233227` is now **COMPLETE, 0.679**, delta **0.000**. WeMM `58244483` is COMPLETE **with hidden runtime error and no score**. Lightning `58167751` remains PENDING. [Fresh account evidence](https://github.com/kolihhan/name-kaggle/actions/runs/43149001011).
+- **FAILED — real-path v3:** private `ntl-wemm-q14-cuda-bootstrap-smoke-v3` is ERROR; Q14 bootstrap reports CUDA unavailable before model load; no submission output. Code SHA `72430e7d613a870276c1d36238993e5ab496299a2fa2dd13e4846219e921a306`. Lazy initialization alone did not repair it. [Recovered runtime evidence](https://github.com/kolihhan/name-kaggle/actions/runs/43162254900).
+- **DONE — preview defect corrected in builder, CPU-tested only:** generated notebooks now bypass the known-answer fixture and enter the real ensemble branch. Three regression tests pass, including synthetic 1/3/64-row control flow, string/list notebook source, source-drift rejection and preservation of other cells. This is **not model inference, scale validation or a completed GPU repair**. Existing submitted notebooks are unchanged.
+- **NOT EXECUTED — new submission / GPU / training:** no candidate passes both real full-model preflight and numerical expected-advantage gates. WeMM has no measured same-row gain or complementary-error evidence against 0.679. MGT tied; do not retune or repeat it.
+- **DONE — resources checked:** GPU balance 12.74h at 11:33 MYT; NTL submission allowance 5 at 13:34 MYT. This session used **2 new read-only Actions, 0 Kaggle GPU runs, 0 submissions, 0 training**. Raw private source/logs remained ephemeral; only derived facts were emitted.
+- **UNKNOWN — CUDA root cause:** static import/environment analysis found no direct module-level CUDA-mask assignment; it did not exclude indirect environment, interpreter/build or device-mapping failure. Cheapest discriminating runtime check is parent vs exact Q14 child CUDA visibility/build/mapping **before weight loading**, followed by the same full pipeline only if that check passes. Do not spend a full run without an advantage case.
+
+The dated sections below are retained history; this entry supersedes their pending-state claims.
 
 ---
 

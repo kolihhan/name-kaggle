@@ -53,6 +53,29 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def force_real_inference(cells: list[dict]) -> None:
+    """Make public preview use the same ensemble branch as hidden inference.
+
+    This removes a known-answer shortcut; it does not certify model loading,
+    hidden-scale runtime, or predictive quality. Source drift stops the build.
+    """
+    needle = "preview = emit_known_preview(DATA,None,OUTPUT)"
+    targets = []
+    for cell in cells:
+        if cell.get("cell_type") != "code":
+            continue
+        src = cell.get("source", "")
+        code = "".join(src) if isinstance(src, list) else str(src)
+        if needle in code:
+            targets.append((cell, code))
+    if sum(code.count(needle) for _, code in targets) != 1:
+        raise RuntimeError("real-inference preview source anchor missing or duplicated")
+    cell, code = targets[0]
+    cell["source"] = code.replace(
+        needle, "preview = False  # Always exercise real ensemble inference."
+    ).splitlines(keepends=True)
+
+
 def frozen_reproduction(destination: Path) -> dict:
     if not CONTRACT_PATH.is_file():
         raise RuntimeError("frozen scientific/reproduction contract missing")
@@ -185,6 +208,8 @@ def frozen_reproduction(destination: Path) -> dict:
         cell["source"] = code.splitlines(keepends=True)
     if (count_gauss, count_atlas, count_core_guard, count_style) != (1, 1, 1, 1):
         raise RuntimeError(f"training guard targets incomplete {(count_gauss, count_atlas)}")
+
+    force_real_inference(cells)
 
     # Credit original author: no generated text, weights, or competition data.
     notebook["cells"].insert(0, {
@@ -335,3 +360,4 @@ if __name__ == "__main__":
         private_preview_once()
     else:
         competition_submit_once()
+

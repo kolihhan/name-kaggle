@@ -1,7 +1,7 @@
 # Dual-Embedding + Tencent WeMM — frozen inference-only candidate
 
 **Frozen at 2026-11-12 MYT, before any personal Kaggle score.**
-**Status:** No-training source preflight PASSED; one explicitly user-authorized Kaggle submission **58244483 accepted 2026-11-12 MYT, official status PENDING, score blank**. See [submission evidence](SUBMISSION_20261112.md). This is not independent 18-label validation or promotion.
+**Status:** NOT ELIGIBLE FOR RESUBMISSION. Official `58244483` failed hidden runtime with no score; real-path CUDA-bootstrap v3 also failed. The fixture-shortcut defect is corrected in the builder with CPU regression coverage only. Full-model preflight and numerical advantage over 0.679 remain unverified. See [current evidence](SUBMISSION_20261112.md).
 
 ## Goal and model-class hypothesis
 
@@ -23,7 +23,7 @@ This is a **new model-input/representation candidate**, not a minor Sinkhorn hyp
 - **No new supervised model, Gaussian, LoRA, adapter, sibling-style LogisticRegression, or neural head fitting**; use fixed source artifacts. Original source contains two `model.fit` supervised sibling-style sites, which this candidate intentionally replaces with an identity residual. This is an ablation of the published style component, not an exact reproduction. Allow only unsupervised test-time TF-IDF prompt grouping. No paid API or official-data download to public GitHub.
 - The builder must fail closed on changed **executable source digest**, changed input counts or representation, changed original training inventory, unknown training paths, or failure to install exactly **four safety interventions**: the `gauss.fit` block, Atlas training-mode block, core worker `--train-final` block, and identity bypass for grouped sibling-style supervised fitting.
 - `--source-preflight`: only builds and validates private Notebook source in ephemeral runner temporary storage, no Kaggle GPU, no publish, no competition entry.
-- `--private-preview-once`: if source-preflight passes and destination doesn't exist, create only one PRIVATE version at `kolihhan/ntl-dual-embedding-wemm-frozen-v1`, check Notebook preview and output. A separate user-authorized one-shot submission may proceed only after preview succeeds and no previous matching entry exists.
+- `--private-preview-once`: the builder now forces the real ensemble branch instead of the known-answer preview fixture. The original destination already exists and remains protected against overwrite. No new GPU run or submission is authorized by source checks alone; the current session requires all-model, same-path, schema/ID/row-count and increasing-size inference evidence plus expected advantage. Existing submission `58244483` must not be duplicated.
 - Champion `58210835` and MGT-v1 `58233227` must not be touched. The MGT-v1 public score is still unknown as of last authenticated check. No public LB weight tuning, arbitrary new blend, or duplicate submission.
 
 ## Decision boundary

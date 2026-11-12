@@ -1,3 +1,11 @@
+# MGT-v1 — terminal official result: 0.679, no gain
+
+**DONE — authenticated at 2026-11-12 11:33 MYT:** `58233227` is COMPLETE with Public BA **0.679**, no error, Private Score unavailable. Frozen baseline `58210835` is also **0.679**: delta **0.000**. [Read-only official evidence](https://github.com/kolihhan/name-kaggle/actions/runs/43149001011), job `130953475412`.
+
+**Decision:** retain baseline; no repeat submission or leaderboard-driven margin-gate adjustment. This result supplies no evidence of expected advantage. The dated acceptance/pending observations below are historical.
+
+---
+
 # MGT-v1 — first authenticated official Kaggle submission (2026-11-11)
 
 **VERIFIED:** Kaggle formally accepted a **new model code submission `58233227`**, UTC `2026-11-11 09:44:14.517` (Malaysia 17:44:14), status **`SubmissionStatus.PENDING`**, `publicScore` empty at independently checked 2026-11-11 09:47:26 UTC. This is **not** a result of 0.700+, or any other unverified score.
