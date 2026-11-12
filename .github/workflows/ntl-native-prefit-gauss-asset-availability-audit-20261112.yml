@@ -77,6 +77,21 @@ jobs:
                 v=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT_MOUNT>",v)
                 safe.append({"line":ln,"code":v})
             print("NTL_GAUSSIAN_PREFIT_READ_BRANCH_CODE="+json.dumps({"cell":idx,"lines":safe},sort_keys=True),flush=True)
+          # Check actual Native execution-mode and prompt grouping before any official submission.
+          for idx,spans in {5:[(1,25),(32,41)],43:[(49,84),(109,126),(137,161)],47:[(1,15)]}.items():
+            src=nb["cells"][idx].get("source",[])
+            lines=("".join(src) if isinstance(src,list) else str(src)).splitlines()
+            details=[]
+            for start,end in spans:
+              for line_number in range(start,min(end,len(lines))+1):
+                s=" ".join(lines[line_number-1].strip().split())[:215]
+                s=re.sub(r"/kaggle/input/[^\\s'\\x22]+","<PRIVATE_MOUNT>",s)
+                # Never echo passages or model/API credentials; source code only.
+                if any(term in s.lower() for term in ("secret","api_key","access_token","password","bearer")):
+                  s="<redacted>"
+                details.append({"line":line_number,"syntax":s})
+            print("NTL_NATIVE_GAUSS_GROUP_AND_EXECUTION_MODE_AUDIT="+json.dumps(
+              {"cell":idx,"code_lines":details},sort_keys=True),flush=True)
           print("NTL_GAUSS_PREFIT_MOUNT_REFERENCE_HINTS="+json.dumps({
             "dataset_sources_n":len(sources),
             "gauss_named_references":[ref for ref in sources if re.search(r'gauss|readout|head|prefit',str(ref),re.I)][:20],
