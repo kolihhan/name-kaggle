@@ -67,6 +67,16 @@ jobs:
                 "relative_basename":Path(value).name if isinstance(value,str) else type(value).__name__,
                 "literal":isinstance(value,str)}
           print("NTL_GAUSS_PREFIT_CONFIG_PATH_PROVENANCE="+json.dumps(report,sort_keys=True),flush=True)
+          for idx,segments in {14:[(16,38),(55,83)],17:[(109,138)]}.items():
+            s=nb["cells"][idx].get("source",[])
+            lines=("".join(s) if isinstance(s,list) else str(s)).splitlines()
+            safe=[]
+            for start,stop in segments:
+              for ln in range(start,min(stop,len(lines))+1):
+                v=" ".join(lines[ln-1].strip().split())[:200]
+                v=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT_MOUNT>",v)
+                safe.append({"line":ln,"code":v})
+            print("NTL_GAUSSIAN_PREFIT_READ_BRANCH_CODE="+json.dumps({"cell":idx,"lines":safe},sort_keys=True),flush=True)
           print("NTL_GAUSS_PREFIT_MOUNT_REFERENCE_HINTS="+json.dumps({
             "dataset_sources_n":len(sources),
             "gauss_named_references":[ref for ref in sources if re.search(r'gauss|readout|head|prefit',str(ref),re.I)][:20],
