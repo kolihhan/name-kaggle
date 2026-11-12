@@ -1,0 +1,45 @@
+name: NTL actual realpath batch input and runtime hook plan source audit NO GPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-realpath-input-scale-plan-source-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Pull own finished source and report safe exact runtime code structure (no inputs)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-scale-source
+          kaggle kernels pull kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-scale-source -m >/tmp/ntl-pull.log 2>&1
+          python - <<'PY'
+          import json,re,ast
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-scale-source").glob("*.ipynb")).read_text(encoding="utf-8"))
+          pat=re.compile(r'\b(DATA|TEST|test_csv|test_frame|test_redo|preview|submission|train_csv)\b|^\s*#.*\bstage\b|^\s*def (run|main|_tk)\(')
+          out=[]
+          for i,c in enumerate(nb["cells"]):
+            if c.get("cell_type")!="code":continue
+            s=c.get("source","")
+            lines=("".join(s) if isinstance(s,list) else s).splitlines()
+            candidates=[]
+            for j,line in enumerate(lines,1):
+              if pat.search(line):
+                v=" ".join(line.strip().split())[:190]
+                v=re.sub(r'(?i)(password|secret|token|bearer)\s*[=:].*',r'\1=<omitted>',v)
+                v=re.sub(r"/kaggle/input/[^'\x22 ]+","<INPUT_MOUNT>",v)
+                if "text" in v.lower() and any(x in v for x in ("'text'",'"text"')):
+                  v="<data-loading code summary omitted>"
+                candidates.append({"line":j,"safe_code":v})
+            out.append({"cell":i,"line_count":len(lines),"first_line":" ".join(lines[0].strip().split())[:70] if lines else "",
+                        "relevant_lines":candidates[:25]})
+          print("NTL_REALPATH_INPUT_SCALE_STATIC_STRUCTURE="+json.dumps(out,sort_keys=True),flush=True)
+          print("NTL_BATCH_STRUCTURE_READONLY_NO_DATA_OR_NEW_SUBMISSION=TRUE")
+          PY
