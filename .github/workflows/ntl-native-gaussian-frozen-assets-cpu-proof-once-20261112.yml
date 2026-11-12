@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-      TARGET: kolihhan/ntl-gaussian-prefit-asset-proof-nov12
+      TARGET: kolihhan/ntl-gaussian-prefit-metadata-proof-nov12
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
@@ -63,15 +63,15 @@ jobs:
             "result={}\n"
             "for name,string in paths.items():\n"
             "  path=Path(string)\n"
-            "  metadata=path/'meta.json'\n"
+            "  metadata=path/'metadata.json'\n"
             "  parameters=path/'parameters.npz'\n"
-            "  item={'dir_exists':path.is_dir(),'meta_json_exists':metadata.is_file(),"
+            "  item={'dir_exists':path.is_dir(),'metadata_json_exists':metadata.is_file(),"
             "'parameters_npz_exists':parameters.is_file()}\n"
             "  if parameters.is_file():item['parameters_bytes']=parameters.stat().st_size\n"
             "  if metadata.is_file():\n"
             "    m=json.loads(metadata.read_text())\n"
             "    branch=m.get('branch') or {}\n"
-            "    item.update({'gaussian_branch':branch.get('gaussian_branch'),"
+            "    item.update({'frozen_contract':bool(m.get('source')=='nlm-v27-final-adapter-train-only' and m.get('official_rows')==2699 and len(m.get('labels',[]))==18 and m.get('same_runtime_parity') is True and m.get('source_script_version')==362013743 and branch.get('gaussian_branch')=='fixed-no-test-redo' and branch.get('test_redo')==0 and m.get('feature_rows_order_sha256') and m.get('ordered_adapter_chain_sha256')),'gaussian_branch':branch.get('gaussian_branch'),"
             "'test_redo':branch.get('test_redo'),"
             "'train_redo':branch.get('train_redo'),"
             "'model_name_is_expected':m.get('member')==name.removeprefix('gaussian_')})\n"
