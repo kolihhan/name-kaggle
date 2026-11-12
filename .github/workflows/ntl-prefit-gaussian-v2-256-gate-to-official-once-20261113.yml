@@ -1,0 +1,297 @@
+name: NTL V2 frozen Gaussian meaningful 256row GPU gate then ONE official Kaggle attempt
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-prefit-gaussian-v2-256-gate-to-official-once-20261113.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-prefit-gaussian-v2-256-to-one-official-20261113
+  cancel-in-progress: false
+jobs:
+  gated_submission:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_GAUSSIAN_V2_256_GATE_THEN_OFFICIAL_SUBMISSION_20261113' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      BENCHMARK: kolihhan/ntl-gauss-prefit-256-activated-nov13
+      PRODUCTION: kolihhan/ntl-native-gauss-prefit-override-v2-nov13
+      MARKER: NTL one exploratory Native frozen Gaussian prefit V2 no new supervised training 20261113
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_prefit_only_gpu_mapfix_20261112.py
+            scripts/ntl_native_clean_gpu_frozen_prefit_20261112.py
+            scripts/ntl_native_restore_frozen_gauss_no_fit_20261112.py
+            scripts/ntl_native_gauss_prefit_override_v2_20261113.py
+            scripts/ntl_native_gauss_prefit_override_256_probe_20261113.py
+            tests/test_ntl_native_restore_frozen_gauss_no_fit_20261112.py
+            tests/test_ntl_gauss_prefit_override_v2_20261113.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify no-training code, exact frozen assets, 5+5 regression tests, GPU budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m unittest -q tests.test_ntl_native_restore_frozen_gauss_no_fit_20261112 tests.test_ntl_gauss_prefit_override_v2_20261113
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import os,csv,io,json,subprocess
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          quota=json.loads(subprocess.run(["kaggle","quota","--format","json"],
+              capture_output=True,text=True,check=True,timeout=90).stdout)
+          gpu=[x for x in quota if x.get("resource")=="GPU"]
+          if len(gpu)!=1:raise SystemExit("STOP_GPU_QUOTA_UNKNOWN")
+          hours=float(str(gpu[0]["remaining"]).rstrip("h"))
+          print("NTL_V2_PRIVATE_GPU_QUOTA_HOURS="+str(hours),flush=True)
+          if hours<3.0:raise SystemExit("STOP_NOT_ENOUGH_GPU_FOR_256_GROUP_TEST_AND_REAL_PREVIEW")
+          for key in ("BENCHMARK","PRODUCTION"):
+            slug=os.environ[key]
+            r=subprocess.run(["kaggle","kernels","status",slug],
+                capture_output=True,text=True,timeout=90)
+            if r.returncode==0 or "KernelWorkerStatus." in r.stdout+r.stderr:
+              raise SystemExit("STOP_NO_DUPLICATE_KAGGLE_GPU_KERNEL_"+key)
+          api=KaggleApi();api.authenticate()
+          current=api.competition_get_submission_limits("name-that-llm")
+          if int(current.num_allowed_now or 0)<1:
+            raise SystemExit("STOP_NO_KAGGLE_OFFICIAL_SUBMISSION_ALLOWANCE")
+          history=subprocess.run(["kaggle","competitions","submissions","name-that-llm","-v","-q"],
+             capture_output=True,text=True,check=True,timeout=120)
+          records=list(csv.DictReader(io.StringIO(history.stdout.lstrip("\ufeff"))))
+          if any((r.get("description") or "")==os.environ["MARKER"] for r in records):
+            raise SystemExit("STOP_THIS_FROZEN_CANDIDATE_ALREADY_SUBMITTED")
+          print("NTL_V2_OFFICIAL_ALLOWANCE="+str(current.num_allowed_now),flush=True)
+          print("NTL_V2_ONE_SHOT_NO_RETRY_CHECK_PASSED=TRUE",flush=True)
+          PY
+          python -m scripts.ntl_native_gauss_prefit_override_256_probe_20261113 --out /tmp/ntl-v2-256 > /tmp/ntl-v2-256-build.jsonl
+          python -m scripts.ntl_native_gauss_prefit_override_v2_20261113 --out /tmp/ntl-v2-prod > /tmp/ntl-v2-prod-build.jsonl
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          manifests={}
+          for kind,path in (("bench","/tmp/ntl-v2-256-build.jsonl"),("prod","/tmp/ntl-v2-prod-build.jsonl")):
+            lines=Path(path).read_text().splitlines()
+            if len(lines)!=1:raise SystemExit("STOP_BUILD_MANIFEST_NOT_UNIQUE_"+kind)
+            data=json.loads(lines[0].split("=",1)[1])
+            root=Path("/tmp/ntl-v2-256" if kind=="bench" else "/tmp/ntl-v2-prod")/"kernel"
+            meta=json.loads((root/"kernel-metadata.json").read_text())
+            if (not meta["enable_gpu"] or "docker_image" in meta or
+                len(meta["dataset_sources"])!=21 or len(meta["kernel_sources"])!=8 or len(meta["model_sources"])!=6):
+              raise SystemExit("STOP_SOURCE_MOUNT_OR_GPU_DRIFT_"+kind)
+            if meta["id"]!=os.environ["BENCHMARK" if kind=="bench" else "PRODUCTION"]:
+              raise SystemExit("STOP_MODEL_SLUG_MISMATCH_"+kind)
+            manifests[kind]=data
+          if manifests["bench"]["new_supervised_training"] or not manifests["prod"]["inference_only"]:
+            raise SystemExit("STOP_INADVERTENT_NEW_TRAINING")
+          if manifests["prod"]["pretrained_gaussian_weights"]!={"q14v5":0.7,"q8v5":0.44}:
+            raise SystemExit("STOP_UNVERIFIED_GAUSSIAN_HEADS")
+          print("NTL_V2_EXACT_CANDIDATE_CPU_PREFLIGHT="+json.dumps(manifests,sort_keys=True),flush=True)
+          PY
+      - name: Execute real T4 256 diverse original synthetic rows, Gaussian activation and runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-v2-256/kernel --accelerator NvidiaTeslaT4 --timeout 13500 >/tmp/ntl-v2-benchmark-push.log 2>&1 || {
+            echo STOP_V2_BENCHMARK_KAGGLE_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_V2_256_PRIVATE_BENCHMARK_LAUNCHED=TRUE
+          echo NTL_V2_256_NO_OFFICIAL_COMPETITION_DATA_OR_SUBMISSION=TRUE
+      - name: Require exact private 256row terminal COMPLETE, never auto-retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 450); do
+            s="$(kaggle kernels status "$BENCHMARK" 2>&1 || true)"
+            u="$(printf '%s' "$s" | tr '[:lower:]' '[:upper:]')"
+            if grep -q "KERNELWORKERSTATUS.COMPLETE" <<<"$u";then
+              echo NTL_V2_256_PRIVATE_KERNEL_COMPLETE=TRUE
+              exit 0
+            fi
+            if grep -Eq "KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)" <<<"$u";then
+              echo STOP_V2_256_KAGGLE_INFERENCE_ERROR
+              exit 1
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%25)) -eq 0 ];then echo NTL_V2_256_POLL="$i";fi
+            sleep 20
+          done
+          echo STOP_V2_256_PRIVATE_KERNEL_TOO_LONG_OR_UNKNOWN
+          exit 1
+      - name: Prove BOTH frozen heads gave nonzero scores, valid grouping and 9hour scaling screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-v2-256-output
+          kaggle kernels output "$BENCHMARK" -p /tmp/ntl-v2-256-output -o >/tmp/ntl-v2-256-get.log 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          import pandas as pd
+          root=Path("/tmp/ntl-v2-256-output")
+          f=root/"submission.parquet"
+          if not f.is_file():raise SystemExit("STOP_V2_256_NO_REAL_OUTPUT_PARQUET")
+          df=pd.read_parquet(f)
+          if (len(df)!=256 or df.columns.tolist()!=["id","model"] or not df.id.is_unique
+              or not df.model.notna().all() or not all(str(i).startswith("sim") for i in df.id)):
+            raise SystemExit("STOP_V2_256_OUTPUT_SCHEMA_OR_IDS_BAD")
+          logs=list(root.rglob("*.log"))
+          if len(logs)<8:raise SystemExit("STOP_V2_NO_ACTUAL_STAGES_LOGS")
+          text="\n".join(p.read_text(errors="replace") for p in logs if p.stat().st_size<12_000_000)
+          def json_records(marker):
+            return [json.loads(x) for x in re.findall(re.escape(marker)+r"(\{[^\n\r]*\})",text)]
+          eligible=json_records("NTL_GAUSS_PREFIT_GROUP_ELIGIBILITY=")
+          scored=json_records("NTL_GAUSS_PREFIT_SCORES=")
+          bound=json_records("NTL_GAUSS_PREFIT_RUNTIME_BOUND=")
+          t=re.findall(r"NTL_GAUSS256_ELAPSED_SECONDS=([0-9]+(?:\.[0-9]+)?)",text)
+          names={"q14v5","q8v5"}
+          def assert_one_per_model(items,name):
+            out={}
+            for rec in items:
+              k=rec.get("member")
+              if k in names:
+                if k in out:raise SystemExit("STOP_V2_DUPLICATE_GAUSSIAN_"+name)
+                out[k]=rec
+            if set(out)!=names:raise SystemExit("STOP_V2_GAUSSIAN_MISSING_"+name)
+            return out
+          b=assert_one_per_model(bound,"bound")
+          e=assert_one_per_model(eligible,"eligibility")
+          s=assert_one_per_model(scored,"score")
+          if any(x.get("supervised_fit") is not False for x in b.values()):
+            raise SystemExit("STOP_V2_RUNTIME_SUPERVISED_FIT")
+          if any(int(x.get("selected_rows",0))<64 for x in e.values()):
+            raise SystemExit("STOP_V2_GROUPS_DID_NOT_ACTIVATE")
+          if any(not x.get("nonzero") or not x.get("finite") or int(x.get("scored_rows",0))<64 for x in s.values()):
+            raise SystemExit("STOP_V2_GAUSSIAN_NO_NONZERO_INDEPENDENT_EVIDENCE")
+          if len(t)!=1:raise SystemExit("STOP_V2_NO_UNIQUE_RUNTIME_MEASUREMENT")
+          seconds=float(t[0]);t32=2987.977
+          estimated=t32+max(0.0,seconds-t32)*(4000-32)/(256-32)
+          report={"input":"original_synthetic_no_truth","rows":256,
+              "gaussian_preset_groups":{k:int(v["selected_rows"]) for k,v in e.items()},
+              "actual_nonzero_gaussian":{k:bool(v["nonzero"]) for k,v in s.items()},
+              "seconds":seconds,"linear_4000row_screen_seconds":round(estimated,1),
+              "estimate_is_not_a_runtime_guarantee":True,
+              "new_model_training":False,"new_official_submission":False,
+              "actual_macro_ba":None}
+          print("NTL_V2_FROZEN_GAUSSIAN_REAL256_GATE_RESULT="+json.dumps(report,sort_keys=True),flush=True)
+          if estimated>32400:
+            raise SystemExit("STOP_V2_4000ROW_LINEAR_TIME_SCREEN_EXCEEDS_9H")
+          if seconds>8000:
+            raise SystemExit("STOP_V2_BENCHMARK_ITSELF_TOOK_TOO_LONG")
+          print("NTL_V2_256_MEANINGFUL_GAUSSIAN_AND_RUNTIME_GATE=PASS",flush=True)
+          PY
+      - name: Run one exact official-test private production Notebook version only after successful 256 gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-v2-prod/kernel --accelerator NvidiaTeslaT4 --timeout 6000 >/tmp/ntl-v2-prod-push.log 2>&1 || {
+            echo STOP_V2_REAL_PRODUCTION_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_V2_FROZEN_PRODUCTION_PRIVATE_KERNEL_PUSHED=TRUE
+          for i in $(seq 1 350); do
+            x="$(kaggle kernels status "$PRODUCTION" 2>&1 || true)"
+            u="$(printf '%s' "$x" | tr '[:lower:]' '[:upper:]')"
+            if grep -q "KERNELWORKERSTATUS.COMPLETE" <<<"$u";then
+              echo NTL_V2_FROZEN_PRODUCTION_REAL_PREVIEW_COMPLETE=TRUE
+              exit 0
+            fi
+            if grep -Eq "KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)" <<<"$u";then
+              echo STOP_V2_REAL_PRODUCTION_PRIVATE_INFERENCE_FAILED
+              exit 1
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%25)) -eq 0 ];then echo NTL_V2_PROD_POLL="$i";fi
+            sleep 18
+          done
+          echo STOP_V2_REAL_PRODUCTION_PRIVATE_KERNEL_TOO_LONG
+          exit 1
+      - name: Verify exact official-input source identity, valid preview output and NO new fit before ONE submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-v2-prod-output /tmp/ntl-v2-source-pull
+          kaggle kernels output "$PRODUCTION" -p /tmp/ntl-v2-prod-output -o >/tmp/ntl-v2-prod-output-pull.log 2>&1
+          kaggle kernels pull "$PRODUCTION" -p /tmp/ntl-v2-source-pull -m >/tmp/ntl-v2-prod-source-pull.log 2>&1
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+          expected=list(Path("/tmp/ntl-v2-prod/kernel").glob("*.ipynb"))
+          actual=list(Path("/tmp/ntl-v2-source-pull").glob("*.ipynb"))
+          if len(actual)!=1 or len(expected)!=1:
+            raise SystemExit("STOP_PRIVATE_MODEL_SOURCE_UNIQUE_FAILED")
+          def code(path):
+            nb=json.loads(path.read_text(encoding="utf-8"))
+            return "\n".join("".join(c["source"]) if isinstance(c.get("source"),list)
+              else str(c.get("source","")) for c in nb["cells"] if c.get("cell_type")=="code")
+          a=code(actual[0]);b=code(expected[0])
+          if a!=b:raise SystemExit("STOP_PRIVATE_SOURCE_NOT_EXACT_FROZEN_CANDIDATE")
+          if "NTL_GAUSS256_SYNTHETIC_INPUT=" in a or "ntl_gauss_prefit_256_synthetic.csv" in a:
+            raise SystemExit("STOP_OFFICIAL_CANDIDATE_STILL_READS_SYNTHETIC_DATA")
+          for key in ("NO_NEW_TRAINING: supervised Gaussian fitting forbidden",
+            "NO_NEW_TRAINING: Atlas training mode forbidden",
+            "NO_NEW_TRAINING: core_worker train-final forbidden"):
+            if a.count(key)!=1:raise SystemExit("STOP_NO_TRAINING_GUARD_MISSING")
+          if "gauss.fit(training[" in a or "prm = None  # no supervised refit" in a:
+            raise SystemExit("STOP_FROZEN_GAUSS_PATH_STILL_NOP_OR_RETRAINING")
+          meta=json.loads(Path("/tmp/ntl-v2-source-pull/kernel-metadata.json").read_text())
+          if (meta["id"]!= "kolihhan/ntl-native-gauss-prefit-override-v2-nov13"
+              or "docker_image" in meta or not meta["enable_gpu"]
+              or len(meta["model_sources"])!=6 or len(meta["dataset_sources"])!=21):
+            raise SystemExit("STOP_PRODUCTION_META_OR_PREFIT_PROVENANCE_DRIFT")
+          p=Path("/tmp/ntl-v2-prod-output/submission.parquet")
+          if not p.is_file():raise SystemExit("STOP_PRODUCTION_NO_PRIVATE_PARQUET")
+          df=pd.read_parquet(p)
+          if (df.columns.tolist()!=["id","model"] or len(df)!=3
+              or not df.id.is_unique or not df.model.notna().all()):
+            raise SystemExit("STOP_PRODUCTION_PREVIEW_IDS_SCHEMA_INVALID")
+          print("NTL_V2_ONE_PRODUCTION_SOURCE_AND_PREVIEW_PREFLIGHT=PASS",flush=True)
+          print("NTL_V2_PREVIEW_UNLABELED_3ROWS_NOT_ACCURACY=TRUE",flush=True)
+          PY
+      - name: Submit exact frozen version1 to Kaggle competition ONE TIME, verify official receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,subprocess,csv,io,json,re,time
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          slug=os.environ["PRODUCTION"];marker=os.environ["MARKER"];contest="name-that-llm"
+          api=KaggleApi();api.authenticate()
+          def ledger():
+            r=subprocess.run(["kaggle","competitions","submissions",contest,"-v","-q"],
+              capture_output=True,text=True,check=True,timeout=120)
+            return list(csv.DictReader(io.StringIO(r.stdout.lstrip("\ufeff"))))
+          if any((x.get("description") or "")==marker for x in ledger()):
+            raise SystemExit("STOP_ALREADY_SUBMITTED_DO_NOT_REPEAT")
+          quota=api.competition_get_submission_limits(contest)
+          if int(quota.num_allowed_now or 0)<1:
+            raise SystemExit("STOP_NO_SUBMISSION_ALLOWANCE_AT_FINAL_CALL")
+          call=subprocess.run(["kaggle","competitions","submit",contest,"-k",slug,
+                 "-v","1","-f","submission.parquet","-m",marker],
+                 capture_output=True,text=True,timeout=180)
+          if call.returncode:
+            raise SystemExit("STOP_KAGGLE_OFFICIAL_SUBMIT_FAILED_NO_RETRY")
+          refs=re.findall(r"Submission ref:\s*(\d+)",call.stdout+"\n"+call.stderr,re.I)
+          if len(refs)!=1:
+            raise SystemExit("STOP_AMBIGUOUS_OFFICIAL_RECEIPT_DO_NOT_RESUBMIT")
+          ref=refs[0]
+          print("NTL_V2_OFFICIAL_SUBMISSION_REF="+ref,flush=True)
+          for _ in range(18):
+            matches=[x for x in ledger() if x.get("ref")==ref]
+            if len(matches)==1 and (matches[0].get("description") or "")==marker:
+              print("NTL_V2_AUTHENTICATED_KAGGLE_RECEIPT="+json.dumps(
+                 {k:matches[0].get(k) for k in ("ref","status","publicScore","privateScore","date")},
+                 sort_keys=True),flush=True)
+              print("NTL_V2_ONE_OFFICIAL_SUBMISSION_ACCEPTED=TRUE",flush=True)
+              break
+            time.sleep(9)
+          else:
+            raise SystemExit("NTL_V2_REF_RECEIVED_LEDGER_DELAY_DO_NOT_RETRY")
+          PY
