@@ -1,0 +1,56 @@
+name: NTL Residual Voices inference-only viability against 0.679 audit no execution
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-residual-voices-safe-inference-path-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect public source code semantically without executing or printing corpus/data
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-prvsiyan-residual-safe
+          kaggle kernels pull prvsiyan/a-fable-of-residual-voices -p /tmp/ntl-prvsiyan-residual-safe -m >/tmp/ntl-pull-residual.log 2>&1
+          python - <<'PY'
+          import json,re,ast,hashlib
+          from pathlib import Path
+          source=next(Path("/tmp/ntl-prvsiyan-residual-safe").glob("*.ipynb"))
+          nb=json.loads(source.read_text(encoding="utf-8"))
+          safe=[]
+          patterns={
+            "fitting":r"\b(?:fit|fit_transform|train|fit_classifier|fit_gaussian|partial_fit)\s*\(",
+            "model_loading":r"\b(?:from_pretrained|load_state_dict|torch\.load|safetensors\.load_file|joblib\.load)\s*\(",
+            "inference":r"\b(?:predict|predict_proba|forward|encode|generate|logits|log_softmax)\s*\(",
+          }
+          stages=[]
+          for ci,cell in enumerate(nb.get("cells",[])):
+            if cell.get("cell_type")!="code":continue
+            src=cell.get("source",[])
+            code="".join(src) if isinstance(src,list) else str(src)
+            lines=code.splitlines()
+            counts={k:len(re.findall(v,code)) for k,v in patterns.items()}
+            if sum(counts.values())==0:continue
+            matches=[]
+            for line_no,line in enumerate(lines,1):
+              if any(re.search(regex,line) for regex in patterns.values()):
+                code_clean=" ".join(line.strip().split())[:150]
+                # Only code; no literal prompt, user data, arbitrary eval.
+                if any(x in line.lower() for x in ("prompt","text","response","train.csv","test.csv","/kaggle/input")):
+                  code_clean="<path/row-sensitive invocation omitted>"
+                matches.append({"line":line_no,"code":code_clean})
+            stages.append({"cell":ci,"code_length":len(code),
+               "fit_callsite_count":counts["fitting"],
+               "prefit_load_site_count":counts["model_loading"],
+               "inference_callsite_count":counts["inference"],
+               "callsite_structure":matches[:14]})
+          print("NTL_RESIDUAL_VOICES_SOURCE_CALL_SITES="+json.dumps(stages,sort_keys=True),flush=True)
+          print("NTL_RESIDUAL_VOICES_STATIC_ONLY_NOT_AUTHORIZED_AS_PREFIT=TRUE")
+          PY
