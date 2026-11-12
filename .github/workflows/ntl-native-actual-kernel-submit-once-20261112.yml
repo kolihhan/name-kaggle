@@ -1,0 +1,133 @@
+name: OFFICIAL NTL Native completed actual-slug Notebook version 1 submit ONCE
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-actual-kernel-submit-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-actual-complete-version1-one-submit-20261112
+  cancel-in-progress: false
+jobs:
+  official_submit:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_ACTUAL_COMPLETED_KERNEL_ONE_OFFICIAL_SUBMIT_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      ACTUAL: kolihhan/frozen-native-ntl-ensemble-no-new-training
+      MARKER: NTL frozen native pretrained ensemble guarded no supervised fitting 20261112
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify exact completed existing own Notebook, guards and version 1 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,os,subprocess
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          contest="name-that-llm"
+          slug=os.environ["ACTUAL"]; marker=os.environ["MARKER"]
+          api=KaggleApi();api.authenticate()
+          quota=api.competition_get_submission_limits(contest)
+          print("NTL_ACTUAL_CURRENT_OFFICIAL_QUOTA="+str(quota.num_allowed_now),flush=True)
+          def rows():
+            r=subprocess.run(["kaggle","competitions","submissions",contest,"-v","-q"],
+              check=True,capture_output=True,text=True,timeout=120)
+            return list(csv.DictReader(io.StringIO(r.stdout.lstrip("\ufeff"))))
+          already=[r for r in rows() if (r.get("description") or "")==marker]
+          if already:
+            print("NTL_ACTUAL_PRIOR_OFFICIAL_RECEIPT="+json.dumps([
+              {k:r.get(k) for k in ("ref","status","publicScore")} for r in already
+            ],sort_keys=True),flush=True)
+            raise SystemExit("STOP_EXACT_CANDIDATE_ALREADY_SUBMITTED")
+          if not isinstance(quota.num_allowed_now,int) or quota.num_allowed_now<1:
+            raise SystemExit("STOP_NTL_NO_OFFICIAL_SLOT")
+          status=subprocess.run(["kaggle","kernels","status",slug],
+             capture_output=True,text=True,timeout=100,check=True)
+          if "KernelWorkerStatus.COMPLETE" not in status.stdout+status.stderr:
+            raise SystemExit("STOP_ACTUAL_OWN_KERNEL_NOT_COMPLETE")
+          listing=subprocess.run(["kaggle","kernels","files",slug,"-v","--page-size","200"],
+             capture_output=True,text=True,timeout=120,check=True)
+          if "submission.parquet" not in listing.stdout or "Next Page Token =" in listing.stdout:
+            raise SystemExit("STOP_OWN_COMPLETE_KERNEL_HAS_NO_UNAMBIGUOUS_OUTPUT")
+          dest=Path("/tmp/ntl-actual-complete-verified");dest.mkdir()
+          pull=subprocess.run(["kaggle","kernels","pull",slug,"-p",str(dest),"-m"],
+             capture_output=True,text=True,timeout=150,check=True)
+          nb=list(dest.glob("*.ipynb"))
+          if len(nb)!=1 or not (dest/"kernel-metadata.json").is_file():
+            raise SystemExit("STOP_OWN_PRIVATE_KERNEL_SOURCE_NOT_UNIQUE")
+          meta=json.loads((dest/"kernel-metadata.json").read_text())
+          source=json.loads(nb[0].read_text(encoding="utf-8"))
+          pieces=["".join(c.get("source",[])) if isinstance(c.get("source"),list)
+                  else str(c.get("source",""))
+                  for c in source.get("cells",[]) if c.get("cell_type")=="code"]
+          code="\n".join(pieces)
+          guards=(
+            "NO_NEW_TRAINING: supervised Gaussian fitting forbidden",
+            "NO_NEW_TRAINING: Atlas training mode forbidden",
+            "NO_NEW_TRAINING: core_worker train-final forbidden",
+          )
+          if any(code.count(g)!=1 for g in guards):
+            raise SystemExit("STOP_PRIVATE_KERNEL_MISSING_EXACT_THREE_TRAINING_GUARDS")
+          if ("gauss.fit = _forbid_supervised_gaussian" not in code or
+              "--train-final" not in code):
+            raise SystemExit("STOP_PRIVATE_KERNEL_TRAINING_GUARD_NOT_APPLIED")
+          markdown="\n".join(
+              ("".join(c.get("source",[])) if isinstance(c.get("source"),list)
+               else str(c.get("source","")))
+              for c in source.get("cells",[]) if c.get("cell_type")=="markdown")
+          if "shakshamkarkiii/ntl-native-ensemble" not in markdown:
+            raise SystemExit("STOP_ORIGINAL_NATIVE_NOTEBOOK_ATTRIBUTION_MISSING")
+          if meta.get("competition_sources")!=[contest] or
+             len(meta.get("model_sources") or [])!=6 or
+             len(meta.get("dataset_sources") or [])!=21:
+            raise SystemExit("STOP_SOURCE_ASSET_PROVENANCE_DRIFT")
+          print("NTL_ACTUAL_COMPLETED_V1_AND_NO_NEW_TRAINING_GUARDS_VERIFIED=TRUE",flush=True)
+          print("NTL_ACTUAL_KAGGLE_NATIVE_CODE_SOURCE_PROVENANCE_VERIFIED=TRUE",flush=True)
+          PY
+      - name: Make exactly one official Kaggle competition Code submission from completed version 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,os,re,subprocess,time
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          contest="name-that-llm";slug=os.environ["ACTUAL"];marker=os.environ["MARKER"]
+          api=KaggleApi();api.authenticate()
+          def ledger():
+            r=subprocess.run(["kaggle","competitions","submissions",contest,"-v","-q"],
+              capture_output=True,text=True,timeout=110,check=True)
+            return list(csv.DictReader(io.StringIO(r.stdout.lstrip("\ufeff"))))
+          if any((x.get("description") or "")==marker for x in ledger()):
+            raise SystemExit("STOP_NTL_ALREADY_SUBMITTED_BEFORE_FINAL_CALL")
+          limits=api.competition_get_submission_limits(contest)
+          if int(limits.num_allowed_now or 0)<1:
+            raise SystemExit("STOP_NO_NTL_SLOT_ON_FINAL_CHECK")
+          r=subprocess.run([
+            "kaggle","competitions","submit",contest,
+            "-k",slug,"-v","1","-f","submission.parquet","-m",marker
+          ],capture_output=True,text=True,timeout=180)
+          if r.returncode:
+            raise SystemExit("STOP_NTL_SUBMIT_CLI_FAILED_NO_AUTOMATIC_RETRY")
+          refs=re.findall(r"Submission ref:\s*(\d+)",r.stdout+"\n"+r.stderr,re.I)
+          if len(refs)!=1:
+            raise SystemExit("STOP_NTL_SUBMISSION_CALL_MAY_HAVE_SUCCEEDED_REF_UNKNOWN_NO_RETRY")
+          ref=refs[0]
+          print("NTL_ACTUAL_NEW_OFFICIAL_SUBMISSION_REF="+ref,flush=True)
+          for i in range(22):
+            matches=[x for x in ledger() if x.get("ref")==ref]
+            if len(matches)==1 and matches[0].get("description")==marker:
+              print("NTL_ACTUAL_VERIFIED_OFFICIAL_LEDGER="+json.dumps(
+                {k:matches[0].get(k) for k in
+                ("ref","status","publicScore","privateScore","date","description")},
+                sort_keys=True),flush=True)
+              print("NTL_ACTUAL_ONE_REAL_OFFICIAL_SUBMISSION_COMPLETED=TRUE",flush=True)
+              break
+            time.sleep(9)
+          else:
+            raise SystemExit("NTL_ACCEPTED_REF_BUT_LEDGER_DELAYED_DO_NOT_RESUBMIT")
+          PY
