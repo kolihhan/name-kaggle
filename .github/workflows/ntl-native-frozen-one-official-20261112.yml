@@ -1,0 +1,65 @@
+name: NTL frozen native pretrained no-training ONE official Kaggle submission 20261112
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-frozen-one-official-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-frozen-nov12-one-official-attempt
+  cancel-in-progress: false
+jobs:
+  source_preflight:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_NATIVE_FROZEN_NO_TRAIN_ONE_OFFICIAL_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_frozen_one_submission_20261112.py
+            artifacts/candidates/native-frozen-nov12-guarded/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Native source static guard inspection, original hash and all mounted assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m py_compile scripts/ntl_native_frozen_one_submission_20261112.py
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -u scripts/ntl_native_frozen_one_submission_20261112.py --source-preflight
+          echo NTL_NATIVE_NO_TRAINING_SOURCE_GATE=PASS
+          echo NTL_PRE_FLIGHT_NO_MODEL_GPU_OR_COMPETITION_SUBMISSION=TRUE
+  submit:
+    needs: source_preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 352
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_frozen_one_submission_20261112.py
+            artifacts/candidates/native-frozen-nov12-guarded/CONTRACT.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Execute exactly one private Notebook + preview + one official Kaggle submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -u scripts/ntl_native_frozen_one_submission_20261112.py
+          echo NTL_NATIVE_ONE_OFFICIAL_SUBMISSION_HANDLER_RETURNED=TRUE
