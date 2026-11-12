@@ -48,8 +48,10 @@ def disable_gaussian_only(source: str) -> tuple[str,dict]:
         if "name" not in parts:
             raise ValueError("Missing model name")
         name=ast.literal_eval(parts["name"])
-        if name not in expected:
+        if name not in GAUSS_TARGETS:
             continue
+        if name not in expected:
+            raise ValueError("duplicate targeted model name in frozen config")
         expected.remove(name)
         if "gauss" not in parts:
             raise ValueError("Target model has no Gaussian flag")
