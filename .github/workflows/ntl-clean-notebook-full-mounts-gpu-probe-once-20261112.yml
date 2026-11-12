@@ -1,0 +1,121 @@
+name: NTL clean Kaggle notebook GPU metadata with all frozen inputs one shot
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-clean-notebook-full-mounts-gpu-probe-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-clean-notebook-full-asset-gpu-probe-nov12
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_CLEAN_NOTEBOOK_FULL_INPUT_GPU_ONE_PROBE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      SLUG: kolihhan/ntl-clean-notebook-native-gpu-nov12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Build clean allowlisted Notebook metadata with identical 35 upstream assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-clean-notebook-source /tmp/ntl-native-clean-notebook-gpu
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-native-clean-notebook-source -m >/tmp/ntl-clean-metadata-pull.log 2>&1
+          python - <<'PY'
+          import os,json,subprocess
+          from pathlib import Path
+          old=json.loads(Path("/tmp/ntl-native-clean-notebook-source/kernel-metadata.json").read_text())
+          if [len(old.get(k) or []) for k in ("dataset_sources","kernel_sources","model_sources")]!=[21,8,6]:
+            raise SystemExit("STOP_FROZEN_INPUT_TOPOLOGY_CHANGED")
+          ref=os.environ["SLUG"]
+          p=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True,timeout=90)
+          if p.returncode==0 or "KernelWorkerStatus." in p.stdout+p.stderr:
+            raise SystemExit("STOP_EXACT_NOTEBOOK_ALREADY_CREATED")
+          m={
+            "id":ref,"title":ref.split("/",1)[1],
+            "code_file":"probe.ipynb","language":"python",
+            "kernel_type":"notebook","is_private":True,
+            "enable_gpu":True,"enable_tpu":False,"enable_internet":False,
+            "machine_shape":"NvidiaTeslaT4",
+            **{k:old.get(k) or [] for k in (
+               "competition_sources","dataset_sources","kernel_sources","model_sources")},
+          }
+          if set(m).intersection({"docker_image","keywords","id_no"}):
+            raise SystemExit("STOP_LEGACY_NOTEBOOK_METADATA_PASSED")
+          probe=(
+            "import os,subprocess,json\n"
+            "from pathlib import Path\nimport torch\n"
+            "p=subprocess.run(['nvidia-smi','-L'],capture_output=True,text=True,timeout=25)\n"
+            "d={'torch_version':torch.__version__,"
+            "'cuda_build':torch.version.cuda,'cuda_available':bool(torch.cuda.is_available()),"
+            "'device_count':int(torch.cuda.device_count()),"
+            "'nvidia_smi_exit':p.returncode,"
+            "'nvidia_smi_count':sum(l.startswith('GPU ') for l in p.stdout.splitlines()),"
+            "'no_model_or_data_read':True}\n"
+            "print('NTL_CLEAN_NOTEBOOK_GPU='+json.dumps(d,sort_keys=True),flush=True)\n"
+            "Path('/kaggle/working/ntl_clean_notebook_gpu.json').write_text(json.dumps(d,sort_keys=True))\n"
+          )
+          nb={
+            "cells":[{"cell_type":"code","execution_count":None,
+                     "id":"ntl-clean-notebook-gpu-smoke","metadata":{},"outputs":[],
+                     "source":probe.splitlines(keepends=True)}],
+            "metadata":{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"},
+                       "language_info":{"name":"python"}},
+            "nbformat":4,"nbformat_minor":5,
+          }
+          folder=Path("/tmp/ntl-native-clean-notebook-gpu")
+          (folder/"probe.ipynb").write_text(json.dumps(nb,ensure_ascii=False))
+          (folder/"kernel-metadata.json").write_text(json.dumps(m,indent=2,sort_keys=True)+"\n")
+          print("NTL_CLEAN_GPU_NOTEBOOK_FROZEN_INPUTS_AND_METADATA_PASS=TRUE",flush=True)
+          PY
+      - name: Push one data-free private GPU Notebook with clean metadata and all source mounts
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-native-clean-notebook-gpu --accelerator NvidiaTeslaT4 --timeout 800 >/tmp/ntl-clean-notebook-push.log 2>&1 || {
+            echo STOP_CLEAN_GPU_NOTEBOOK_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_CLEAN_GPU_NOTEBOOK_PUSH_ACCEPTED=TRUE
+      - name: Wait only the original existing probe until terminal
+        id: done
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 100); do
+            response="$(kaggle kernels status "$SLUG" 2>&1 || true)"
+            x="$(printf '%s' "$response" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$x";then
+              echo 'state=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_CLEAN_GPU_NOTEBOOK_STATUS=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$x";then
+              echo 'state=error' >> "$GITHUB_OUTPUT"
+              echo NTL_CLEAN_GPU_NOTEBOOK_STATUS=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%10)) -eq 0 ];then echo NTL_CLEAN_GPU_NOTEBOOK_POLL="$i";fi
+            sleep 10
+          done
+          echo 'state=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_CLEAN_GPU_NOTEBOOK_STATUS=PENDING
+      - name: Read allowlisted CUDA hardware result from existing private Notebook only
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-native-clean-notebook-gpu-out
+          kaggle kernels output "$SLUG" -p /tmp/ntl-native-clean-notebook-gpu-out -o >/tmp/ntl-clean-notebook-output-get.log 2>&1 || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("/tmp/ntl-native-clean-notebook-gpu-out/ntl_clean_notebook_gpu.json")
+          if not p.is_file():print("NTL_CLEAN_GPU_NOTEBOOK_RESULT=UNAVAILABLE",flush=True)
+          else:print("NTL_CLEAN_GPU_NOTEBOOK_RESULT="+json.dumps(json.loads(p.read_text()),sort_keys=True),flush=True)
+          PY
+          echo NTL_CLEAN_GPU_NOTEBOOK_NO_MODEL_TRAINING_OR_OFFICIAL_SUBMISSION=TRUE
