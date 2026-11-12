@@ -32,4 +32,16 @@ jobs:
           print("NTL_NATIVE_ACTUAL_OWNED_LEDGER="+json.dumps(matches,sort_keys=True),flush=True)
           print("NTL_NATIVE_STATUS_SNAPSHOT_UTC="+datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)
           print("NTL_NATIVE_FIFTH_CHECK_NO_MUTATIONS=TRUE",flush=True)
+
+          import time
+          for page in (1,2):
+            start=time.monotonic()
+            p=subprocess.run(["kaggle","kernels","list","--user","kolihhan",
+                  "--page-size","100","--page",str(page),"-v"],
+                capture_output=True,text=True,timeout=100)
+            n=len(list(csv.DictReader(io.StringIO(p.stdout)))) if p.returncode==0 else None
+            print("NTL_NATIVE_OWNED_KERNEL_PAGE="+json.dumps({
+              "page":page,"rc":p.returncode,"count":n,
+              "duration_seconds":round(time.monotonic()-start,1)}),flush=True)
+
           PY
