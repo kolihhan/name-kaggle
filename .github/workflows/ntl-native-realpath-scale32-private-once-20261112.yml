@@ -1,0 +1,140 @@
+name: NTL 32 synthetic passages real Native full inference scaling one-shot (NO TRAINING)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-realpath-scale32-private-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-32row-realpath-one-shot-20261112
+  cancel-in-progress: false
+jobs:
+  synthetic-scale:
+    if: "${{ github.event_name=='push' && github.event.head_commit.message=='GO_NTL_32ROW_SYNTHETIC_FULL_MODEL_RUNTIME_EXPERIMENT_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      SLUG: kolihhan/ntl-native-clean-synthetic32-nov12
+      SRC: /tmp/ntl-32row-fullmodel-frozen
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_prefit_only_gpu_mapfix_20261112.py
+            scripts/ntl_native_clean_gpu_frozen_prefit_20261112.py
+            scripts/ntl_native_clean_gpu_scale32_20261112.py
+            tests/test_ntl_native_prefit_only_gpu_mapfix_20261112.py
+            tests/test_ntl_native_gpu_mapfix_realpath_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Validate immutable original source and no training, quota and exact unique destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m unittest -q tests.test_ntl_native_prefit_only_gpu_mapfix_20261112 tests.test_ntl_native_gpu_mapfix_realpath_20261112
+          python -m py_compile scripts/ntl_native_clean_gpu_scale32_20261112.py
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import os,json,subprocess
+          quota=subprocess.run(["kaggle","quota","--format","json"],capture_output=True,text=True,check=True,timeout=100)
+          g=[x for x in json.loads(quota.stdout) if x.get("resource")=="GPU"]
+          if len(g)!=1:raise SystemExit("STOP_NOT_ONE_GPU_BUDGET")
+          hours=float(str(g[0].get("remaining")).rstrip("h"))
+          print("NTL_32ROW_GPU_BUDGET_HOURS="+str(hours),flush=True)
+          if hours<2.5:raise SystemExit("STOP_GPU_BUDGET_BELOW_2_5_HOURS")
+          q=subprocess.run(["kaggle","kernels","status",os.environ["SLUG"]],
+              capture_output=True,text=True,timeout=85)
+          if q.returncode==0 or "KernelWorkerStatus." in q.stdout+q.stderr:
+              raise SystemExit("STOP_GPU_KERNEL_ALREADY_EXISTS")
+          PY
+          python -u -m scripts.ntl_native_clean_gpu_scale32_20261112 --out "$SRC" > /tmp/ntl-32-build.log
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          l=Path("/tmp/ntl-32-build.log").read_text().splitlines()
+          if len(l)!=1 or not l[0].startswith("NTL_SCALE32_CPU_BUILD="):raise SystemExit("STOP_BUILDER_FAILED")
+          v=json.loads(l[0].split("=",1)[1])
+          if v["rows"]!=32 or not v["no_new_supervised_training"] or not v["no_official_competition_submission"]:
+              raise SystemExit("STOP_TRAINING_OR_SCORE_POLICY")
+          folder=Path(os.environ["SRC"])/"kernel"
+          m=json.loads((folder/"kernel-metadata.json").read_text())
+          if ("docker_image" in m or m["id"]!=os.environ["SLUG"] or
+              not m["enable_gpu"] or len(m["model_sources"])!=6 or
+              len(m["dataset_sources"])!=21):
+            raise SystemExit("STOP_LEGACY_CPU_ENV_OR_INPUT_DRIFT")
+          print("NTL_32ROW_SOURCE_FROZEN_PREFLIGHT="+json.dumps(v,sort_keys=True),flush=True)
+          PY
+      - name: Launch one private Kaggle 2T4 full inference 32 synthetic sentences
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$SRC/kernel" --accelerator NvidiaTeslaT4 --timeout 4800 >/tmp/ntl-scale32-push.log 2>&1 || {
+            echo STOP_NTL_32ROW_PRIVATE_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_SYNTHETIC32_PRIVATE_KERNEL_LAUNCHED=TRUE
+          echo NTL_SYNTHETIC32_NOT_COMPETITION_SUBMISSION=TRUE
+      - name: Check only this private run, never retry or submit to leaderboard
+        id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 310); do
+            response="$(kaggle kernels status "$SLUG" 2>&1 || true)"
+            s="$(printf '%s' "$response" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$s"; then
+              echo 'result=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_32ROW_SYNTHETIC_PRIVATE_STATUS=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$s"; then
+              echo 'result=error' >> "$GITHUB_OUTPUT"
+              echo NTL_32ROW_SYNTHETIC_PRIVATE_STATUS=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%20)) -eq 0 ];then echo NTL_SCALE32_POLL="$i";fi
+            sleep 20
+          done
+          echo 'result=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_32ROW_SYNTHETIC_PRIVATE_STATUS=LONG_RUNNING
+      - name: Validate schema and bounded timing from existing private output only
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl32-verify
+          kaggle kernels output "$SLUG" -p /tmp/ntl32-verify -o > /tmp/ntl32-output-get.log 2>&1 || true
+          python - <<'PY'
+          import json,re,hashlib
+          from pathlib import Path
+          import pandas as pd
+          root=Path("/tmp/ntl32-verify")
+          p=root/"submission.parquet"
+          logs=[x for x in root.rglob("*.log") if x.is_file()]
+          result={"synthetic_n":32,"output_parquet_exists":p.exists(),
+             "log_count":len(logs),"no_supervised_training":True,"official_submission":False}
+          if p.exists():
+             df=pd.read_parquet(p)
+             result.update({"rows":len(df),"exact_columns":df.columns.tolist(),
+               "ids_unique":bool(df.id.is_unique),"non_null_model":bool(df.model.notna().all()),
+               "input_is_not_official_holdout":True,
+               "file_sha256":hashlib.sha256(p.read_bytes()).hexdigest()})
+             if df.columns.tolist()!=["id","model"] or len(df)!=32 or not result["ids_unique"] or not result["non_null_model"]:
+                raise SystemExit("STOP_SYNTHETIC32_INVALID_OUTPUT")
+          for log in logs:
+             s=log.read_text(errors="replace")
+             match=re.findall(r'NTL_SCALE32_ELAPSED_SECONDS=([0-9]+(?:\.[0-9]+)?)',s)
+             if match:result["elapsed_seconds"]=float(match[-1])
+          print("NTL_SYNTHETIC32_PRIVATE_RUNTIME_RESULT="+json.dumps(result,sort_keys=True),flush=True)
+          print("NTL_SCALE32_NO_SCORE_OR_LABEL_EVALUATION=TRUE")
+          PY
+      - name: Report outcome without claiming 0.700
+        shell: bash
+        run: |
+          echo NTL_SCALE32_GPU_WORKFLOW_TERMINATED_BUT_NO_OFFICIAL_SCORE=TRUE
