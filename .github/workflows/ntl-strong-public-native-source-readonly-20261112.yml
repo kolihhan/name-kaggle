@@ -60,11 +60,11 @@ jobs:
                 "dataset_sources","kernel_sources","model_sources","license",
                 "current_version_number") if k in meta},
               "code_cell_count":len(blocks),"code_chars":len(code),
-              "has_submission_parquet":bool(re.search(r"submission\\.parquet",code)),
-              "fit_calls":len(re.findall(r"\\.(?:fit|fit_transform|partial_fit)\\s*\\(",code)),
-              "training_operations":len(re.findall(r"\\.(?:backward|optimizer|train_final)\\b",code)),
-              "train_flag_present":bool(re.search(r"(?:--train|train_final|training\\s*=\\s*True)",code)),
-              "markdown_license_terms":sorted(set(re.findall(r"(?i)apache.?2\\.0|mit license|cc by.sa|all rights reserved",markdown)))[:8],
+              "has_submission_parquet":bool(re.search(r"submission\.parquet",code)),
+              "fit_calls":len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(",code)),
+              "training_operations":len(re.findall(r"\.(?:backward|optimizer|train_final)\b",code)),
+              "train_flag_present":bool(re.search(r"(?:--train|train_final|training\s*=\s*True)",code)),
+              "markdown_license_terms":sorted(set(re.findall(r"(?i)apache.?2\.0|mit license|cc by.sa|all rights reserved",markdown)))[:8],
             }
             print("NTL_PUBLIC_NATIVE_CANDIDATE="+json.dumps(row,sort_keys=True,default=str),flush=True)
           print("NTL_PUBLIC_NATIVE_NO_CODE_EXECUTION_OR_SUBMISSION=TRUE",flush=True)
