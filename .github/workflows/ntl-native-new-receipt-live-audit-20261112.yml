@@ -31,5 +31,5 @@ jobs:
                    for x in ledger if "NTL frozen native pretrained ensemble guarded" in (x.get("description") or "")]
           print("NTL_NATIVE_ACTUAL_OWNED_LEDGER="+json.dumps(matches,sort_keys=True),flush=True)
           print("NTL_NATIVE_STATUS_SNAPSHOT_UTC="+datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)
-          print("NTL_NATIVE_SECOND_CHECK_NO_MUTATIONS=TRUE",flush=True)
+          print("NTL_NATIVE_THIRD_CHECK_NO_MUTATIONS=TRUE",flush=True)
           PY
