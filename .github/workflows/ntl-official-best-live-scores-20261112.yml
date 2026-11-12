@@ -1,0 +1,52 @@
+name: NTL authenticated best and outstanding official scores today read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-official-best-live-scores-20261112.yml]
+permissions: {contents: read}
+jobs:
+  current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Get Kaggle-owned scored public BA leaderboard and outstanding submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,subprocess,datetime
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          r=subprocess.run(["kaggle","competitions","submissions","name-that-llm","-v","-q"],
+            capture_output=True,text=True,check=True,timeout=110)
+          rows=list(csv.DictReader(io.StringIO(r.stdout.lstrip("\ufeff"))))
+          rated=[]
+          outstanding=[]
+          failures=[]
+          for x in rows:
+            ref=x.get("ref")
+            s=x.get("status") or ""
+            score=x.get("publicScore") or ""
+            if score:
+              try: rated.append({"ref":ref,"score":float(score),"date":x.get("date")})
+              except ValueError:pass
+            elif "PENDING" in s or "RUNNING" in s:
+              outstanding.append({"ref":ref,"status":s,"date":x.get("date")})
+            elif "COMPLETE" in s:
+              failures.append({"ref":ref,"status":s,"date":x.get("date")})
+          rated.sort(key=lambda x:-x["score"])
+          api=KaggleApi();api.authenticate()
+          quota=api.competition_get_submission_limits("name-that-llm")
+          print("NTL_AUTHENTICATED_LEADERBOARD_SNAPSHOT="+json.dumps({
+            "utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "best_three":rated[:3],
+            "scored_total":len(rated),
+            "pending":outstanding[:12],
+            "complete_unscored_recent":failures[:12],
+            "quota_available":quota.num_allowed_now,
+          },sort_keys=True),flush=True)
+          print("NTL_OFFICIAL_SCORE_READ_ONLY_NO_NEW_SUBMISSION=TRUE")
+          PY
