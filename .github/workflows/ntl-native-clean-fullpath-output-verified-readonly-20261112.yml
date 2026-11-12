@@ -1,0 +1,81 @@
+name: NTL finished clean Native realpath artifact exact verification READ-ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-clean-fullpath-output-verified-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify completed private realpath prediction output and no-fit evidence WITHOUT new GPU or submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-verified-private-output
+          python - <<'PY'
+          import os,json,re,csv,io,subprocess,hashlib
+          from pathlib import Path
+          import pandas as pd
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          slug="kolihhan/ntl-native-clean-frozen-prefit-nov12"
+          expected=18
+          result={"slug":slug,"new_training":False,"new_official_submission":False}
+          def cmd(args,timeout=90):
+            return subprocess.run(["kaggle",*args],text=True,capture_output=True,timeout=timeout)
+          p=cmd(["kernels","status",slug])
+          result["private_status"]=" ".join((p.stdout+p.stderr).split())[:220]
+          if p.returncode or "KernelWorkerStatus.COMPLETE" not in (p.stdout+p.stderr):
+            raise SystemExit("STOP_PRIVATE_GPU_REALPATH_NOT_COMPLETE")
+          fl=cmd(["kernels","files",slug,"-v","--page-size","200"])
+          result["file_list_rc"]=fl.returncode
+          result["file_list_has_submission"]="submission.parquet" in fl.stdout
+          if fl.returncode or "submission.parquet" not in fl.stdout:
+            raise SystemExit("STOP_NO_ACTUAL_PARQUET_ON_KAGGLE")
+          out=Path("/tmp/ntl-verified-private-output")
+          pull=cmd(["kernels","output",slug,"-p",str(out),"-o"],timeout=160)
+          if pull.returncode:raise SystemExit("STOP_PRIVATE_OUTPUT_PULL_FAILED")
+          files=[x for x in out.rglob("*") if x.is_file()]
+          output=[x for x in files if x.name=="submission.parquet"]
+          if len(output)!=1:raise SystemExit("STOP_AMBIGUOUS_SUBMISSION_PARQUET")
+          df=pd.read_parquet(output[0])
+          result.update({
+            "rows":int(len(df)),
+            "schema":list(df.columns),
+            "no_null":bool(df["model"].notna().all()),
+            "unique_ids":bool(df["id"].is_unique),
+            "unique_predicted_classes":int(df["model"].nunique()),
+            "output_sha256":hashlib.sha256(output[0].read_bytes()).hexdigest(),
+            "downloaded_log_count":sum(x.suffix==".log" for x in files),
+            "submission_file_count":len(output),
+          })
+          if list(df.columns)!=["id","model"] or len(df)!=3 or not result["no_null"] or not result["unique_ids"]:
+            raise SystemExit("STOP_3ROW_OUTPUT_SHAPE_OR_INTEGRITY_FAILED")
+          labels={
+            "gpt-5.5","gpt-5.6-luna","gpt-5.6-sol","gpt-5.6-terra","gpt-6-astra",
+            "gemini-3.1-pro-preview","gemini-3.6-flash","gemini-3.7-flash","gemini-3.8-flash",
+            "claude-fable-5","claude-opus-4-6","claude-opus-4-8","claude-opus-5","claude-sonnet-5",
+            "qwen3.8-max","glm-5.3","glm-5.3-flash","kimi-k3"}
+          if len(labels)!=18 or not set(df.model).issubset(labels):
+            raise SystemExit("STOP_PREDICTIONS_OUTSIDE_18_LABEL_TAXONOMY")
+          stage_names=[x.name for x in files if x.name.endswith(".log") and ("core-" in x.name or "ensemble" in x.name or "atlas" in x.name or "gsq" in x.name)]
+          result["model_stage_log_count"]=len(stage_names)
+          result["first_real_model_stage_present"]=any("core-" in x for x in stage_names)
+          forbidden_error=[]
+          for f in files:
+            if f.suffix!=".log":continue
+            if f.stat().st_size>8_000_000:continue
+            s=f.read_text(errors="replace")
+            for pattern in ("NO_NEW_TRAINING: supervised Gaussian fitting forbidden",
+              "NO_NEW_TRAINING: Atlas training mode forbidden","NO_NEW_TRAINING: core_worker train-final forbidden"):
+              if pattern in s:forbidden_error.append(pattern.split(":")[-1].strip())
+          result["no_training_guard_exception_count"]=len(forbidden_error)
+          print("NTL_FROZEN_CLEAN_REALPATH_VERIFIED_PRIVATE_OUTPUT="+json.dumps(result,sort_keys=True),flush=True)
+          print("NTL_NO_PUBLIC_BA_IMPROVEMENT_ESTABLISHED=TRUE",flush=True)
+          PY
