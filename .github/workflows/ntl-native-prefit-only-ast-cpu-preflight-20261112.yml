@@ -33,3 +33,4 @@ jobs:
           python -u -m scripts.ntl_native_prefit_only_gpu_mapfix_20261112 --out /tmp/ntl-prefit-candidate-v1
           echo NTL_NATIVE_PREFIT_ONLY_NO_NEW_TRAINING_STATIC_GATE=PASS
           echo NTL_NATIVE_PREFIT_ONLY_NO_GPU_MODEL_OR_KAGGLE_SUBMISSION=TRUE
+          echo NTL_PREFIT_ONLY_DUPLICATE_SPEC_REGRESSION_FIXED=TRUE
