@@ -1,0 +1,152 @@
+name: NTL clean T4 GPU full Native frozen-pretrained realpath ONE private inference
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-clean-gpu-frozen-fullpath-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-clean-gpu-realpath-frozen-20261112-single
+  cancel-in-progress: false
+jobs:
+  fullpath:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_CLEAN_T4_FROZEN_PREFIT_FULLPATH_PRIVATE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 123
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-native-clean-frozen-prefit-nov12
+      ROOT_DIR: /tmp/ntl-native-clean-frozen-gpu
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_prefit_only_gpu_mapfix_20261112.py
+            scripts/ntl_native_clean_gpu_frozen_prefit_20261112.py
+            tests/test_ntl_native_prefit_only_gpu_mapfix_20261112.py
+            tests/test_ntl_native_gpu_mapfix_realpath_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Strict CPU source SHA, clean metadata, no-training controls and GPU quota gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m unittest -q tests.test_ntl_native_gpu_mapfix_realpath_20261112 tests.test_ntl_native_prefit_only_gpu_mapfix_20261112
+          python -m py_compile scripts/ntl_native_clean_gpu_frozen_prefit_20261112.py
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,subprocess,json,csv,io
+          quota=subprocess.run(["kaggle","quota","--format","json"],check=True,capture_output=True,text=True,timeout=95)
+          gpu=[x for x in json.loads(quota.stdout) if x.get("resource")=="GPU"]
+          if len(gpu)!=1:raise SystemExit("STOP_MISSING_AUTH_GPU_BALANCE")
+          remaining=float(str(gpu[0]["remaining"]).rstrip("h"))
+          print("NTL_CLEAN_NATIVE_GPU_BALANCE_HOURS="+str(remaining),flush=True)
+          if remaining<3.0:raise SystemExit("STOP_NOT_ENOUGH_QUOTA_FOR_MODEL_VALIDATION")
+          slug=os.environ["KERNEL"]
+          status=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=85)
+          if status.returncode==0 or "KernelWorkerStatus." in status.stdout+status.stderr:
+            raise SystemExit("STOP_ALREADY_EXISTING_CLEAN_NATIVE_KERNEL")
+          PY
+          python -u -m scripts.ntl_native_clean_gpu_frozen_prefit_20261112 --out "$ROOT_DIR" > /tmp/ntl-native-clean-build.jsonl
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          ls=Path("/tmp/ntl-native-clean-build.jsonl").read_text().splitlines()
+          if len(ls)!=1 or not ls[0].startswith("NTL_CLEAN_FROZEN_GPU_CANDIDATE="):
+            raise SystemExit("STOP_CPU_SOURCE_BUILD_NOT_SINGLE_RESULT")
+          p=json.loads(ls[0].split("=",1)[1])
+          m=json.loads((Path(os.environ["ROOT_DIR"])/"kernel"/"kernel-metadata.json").read_text())
+          if (not p["no_new_training"] or p["new_official_submission"] or
+              not p["original_model_loader_unchanged"] or
+              p["gaussian_flag_changes"]["changes"]!=2 or
+              not p["preview_fixture_disabled"]):
+            raise SystemExit("STOP_POSSIBLE_TRAINING_OR_FROZEN_METHOD_DRIFT")
+          if any(k in m for k in ("docker_image","keywords","id_no")) or m["id"]!=os.environ["KERNEL"]:
+            raise SystemExit("STOP_STALE_CPU_DOCKER_METADATA_PERSISTED")
+          if m["machine_shape"]!="NvidiaTeslaT4" or not m["enable_gpu"]:
+            raise SystemExit("STOP_NOT_GPU_T4_METADATA")
+          if [len(m.get(k) or []) for k in ("dataset_sources","kernel_sources","model_sources")]!=[21,8,6]:
+            raise SystemExit("STOP_PRETRAINED_ASSETS_NOT_PRESERVED")
+          print("NTL_CLEAN_GPU_FULLPATH_PREFLIGHT="+json.dumps(p,sort_keys=True),flush=True)
+          PY
+      - name: Push ONE genuine 2xT4 full Native model 3-row inference, zero training and no official entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$ROOT_DIR/kernel" --accelerator NvidiaTeslaT4 --timeout 4800 >/tmp/ntl-native-clean-full-push.log 2>&1 || {
+            echo STOP_NTL_NATIVE_CLEAN_GPU_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_CLEAN_NATIVE_GPU_FULLPATH_PUSHED=TRUE
+          echo NTL_NO_COMPETITION_SUBMISSION_IN_THIS_ACTION=TRUE
+      - name: Poll this exact private model run, no duplicate or resubmit
+        id: outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 340); do
+            status="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+            state="$(printf '%s' "$status" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$state";then
+              echo 'result=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_CLEAN_FULLPATH_KERNEL_TERMINAL=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$state";then
+              echo 'result=error' >> "$GITHUB_OUTPUT"
+              echo NTL_CLEAN_FULLPATH_KERNEL_TERMINAL=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%15)) -eq 0 ];then echo NTL_CLEAN_NATIVE_FULLPATH_POLL="$i";fi
+            sleep 18
+          done
+          echo 'result=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_CLEAN_FULLPATH_KERNEL_TERMINAL=UNKNOWN_OR_TIMEOUT
+      - name: Safe private output and loader/guard failure classification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-clean-native-realpath-output
+          kaggle kernels output "$KERNEL" -p /tmp/ntl-clean-native-realpath-output -o >/tmp/ntl-clean-gpu-output-get.log 2>&1 || true
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          root=Path("/tmp/ntl-clean-native-realpath-output")
+          files=[x for x in root.rglob("*") if x.is_file()]
+          errors=[]
+          for f in files:
+            if f.suffix.lower() not in (".log",".txt"):continue
+            body=f.read_text(errors="replace")
+            for s in body.splitlines():
+              m=re.search(r'\b(RuntimeError|ImportError|ModuleNotFoundError|ValueError|AssertionError|TypeError|FileNotFoundError|CUDAError|OutOfMemoryError|KeyError|OSError):',s)
+              if m:errors.append(m.group(1))
+          payload=root/"submission.parquet"
+          report={
+            "private_files":len(files),"log_count":sum(f.suffix.lower()==".log" for f in files),
+            "error_classes":sorted(set(errors)),
+            "submission_generated":payload.exists(),
+            "no_new_supervised_training":True,
+            "new_official_entry":False,
+          }
+          if payload.exists():
+            import pandas as pd
+            x=pd.read_parquet(payload,columns=["id","model"])
+            report["output_rows"]=int(len(x))
+            report["unique_ids"]=bool(x["id"].is_unique)
+            report["no_null_models"]=bool(x["model"].notna().all())
+            report["all_models_text"]=bool(x["model"].map(lambda v:isinstance(v,str)).all())
+          print("NTL_CLEAN_GPU_NATIVE_REALPATH_SAFE_RESULT="+json.dumps(report,sort_keys=True),flush=True)
+          PY
+          echo NTL_CLEAN_NATIVE_REALPATH_HAS_NO_NEW_PUBLIC_BA_YET=TRUE
+      - name: Do not confuse private validation and official score
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.outcome.outputs.result }}" != pending
+          echo NTL_CLEAN_NATIVE_ONE_PRIVATE_MODEL_TEST_ACCOUNTED_FOR=TRUE
