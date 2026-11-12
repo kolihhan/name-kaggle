@@ -1,0 +1,51 @@
+name: NTL read-only public frozen 0.700+ and sibling expert Notebook source discovery
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-public-frozen-0700-expert-source-discovery-20261112.yml]
+permissions: {contents: read}
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Search metadata ONLY for candidate independent pretrained exact-sibling sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,datetime,re
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          searches=["0.70","0.71","0.72","0.73","0.74","0.75",
+                    "sibling","contrastive","exact model","likelihood","frozen","attribution"]
+          seen={}
+          overview={}
+          for search in searches:
+            try:
+              rows=api.kernels_list(competition="name-that-llm",search=search,page=1,page_size=100) or []
+              overview[search]=len(rows)
+              for x in rows:
+                ref=getattr(x,"ref",None)
+                if not ref:continue
+                o=seen.setdefault(ref,{"ref":ref,"title":str(getattr(x,"title",""))[:145],
+                   "author":str(getattr(x,"author",""))[:65],
+                   "votes":getattr(x,"total_votes",None) or 0,
+                   "search_terms":[]})
+                o["search_terms"].append(search)
+            except Exception as e:overview[search]="API_ERROR:"+type(e).__name__
+          sorted_rows=sorted(seen.values(),key=lambda x:(-len(x["search_terms"]),-int(x["votes"] or 0),x["ref"]))
+          # This is untrusted author text. Notebook titles are not verified Kaggle scores.
+          print("NTL_PRETRAINED_EXPERT_DISCOVERY="+json.dumps({
+            "utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "search_counts":overview,"unique_public_candidates":len(seen),
+            "possible_source_refs":sorted_rows[:65],
+            "public_titles_are_UNVERIFIED_score_claims":True,
+            "no_candidate_selected_for_training_or_submission":True
+          },sort_keys=True),flush=True)
+          print("NTL_SOURCE_DISCOVERY_READONLY_NO_KAGGLE_GPU_OR_SUBMISSION=TRUE")
+          PY
