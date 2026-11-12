@@ -50,3 +50,5 @@ jobs:
           },sort_keys=True),flush=True)
           print("NTL_OFFICIAL_SCORE_READ_ONLY_NO_NEW_SUBMISSION=TRUE")
           PY
+
+# verified-again: 2026-11-12 22:35 MYT, read-only score ledger and competition quota
