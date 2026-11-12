@@ -1,0 +1,147 @@
+name: NTL native full inference 3-row private smoke ONE GPU no official submission
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-fullpath-diagnostic-smoke-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-realpath-smoke-once-nov12
+  cancel-in-progress: false
+jobs:
+  run:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_NATIVE_FULLPATH_DIAGNOSTIC_SMOKE_ONE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      REF: kolihhan/ntl-native-realpath-smoke-20261112
+      ROOT_DIR: /tmp/ntl-native-fullpath-smoke-once
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: CPU frozen-source, guard and GPU quota check BEFORE any push
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python -m py_compile scripts/ntl_native_fullpath_smoke_20261112.py
+          python - <<'PY'
+          import json,subprocess,os
+          p=subprocess.run(["kaggle","quota","--format","json"],capture_output=True,text=True,check=True,timeout=85)
+          rows=json.loads(p.stdout)
+          gpu=[x for x in rows if x.get("resource")=="GPU"]
+          if len(gpu)!=1:raise SystemExit("STOP_NO_KAGGLE_GPU_QUOTA_EVIDENCE")
+          balance=float(str(gpu[0].get("remaining")).rstrip("h"))
+          print("NTL_REALPATH_GPU_QUOTA_HOURS="+str(balance),flush=True)
+          if balance<2:raise SystemExit("STOP_GPU_REMAINING_LT_TWO_HOURS")
+          status=subprocess.run(["kaggle","kernels","status",os.environ["REF"]],capture_output=True,text=True,timeout=80)
+          if status.returncode==0 or "KernelWorkerStatus." in status.stdout+status.stderr:
+            raise SystemExit("STOP_FULLPATH_SMOKE_ALREADY_EXISTS_NO_OVERWRITE")
+          print("NTL_REALPATH_NO_DUPLICATE_KAGGLE_KERNEL=TRUE",flush=True)
+          PY
+          python -u scripts/ntl_native_fullpath_smoke_20261112.py --root "$ROOT_DIR" > /tmp/ntl-native-smoke-build.log
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path("/tmp/ntl-native-smoke-build.log")
+          lines=p.read_text().splitlines()
+          assert len(lines)==1 and lines[0].startswith("NTL_NATIVE_FULLPATH_SMOKE_SOURCE=")
+          v=json.loads(lines[0].split("=",1)[1])
+          assert v["changed_code_lines"]==1
+          assert v["training_guards_preserved"]==3
+          assert v["competition_submission"] is False and v["new_training"] is False
+          meta=json.loads((Path(os.environ["ROOT_DIR"])/"kernel"/"kernel-metadata.json").read_text())
+          assert meta["id"]==os.environ["REF"] and meta["title"]=="ntl-native-realpath-smoke-20261112"
+          assert meta["enable_gpu"] is True and meta["is_private"] is True
+          assert meta["enable_internet"] is False
+          print("NTL_REALPATH_STATIC_PRECHECK="+json.dumps(v,sort_keys=True),flush=True)
+          PY
+      - name: ONE private Kaggle GPU execution forcing actual pipeline, no official submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$ROOT_DIR/kernel" --accelerator NvidiaTeslaT4 --timeout 3000 > /tmp/ntl-native-smoke-push.log 2>&1 || {
+            echo STOP_PRIVATE_SMOKE_PUSH_FAILED;
+            exit 1;
+          }
+          echo NTL_REALPATH_ONE_PRIVATE_SMOKE_PUSH_ACCEPTED=TRUE
+          echo NTL_REALPATH_NO_COMPETITION_SUBMISSION=TRUE
+      - name: Wait only this private run until terminal, do not retry
+        id: terminal
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 105); do
+            state="$(kaggle kernels status "$REF" 2>&1 || true)"
+            upper="$(printf '%s' "$state" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$upper"; then
+              echo "outcome=complete" >> "$GITHUB_OUTPUT"
+              echo NTL_REALPATH_PRIVATE_KERNEL_TERMINAL=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$upper"; then
+              echo "outcome=error" >> "$GITHUB_OUTPUT"
+              echo NTL_REALPATH_PRIVATE_KERNEL_TERMINAL=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
+              echo NTL_REALPATH_PRIVATE_POLL="$i"
+            fi
+            sleep 30
+          done
+          echo "outcome=unavailable" >> "$GITHUB_OUTPUT"
+          echo NTL_REALPATH_PRIVATE_TERMINAL=UNAVAILABLE
+      - name: Extract bounded diagnostics from existing private outputs, no dataset text
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-realpath-result
+          python - <<'PY'
+          import json,os,re,subprocess
+          from pathlib import Path
+          dest=Path("/tmp/ntl-realpath-result")
+          ref=os.environ["REF"]
+          results={"ref":ref,"no_training":True,"no_competition_submit":True}
+          status=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True,timeout=80)
+          val=(status.stdout+" "+status.stderr)
+          match=re.search(r'KernelWorkerStatus\.([A-Z_]+)',val)
+          results["status"]=match.group(1) if match else "UNKNOWN"
+          files=subprocess.run(["kaggle","kernels","files",ref,"-v","--page-size","200"],
+              capture_output=True,text=True,timeout=100)
+          results["file_listing_ok"]=files.returncode==0
+          results["submission_generated"]="submission.parquet" in files.stdout if files.returncode==0 else False
+          results["log_reference_detected"]=bool(re.search(r'(__notebook__|\.log|kernel_output)',files.stdout,re.I))
+          print("NTL_NATIVE_FULLPATH_PRIVATE_DIAGNOSTIC="+json.dumps(results,sort_keys=True),flush=True)
+          # Read only exception class/line from returned metadata if available.
+          out=subprocess.run(["kaggle","kernels","output",ref,"-p",str(dest),"-o"],
+             capture_output=True,text=True,timeout=140)
+          results["output_download_exit"]=out.returncode
+          names=[x.name for x in dest.iterdir() if x.is_file()]
+          results["output_exts"]=sorted({Path(x).suffix for x in names})
+          for file in dest.iterdir():
+            if file.suffix.lower() not in (".log",".txt"):
+              continue
+            try:body=file.read_text(errors="replace")
+            except Exception:continue
+            found=re.findall(r'(?m)^\s*(?:RuntimeError|ImportError|ModuleNotFoundError|ValueError|AssertionError|TypeError|FileNotFoundError|CUDAError|OutOfMemoryError|KeyError|OSError):\s*([^\n]*)',body)
+            if found:
+              # redact values, paths, raw text by retaining error class only
+              results["exception_lines_present"]=len(found)
+              results["exception_classes"]=sorted(set(re.findall(r'(?m)^\s*(RuntimeError|ImportError|ModuleNotFoundError|ValueError|AssertionError|TypeError|FileNotFoundError|CUDAError|OutOfMemoryError|KeyError|OSError):',body)))
+          print("NTL_NATIVE_FULLPATH_SAFE_LOG_CLASSIFICATION="+json.dumps(results,sort_keys=True),flush=True)
+          PY
+      - name: Require either completed or confirmed failed full inference, never claim score
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.terminal.outputs.outcome }}" != unavailable
+          echo NTL_REALPATH_RESULT_IS_DIAGNOSTIC_NOT_COMPETITION_SCORE=TRUE
