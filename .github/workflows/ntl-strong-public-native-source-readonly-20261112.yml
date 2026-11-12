@@ -1,0 +1,71 @@
+name: NTL stronger public native notebooks provenance and full-preview audit (read-only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-strong-public-native-source-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect four public NTL candidates, no execution, training or submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import hashlib,json,subprocess,re
+          from pathlib import Path
+          refs=(
+            "wadigongren/name-that-llm-0684-clean-baseline",
+            "feiyu26/ntl-0684-baseline",
+            "feiyu26/ntl-0684-mix50",
+            "areebbb/0-683-this-actually-works",
+          )
+          for i,ref in enumerate(refs):
+            folder=Path("/tmp/ntl-public-native-probe")/str(i)
+            folder.mkdir(parents=True,exist_ok=True)
+            p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(folder),"-m"],
+              capture_output=True,text=True,timeout=100)
+            if p.returncode:
+              print("NTL_PUBLIC_NATIVE_CANDIDATE="+json.dumps({"ref":ref,"pull_status":"failed","rc":p.returncode}),flush=True)
+              continue
+            meta_path=folder/"kernel-metadata.json"
+            files=list(folder.glob("*.ipynb"))
+            if not meta_path.is_file() or len(files)!=1:
+              print("NTL_PUBLIC_NATIVE_CANDIDATE="+json.dumps({"ref":ref,"pull_status":"unexpected-file-layout","notebooks":len(files)}),flush=True)
+              continue
+            meta=json.loads(meta_path.read_text())
+            src=files[0].read_bytes()
+            nb=json.loads(src)
+            blocks=["".join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source",""))
+                 for c in nb.get("cells",[]) if c.get("cell_type")=="code"]
+            code="\n".join(blocks)
+            markdown="\n".join("".join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source",""))
+                 for c in nb.get("cells",[]) if c.get("cell_type")=="markdown")
+            s=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True,timeout=80)
+            status=" ".join((s.stdout or s.stderr).strip().split())[:180]
+            row={
+              "ref":ref,"pull_status":"success",
+              "source_sha256":hashlib.sha256(src).hexdigest(),
+              "code_sha256":hashlib.sha256(code.encode()).hexdigest(),
+              "status":status,
+              "metadata":{k:meta.get(k) for k in (
+                "id","kernel_type","language","is_private","enable_gpu",
+                "enable_internet","machine_shape","code_file","competition_sources",
+                "dataset_sources","kernel_sources","model_sources","license",
+                "current_version_number") if k in meta},
+              "code_cell_count":len(blocks),"code_chars":len(code),
+              "has_submission_parquet":bool(re.search(r"submission\\.parquet",code)),
+              "fit_calls":len(re.findall(r"\\.(?:fit|fit_transform|partial_fit)\\s*\\(",code)),
+              "training_operations":len(re.findall(r"\\.(?:backward|optimizer|train_final)\\b",code)),
+              "train_flag_present":bool(re.search(r"(?:--train|train_final|training\\s*=\\s*True)",code)),
+              "markdown_license_terms":sorted(set(re.findall(r"(?i)apache.?2\\.0|mit license|cc by.sa|all rights reserved",markdown)))[:8],
+            }
+            print("NTL_PUBLIC_NATIVE_CANDIDATE="+json.dumps(row,sort_keys=True,default=str),flush=True)
+          print("NTL_PUBLIC_NATIVE_NO_CODE_EXECUTION_OR_SUBMISSION=TRUE",flush=True)
+          PY
