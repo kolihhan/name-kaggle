@@ -1,0 +1,49 @@
+name: NTL 4000row hidden time-budget static model stage complexity audit READONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-4000row-bottleneck-source-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect original Native 6-model stage batch and token constants without touching model weights
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-source-scale-code
+          kaggle kernels pull kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-source-scale-code -m >/tmp/ntl-src-pull.log 2>&1
+          python - <<'PY'
+          import json,re,ast
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-source-scale-code").glob("*.ipynb")).read_text())
+          for idx in (17,34,36,40,43,49,50):
+            cell=nb["cells"][idx]
+            s=cell.get("source",[])
+            lines=("".join(s) if isinstance(s,list) else str(s)).splitlines()
+            patterns=[
+              r"(?i)batch(?:_size)?\s*[=:]",r"(?i)(?:max_)?(?:seq_)?len(?:gth)?\s*[=:]",
+              r"(?i)max_new_tokens",r"(?i)torch\.no_grad",r"(?i)autocast",r"(?i)cuda",
+              r"(?i)for .* in range\(",r"(?i)np\.zeros\(",r"(?i)np\.save",
+              r"(?i)for .* in enumerate\(",r"(?i)\.to_parquet\(",
+              r"(?i)fit_transform\(",r"(?i)\.fit\(",r"(?i)from_pretrained\(",
+            ]
+            hits=[]
+            for line_no,line in enumerate(lines,1):
+              if any(re.search(p,line) for p in patterns):
+                safe=" ".join(line.strip().split())[:180]
+                safe=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT>",safe)
+                if any(secret in safe.lower() for secret in ("api_key","password","bearer","secret","prompt","text_value")):
+                  safe="<omitted>"
+                hits.append({"n":line_no,"syntax":safe})
+            print("NTL_STATIC_4000ROW_STAGE_COST="+json.dumps({
+              "cell":idx,"source_lines":len(lines),"model_batch_and_loop_sites":hits[:55]
+            },sort_keys=True),flush=True)
+          print("NTL_STATIC_BUDGET_AUDIT_NO_MODEL_EXEC_OR_SUBMISSION=TRUE")
+          PY
