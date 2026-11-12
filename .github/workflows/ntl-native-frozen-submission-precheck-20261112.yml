@@ -1,0 +1,62 @@
+name: NTL no-training native 4fit candidates exact guard locations only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-frozen-submission-precheck-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect three independent native sources without executing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,re,hashlib,subprocess
+          from pathlib import Path
+          refs=(
+            "shakshamkarkiii/ntl-native-ensemble",
+            "helen0/ntl-v22-native-first",
+            "galangcakrabuana/name-that-llm-apex-v3-safe",
+          )
+          for i,ref in enumerate(refs):
+            folder=Path("/tmp/ntl-preflight-native")/str(i)
+            folder.mkdir(parents=True,exist_ok=True)
+            p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(folder),"-m"],
+                capture_output=True,text=True,timeout=95)
+            assert p.returncode==0
+            f=list(folder.glob("*.ipynb"))
+            assert len(f)==1
+            nb=json.loads(f[0].read_text())
+            blocks=[]
+            for ix,cell in enumerate(nb.get("cells",[])):
+              if cell.get("cell_type")!="code":continue
+              code="".join(cell["source"]) if isinstance(cell.get("source"),list) else str(cell.get("source",""))
+              blocks.append((ix,code))
+            contexts=[]
+            for idx,code in blocks:
+              lines=code.splitlines()
+              for k,line in enumerate(lines):
+                if re.search(r"\.(?:fit|fit_transform|partial_fit|backward|step|zero_grad)\s*\(",line):
+                  contexts.append({"cell":idx,"line":k+1,"text":" ".join(line.strip().split())[:180]})
+            raw="\n".join(code for _,code in blocks)
+            report={
+              "source":ref,"sha256":hashlib.sha256(f[0].read_bytes()).hexdigest(),
+              "fit_contexts":contexts,
+              "reproduction_release_ready":raw.count("'RELEASE_READY': True"),
+              "gauss_import_in_member_scores":sum("def member_scores" in code and "import gauss\n" in code for _,code in blocks),
+              "gauss_fit":raw.count("gauss.fit(")+raw.count("_ga.fit("),
+              "atlas_training_guard_anchor":raw.count("if training:\n        base.gradient_checkpointing_enable"),
+              "core_cli_guard_anchor":raw.count("args = parser.parse_args()\n    config ="),
+              "core_train_final":raw.count("--train-final"),
+              "native_submissions":raw.count("submission.parquet"),
+              "code_cells":len(blocks),
+            }
+            print("NTL_NATIVE_GUARD_PREFLIGHT="+json.dumps(report,sort_keys=True),flush=True)
+          PY
