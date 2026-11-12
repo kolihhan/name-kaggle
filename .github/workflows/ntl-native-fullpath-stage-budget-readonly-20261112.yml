@@ -1,0 +1,54 @@
+name: NTL genuine Native 3row stage and 9h hidden-scale feasibility READ-ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-fullpath-stage-budget-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect stage log metadata, runtime markers and potential scaling risks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-3row-runtime-audit
+          kaggle kernels output kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-native-3row-runtime-audit -o >/tmp/ntl-runtime-pull.log 2>&1
+          python - <<'PY'
+          import re,json,datetime
+          from pathlib import Path
+          root=Path("/tmp/ntl-native-3row-runtime-audit")
+          stage=[]
+          elapsed=[]
+          for p in root.rglob("*"):
+            if not p.is_file() or p.suffix!=".log":continue
+            body=p.read_text(encoding="utf-8",errors="replace")
+            stage_name=p.name
+            info={
+             "stage_log":stage_name[:95],
+             "bytes":p.stat().st_size,
+             "lines":len(body.splitlines()),
+             "has_traceback":bool(re.search(r"Traceback \(most recent call last\)",body)),
+             "has_cuda_error":bool(re.search(r"CUDA out of memory|Cannot access accelerator device|CUDA unavailable",body,re.I)),
+             "has_forbidden_supervised_fit":bool(re.search(r"NO_NEW_TRAINING:.*forbidden",body)),
+             "cuda_model_alloc_noted":bool(re.search(r"cuda|accelerat|GPU|device_map",body,re.I)),
+            }
+            for m in re.finditer(r"(?:elapsed|runtime|duration|took|time)[_:= ]+([0-9]+(?:\.[0-9]+)?)\s*(seconds|sec|s|min|minutes|h|hours)?",body,re.I):
+              if len(elapsed)<24:
+                elapsed.append({"stage":stage_name[:45],"value":m.group(1),"unit":m.group(2)})
+            stage.append(info)
+          print("NTL_NATIVE_3ROW_STAGE_RESOURCE_SUMMARY="+json.dumps({
+              "stage_count":len(stage),"stages":sorted(stage,key=lambda x:x["stage_log"]),
+              "possible_elapsed_markers":elapsed,
+              "hidden_expected_rows_approx":4000,
+              "preview_rows":3,
+              "official_max_runtime_hours":9,
+              "cannot_project_hidden_runtime_without_batch_benchmark":True
+          },sort_keys=True),flush=True)
+          print("NTL_RUNTIME_AUDIT_READ_ONLY_NO_NEW_GPU_OR_SUBMISSION=TRUE",flush=True)
+          PY
