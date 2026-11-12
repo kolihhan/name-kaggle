@@ -132,7 +132,7 @@ def make(out: Path) -> dict:
     }
     if any(k in clean for k in ("docker_image","keywords","id_no")):
         raise ValueError("legacy CPU runtime metadata leaked")
-    meta_path.write_text(json.dumps(clean,indent=2,sort_keys=True)+"\\n",encoding="utf-8")
+    meta_path.write_text(json.dumps(clean,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     return {**record,
         "destination":DEST,
         "notebook_sha256":hashlib.sha256(final).hexdigest(),
