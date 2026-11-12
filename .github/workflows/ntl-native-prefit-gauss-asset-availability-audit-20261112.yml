@@ -1,0 +1,51 @@
+name: NTL native frozen Gaussian pretrained readout availability audit READ ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-prefit-gauss-asset-availability-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Audit own original Native prefit asset names and supervised Gaussian call sites; no input download
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-gauss-static-only
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-gauss-static-only -m >/tmp/ntl-gauss-pull.log 2>&1
+          python - <<'PY'
+          import json,re,collections,hashlib
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-gauss-static-only").glob("*.ipynb")).read_text())
+          metadata=json.loads(Path("/tmp/ntl-gauss-static-only/kernel-metadata.json").read_text())
+          out={}
+          for idx in (10,14,17,43):
+            s=nb["cells"][idx].get("source",[])
+            text="".join(s) if isinstance(s,list) else str(s)
+            lines=text.splitlines()
+            keyterms=r'gauss|readout|\.fit\(|\.load\(|np\.load|safetensors|pickle\.load|coef_|covariance|means_|train_redo|test_redo'
+            match=[]
+            for num,line in enumerate(lines,1):
+              if not re.search(keyterms,line,re.I):continue
+              v=" ".join(line.strip().split())[:200]
+              v=re.sub(r"/kaggle/input/[^\s'\x22]+","<SOURCE_MOUNT>",v)
+              v=re.sub(r"(?i)(secret|api[_-]?key|token)\s*[=:].*","<REDACTED>",v)
+              match.append({"source_line":num,"code":v})
+            out[str(idx)]={"code_lines":len(lines),"matching_call_sites":match[:45]}
+          sources=metadata.get("dataset_sources",[]) or []
+          print("NTL_GAUSS_READOUT_SOURCE_CALL_SITES="+json.dumps(out,sort_keys=True),flush=True)
+          print("NTL_GAUSS_PREFIT_MOUNT_REFERENCE_HINTS="+json.dumps({
+            "dataset_sources_n":len(sources),
+            "gauss_named_references":[ref for ref in sources if re.search(r'gauss|readout|head|prefit',str(ref),re.I)][:20],
+            "model_sources_n":len(metadata.get("model_sources",[]) or []),
+            "kernel_sources_n":len(metadata.get("kernel_sources",[]) or []),
+            "no_model_or_dataset_rows_accessed":True
+          },sort_keys=True),flush=True)
+          PY
