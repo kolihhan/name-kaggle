@@ -1,0 +1,146 @@
+name: NTL exact two frozen Gaussian pretrained heads private full GPU inference one shot
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-frozen-gauss-prefit-private-3row-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-prefit-gauss-3row-single-20261112
+  cancel-in-progress: false
+jobs:
+  exact:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_RESTORE_TWO_FROZEN_GAUSS_ONLY_ONE_PRIVATE_GPU_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DEST: kolihhan/ntl-native-frozen-gauss-readonly-nov12
+      SOURCE_ROOT: /tmp/ntl-native-gauss-frozen-readonly
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_prefit_only_gpu_mapfix_20261112.py
+            scripts/ntl_native_clean_gpu_frozen_prefit_20261112.py
+            scripts/ntl_native_restore_frozen_gauss_no_fit_20261112.py
+            tests/test_ntl_native_restore_frozen_gauss_no_fit_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Frozen original code and no-new-training, Kaggle GPU quota, nonduplicate preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m unittest -q tests.test_ntl_native_restore_frozen_gauss_no_fit_20261112
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import os,json,subprocess
+          p=subprocess.run(["kaggle","quota","--format","json"],
+             capture_output=True,text=True,check=True,timeout=90)
+          rows=json.loads(p.stdout)
+          gpu=[x for x in rows if x.get("resource")=="GPU"]
+          if len(gpu)!=1:raise SystemExit("STOP_NO_KAGGLE_GPU_QUOTA")
+          available=float(str(gpu[0]["remaining"]).rstrip("h"))
+          print("NTL_RESTORED_GAUSS_GPU_REMAINING_HOURS="+str(available),flush=True)
+          if available<2.0:raise SystemExit("STOP_GPU_QUOTA_LOW_FOR_TWO_T4_MODEL_TEST")
+          slug=os.environ["DEST"]
+          q=subprocess.run(["kaggle","kernels","status",slug],
+             capture_output=True,text=True,timeout=85)
+          if q.returncode==0 or "KernelWorkerStatus." in q.stdout+q.stderr:
+            raise SystemExit("STOP_EXACT_FROZEN_GAUSS_KERNEL_ALREADY_EXISTS")
+          PY
+          python -u -m scripts.ntl_native_restore_frozen_gauss_no_fit_20261112 --out "$SOURCE_ROOT" >/tmp/ntl-gauss-builder.jsonl
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=Path("/tmp/ntl-gauss-builder.jsonl").read_text().splitlines()
+          if len(data)!=1 or not data[0].startswith("NTL_FROZEN_GAUSS_RESTORE_CANDIDATE="):
+            raise SystemExit("STOP_NOT_ONE_IMMUTABLE_FROZEN_BUILD")
+          spec=json.loads(data[0].split("=",1)[1])
+          if spec["gaussian_prefit_original_weights"]!={"q14v5":0.7,"q8v5":0.44} or not spec["runtime_retraining_disabled"]:
+            raise SystemExit("STOP_UNSAFE_SUPERVISED_GAUSSIAN_CANDIDATE")
+          root=Path(os.environ["SOURCE_ROOT"])/"kernel"
+          meta=json.loads((root/"kernel-metadata.json").read_text())
+          if (meta["id"]!=os.environ["DEST"] or "docker_image" in meta or
+              meta["machine_shape"]!="NvidiaTeslaT4" or not meta["enable_gpu"] or
+              len(meta["dataset_sources"])!=21 or len(meta["model_sources"])!=6):
+            raise SystemExit("STOP_LEGACY_CPU_GPU_OR_SOURCE_MISMATCH")
+          print("NTL_RESTORED_GAUSS_CPU_PREFLIGHT="+json.dumps(spec,sort_keys=True),flush=True)
+          PY
+      - name: Run exactly one private 3row genuine six-model pretrained Gaussian inference, NO submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$SOURCE_ROOT/kernel" --accelerator NvidiaTeslaT4 --timeout 4800 >/tmp/ntl-gaussian-gpu-push.log 2>&1 || {
+            echo STOP_NTL_GAUSS_PRIVATE_GPU_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_GAUSSIAN_FROZEN_PRIVATE_T4_PUSHED=TRUE
+          echo NTL_GAUSSIAN_NO_COMPETITION_SUBMISSION=TRUE
+      - name: Poll only this exact new private model run, never retry
+        id: terminal
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 360); do
+            st="$(kaggle kernels status "$DEST" 2>&1 || true)"
+            up="$(printf '%s' "$st" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$up";then
+              echo 'state=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_GAUSSIAN_PRIVATE_STATUS=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$up";then
+              echo 'state=error' >> "$GITHUB_OUTPUT"
+              echo NTL_GAUSSIAN_PRIVATE_STATUS=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%20)) -eq 0 ];then echo NTL_GAUSS_GPU_POLL="$i";fi
+            sleep 18
+          done
+          echo 'state=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_GAUSSIAN_PRIVATE_STATUS=TIMEOUT_UNKNOWN
+      - name: Read actual private output and compare unchanged 3 test IDs only
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-gauss-3row-output /tmp/ntl-gauss-existing-3row-output
+          kaggle kernels output "$DEST" -p /tmp/ntl-gauss-3row-output -o >/tmp/ntl-gaussian-private-out.log 2>&1 || true
+          kaggle kernels output kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-gauss-existing-3row-output -o >/tmp/ntl-gaussian-old-out.log 2>&1 || true
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          import pandas as pd
+          current=Path("/tmp/ntl-gauss-3row-output")
+          prior=Path("/tmp/ntl-gauss-existing-3row-output")
+          file=current/"submission.parquet"
+          report={"new_official_submission":False,"new_supervised_training":False,
+                  "parquet_generated":file.is_file(),
+                  "private_log_count":len(list(current.rglob("*.log"))),
+                  "actual_official_balanced_accuracy":None}
+          if file.is_file():
+            x=pd.read_parquet(file)
+            if list(x.columns)!=["id","model"] or len(x)!=3 or not x.id.is_unique or not x.model.notna().all():
+              raise SystemExit("STOP_GAUSSIAN_PRIVATE_PREDICTION_FILE_INVALID")
+            report["valid_rows"]=3
+            old=prior/"submission.parquet"
+            if old.is_file():
+              y=pd.read_parquet(old)
+              if len(y)==3 and x.id.tolist()==y.id.tolist():
+                report["different_predictions_vs_gaussian_disabled"]=int((x.model!=y.model).sum())
+          errors=[]
+          for p in current.rglob("*.log"):
+            if p.stat().st_size>10_000_000:continue
+            for line in p.read_text(errors="replace").splitlines():
+              m=re.search(r'(RuntimeError|ValueError|AssertionError|OSError|KeyError|TypeError|FileNotFoundError):',line)
+              if m:errors.append(m.group(1))
+          report["exception_types"]=sorted(set(errors))
+          print("NTL_GAUSSIAN_FROZEN_3ROW_PRIVATE_RESULT="+json.dumps(report,sort_keys=True),flush=True)
+          print("NTL_GAUSSIAN_NO_PUBLIC_SCORE_CLAIM=TRUE")
+          PY
