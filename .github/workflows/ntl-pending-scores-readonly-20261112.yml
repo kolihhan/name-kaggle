@@ -47,4 +47,6 @@ jobs:
               },sort_keys=True),flush=True)
           PY
       - name: Confirm read-only status check
-        run: echo NTL_READ_ONLY_NO_GPU_OR_SUBMISSION=TRUE
+        run: |
+          echo NTL_READ_ONLY_NO_GPU_OR_SUBMISSION=TRUE
+          echo NTL_20261112_POST_EARLYEDIT_STATUS_RECHECK=TRUE
