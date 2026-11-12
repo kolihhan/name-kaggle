@@ -1,0 +1,67 @@
+name: NTL Native no-training Gaussian branch reachability static audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-frozen-gaussian-branch-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect only published model switches and Gaussian fit guards without execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-fit-config
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-native-fit-config -m >/tmp/ntl-source-pull.log 2>&1
+          python - <<'PY'
+          import ast,json,re
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-native-fit-config").glob("*.ipynb")).read_text())
+          def text(i):
+            s=nb["cells"][i].get("source",[])
+            return "".join(s) if isinstance(s,list) else str(s)
+          source=text(5)
+          print("NTL_CONFIG_SOURCE_LENGTH="+str(len(source)),flush=True)
+          tree=ast.parse(source)
+          def key_str(node):
+            try:return ast.literal_eval(node)
+            except Exception:return None
+          configs=[]
+          for node in ast.walk(tree):
+            if isinstance(node,(ast.Assign,ast.AnnAssign)):
+              targets=node.targets if isinstance(node,ast.Assign) else [node.target]
+              if any(isinstance(t,ast.Name) and t.id=="CONFIG" for t in targets):
+                configs.append(node.value)
+          if len(configs)!=1 or not isinstance(configs[0],ast.Dict):
+            raise SystemExit("STOP_CONFIG_DICT_AST_NOT_UNIQUE")
+          mapping={key_str(k):v for k,v in zip(configs[0].keys,configs[0].values)}
+          models=mapping.get("models")
+          if not isinstance(models,(ast.List,ast.Tuple)):
+            raise SystemExit("STOP_MODEL_LIST_NOT_STATIC")
+          result=[]
+          for i,n in enumerate(models.elts):
+            if not isinstance(n,ast.Dict):
+              raise SystemExit("STOP_UNEXPECTED_MODEL_SPEC")
+            ent={key_str(k):v for k,v in zip(n.keys,n.values)}
+            obj={}
+            for field in ("name","keep","gauss","weight","max_len","layers","no_final_norm"):
+              if field in ent:
+                try:obj[field]=ast.literal_eval(ent[field])
+                except Exception:obj[field]="NON_LITERAL"
+            result.append(obj)
+          print("NTL_STATIC_FROZEN_MODEL_SWITCHES="+json.dumps(result,sort_keys=True),flush=True)
+          conditional=[]
+          for ci in (14,17,43):
+            src=text(ci)
+            for i,line in enumerate(src.splitlines(),1):
+              if "gauss.fit" in line or "spec.get('gauss'" in line or "if not train_final" in line or "train_frame" in line:
+                conditional.append({"cell":ci,"line":i,"code":" ".join(line.strip().split())[:190]})
+          print("NTL_STATIC_GAUSS_FIT_REACHABILITY="+json.dumps(conditional[:45],sort_keys=True),flush=True)
+          print("NTL_STATIC_CANDIDATE_NO_INFERENCE_OR_TRAINING=TRUE")
+          PY
