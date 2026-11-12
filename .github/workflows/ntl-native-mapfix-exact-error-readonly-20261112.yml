@@ -1,0 +1,56 @@
+name: NTL mapfix realpath failed GPU smoke exact error and patch execution read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-mapfix-exact-error-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read only existing mapfix private kernel runtime logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-mapfix-v1-readonly
+          kaggle kernels output kolihhan/ntl-native-gpu-mapfix-smoke-nov12 -p /tmp/ntl-mapfix-v1-readonly -o >/tmp/ntl-mapfix-log-get.log 2>&1
+          python - <<'PY'
+          import re,json,hashlib
+          from pathlib import Path
+          root=Path("/tmp/ntl-mapfix-v1-readonly")
+          flags=[]
+          for f in root.glob("*.log"):
+            txt=f.read_text(errors="replace")
+            clean=re.sub(r'\x1b\[[0-9;]*m','',txt)
+            lines=clean.splitlines()
+            errors=[]
+            frames=[]
+            markers=[]
+            for i,s in enumerate(lines):
+              match=re.search(r'(?:RuntimeError|ValueError|AssertionError|OSError|TypeError|ImportError|ModuleNotFoundError|OutOfMemoryError):\s*(.*)',s)
+              if match:
+                # Retain known, data-free device/loader errors only.
+                value=match.group(1)
+                if (len(value)<180 and re.search(r'accelerator|device|CUDA|GPU|warmup|memory|kernel|processor|training|concurrency|meta|torch',value,re.I)):
+                  errors.append({"line":i+1,"type":s.split(":",1)[0][-38:],"technical_message":value})
+                else:
+                  errors.append({"line":i+1,"type":s.split(":",1)[0][-38:],"technical_message":"REDACTED_OTHER"})
+              m=re.search(r'File ["\x27]([^"\x27]+)["\x27], line (\d+), in (\S+)',s)
+              if m:
+                frames.append({"basename":Path(m.group(1)).name,"source_line":int(m.group(2)),"function":m.group(3)})
+              if "NTL_CORE_GPU_LOADER_PROBE=" in s:
+                part=s.split("NTL_CORE_GPU_LOADER_PROBE=",1)[-1].strip()
+                try:
+                  d=json.loads(part)
+                  markers.append({k:d.get(k) for k in ("policy","cuda_available","device_count","visible_mask","torch_cuda_build")})
+                except Exception:markers.append({"invalid_probe_format":True})
+            flags.append({"log_size":f.stat().st_size,"sha256":hashlib.sha256(f.read_bytes()).hexdigest(),
+             "traceback_frames":frames[-22:],"errors":errors[-20:],"loader_probe":markers[-3:]})
+          print("NTL_MAPFIX_EXACT_EXISTING_FAILURE="+json.dumps(flags,sort_keys=True),flush=True)
+          print("NTL_MAPFIX_FAILURE_READ_ONLY_NO_GPU_TRAINING_OR_SUBMISSION=TRUE")
+          PY
