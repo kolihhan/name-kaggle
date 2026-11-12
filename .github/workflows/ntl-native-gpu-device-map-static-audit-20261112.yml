@@ -1,0 +1,59 @@
+name: NTL source-only CUDA device-map and subprocess static audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-gpu-device-map-static-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect already-submitted script, only code fragments and no inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-static-runtime
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-static-runtime -m >/tmp/ntl-pull-safe.log 2>&1
+          python - <<'PY'
+          import re,json
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-static-runtime").glob("*.ipynb")).read_text())
+          pats=(
+            r'CUDA_VISIBLE_DEVICES',
+            r'PYTORCH_CUDA_ALLOC_CONF',
+            r'PYTORCH_ALLOC_CONF',
+            r'os\.environ',
+            r'os\.getenv',
+            r'torch\.cuda\.',
+            r'torch\.device',
+            r'from_pretrained\s*\(',
+            r'device_map',
+            r'max_memory',
+            r'machine_shape',
+            r'NvidiaTeslaT4',
+            r'subprocess\.',
+            r'sys\.executable',
+            r'core_worker',
+            r'Popen\s*\(',
+          )
+          records=[]
+          for ci,cell in enumerate(nb.get("cells",[])):
+            if cell.get("cell_type")!="code":continue
+            src=cell.get("source","")
+            lines=("".join(src) if isinstance(src,list) else src).splitlines()
+            for li,line in enumerate(lines):
+              if any(re.search(p,line,re.I) for p in pats):
+                cleaned=" ".join(line.strip().split())[:190]
+                if "train_csv" in cleaned or "test.csv" in cleaned or "key=" in cleaned.lower():
+                  cleaned="<source-path/config omitted>"
+                records.append({"cell":ci,"line":li+1,"statement":cleaned})
+          print("NTL_DEVICE_MAP_CODE_MATCHES="+json.dumps(records[:120],sort_keys=True),flush=True)
+          print("NTL_DEVICE_MAP_CODE_MATCH_COUNT="+str(len(records)),flush=True)
+          print("NTL_STATIC_ONLY_NO_INFERENCE_OR_TRAINING=TRUE",flush=True)
+          PY
