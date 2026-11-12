@@ -24,7 +24,7 @@ jobs:
           from pathlib import Path
           root=Path("/tmp/ntl-mapfix-v1-readonly")
           flags=[]
-          for f in root.glob("*.log"):
+          for f in root.rglob("*.log"):
             txt=f.read_text(errors="replace")
             clean=re.sub(r'\x1b\[[0-9;]*m','',txt)
             lines=clean.splitlines()
