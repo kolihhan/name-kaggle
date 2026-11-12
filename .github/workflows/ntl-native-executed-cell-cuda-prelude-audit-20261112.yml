@@ -1,0 +1,49 @@
+name: NTL Native executed Notebook CUDA prelude and package mutation static audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-executed-cell-cuda-prelude-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Review top-level execution cells for CUDA, package, sys.path mutations without running code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-source-cells
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-native-source-cells -m >/tmp/ntl-cells-pull.log 2>&1
+          python - <<'PY'
+          import re,json
+          from pathlib import Path
+          f=next(Path("/tmp/ntl-native-source-cells").glob("*.ipynb"))
+          nb=json.loads(f.read_text(encoding="utf-8"))
+          rows=[]
+          for i,c in enumerate(nb.get("cells",[])):
+            if c.get("cell_type")!="code":continue
+            s=c.get("source",[])
+            src="".join(s) if isinstance(s,list) else str(s)
+            lines=src.splitlines()
+            if not lines:continue
+            if lines[0].strip().startswith("%%writefile"):
+              continue
+            ops=[]
+            for j,line in enumerate(lines):
+              if re.search(r"CUDA_VISIBLE_DEVICES|torch\.cuda|torch\.version|torch\.device|torch\.__version__|pip|os\.environ|sys\.path|subprocess|LD_LIBRARY_PATH|LIBRARY_PATH|site-packages|accelerator|GPU|NVIDIA|set_default_device|set_device",line,re.I):
+                # Report code statement snippets, never raw model/checkpoint
+                # paths or official data.
+                s=" ".join(line.strip().split())[:130]
+                s=re.sub(r"/kaggle/input/[^'\x22 ]+","<DATA_OR_MODEL>",s)
+                s=re.sub(r"['\x22][A-Za-z0-9_/.-]*(?:secret|token|key)[^'\x22]*['\x22]","<REDACTED_KEY>",s,flags=re.I)
+                ops.append({"line":j+1,"code":s})
+            rows.append({"cell":i,"first_line":" ".join(lines[0].strip().split())[:95],
+                   "line_count":len(lines),"environment_ops":ops[:35]})
+          print("NTL_NATIVE_EXECUTED_CUDA_PRELUDE="+json.dumps(rows,sort_keys=True),flush=True)
+          print("NTL_NATIVE_SOURCE_STATIC_NO_GPU_OR_SUBMISSION=TRUE",flush=True)
+          PY
