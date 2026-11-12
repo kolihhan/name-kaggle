@@ -1,0 +1,55 @@
+name: NTL restored frozen pretrained Gaussian 2 heads CPU-only build and no-fit tests
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-frozen-gaussian-restore-cpu-build-once-20261112.yml]
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_prefit_only_gpu_mapfix_20261112.py
+            scripts/ntl_native_clean_gpu_frozen_prefit_20261112.py
+            scripts/ntl_native_restore_frozen_gauss_no_fit_20261112.py
+            tests/test_ntl_native_restore_frozen_gauss_no_fit_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Five synthetic no-training regression tests and exact code build without GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -q tests.test_ntl_native_restore_frozen_gauss_no_fit_20261112
+          python -m py_compile scripts/ntl_native_restore_frozen_gauss_no_fit_20261112.py
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python -u -m scripts.ntl_native_restore_frozen_gauss_no_fit_20261112 --out /tmp/ntl-frozen-gaussian-restored > /tmp/ntl-restore-log.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          lines=Path("/tmp/ntl-restore-log.jsonl").read_text().splitlines()
+          if len(lines)!=1 or not lines[0].startswith("NTL_FROZEN_GAUSS_RESTORE_CANDIDATE="):
+            raise SystemExit("STOP_FROZEN_SOURCE_BUILD_FAILED")
+          data=json.loads(lines[0].split("=",1)[1])
+          if (not data["runtime_retraining_disabled"] or not data["clean_gpu_metadata"]
+              or not data["original_frozen_gaussian_state_path"]
+              or data["gaussian_prefit_original_weights"]!={"q14v5":0.7,"q8v5":0.44}
+              or data["no_official_submission"] is not True):
+            raise SystemExit("STOP_NO_SUPERVISED_TRAINING_OR_PARITY")
+          meta=json.loads(Path("/tmp/ntl-frozen-gaussian-restored/kernel/kernel-metadata.json").read_text())
+          if (meta["id"]!="kolihhan/ntl-native-frozen-gauss-readonly-nov12"
+               or "docker_image" in meta or not meta["enable_gpu"]
+               or len(meta["dataset_sources"])!=21 or len(meta["model_sources"])!=6):
+            raise SystemExit("STOP_KAGGLE_CUDA_METADATA_SOURCE_DRIFT")
+          print("NTL_GAUSS_FROZEN_RESTORE_BUILDER_PASS="+json.dumps(data,sort_keys=True),flush=True)
+          print("NTL_GAUSS_FROZEN_RESTORE_CPU_ONLY_NO_MODEL_TRAINING_OR_SUBMISSION=TRUE")
+          PY
