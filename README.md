@@ -1,3 +1,12 @@
+## 2026-11-12 19:12 MYT — NTL #58268344 FAILED hidden rerun; genuine full-path smoke underway
+
+- **FACT: official Kaggle submission #58268344 is `COMPLETE` with blank Public and Private scores and the explicit error**: `Your notebook hit an unhandled error while rerunning your code. Note that the hidden dataset can be larger/smaller/different than the public dataset`. Authenticated [exact entry diagnostic Action 43206823389](https://github.com/kolihhan/name-kaggle/actions/runs/43206823389) and [ledger Action 43206560337](https://github.com/kolihhan/name-kaggle/actions/runs/43206560337). **A successful official API receipt is not a valid scored result.** Current verified best remains **0.679** (#58210835).
+- **FACT: preview was a false-confidence shortcut.** The exact existing own Native Notebook has `preview = emit_known_preview(DATA,None,OUTPUT)`, `assert len(frame) == 3` inside the special preview function, and three `if not preview:` real-inference branches; original private `COMPLETE`/parquet output did **not** exercise full-model inference. The specific hidden-run exception remains **UNKNOWN**; do not claim this shortcut itself was the exception. See exact static code audit [Action 43206823389](https://github.com/kolihhan/name-kaggle/actions/runs/43206823389).
+- **EXECUTING: one genuine private Kaggle GPU 3-row full-path smoke**, [Action 43207179461](https://github.com/kolihhan/name-kaggle/actions/runs/43207179461), from the exact already-submitted own Notebook with **only one code change**: disable `emit_known_preview` shortcut, force `preview=False`. All three guards against new supervised Gaussian fitting, Atlas training and `--train-final` are preserved. No new competition submission, no training and no modifications to #58268344. CPU/frozen-source/quota gate passed; GPU run launched; result not yet terminal at last inspection.
+- **DECISION GATE:** Inspect genuine full-inference private smoke terminal and allowlisted failure evidence before editing a candidate or using another official submission slot. Do not resubmit the failed unchanged Notebook. Preserve distinct source provenance and no-new-training boundary.
+
+---
+
 # Name That LLM — Kaggle
 
 ## 2026-11-12 — New native pretrained NTL one-shot submission actively executing
