@@ -1,0 +1,152 @@
+name: NTL Native exact GPU-mapfix fullpath private inference one shot no training
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-gpu-mapfix-realpath-one-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-native-mapfix-realpath-once-20261112
+  cancel-in-progress: false
+jobs:
+  realpath:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_GPU_MAPFIX_ONE_REALPATH_PRIVATE_INFERENCE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 82
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      SLUG: kolihhan/ntl-native-gpu-mapfix-smoke-nov12
+      ROOT_DIR: /tmp/ntl-native-gpu-mapfix-v1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_native_gpu_mapfix_realpath_20261112.py
+            scripts/ntl_native_fullpath_smoke_20261112.py
+            tests/test_ntl_native_gpu_mapfix_realpath_20261112.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Synthetic adapter regressions, GPU quota and exact private non-duplication
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -q tests.test_ntl_native_gpu_mapfix_realpath_20261112
+          python -m py_compile scripts/ntl_native_gpu_mapfix_realpath_20261112.py scripts/ntl_native_fullpath_smoke_20261112.py
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,json,subprocess,csv,io
+          result=subprocess.run(["kaggle","quota","--format","json"],check=True,capture_output=True,text=True,timeout=90)
+          budget=json.loads(result.stdout)
+          gpu=[r for r in budget if r.get("resource")=="GPU"]
+          if len(gpu)!=1:raise SystemExit("STOP_NO_AUTHENTICATED_GPU_BUDGET")
+          remaining=float(str(gpu[0]["remaining"]).rstrip("h"))
+          print("NTL_MAPFIX_PRIVATE_GPU_QUOTA_HOURS="+str(remaining),flush=True)
+          if remaining<2.0:raise SystemExit("STOP_GPU_QUOTA_BELOW_2_HOURS")
+          slug=os.environ["SLUG"]
+          check=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=85)
+          if check.returncode==0 or "KernelWorkerStatus." in check.stdout+check.stderr:
+            raise SystemExit("STOP_EXISTING_KERNEL_NO_DUPLICATE")
+          # Kaggle may rewrite slugs based on Notebook title. Check full owned list too.
+          own=[]
+          for page in range(1,10):
+            p=subprocess.run(["kaggle","kernels","list","--user","kolihhan","--page-size","100","--page",str(page),"-v"],
+                 check=True,text=True,capture_output=True,timeout=90)
+            entries=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+            own.extend(entries)
+            if len(entries)<100:break
+          else:raise SystemExit("STOP_OWNED_KERNEL_LIST_INCOMPLETE")
+          if any(r.get("ref","").lower()==slug or r.get("title","").lower()=="ntl-native-gpu-mapfix-smoke-nov12" for r in own):
+            raise SystemExit("STOP_SAME_OR_TITLE_DERIVED_KERNEL_EXISTS")
+          print("NTL_MAPFIX_GPU_CANDIDATE_NON_DUPLICATE=TRUE",flush=True)
+          PY
+          python -u -m scripts.ntl_native_gpu_mapfix_realpath_20261112 --out "$ROOT_DIR" >/tmp/ntl-mapfix-preflight.jsonl
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path("/tmp/ntl-mapfix-preflight.jsonl")
+          l=p.read_text().splitlines()
+          if len(l)!=1 or not l[0].startswith("NTL_GPU_MAPFIX_FROZEN_SOURCE="):raise SystemExit("SOURCE_PRECHECK_FAILED")
+          r=json.loads(l[0].split("=",1)[1])
+          if (r["source_change_count"]!=1 or not r["preview_fixture_disabled"]
+              or r["guard_count"]!=3 or not r["no_new_training"] or r["competition_submission"]
+              or r["model_weights_changed"]):
+            raise SystemExit("SOURCE_INTENT_OR_TRAINING_GUARD_DRIFT")
+          meta=json.loads((Path(os.environ["ROOT_DIR"])/"kernel"/"kernel-metadata.json").read_text())
+          if meta["id"]!=os.environ["SLUG"] or meta["title"]!=os.environ["SLUG"].split("/",1)[1]:
+            raise SystemExit("SOURCE_SLUG_WOULD_BE_REWRITTEN")
+          print("NTL_MAPFIX_SOURCE_CPU_PREFLIGHT="+json.dumps(r,sort_keys=True),flush=True)
+          PY
+      - name: Launch exactly one private full model inference GPU test, not competition submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$ROOT_DIR/kernel" --accelerator NvidiaTeslaT4 --timeout 3300 > /tmp/ntl-mapfix-push.log 2>&1 || {
+            echo STOP_NTL_MAPFIX_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_MAPFIX_PRIVATE_INFERENCE_KERNEL_PUSHED=TRUE
+      - name: Poll current private kernel only, never re-push
+        id: complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 165); do
+            response="$(kaggle kernels status "$SLUG" 2>&1 || true)"
+            status="$(printf '%s' "$response" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$status";then
+              echo 'result=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_MAPFIX_REAL_MODEL_PRIVATE_TERMINAL=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$status";then
+              echo 'result=error' >> "$GITHUB_OUTPUT"
+              echo NTL_MAPFIX_REAL_MODEL_PRIVATE_TERMINAL=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%10)) -eq 0 ];then echo NTL_MAPFIX_POLL="$i";fi
+            sleep 20
+          done
+          echo 'result=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_MAPFIX_REAL_MODEL_PRIVATE_TERMINAL=PENDING
+      - name: Extract bounded allowlisted outcome from existing private Notebook output
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-mapfix-output
+          kaggle kernels output "$SLUG" -p /tmp/ntl-mapfix-output -o >/tmp/ntl-mapfix-output.log 2>&1 || true
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          root=Path("/tmp/ntl-mapfix-output")
+          logs=list(root.rglob("*.log"))
+          exc=[]
+          for file in logs:
+            body=file.read_text(errors="replace")
+            for line in body.splitlines():
+              m=re.search(r'\b(RuntimeError|ImportError|ModuleNotFoundError|ValueError|AssertionError|TypeError|FileNotFoundError|CUDAError|OutOfMemoryError|KeyError|OSError):',line)
+              if m:
+                exc.append(m.group(1))
+          report={"log_count":len(logs),"exception_classes":sorted(set(exc)),
+            "parquet_generated":(root/"submission.parquet").is_file(),
+            "gpu_probe_marker_present":any("NTL_CORE_GPU_LOADER_PROBE=" in p.read_text(errors="replace") for p in logs),
+            "no_new_training":True,"new_competition_submission":False,
+            "not_an_official_score":True}
+          if report["parquet_generated"]:
+            import pandas as pd
+            p=pd.read_parquet(root/"submission.parquet",columns=["id","model"])
+            report["rows"]=int(len(p))
+            report["non_null_models"]=int(p["model"].notna().sum())
+            report["unique_ids"]=bool(p["id"].is_unique)
+          print("NTL_MAPFIX_REALPATH_SAFE_OUTCOME="+json.dumps(report,sort_keys=True),flush=True)
+          PY
+          echo NTL_MAPFIX_NO_OFFICIAL_COMPETITION_SUBMISSION=TRUE
+      - name: Check experiment finished, without equating diagnostics to score
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.complete.outputs.result }}" != pending
+          echo NTL_MAPFIX_REALPATH_ONE_SHOT_DIAGNOSTIC_DELIVERED=TRUE
