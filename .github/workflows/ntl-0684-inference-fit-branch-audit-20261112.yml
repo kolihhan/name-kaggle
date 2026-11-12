@@ -1,0 +1,43 @@
+name: NTL 0684 single public source fit-branch static audit only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-0684-inference-fit-branch-audit-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect fit/training call-site contexts without running Notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-0684-audit
+          kaggle kernels pull wadigongren/name-that-llm-0684-clean-baseline -p /tmp/ntl-0684-audit -m >/tmp/ntl0684source.log 2>&1
+          python - <<'PY'
+          import ast,json,hashlib,re
+          from pathlib import Path
+          f=list(Path("/tmp/ntl-0684-audit").glob("*.ipynb"))
+          assert len(f)==1
+          assert hashlib.sha256(f[0].read_bytes()).hexdigest()=="340d29bb90e4dc60a9f8bba1bc79bdc69b0faa1bf65d04e367e78a1ed264297f"
+          nb=json.loads(f[0].read_text())
+          out=[]
+          for ix,cell in enumerate(nb.get("cells",[])):
+            if cell.get("cell_type")!="code":continue
+            src=cell.get("source",[])
+            code="".join(src) if isinstance(src,list) else str(src)
+            lines=code.splitlines()
+            for ln,line in enumerate(lines):
+              if re.search(r"\.(?:fit|fit_transform|partial_fit|backward|step|train)\s*\(",line):
+                snippet=" ".join(line.strip().split())[:200]
+                context=" ".join(" ".join(lines[max(0,ln-3):ln]).split())[:210]
+                out.append({"cell":ix,"line":ln+1,"call":snippet,"prior":context})
+          print("NTL_0684_FIT_CALL_CONTEXTS="+json.dumps(out,sort_keys=True),flush=True)
+          print("NTL_0684_CALLSITE_COUNT="+str(len(out)),flush=True)
+          print("NTL_0684_PINNED_SOURCE_STATIC_ONLY_NO_EXECUTION=TRUE",flush=True)
+          PY
