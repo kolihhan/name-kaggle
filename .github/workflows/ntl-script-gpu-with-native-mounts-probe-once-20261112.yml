@@ -1,0 +1,133 @@
+name: NTL Kaggle GPU script with full Native pretrained mounts one-shot hardware probe
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-script-gpu-with-native-mounts-probe-once-20261112.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-script-native-full-mounts-gpu-only-nov12
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_NATIVE_GPU_SCRIPT_WITH_FULL_MOUNTS_ONE_PROBE_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      TARGET: kolihhan/ntl-script-native-mounts-gpu-nov12
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Build no-model script with all original Native input mounts and GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-gpu-script-source /tmp/ntl-native-gpu-script-kernel
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-native-gpu-script-source -m >/tmp/ntl-native-script-pull.log 2>&1
+          python - <<'PY'
+          import os,json,subprocess
+          from pathlib import Path
+          source=Path("/tmp/ntl-native-gpu-script-source/kernel-metadata.json")
+          if not source.is_file():raise SystemExit("STOP_ORIGINAL_NATIVE_METADATA_MISSING")
+          m=json.loads(source.read_text(encoding="utf-8"))
+          if (len(m.get("model_sources") or [])!=6 or
+              len(m.get("dataset_sources") or [])!=21 or
+              len(m.get("kernel_sources") or [])!=8 or
+              m.get("competition_sources")!=["name-that-llm"]):
+             raise SystemExit("STOP_NATIVE_MOUNT_TOPOLOGY_CHANGED")
+          p=subprocess.run(["kaggle","quota","--format","json"],check=True,capture_output=True,text=True,timeout=100)
+          gpu=[x for x in json.loads(p.stdout) if x.get("resource")=="GPU"]
+          if len(gpu)!=1 or float(str(gpu[0]["remaining"]).rstrip("h"))<1:
+              raise SystemExit("STOP_KAGGLE_GPU_BUDGET")
+          ref=os.environ["TARGET"]
+          status=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True,timeout=100)
+          if status.returncode==0 or "KernelWorkerStatus." in status.stdout+status.stderr:
+              raise SystemExit("STOP_SAME_SCRIPT_PROBE_ALREADY_EXISTS")
+          m.pop("id_no",None)
+          m.update({"id":ref,"title":ref.split("/",1)[1],
+             "code_file":"probe.py","language":"python",
+             "kernel_type":"script","is_private":True,
+             "enable_gpu":True,"enable_tpu":False,"enable_internet":False,
+             "machine_shape":"NvidiaTeslaT4"})
+          folder=Path("/tmp/ntl-native-gpu-script-kernel")
+          (folder/"kernel-metadata.json").write_text(json.dumps(m,indent=2,sort_keys=True)+"\n")
+          print("NTL_SCRIPT_GPU_SAME_MOUNTS_META_PASS="+json.dumps({
+            "dataset_mounts":21,"kernel_mounts":8,"model_mounts":6,
+            "type":"script","gpu":True,"is_private":True,
+            "no_model_weights_read":True,
+          },sort_keys=True),flush=True)
+          PY
+          cat > /tmp/ntl-native-gpu-script-kernel/probe.py <<'PY'
+          import os,subprocess,json
+          from pathlib import Path
+          import torch
+          rc=subprocess.run(["nvidia-smi","-L"],capture_output=True,text=True,timeout=40)
+          payload={
+            "torch_version":torch.__version__,"torch_cuda_build":torch.version.cuda,
+            "cuda_available":bool(torch.cuda.is_available()),
+            "device_count":int(torch.cuda.device_count()),
+            "nvidia_smi_status":rc.returncode,
+            "nvidia_smi_gpu_count":sum(x.startswith("GPU ") for x in rc.stdout.splitlines()),
+            "cuda_visible_devices":os.environ.get("CUDA_VISIBLE_DEVICES"),
+            "input_mount_base_exists":Path("/kaggle/input").is_dir(),
+            "no_model_or_data_read":True,
+          }
+          print("NTL_SCRIPT_FULL_MOUNTS_GPU="+json.dumps(payload,sort_keys=True),flush=True)
+          Path("/kaggle/working/ntl_script_mounts_gpu.json").write_text(json.dumps(payload,sort_keys=True))
+          PY
+          python -m py_compile /tmp/ntl-native-gpu-script-kernel/probe.py
+      - name: Push one GPU script with full source mount topology but no inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-native-gpu-script-kernel --accelerator NvidiaTeslaT4 --timeout 800 >/tmp/ntl-script-mounts-push.log 2>&1 || {
+            echo STOP_SCRIPT_FULL_MOUNTS_GPU_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_SCRIPT_FULL_MOUNTS_GPU_PUSHED=TRUE
+      - name: Poll existing private GPU script terminal only
+        id: status
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            text="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+            state="$(printf '%s' "$text" | tr '[:lower:]' '[:upper:]')"
+            if grep -q 'KERNELWORKERSTATUS.COMPLETE' <<<"$state"; then
+              echo 'result=complete' >> "$GITHUB_OUTPUT"
+              echo NTL_SCRIPT_MOUNTS_GPU_TERMINAL=COMPLETE
+              exit 0
+            fi
+            if grep -Eq 'KERNELWORKERSTATUS.(ERROR|FAILED|CANCELLED)' <<<"$state"; then
+              echo 'result=error' >> "$GITHUB_OUTPUT"
+              echo NTL_SCRIPT_MOUNTS_GPU_TERMINAL=ERROR
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%10)) -eq 0 ];then echo NTL_SCRIPT_GPU_MOUNT_POLL="$i";fi
+            sleep 10
+          done
+          echo 'result=pending' >> "$GITHUB_OUTPUT"
+          echo NTL_SCRIPT_MOUNTS_GPU_TERMINAL=PENDING
+      - name: Read only hardware metadata from owned output, no original source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-native-script-gpu-result
+          kaggle kernels output "$TARGET" -p /tmp/ntl-native-script-gpu-result -o >/tmp/ntl-script-output.log 2>&1 || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("/tmp/ntl-native-script-gpu-result/ntl_script_mounts_gpu.json")
+          if not p.is_file():
+            print("NTL_SCRIPT_WITH_FULL_MOUNTS_GPU_OUTPUT=UNAVAILABLE",flush=True)
+          else:
+            d=json.loads(p.read_text())
+            required={"torch_cuda_build","cuda_available","device_count","nvidia_smi_status","nvidia_smi_gpu_count","input_mount_base_exists","no_model_or_data_read"}
+            if set(d).isdisjoint(required):
+              raise SystemExit("STOP_NO_KAGGLE_GPU_HARDWARE_EVIDENCE")
+            print("NTL_SCRIPT_WITH_FULL_MOUNTS_GPU_OUTPUT="+json.dumps(d,sort_keys=True),flush=True)
+          PY
+          echo NTL_SCRIPT_PROBE_NO_MODEL_TRAINING_OR_COMPETITION_SUBMISSION=TRUE
