@@ -1,0 +1,59 @@
+name: NTL core worker CUDA_VISIBLE_DEVICES routing and logger diagnosis CPU only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-native-worker-device-routing-evidence-20261112.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env: { KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}" }
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read existing Notebook source CUDA routing and private failure metadata, no model execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-native-worker-routing-src /tmp/ntl-native-worker-routing-log
+          kaggle kernels pull kolihhan/frozen-native-ntl-ensemble-no-new-training -p /tmp/ntl-native-worker-routing-src -m >/tmp/ntl-routing-pull.log 2>&1
+          kaggle kernels output kolihhan/ntl-native-realpath-smoke-20261112 -p /tmp/ntl-native-worker-routing-log -o >/tmp/ntl-routing-get.log 2>&1
+          python - <<'PY'
+          import re,json
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-native-worker-routing-src").glob("*.ipynb")).read_text(encoding="utf-8"))
+          slices={
+            17:[(11,26),(47,63)],
+            43:[(1,31),(60,96),(97,110)],
+            49:[(40,60)],
+            51:[(1,18)],
+          }
+          for cell_id,ranges in slices.items():
+            cell=nb["cells"][cell_id]
+            s=cell.get("source",[])
+            src="".join(s) if isinstance(s,list) else str(s)
+            lines=src.splitlines()
+            results=[]
+            for first,last in ranges:
+              for n in range(first,min(last,len(lines))+1):
+                raw=lines[n-1]
+                scrubbed=" ".join(raw.strip().split())[:170]
+                if any(w in scrubbed for w in ("test.csv","train.csv","API_TOKEN","password")):
+                  scrubbed="<data path or credential reference>"
+                results.append({"line":n,"statement":scrubbed})
+            print("NTL_GPU_ROUTING_SOURCE_SLICE="+json.dumps({"cell":cell_id,"code":results},sort_keys=True),flush=True)
+          logs=list(Path("/tmp/ntl-native-worker-routing-log").glob("*.log"))
+          for f in logs:
+            s=f.read_text(encoding="utf-8",errors="replace")
+            if "caching_allocator_warmup" not in s:continue
+            out=[]
+            for n,line in enumerate(s.splitlines(),1):
+              if re.search(r"\bcuda\b|\bGPU\b|\bdevice\b|\bcore_worker\b|allocated|shard|checkpoint",line,re.I):
+                line=re.sub(r"['\x22]/[^'\x22]+['\x22]","<PATH>",line)
+                line=re.sub(r"/(?:[a-zA-Z0-9_-]+/){2,}[a-zA-Z0-9_.-]+","<PATH>",line)
+                out.append({"line":n,"summary":" ".join(line.split())[:195]})
+            print("NTL_GPU_RUNTIME_LOG_TECHNICAL_CONTEXT="+json.dumps(out[-35:],sort_keys=True),flush=True)
+          print("NTL_STATIC_DEVICE_ROUTING_READ_ONLY=TRUE")
+          PY
