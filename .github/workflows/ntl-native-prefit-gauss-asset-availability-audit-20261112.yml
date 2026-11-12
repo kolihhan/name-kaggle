@@ -41,6 +41,32 @@ jobs:
             out[str(idx)]={"code_lines":len(lines),"matching_call_sites":match[:45]}
           sources=metadata.get("dataset_sources",[]) or []
           print("NTL_GAUSS_READOUT_SOURCE_CALL_SITES="+json.dumps(out,sort_keys=True),flush=True)
+          import ast
+          config_source=nb["cells"][5].get("source",[])
+          config_source="".join(config_source) if isinstance(config_source,list) else str(config_source)
+          tree=ast.parse(config_source)
+          assignments=[n.value for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="CONFIG" for t in n.targets)]
+          if len(assignments)!=1 or not isinstance(assignments[0],ast.Dict):
+            raise SystemExit("STOP_UNIQUE_FROZEN_NATIVE_CONFIG_NOT_FOUND")
+          def dict_ast(x):
+            if not isinstance(x,ast.Dict):return {}
+            out={}
+            for k,v in zip(x.keys,x.values):
+              try:name=ast.literal_eval(k)
+              except (ValueError,TypeError):continue
+              out[name]=v
+            return out
+          cfg=dict_ast(assignments[0])
+          paths=dict_ast(cfg.get("paths"))
+          report={}
+          for k,v in paths.items():
+            if re.search("gaussian|gauss|readout",str(k),re.I):
+              try:value=ast.literal_eval(v)
+              except (ValueError,TypeError):value="DYNAMIC"
+              report[str(k)]={"has_value":bool(value),
+                "relative_basename":Path(value).name if isinstance(value,str) else type(value).__name__,
+                "literal":isinstance(value,str)}
+          print("NTL_GAUSS_PREFIT_CONFIG_PATH_PROVENANCE="+json.dumps(report,sort_keys=True),flush=True)
           print("NTL_GAUSS_PREFIT_MOUNT_REFERENCE_HINTS="+json.dumps({
             "dataset_sources_n":len(sources),
             "gauss_named_references":[ref for ref in sources if re.search(r'gauss|readout|head|prefit',str(ref),re.I)][:20],
