@@ -43,5 +43,16 @@ jobs:
           limit=api.competition_get_submission_limits("name-that-llm")
           print("NTL_NATIVE_SUBMISSION_QUOTA="+json.dumps({"allowed_now":limit.num_allowed_now,
             "limited_by_total":limit.limited_by_total},sort_keys=True),flush=True)
+          actual="kolihhan/frozen-native-ntl-ensemble-no-new-training"
+          p=subprocess.run(["kaggle","kernels","status",actual],capture_output=True,text=True,timeout=80)
+          status_text=" ".join((p.stdout+p.stderr).split())[:250]
+          print("NTL_NATIVE_ACTUAL_SLUG_STATUS="+json.dumps({
+            "slug":actual,"rc":p.returncode,"worker_status":status_text}),flush=True)
+          if p.returncode==0 and "COMPLETE" in status_text.upper():
+            f=subprocess.run(["kaggle","kernels","files",actual,"-v","--page-size","200"],
+                         capture_output=True,text=True,timeout=90)
+            print("NTL_NATIVE_ACTUAL_PREVIEW_FILES="+json.dumps({
+              "rc":f.returncode,"has_submission_parquet":f.returncode==0 and "submission.parquet" in f.stdout,
+              "pagination_ambiguous":"Next Page Token =" in f.stdout}),flush=True)
           print("NTL_NATIVE_NO_MUTATIONS_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
           PY
