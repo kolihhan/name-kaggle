@@ -132,6 +132,7 @@ def fetch_and_guard(work: Path) -> dict:
         raise RuntimeError("guard postcondition missing")
     notebook["cells"].insert(0,{
         "cell_type":"markdown",
+        "id":"ntl-native-frozen-credit-20261112",
         "metadata":{},
         "source":[
            "Attributed, inference-only reproduction of [Shaksham Karkiii's public NTL Native Ensemble]"
