@@ -1,5 +1,14 @@
 # Name That LLM — Kaggle
 
+## 2026-11-12 — New native pretrained NTL one-shot submission actively executing
+
+- **Real frozen candidate built:** published [shakshamkarkiii native ensemble](https://www.kaggle.com/code/shakshamkarkiii/ntl-native-ensemble) exact Notebook SHA256 `2b04b4d7ccdeeaef6ed62a52e24ee6f6f1702a50143c740a6d0a3bbce90e6920`. The implementation pins exact original source + 21 data / 8 kernel / 6 pretrained model mounts. Supervised Gaussian `gauss.fit`, Atlas training and `--train-final` are fail-closed, with the three guard sites verified by source-preflight job `131071659089` at [Action 43185542895](https://github.com/kolihhan/name-kaggle/actions/runs/43185542895). This is an **attributed public-source reproduction**, not independent modeling innovation.
+- **Execution checkpoint:** the Action's one-shot `submit` job `131071765979` is still running as of the latest authenticated check. Exact own Kaggle private Notebook slug `kolihhan/ntl-native-frozen-nov12-one-shot` was **not registered yet** at the last read-only status [Action 43186588830](https://github.com/kolihhan/name-kaggle/actions/runs/43186588830) (the owned kernel listing has 129 existing entries); the official owned ledger has **NO NEW REF for this candidate**. Do not claim a new submission until an actual numeric contest receipt appears. Never re-push/resubmit over an active or already-created version.
+- **Latest validated official Public BA remains 0.679** (#58210835); MGT (#58233227) tied at 0.679. User requested a new official NTL submission and accepted the inference-only risk; whether the new published ensemble can improve transfer has not been established. Source contract: [native-frozen-nov12](artifacts/candidates/native-frozen-nov12-guarded/CONTRACT.md). No new training authorized.
+
+---
+
+
 ## 2026-11-12 13:34 MYT — runtime failure verified; no justified new submission
 
 - **DONE — authenticated Public best remains 0.679:** baseline `58210835`; MGT `58233227` is now **COMPLETE, 0.679**, delta **0.000**. WeMM `58244483` is COMPLETE **with hidden runtime error and no score**. Lightning `58167751` remains PENDING. [Fresh account evidence](https://github.com/kolihhan/name-kaggle/actions/runs/43149001011).
