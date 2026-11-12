@@ -1,0 +1,81 @@
+name: Kaggle BOTH verified official receipts scores and stale NTL action cleanup
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/kaggle-two-official-receipts-and-stale-run-cleanup-20261112.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  verify_and_cleanup:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_FINAL_TWO_KAGGLE_OFFICIAL_RECEIPTS_VERIFY_AND_CLEAN_20261112' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GH_AUTOMATION_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify exact 2 official contest receipts before any cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,subprocess,json
+          expected=[
+            ("name-that-llm","58268344","NTL frozen native pretrained ensemble guarded no supervised fitting 20261112"),
+            ("gemma-4-developer-agent","58267012","31B EarlyEdit feedback 5min 28calls frozen 3of4 private pilot 20261112"),
+          ]
+          for contest,ref,marker in expected:
+            p=subprocess.run(["kaggle","competitions","submissions",contest,"-v","-q"],
+              capture_output=True,text=True,timeout=105,check=True)
+            rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+            matches=[x for x in rows if x.get("ref")==ref]
+            if len(matches)!=1 or matches[0].get("description")!=marker:
+              raise SystemExit("STOP_UNVERIFIED_OFFICIAL_RECEIPT_"+contest)
+            r=matches[0]
+            print("KAGGLE_FINAL_EXACT_OFFICIAL_RECEIPT="+json.dumps({
+              "competition":contest,
+              **{k:r.get(k) for k in ("ref","date","status","publicScore","privateScore")}
+            },sort_keys=True),flush=True)
+          print("BOTH_INDEPENDENT_KAGGLE_OFFICIAL_RECEIPTS_VERIFIED=TRUE",flush=True)
+          PY
+      - name: Cancel only obsolete original mis-slug NTL workflows after verified receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_AUTOMATION_TOKEN:-}"
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          prefix="https://api.github.com/repos/kolihhan/name-kaggle/actions/runs/"
+          headers={
+            "Authorization":"Bearer "+os.environ["GH_AUTOMATION_TOKEN"],
+            "Accept":"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+          }
+          # Cancel pending recovery first so it cannot wake after the original is cancelled.
+          for run in (43187470951,43185542895):
+            req=urllib.request.Request(prefix+str(run),headers=headers)
+            with urllib.request.urlopen(req,timeout=30) as response:
+              state=json.load(response)
+            status=state.get("status")
+            if status=="completed":
+              print(f"OBSOLETE_NTL_RUN={run}:ALREADY_COMPLETED",flush=True)
+              continue
+            if status not in ("queued","pending","in_progress","requested","waiting"):
+              raise SystemExit(f"STOP_UNEXPECTED_WORKFLOW_STATE_{run}_{status}")
+            request=urllib.request.Request(prefix+str(run)+"/cancel",
+                      data=b"",method="POST",headers=headers)
+            try:
+              with urllib.request.urlopen(request,timeout=30) as response:
+                code=response.status
+            except urllib.error.HTTPError as ex:
+              code=ex.code
+            if code not in (202,409):
+              raise SystemExit(f"STOP_CANNOT_CANCEL_OBSOLETE_NTL_{run}_HTTP_{code}")
+            print(f"OBSOLETE_NTL_RUN={run}:CANCEL_REQUEST_HTTP_{code}",flush=True)
+          print("OFFICIAL_RECEIPTS_RETAINED_NO_RE_SUBMISSIONS=TRUE",flush=True)
+          PY
