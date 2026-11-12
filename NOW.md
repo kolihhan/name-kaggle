@@ -1,3 +1,13 @@
+## 2026-11-12 23:37 MYT — authentic 0.679 unchanged; two actual GPU experiments and separate frozen-head evidence
+
+- Latest **authenticated** owned Kaggle check [Action 43249505659](https://github.com/kolihhan/name-kaggle/actions/runs/43249505659), 15:36 UTC: scored best **0.679** (official #58233227 and #58210835), four slots, Lightning #58167751 still PENDING. No scored 0.700/new official submission.
+- Both actual Kaggle experiments were checked: [32 original-synthetic-row Native fullpath #43243311525](https://github.com/kolihhan/name-kaggle/actions/runs/43243311525) and [3-row prefit-Gaussian-restored T4 fullpath #43247615098](https://github.com/kolihhan/name-kaggle/actions/runs/43247615098) are still **in_progress** (poll steps; no reported terminal result). **Do not confuse runtime experiments with verified macro-BA**.
+- [Private frozen Gaussian mounted asset proof #43246439378](https://github.com/kolihhan/name-kaggle/actions/runs/43246439378) confirmed actual frozen states `metadata.json` and `parameters.npz` for both q14v5/q8v5 with no-redo/provenance contracts; [exact CPU builder #43247215386](https://github.com/kolihhan/name-kaggle/actions/runs/43247215386) passed all 5 no-new-fit synthetic tests, restored 0.7 and 0.44 weights while retaining no-fit fallback; this is genuinely distinct from mere threshold tweaks.
+- [Model-stage static complexity #43249142049](https://github.com/kolihhan/name-kaggle/actions/runs/43249142049) found six sequential model stages, complementary batch4, GSQ, and long-input-windowed five-fold Native expert batch4. Performance of ~4000 hidden passages in 9h **still unknown**.
+- [Existing 3-row group metadata probe #43248884740](https://github.com/kolihhan/name-kaggle/actions/runs/43248884740) did **not** find exported Gte.npy or per-model feature metadata: Gaussian activation in those 3 rows is unknown, not disproven. [Detailed current evidence](artifacts/research/ntl-gauss-frozen-restoration-scale-20261112.md). No third GPU job launched while two test kernels run.
+
+---
+
 ## 2026-11-12 23:27 MYT — NTL 0.700 continuation: frozen Gaussian head recovery is REAL; two private GPU tests ACTIVE
 
 - Official scored champion is still **0.679** (Kaggle refs #58210835, #58233227) at latest authenticated score check. No official Kaggle competition submission made in this continuation; **no >=0.700 claim**.
