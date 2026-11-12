@@ -1,0 +1,37 @@
+name: NTL frozen clean GPU realpath live Kaggle status read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-43222362379-live-terminal-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Authenticated private current kernel status and exact official score without GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,subprocess,datetime
+          def cmd(parts,timeout=100):
+            return subprocess.run(["kaggle",*parts],capture_output=True,text=True,timeout=timeout)
+          slug="kolihhan/ntl-native-clean-frozen-prefit-nov12"
+          p=cmd(["kernels","status",slug],80)
+          print("NTL_CLEAN_FROZEN_LIVE_KAGGLE_STATUS="+json.dumps({
+            "rc":p.returncode,"text":" ".join((p.stdout+p.stderr).split())[:280],
+            "utc":datetime.datetime.now(datetime.timezone.utc).isoformat()
+          },sort_keys=True),flush=True)
+          if p.returncode==0 and "KernelWorkerStatus.COMPLETE" in p.stdout+p.stderr:
+            f=cmd(["kernels","files",slug,"-v","--page-size","200"],90)
+            print("NTL_CLEAN_FROZEN_LIVE_OUTPUT="+json.dumps({
+              "list_rc":f.returncode,"contains_submission_parquet":"submission.parquet" in f.stdout,
+              "ambiguous_pagination":"Next Page Token =" in f.stdout
+            },sort_keys=True),flush=True)
+          print("NTL_CLEAN_FROZEN_READ_ONLY_NO_MODEL_TRAINING_OR_OFFICIAL_SUBMISSION=TRUE",flush=True)
+          PY
