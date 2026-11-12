@@ -1,0 +1,50 @@
+name: NTL 58268344 official status and failure diagnostic read-only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-58268344-diagnostic-readonly-20261112.yml]
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Query actual scored NTL submission and private Notebook details
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,subprocess,inspect,datetime,re
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          def cli(argv,timeout=90):
+            p=subprocess.run(["kaggle",*argv],capture_output=True,text=True,timeout=timeout)
+            return p
+          p=cli(["competitions","submissions","name-that-llm","-v","-q"])
+          if p.returncode:
+            raise SystemExit("NTL_OFFICIAL_LEDGER_CLI_FAILED_NO_RETRY")
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+          ids=("58268344","58210835","58233227","58167751","58244483")
+          selected=[{k:r.get(k) for k in ("ref","description","date","status","publicScore","privateScore","fileName")}
+                    for r in rows if r.get("ref") in ids]
+          print("NTL_LATEST_OFFICIAL_ROWS="+json.dumps(selected,sort_keys=True),flush=True)
+          current=[x for x in selected if x.get("ref")=="58268344"]
+          if len(current)!=1:raise SystemExit("NTL_NEW_SUBMISSION_MISSING_FROM_OFFICIAL_LEDGER")
+          api=KaggleApi();api.authenticate()
+          methods=sorted(n for n in dir(api) if ("submission" in n and ("detail" in n or "log" in n or "status" in n or "view" in n)))
+          print("NTL_AVAILABLE_SUBMISSION_DETAIL_METHODS="+json.dumps(methods),flush=True)
+          for ref in ["kolihhan/frozen-native-ntl-ensemble-no-new-training"]:
+            q=cli(["kernels","status",ref])
+            state=" ".join((q.stdout or q.stderr or "").split())[:300]
+            print("NTL_NATIVE_PREVIEW_STATUS="+json.dumps({"rc":q.returncode,"state":state}),flush=True)
+            files=cli(["kernels","files",ref,"-v","--page-size","200"])
+            print("NTL_NATIVE_PREVIEW_OUTPUT="+json.dumps({"rc":files.returncode,
+              "has_parquet":"submission.parquet" in files.stdout,"has_log":".log" in files.stdout,
+              "has_pagination":"Next Page Token =" in files.stdout}),flush=True)
+          print("NTL_EXACT_DIAGNOSTIC_NO_MODEL_GPU_NO_SUBMISSION="+datetime.datetime.now(datetime.timezone.utc).isoformat(),flush=True)
+          PY
