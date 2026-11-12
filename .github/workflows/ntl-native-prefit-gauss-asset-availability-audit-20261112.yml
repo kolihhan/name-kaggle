@@ -78,7 +78,7 @@ jobs:
                 safe.append({"line":ln,"code":v})
             print("NTL_GAUSSIAN_PREFIT_READ_BRANCH_CODE="+json.dumps({"cell":idx,"lines":safe},sort_keys=True),flush=True)
           # Check actual Native execution-mode and prompt grouping before any official submission.
-          for idx,spans in {5:[(1,25),(32,41)],43:[(49,84),(109,126),(137,161)],47:[(1,15)]}.items():
+          for idx,spans in {5:[(1,25)],17:[(58,70),(114,136),(164,205)],43:[(1,49),(68,110),(137,161)],47:[(1,15)]}.items():
             src=nb["cells"][idx].get("source",[])
             lines=("".join(src) if isinstance(src,list) else str(src)).splitlines()
             details=[]
