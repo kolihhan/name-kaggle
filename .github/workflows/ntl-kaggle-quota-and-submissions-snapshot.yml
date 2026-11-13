@@ -308,3 +308,56 @@ jobs:
                   ensure_ascii=False,sort_keys=True),flush=True)
           print("KIRILL_PUBLIC_SOURCE_DIFF_ONLY_ZERO_GPU_ZERO_TRAINING=TRUE",flush=True)
           PY
+
+
+      - name: Check three structurally different public pretrained model stacks for new frozen sibling evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess,json,hashlib,re
+          refs=["areebbb/0-684-i-m-better",
+                "krshs90/qwen-embedding-clean-lora-ensemble-v14",
+                "omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex",
+                "ruixidai/ntl-v32-apex-sovereign"]
+          top=Path("/tmp/ntl-new-pretrained-public-readonly");top.mkdir(exist_ok=True)
+          fetched=[]
+          for index,ref in enumerate(refs):
+              target=top/str(index);target.mkdir(exist_ok=True)
+              p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(target),"-m"],capture_output=True,text=True,timeout=120)
+              if p.returncode:
+                  fetched.append((ref,None,None,None,"PULL_FAILED"))
+                  continue
+              nb=list(target.glob("*.ipynb"));m=target/"kernel-metadata.json"
+              if len(nb)!=1 or not m.exists():
+                  fetched.append((ref,None,None,None,"NOTEBOOK_OR_METADATA_MISSING"));continue
+              src=json.loads(nb[0].read_text())
+              meta=json.loads(m.read_text())
+              if meta.get("is_private") is not False:
+                  fetched.append((ref,None,None,None,"NOT_PUBLIC"));continue
+              code="\n".join(("".join(c.get("source",[])) if isinstance(c.get("source"),list)
+                          else str(c.get("source",""))) for c in src["cells"] if c.get("cell_type")=="code")
+              fetched.append((ref,meta,code,hashlib.sha256(nb[0].read_bytes()).hexdigest(),"OK"))
+          baseline=fetched[0][1]
+          assert baseline is not None,"baseline not readable"
+          for ref,meta,code,sha,status in fetched[1:]:
+              if meta is None:
+                  print("NTL_FROZEN_MODEL_NEW_SOURCE_SCAN="+json.dumps({"ref":ref,"status":status},sort_keys=True),flush=True)
+                  continue
+              a=set(baseline.get("model_sources") or [])
+              b=set(meta.get("model_sources") or [])
+              # source inventory: public metadata only, no data texts or tokens
+              record={"ref":ref,"status":status,"sha256":sha,"public_only":True,
+                 "model_source_count":len(b),
+                 "new_model_sources":sorted(b-a)[:12],
+                 "same_model_sources_as_0683":a==b,
+                 "kernel_source_count":len(meta.get("kernel_sources") or []),
+                 "dataset_source_count":len(meta.get("dataset_sources") or []),
+                 "code_fit_callsite_count":len(re.findall(r"\.(?:fit|partial_fit|fit_transform)\s*\(",code)),
+                 "code_train_mode_count":len(re.findall(r"\.train\s*\(",code)),
+                 "notebook_code_cells":sum(c.get("cell_type")=="code" for c in json.loads(next((top/str(refs.index(ref))).glob("*.ipynb")).read_text())["cells"]),
+                 "true_hidden_runtime_unknown":True}
+              print("NTL_FROZEN_MODEL_NEW_SOURCE_SCAN="+json.dumps(record,sort_keys=True),flush=True)
+          print("NTL_PUBLIC_MODEL_SCAN_READONLY_NO_GPU_NO_FIT_NO_SUBMISSION=TRUE",flush=True)
+          PY
