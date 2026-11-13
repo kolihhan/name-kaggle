@@ -72,10 +72,23 @@ jobs:
             d=json.loads(p.read_text())
             feature_meta.append({"model":p.parent.name,**{k:d.get(k) for k in
               ("gaussian_branch","test_redo","train_redo","source_version")}})
+          timing=[]
+          for p in log_files:
+            t=p.read_text(errors="replace")
+            for line in t.splitlines():
+              if "NTL_GAUSS256_ELAPSED_SECONDS=" not in line:continue
+              found=re.search(r"NTL_GAUSS256_ELAPSED_SECONDS=([0-9]+(?:\\.[0-9]+)?)",line)
+              timing.append({"file":p.name,"has_numeric_seconds":bool(found),
+                "seconds":float(found.group(1)) if found else None,
+                "looks_like_unevaluated_source":("print(" in line or "time.monotonic()" in line)})
+          branch_mode_inference=("fixed-no-test-redo_or_uninstrumented_path"
+             if len(observed["NTL_GAUSS_PREFIT_RUNTIME_BOUND="])==0
+             and len(observed["NTL_GAUSS_PREFIT_SCORES="])==2 else "inconclusive")
           report={"kernel":"already_COMPLETED_private_synthetic_256","output_rows":len(frame),
             "unique_prediction_labels":int(frame.model.nunique()),
             "log_file_count":len(log_files),"file_names":[p.name for p in files if p.suffix in (".log",".txt",".jsonl",".out",".npy",".json")][:60],
             "marker_records":observed,"log_inventory":per_file[:50],
+            "timing_marker_diagnostics":timing,"readout_branch_inference":branch_mode_inference,
             "group_files":grouphist,"feature_branches":feature_meta,
             "gpu_or_model_inference_run_now":False,"new_training":False,"official_submission":False,
             "accuracy_estimated":False}
