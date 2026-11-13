@@ -1,7 +1,7 @@
 name: NTL Kaggle Quota and Submission Snapshot (Read Only)
 on:
   push:
-    branches: [exp/dct-temporal-fingerprint-v3]
+    branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-kaggle-quota-and-submissions-snapshot.yml]
 permissions:
   contents: read
@@ -31,6 +31,6 @@ jobs:
               rows=list(csv.DictReader(f))
           rows.sort(key=lambda r:int(r['ref']),reverse=True)
           print('OFFICIAL_TOTAL',len(rows))
-          for r in rows[:5]:
+          for r in rows[:10]:
               print('OFFICIAL_SUBMISSION_RECORD',json.dumps({k:r.get(k) for k in ('ref','status','publicScore','privateScore','description','date')},sort_keys=True))
           PY
