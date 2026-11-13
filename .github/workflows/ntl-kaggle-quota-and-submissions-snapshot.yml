@@ -262,3 +262,49 @@ jobs:
               "sibling_signal_candidate_lines":adds},sort_keys=True),flush=True)
           print("NTL_NO_TRAINING_NO_GPU_NO_PUBLIC_LB_TUNING_OR_SUBMISSION=TRUE",flush=True)
           PY
+
+
+      - name: Classify all five Kirill public source diffs and dependency deltas no training
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-kirill-recheck/{base,variant}
+          kaggle kernels pull areebbb/0-684-i-m-better -p /tmp/ntl-kirill-recheck/base -m >/dev/null
+          kaggle kernels pull kirilltym/lora-trained27-evidence-for-close-calls -p /tmp/ntl-kirill-recheck/variant -m >/dev/null
+          python - <<'PY'
+          import hashlib,json,difflib,re
+          from pathlib import Path
+          roots={x:Path("/tmp/ntl-kirill-recheck")/x for x in ("base","variant")}
+          expect={"base":"5d053f49005df0b2511e07bfb154faf53f22bca130761ac4a17b61aa5939cb00","variant":"00a82826c69820a4962e7dd4bd7f9c80a86529a65096f7ef5f810f577ee53ede"}
+          src={};inputs={};nb={}
+          for k,root in roots.items():
+              p=next(root.glob("*.ipynb"))
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==expect[k]
+              nb[k]=json.loads(p.read_text())
+              inputs[k]=json.loads((root/"kernel-metadata.json").read_text())
+              def extract(c):
+                  v=c.get("source",[])
+                  return "".join(v) if isinstance(v,list) else str(v)
+              found=[extract(c) for c in nb[k]["cells"] if c.get("cell_type")=="code" and extract(c).startswith("%%writefile infer.py")]
+              assert len(found)==1
+              src[k]=found[0].splitlines()
+          deps=["model_sources","kernel_sources","dataset_sources","competition_sources"]
+          print("NTL_KIRILL_DEPENDENCY_DELTAS="+json.dumps({k:{"equal":inputs["base"].get(k)==inputs["variant"].get(k),
+              "base_count":len(inputs["base"].get(k) or []),"variant_count":len(inputs["variant"].get(k) or []),
+              "added":sorted(set(inputs["variant"].get(k) or [])-set(inputs["base"].get(k) or [])),
+              "removed":sorted(set(inputs["base"].get(k) or [])-set(inputs["variant"].get(k) or []))}
+              for k in deps},sort_keys=True),flush=True)
+          sensitive=re.compile(r"(?i)token|password|secret|api[_-]?key|bearer|authorization")
+          for index,(op,i1,i2,j1,j2) in enumerate(difflib.SequenceMatcher(None,src["base"],src["variant"],autojunk=False).get_opcodes(),1):
+              if op=="equal":continue
+              def safe(line):
+                  s=" ".join(line.strip().split())
+                  if sensitive.search(s):return "<redacted>"
+                  return re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_MOUNT>",s)[:195]
+              print("NTL_KIRILL_COMPLETE_DIFF_HUNK="+json.dumps({
+                  "hunk":index,"kind":op,"base_lines":[i1+1,i2],"variant_lines":[j1+1,j2],
+                  "added_lines":[safe(v) for v in src["variant"][j1:j2]][:45],
+                  "removed_lines":[safe(v) for v in src["base"][i1:i2]][:12]},
+                  ensure_ascii=False,sort_keys=True),flush=True)
+          print("KIRILL_PUBLIC_SOURCE_DIFF_ONLY_ZERO_GPU_ZERO_TRAINING=TRUE",flush=True)
+          PY
