@@ -30,6 +30,6 @@ jobs:
             echo "KAGGLE_QLORA_BRIDGE_AUTH=MISSING"
             exit 42
           fi
-          python -m pip install --quiet 'kaggle>=2.2,<3'
+          python -m pip install --quiet 'kaggle==2.2.5' 'six==1.17.0'
           kaggle kernels list --mine --page 1 >/dev/null
           echo "KAGGLE_QLORA_BRIDGE_AUTHENTICATED=YES"
