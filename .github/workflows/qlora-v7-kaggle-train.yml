@@ -1,0 +1,127 @@
+name: QLoRA v7 9B actual SFT on private Kaggle T4 GPU
+on:
+  workflow_dispatch:
+  push:
+    branches: [infra/qlora-v7-kaggle-training-20261113]
+    paths: [.github/QLORA_V7_KAGGLE_TRAIN_START]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kaggle-private-qlora-real-tool-sft-20261113
+  cancel-in-progress: false
+jobs:
+  submit-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      QLORA_SOURCE_SHA: 8175dbc070913914d79c5046004b1eaf3bb27f4f
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with: {python-version: "3.11"}
+      - name: Verify Kaggle auth and free accelerator quota (no GPU allocation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$KAGGLE_API_TOKEN" ] && { [ -z "$KAGGLE_USERNAME" ] || [ -z "$KAGGLE_KEY" ]; }; then
+            echo "MISSING_KAGGLE_TRAINING_CREDENTIALS"
+            exit 42
+          fi
+          python -m pip install --quiet 'kaggle==2.2.5' 'six==1.17.0' 'kagglehub>=1,<2'
+          kaggle kernels list --mine --page 1 >/dev/null
+          kaggle quota
+          echo "KAGGLE_TRAINING_API_VERIFIED"
+      - name: Download pinned 522-action QLoRA training artifact from source repo
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: kolihhan/small-agent-qlora
+          run-id: 43396613861
+          github-token: ${{ github.token }}
+          name: qlora-v7-unique-balanced-train-validation
+          path: training-input
+      - name: Verify all train/holdout checksums and immutable QLoRA training script
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p kaggle-dataset kaggle-kernel
+          python - <<'PY'
+          import hashlib,json,os,shutil,urllib.request
+          from pathlib import Path
+          import kagglehub
+          root=Path("training-input")
+          manifest=json.loads((root/"qlora-v7-audit.json").read_text())
+          assert manifest["schema"]=="qlora-v7-whole-task-source-balanced-20261113-v1"
+          assert manifest["train_actions"]==522
+          assert manifest["train_tasks"]==218
+          assert manifest["holdout_tasks"]==11
+          assert abs(manifest["train_real_action_fraction"]-1/3)<1e-5
+          for name,key in [("qlora-v7-train.jsonl","train_sha256"),("qlora-v7-heldout.jsonl","holdout_sha256")]:
+              p=root/name
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==manifest[key]
+              shutil.copy2(p,Path("kaggle-dataset")/name)
+          shutil.copy2(root/"qlora-v7-audit.json","kaggle-dataset/qlora-v7-audit.json")
+          username=kagglehub.whoami(verbose=False)["username"]
+          import re
+          assert re.fullmatch(r"[A-Za-z0-9_-]+",username)
+          dataset_slug="qlora-v7-observed-tools-20261113"
+          kernel_slug="qlora-v7-real-tool-sft-9b-20261113"
+          dataset_id=f"{username}/{dataset_slug}"
+          kernel_id=f"{username}/{kernel_slug}"
+          dmeta={
+             "title":"QLoRA v7 observed multi-hop tools 20261113",
+             "id":dataset_id,
+             "subtitle":"Held-out 9B tool-use SFT action data with provenance",
+             "description":"Private training-only derived from licensed HotpotQA and 2Wiki TRAIN observations plus synthetic policy data. Exactly 522 native actions, no GAIA questions, database unrelated to SQL. See GitHub kolihhan/small-agent-qlora PR16. Source material copyright/licensing retained by original authors.",
+             "licenses":[{"name":"other"}],
+          }
+          (Path("kaggle-dataset")/"dataset-metadata.json").write_text(json.dumps(dmeta,indent=2)+"\n")
+          url=f"https://raw.githubusercontent.com/kolihhan/small-agent-qlora/{os.environ['QLORA_SOURCE_SHA']}/scripts/kaggle_v7_real_sft.py"
+          content=urllib.request.urlopen(url,timeout=30).read().decode()
+          assert content.count("__QLORA_SOURCE_SHA__")>=1
+          assert content.count("__QLORA_DATASET_SLUG__")>=1
+          content=content.replace("__QLORA_SOURCE_SHA__",os.environ["QLORA_SOURCE_SHA"]).replace("__QLORA_DATASET_SLUG__",dataset_slug)
+          (Path("kaggle-kernel")/"qlora-v7-kaggle.py").write_text(content)
+          meta={
+             "id":kernel_id,"title":"QLoRA V7 Real Tool SFT 9B 20261113",
+             "code_file":"qlora-v7-kaggle.py",
+             "language":"python","kernel_type":"script","is_private":"true",
+             "enable_gpu":"true","enable_internet":"true",
+             "machine_shape":"NvidiaTeslaT4",
+             "dataset_sources":[dataset_id],
+             "competition_sources":[],"kernel_sources":[],"model_sources":[],
+          }
+          (Path("kaggle-kernel")/"kernel-metadata.json").write_text(json.dumps(meta,indent=2)+"\n")
+          print("QLORA_KAGGLE_SOURCE_READY",json.dumps({
+             "actions":522,"train_parents":218,"holdout_parents":11,
+             "source_sha":os.environ["QLORA_SOURCE_SHA"],
+             "dataset_id":dataset_id,"kernel_id":kernel_id
+          }))
+          PY
+      - name: Create private dataset with frozen, unique v7 source training inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle datasets create -p kaggle-dataset --keep-tabular
+          echo "KAGGLE_QLORA_PRIVATE_DATASET_CREATED"
+      - name: Upload private 9B QLoRA script and start Kaggle T4 training
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p kaggle-kernel --accelerator NvidiaTeslaT4 --timeout 21600
+          echo "KAGGLE_QLORA_GPU_JOB_SUBMITTED"
+      - name: Preserve exact source and kernel metadata for reproducibility
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qlora-v7-kaggle-training-dispatch-evidence
+          path: |
+            kaggle-dataset/dataset-metadata.json
+            kaggle-kernel/kernel-metadata.json
+            kaggle-kernel/qlora-v7-kaggle.py
+          if-no-files-found: warn
+          retention-days: 30
