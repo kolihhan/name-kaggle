@@ -52,3 +52,53 @@ jobs:
             print("NTL_PUBLIC_KERNEL_RANKED="+json.dumps({"rank":rank,"record":allowed},sort_keys=True),flush=True)
           print("NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
           PY
+
+      - name: Compare distinct public source architectures without inference or official submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-public-method-audit
+          python - <<'PY'
+          import hashlib,json,re,subprocess
+          from pathlib import Path
+          targets=[
+            "areebbb/0-684-i-m-better",
+            "kirilltym/lora-trained27-evidence-for-close-calls",
+            "alexchilton/name-that-llm-0-684-all-public-what-failed",
+            "heliosli/name-that-llm-lv683-a15",
+            "ozertuu/0-683-0-682-qwen3-8-27b-gsq-15-mix-0-52",
+          ]
+          for i,ref in enumerate(targets):
+            root=Path("/tmp/ntl-public-method-audit")/str(i);root.mkdir()
+            p=subprocess.run(["kaggle","kernels","pull",ref,"-p",str(root),"-m"],
+                             capture_output=True,text=True,timeout=120)
+            if p.returncode:
+              print("NTL_PUBLIC_ARCHITECTURE="+json.dumps({"ref":ref,"pull":"FAILED"},sort_keys=True),flush=True)
+              continue
+            nb=list(root.glob("*.ipynb"))
+            meta_path=root/"kernel-metadata.json"
+            if len(nb)!=1 or not meta_path.is_file():
+              print("NTL_PUBLIC_ARCHITECTURE="+json.dumps({"ref":ref,"source":"NOT_ONE_NOTEBOOK"},sort_keys=True),flush=True)
+              continue
+            data=json.loads(nb[0].read_text())
+            m=json.loads(meta_path.read_text())
+            src="\n".join("".join(c.get("source",[])) if isinstance(c.get("source"),list)
+                          else str(c.get("source","")) for c in data.get("cells",[]) if c.get("cell_type")=="code")
+            names=[str(s) for s in (m.get("dataset_sources") or [])]
+            out={"ref":ref,"notebook_sha256":hashlib.sha256(nb[0].read_bytes()).hexdigest(),
+                 "code_sha256":hashlib.sha256(src.encode()).hexdigest(),
+                 "total_cells":len(data.get("cells",[])),"code_lines":len(src.splitlines()),
+                 "model_sources_count":len(m.get("model_sources") or []),
+                 "kernel_sources_count":len(m.get("kernel_sources") or []),
+                 "dataset_sources_count":len(names),"gpu":bool(m.get("enable_gpu")),
+                 "internet":bool(m.get("enable_internet")),
+                 "pretrained_lora_asset_refs":sum(bool(re.search("lora|adapter|pretrain|checkpoint",s,re.I)) for s in names),
+                 "runtime_fit_call_sites":len(re.findall(r"\.(?:fit|fit_transform|partial_fit)\s*\(",src)),
+                 "train_mode_call_sites":len(re.findall(r"\.train\s*\(",src)),
+                 "train_final_mentions":src.count("train_final")+src.count("train-final"),
+                 "gaussian_mentions":src.lower().count("gaussian"),
+                 "embeddings_mentions":src.lower().count("embedding"),
+                 "architecture_diff_from_ozertuu_unknown":True}
+            print("NTL_PUBLIC_ARCHITECTURE="+json.dumps(out,sort_keys=True),flush=True)
+          print("PUBLIC_SOURCE_READONLY_NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
+          PY
