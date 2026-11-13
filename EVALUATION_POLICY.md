@@ -1,5 +1,7 @@
 # Future Candidate Evaluation Policy
 
+> **2026-11-13 prospective score-reference update (no change to frozen evaluation rules).** Official account champion is now **0.683**, Kaggle code submission **58295802** (COMPLETE), verified [read-only receipt #43440969485](https://github.com/kolihhan/name-kaggle/actions/runs/43440969485). The 0.679 reference below is historical as of its Nov 11 addendum; all same-row 18-label, source-transfer, no Public-LB tuning and no-new-training boundaries remain in force. [Exact source and result](artifacts/candidates/areeb8-prefit-only-20261113/OFFICIAL_SCORE.md).
+
 Status: **FROZEN**
 
 Effective: 2026-11-01
