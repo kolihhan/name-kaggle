@@ -1,0 +1,35 @@
+name: QLoRA Kaggle training bridge credential preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [infra/qlora-v7-kaggle-training-20261113]
+    paths: [.github/QLORA_KAGGLE_BRIDGE_PROBE]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with: {python-version: "3.11"}
+      - name: Verify Kaggle notebook API without revealing credentials or using GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$KAGGLE_API_TOKEN" ]; then
+            echo "KAGGLE_QLORA_BRIDGE_AUTH=token"
+          elif [ -n "$KAGGLE_USERNAME" ] && [ -n "$KAGGLE_KEY" ]; then
+            echo "KAGGLE_QLORA_BRIDGE_AUTH=key"
+          else
+            echo "KAGGLE_QLORA_BRIDGE_AUTH=MISSING"
+            exit 42
+          fi
+          python -m pip install --quiet 'kaggle>=2.2,<3'
+          kaggle kernels list --mine --page 1 >/dev/null
+          echo "KAGGLE_QLORA_BRIDGE_AUTHENTICATED=YES"
