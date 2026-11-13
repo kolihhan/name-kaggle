@@ -175,3 +175,5 @@ jobs:
             time.sleep(9)
           else:raise SystemExit("STOP_NTL_NEW_RECEIPT_LEDGER_DELAY_NO_RESUBMIT")
           PY
+
+# Rerun after retaining class-wide LogisticRegression.fit prohibition; prior run stopped before GPU.
