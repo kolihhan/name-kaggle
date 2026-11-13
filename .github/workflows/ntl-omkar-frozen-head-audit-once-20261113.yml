@@ -154,3 +154,43 @@ jobs:
               "static_only":True},sort_keys=True),flush=True)
           print("OMKAR_NO_TRAIN_NO_GPU_NO_SUBMISSION_READONLY=TRUE",flush=True)
           PY
+
+
+      - name: Prove Omkar is prior WeMM executable clone and identify isolated single-worker invocation points
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-omkar-duplicate-audit
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-omkar-duplicate-audit -m >/dev/null
+          python - <<'PY'
+          import json,hashlib,re
+          from pathlib import Path
+          path=next(Path("/tmp/ntl-omkar-duplicate-audit").glob("*.ipynb"))
+          assert hashlib.sha256(path.read_bytes()).hexdigest()=="1702ea2b9c6101c78244ddbf169cc25c87fef61fcaca05937a24822e1b2e71a8"
+          nb=json.loads(path.read_text())
+          def src(c):
+              s=c.get("source",[])
+              return "".join(s) if isinstance(s,list) else str(s)
+          cells=[src(c) for c in nb["cells"] if c.get("cell_type")=="code"]
+          sha=hashlib.sha256(json.dumps(cells,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()
+          known="a65e0115aaa56e3ce64391e9911fed7d3521c7ace3a1e990d92cc4f1b8a03a82"
+          print("NTL_OMKAR_SAME_EXECUTABLE_AS_PREVIOUS_FAILURE="+json.dumps({
+              "exec_code_sha256":sha,"existing_failed_weMM_source_digest":known,
+              "same":sha==known,"code_cells":len(cells),"old_official_submission":58244483,
+              "result_of_old_official":"COMPLETE error, no numeric score",
+              "not_new_model_class":True},sort_keys=True),flush=True)
+          def safe(s):
+              s=" ".join(s.strip().split())
+              if re.search(r"(?i)(token|secret|password|bearer|api.?key)",s):return "<redacted>"
+              return re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_MOUNT>",s[:190])
+          for i,c in enumerate(nb["cells"]):
+              if c.get("cell_type")!="code":continue
+              code=src(c)
+              first=code.splitlines()[:2]
+              if i<4 or i>=40:
+                  print("NTL_OMKAR_CELL_EXECUTION_INVENTORY="+json.dumps({"idx":i,"first":[safe(s) for s in first],
+                    "lines":len(code.splitlines()),"writes_file":code.startswith("%%writefile"),
+                    "has_full_submit_or_ensemble_call":bool(re.search(r"(?:ensemble\.py|kaggle\s+competitions|subprocess\.run|runpy\.run|!python)",code))},
+                    sort_keys=True),flush=True)
+          print("NTL_OMKAR_DUPLICATE_READONLY_ONLY=TRUE",flush=True)
+          PY
