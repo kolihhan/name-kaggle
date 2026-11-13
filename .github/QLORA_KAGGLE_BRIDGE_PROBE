@@ -1,1 +1,3 @@
 One-shot Kaggle API auth probe only; no notebook or GPU allocation.
+
+Retry after Kaggle 2.2.5 CLI six-dependency fix.
