@@ -62,7 +62,7 @@ def build(source_dir: Path, out_dir: Path):
             and fusion.startswith("%%writefile " + RUNTIME + "/wemm_fusion.py")):
         raise ValueError("isolated worker sources are not at pinned anchors")
     conf = [line for line in config_text.splitlines()
-            if line.startswith("CONFIG['wemm_embedding'] = ")]
+            if line.startswith("CONFIG['wemm_embedding'] = {")]
     if len(conf) != 1:
         raise ValueError("missing unique WeMM config")
     wemm = ast.literal_eval(conf[0].split(" = ", 1)[1])
