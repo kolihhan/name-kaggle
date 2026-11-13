@@ -207,3 +207,58 @@ jobs:
                 lines.append({"line":n,"code":v})
               print("NTL_AREEB_EXACT_INFERENCE_SWITCHES="+json.dumps({"cell":i,"span":f"{start}-{end}","lines":lines},sort_keys=True),flush=True)
           PY
+
+
+      - name: Compare Kirill Close-Calls against verified Areeb 0.683 - frozen-source DIFFERENCES ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-sibling-diff/a /tmp/ntl-sibling-diff/k
+          kaggle kernels pull areebbb/0-684-i-m-better -p /tmp/ntl-sibling-diff/a -m >/dev/null
+          kaggle kernels pull kirilltym/lora-trained27-evidence-for-close-calls -p /tmp/ntl-sibling-diff/k -m >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import difflib, hashlib, json, re
+          root=Path("/tmp/ntl-sibling-diff")
+          specs=[("a","5d053f49005df0b2511e07bfb154faf53f22bca130761ac4a17b61aa5939cb00"),("k","00a82826c69820a4962e7dd4bd7f9c80a86529a65096f7ef5f810f577ee53ede")]
+          nbs={}
+          for key,sha in specs:
+              p=list((root/key).glob("*.ipynb"))
+              assert len(p)==1 and hashlib.sha256(p[0].read_bytes()).hexdigest()==sha,"upstream drift; stop"
+              meta=json.loads((root/key/"kernel-metadata.json").read_text())
+              assert meta.get("is_private") is False
+              nbs[key]=json.loads(p[0].read_text())
+          def cells(nb):
+              return ["".join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source",""))
+                      for c in nb["cells"] if c.get("cell_type")=="code"]
+          def module(code):
+              z=[c for c in code if c.startswith("%%writefile infer.py")]
+              assert len(z)==1,"inference module inventory drift"
+              return z[0].splitlines()
+          a,k=map(lambda x:cells(nbs[x]),("a","k"))
+          aa,kk=module(a),module(k)
+          ops=difflib.SequenceMatcher(None,aa,kk,autojunk=False).get_opcodes()
+          changed=[(op,i1,i2,j1,j2) for op,i1,i2,j1,j2 in ops if op!="equal"]
+          terms=re.compile(r"(?i)trained27|sibling|lora|logit|expert|close|weight|head|embedding|gauss|fit\s*\(|svc|rerank|new_|model_|confidence|fallback")
+          sensitive=re.compile(r"(?i)token|password|secret|api[_-]?key|bearer|authorization")
+          adds=[]
+          for op,i1,i2,j1,j2 in changed:
+              for line in kk[j1:j2]:
+                  s=" ".join(line.strip().split())
+                  if terms.search(s) and not sensitive.search(s) and len(adds)<40:
+                      s=re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_INPUT_MOUNT>",s)
+                      adds.append({"new_line":j1+1,"code":s[:170]})
+          def allcode(z):
+              return "\n".join(z)
+          for key,val in [("areeb",a),("kirill",k)]:
+              t=allcode(val)
+              print("NTL_DISTINCT_SIBLING_STATIC_INVENTORY="+json.dumps({
+                  "ref":key,"cells":len(val),"model_train_related_hits":len(re.findall(r"\.(?:fit|partial_fit|train)\s*\(",t)),
+                  "trained27_mentions":t.lower().count("trained27"),"lora_mentions":t.lower().count("lora"),
+                  "public_source_only":True},sort_keys=True),flush=True)
+          print("NTL_KIRILL_INFER_MODULE_DIFF="+json.dumps({
+              "base_lines":len(aa),"variant_lines":len(kk),
+              "change_hunks":len(changed),"changed_inserted_lines":sum(j2-j1 for _,_,_,j1,j2 in changed),
+              "sibling_signal_candidate_lines":adds},sort_keys=True),flush=True)
+          print("NTL_NO_TRAINING_NO_GPU_NO_PUBLIC_LB_TUNING_OR_SUBMISSION=TRUE",flush=True)
+          PY
