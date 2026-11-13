@@ -1,0 +1,36 @@
+name: NTL Areeb8 exact GPU kernel state and current official ledger READ ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-areeb8-live-kernel-status-readonly-20261113.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect exact candidate notebook without changing it
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,csv,io,json
+          ref="kolihhan/ntl-areeb8-prefit-only-nov13"
+          p=subprocess.run(["kaggle","kernels","status",ref],capture_output=True,text=True,timeout=90)
+          print("NTL_AREEB8_AUTHENTICATED_KERNEL_STATUS="+json.dumps(
+              {"returncode":p.returncode,"stdout":p.stdout[:400],"stderr":p.stderr[:250]},sort_keys=True),flush=True)
+          # This is status only; do not overwrite, re-run, submit, or read raw texts.
+          p=subprocess.run(["kaggle","competitions","submissions","name-that-llm","-v","-q"],
+                           capture_output=True,text=True,check=True,timeout=110)
+          records=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+          exact=[v for v in records if
+             v.get("description")=="NTL Areeb distinct eight model frozen-only realpath exploratory 20261113"]
+          print("NTL_AREEB8_EXACT_OFFICIAL_RECEIPTS="+json.dumps(
+             [{k:v.get(k) for k in ("ref","status","publicScore","date")} for v in exact],
+             sort_keys=True),flush=True)
+          print("NTL_AREEB8_CHECK_ONLY_NO_NEW_SUBMISSION_OR_GPU=TRUE",flush=True)
+          PY
