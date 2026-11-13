@@ -68,8 +68,11 @@ def build(source_dir:Path, target:Path)->dict:
                 raise ValueError("expected real inference else branch missing")
             changed["flags"]+=1
         if code.startswith("%%writefile infer.py"):
-            if code.count("_svc.fit(")!=1 or code.count("_ga.fit(")!=1 or code.count("LogisticRegression(")!=1:
-                raise ValueError("unexpected supervised fit call inventory")
+            inventory={key:code.count(key) for key in ("_svc.fit(", "_ga.fit(", "LogisticRegression(")}
+            if inventory["_svc.fit("]!=1 or inventory["_ga.fit("]!=1 or inventory["LogisticRegression("]<1:
+                raise ValueError("unexpected supervised fit call inventory "+str(inventory))
+            # Every LogisticRegression instance has its .fit method disabled by
+            # the sklearn class-wide fail-closed runtime guard below.
             lines=code.splitlines(keepends=True)
             if len(lines)<50:raise ValueError("inference module truncated")
             # Add guards after the %%writefile magic, so the generated module
