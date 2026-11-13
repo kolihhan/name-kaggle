@@ -34,3 +34,5 @@ jobs:
              sort_keys=True),flush=True)
           print("NTL_AREEB8_CHECK_ONLY_NO_NEW_SUBMISSION_OR_GPU=TRUE",flush=True)
           PY
+
+# Refresh official ntl submission scoring state; no new inference or submission.
