@@ -59,3 +59,47 @@ jobs:
           },sort_keys=True),flush=True)
           print("OMKAR_STATIC_ONLY_NO_FIT_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
           PY
+
+
+      - name: Classify active Omkar WeMM branch and dormant fitting helpers without execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-omkar-branchgate
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-omkar-branchgate -m >/dev/null
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          files=list(Path("/tmp/ntl-omkar-branchgate").glob("*.ipynb"))
+          assert len(files)==1 and hashlib.sha256(files[0].read_bytes()).hexdigest()=="1702ea2b9c6101c78244ddbf169cc25c87fef61fcaca05937a24822e1b2e71a8"
+          nb=json.loads(files[0].read_text())
+          def src(c):
+              a=c.get("source",[])
+              return "".join(a) if isinstance(a,list) else str(a)
+          sources={i:src(c) for i,c in enumerate(nb["cells"]) if c.get("cell_type")=="code"}
+          def safe(x):
+              if re.search(r"(?i)(password|secret|token|bearer|api.?key)",x):return "<redacted>"
+              return re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_MOUNT>"," ".join(x.strip().split())[:210])
+          def near(c,regex,n=3,max_hits=26):
+              ls=sources[c].splitlines()
+              hits=[j for j,x in enumerate(ls) if re.search(regex,x,re.I)]
+              out=[]
+              for j in hits[:max_hits]:
+                  out.append({"at":j+1,"context":[{"line":k+1,"code":safe(ls[k])} for k in range(max(0,j-n),min(len(ls),j+n+1))]})
+              return {"hits":len(hits),"excerpts":out}
+          for cell in [44,51,53,54]:
+              if cell not in sources:continue
+              expr=(
+                r"wemm|native_|sibling_style|\.fit\s*\(|gauss\.fit|config\[|train_texts|train_labels|run\(|fuse|finish_|score|feature|deadline|share|train_final"
+                if cell==44 else
+                r"trainable|load_file|\.fit\s*\(|state|head|checkpoint|torch.no_grad|autocast|predict|fold|ready|deadline|readout|config\[|share"
+              )
+              if cell==54:expr=r"."
+              print("OMKAR_ACTIVE_PATH_AUDIT="+json.dumps({"cell":cell,**near(cell,expr,1,40)},sort_keys=True),flush=True)
+          name_check={}
+          for name in ("sibling_style","gauss.fit","train_final","train-final","wemm_embedding","sequence_classifiers"):
+              where=[i for i,s in sources.items() if name in s]
+              name_check[name]={"cells":where,"only_in_generated_module":all(sources[i].startswith("%%writefile") for i in where)}
+          print("OMKAR_INVOKED_FIT_SITES="+json.dumps(name_check,sort_keys=True),flush=True)
+          print("OMKAR_STATIC_PATH_ONLY_NO_FIT_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
+          PY
