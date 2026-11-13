@@ -34,3 +34,21 @@ jobs:
           for r in rows[:10]:
               print('OFFICIAL_SUBMISSION_RECORD',json.dumps({k:r.get(k) for k in ('ref','status','publicScore','privateScore','description','date')},sort_keys=True))
           PY
+
+      - name: Discover current strongest public NTL Notebook candidates without model GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels list --competition name-that-llm --sort-by scoreDescending --page-size 100 -v > /tmp/ntl-top-public-kernels.csv
+          python - <<'PY'
+          import csv,json
+          with open("/tmp/ntl-top-public-kernels.csv",encoding="utf-8-sig",newline="") as f:
+            rows=list(csv.DictReader(f))
+          print("NTL_PUBLIC_KERNEL_LIST_COLUMNS="+json.dumps(list(rows[0]) if rows else [],sort_keys=True),flush=True)
+          print("NTL_PUBLIC_KERNELS_TOP_COUNT="+str(len(rows)),flush=True)
+          for rank,rec in enumerate(rows[:35],1):
+            allowed={k:str(v)[:180] for k,v in rec.items() if k.lower() in
+              ("ref","title","author","last_run_time","version","totalvotes","vote_count","score")}
+            print("NTL_PUBLIC_KERNEL_RANKED="+json.dumps({"rank":rank,"record":allowed},sort_keys=True),flush=True)
+          print("NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
+          PY
