@@ -1,58 +1,83 @@
-name: NTL native frozen Gaussian activation gate from existing 3row model output READ ONLY
+name: NTL finished Gaussian V2 256-row output diagnostic READ ONLY
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-native-grouped-gauss-activation-existing-output-readonly-20261112.yml]
 permissions: {contents: read}
 jobs:
-  audit:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-gauss-prefit-256-activated-nov13
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Existing 3row inference grouping counts only; no raw text, no model running or fitting
+      - name: Audit already-completed synthetic output, feature branches, and logging without GPU or submission
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4
-          mkdir -p /tmp/ntl-native-groups-3row-output
-          kaggle kernels output kolihhan/ntl-native-clean-frozen-prefit-nov12 -p /tmp/ntl-native-groups-3row-output -o >/tmp/ntl-groups-private-output.log 2>&1
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-v2-readonly
+          kaggle kernels status "$KERNEL" > /tmp/ntl-v2-status.txt
+          grep -q 'KernelWorkerStatus.COMPLETE' /tmp/ntl-v2-status.txt || { echo STOP_V2_NOT_COMPLETE; exit 1; }
+          kaggle kernels output "$KERNEL" -p /tmp/ntl-v2-readonly -o > /tmp/ntl-v2-output-fetch.log 2>&1
           python - <<'PY'
-          import json,collections
+          import collections,json,re
           from pathlib import Path
-          import numpy as np
-          root=Path("/tmp/ntl-native-groups-3row-output")
-          files=list(root.rglob("*"))
-          groups=[p for p in files if p.is_file() and p.name=="Gte.npy"]
-          report={"source":"completed_private_real_model_3row",
-                  "source_gaussian_disabled":True,
-                  "group_file_count":len(groups),
-                  "training_or_inference_executed_here":False,
-                  "new_competition_submission":False}
-          if len(groups)==1:
-            a=np.load(groups[0],allow_pickle=False)
-            unique,counts=np.unique(a,return_counts=True)
-            counts_by_size=collections.Counter(int(n) for n in counts)
-            report.update({
-                "row_count":len(a),"group_count":len(unique),
-                "group_size_histogram":dict(sorted(counts_by_size.items())),
-                "head_active_rows":int(sum(n for n in counts if 2<=n<=18)),
-                "head_scoring_activation_possible":bool(any(2<=n<=18 for n in counts)),
-            })
-            if len(a)!=3:raise SystemExit("STOP_FROZEN_3ROW_GROUP_COUNT_DRIFT")
-          else:
-            report["group_activation_unknown"]=True
-          branches={}
-          for folder in ("q14v5","q8v5"):
-            matches=[x for x in files if x.is_file() and x.name=="feature-metadata.json"
-               and x.parent.name==folder]
-            if len(matches)==1:
-              m=json.loads(matches[0].read_text(encoding="utf-8"))
-              branches[folder]={key:m.get(key) for key in ("gaussian_branch","test_redo","train_redo")}
-            else:branches[folder]={"present":False}
-          report["feature_branch_metadata"]=branches
-          print("NTL_GAUSS_3ROW_GROUP_ACTIVATION_PROOF="+json.dumps(report,sort_keys=True),flush=True)
-          print("NTL_GAUSS_READ_ONLY_NO_TRAINING_OR_PUBLIC_ENTRY=TRUE")
+          import numpy as np,pandas as pd
+          root=Path("/tmp/ntl-v2-readonly")
+          files=[p for p in root.rglob("*") if p.is_file()]
+          parquet=[p for p in files if p.name=="submission.parquet"]
+          if len(parquet)!=1: raise SystemExit("STOP_AMBIGUOUS_V2_OUTPUT_PARQUET")
+          frame=pd.read_parquet(parquet[0])
+          if len(frame)!=256 or list(frame.columns)!=["id","model"] or not frame.id.is_unique or frame.model.isna().any():
+            raise SystemExit("STOP_V2_INVALID_PREDICTION_OUTPUT")
+          log_files=[p for p in files if p.suffix in (".log",".txt",".jsonl",".out") and p.stat().st_size<12000000]
+          markers=("NTL_GAUSS_PREFIT_RUNTIME_BOUND=","NTL_GAUSS_PREFIT_GROUP_ELIGIBILITY=",
+            "NTL_GAUSS_PREFIT_SCORES=","NTL_GAUSS256_ELAPSED_SECONDS=")
+          observed={m:[] for m in markers}
+          per_file=[]
+          for p in log_files:
+            t=p.read_text(errors="replace")
+            counts={m:len(re.findall(re.escape(m),t)) for m in markers}
+            per_file.append({"file":p.name,"size":p.stat().st_size,"markers":{k:v for k,v in counts.items() if v}})
+            for m in markers:
+              for raw in t.splitlines():
+                if m not in raw:continue
+                payload=raw.split(m,1)[1].strip()
+                if m.endswith("SECONDS="):
+                  try: observed[m].append(float(payload.split()[0]))
+                  except: observed[m].append("UNPARSEABLE")
+                else:
+                  try:
+                    obj=json.loads(payload)
+                    observed[m].append({k:obj.get(k) for k in ("member","mode","test_redo_positive",
+                      "supervised_fit","rows","selected_rows","has_group","scored_rows","nonzero","finite","max_abs") if k in obj})
+                  except:observed[m].append({"parsing":"FAILED"})
+          npy=[p for p in files if p.name=="Gte.npy"]
+          grouphist=[]
+          for p in npy:
+            a=np.load(p,allow_pickle=False)
+            sizes=np.unique(a,return_counts=True)[1]
+            hist=dict(sorted(collections.Counter(int(n) for n in sizes).items()))
+            grouphist.append({"file":p.name,"rows":int(len(a)),"group_size_histogram":hist,
+              "gaussian_eligible_rows":int(sum(n for n in sizes if 2<=n<=18))})
+          feature_meta=[]
+          for p in files:
+            if p.name!="feature-metadata.json":continue
+            if p.parent.name not in ("q14v5","q8v5"):continue
+            d=json.loads(p.read_text())
+            feature_meta.append({"model":p.parent.name,**{k:d.get(k) for k in
+              ("gaussian_branch","test_redo","train_redo","source_version")}})
+          report={"kernel":"already_COMPLETED_private_synthetic_256","output_rows":len(frame),
+            "unique_prediction_labels":int(frame.model.nunique()),
+            "log_file_count":len(log_files),"file_names":[p.name for p in files if p.suffix in (".log",".txt",".jsonl",".out",".npy",".json")][:60],
+            "marker_records":observed,"log_inventory":per_file[:50],
+            "group_files":grouphist,"feature_branches":feature_meta,
+            "gpu_or_model_inference_run_now":False,"new_training":False,"official_submission":False,
+            "accuracy_estimated":False}
+          print("NTL_V2_FINISHED_256_READ_ONLY_ROOT_CAUSE="+json.dumps(report,sort_keys=True),flush=True)
           PY
