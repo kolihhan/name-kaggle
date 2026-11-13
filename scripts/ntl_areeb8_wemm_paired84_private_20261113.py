@@ -170,7 +170,7 @@ result={
 (W/'paired84-summary.json').write_text(json.dumps(result,indent=2,sort_keys=True))
 print('NTL_PAIRED84_FROZEN_RESCUE_REGRESSION='+json.dumps(result,sort_keys=True),flush=True)
 print('NTL_PAIRED84_NO_OFFICIAL_SUBMISSION_OR_TRAINING=TRUE',flush=True)
-""" % (LABELS12,)
+"""
 
 
 def source_code(nb):
@@ -237,7 +237,7 @@ def build(champ_dir: Path, omkar_dir: Path, output_dir: Path, capsule_dir: Path)
     cells.extend([
         new_code("from pathlib import Path\nPath('"+RUNTIME+"').mkdir(parents=True,exist_ok=True)\n",71),
         new_code(shim,72),new_code(stage,73),new_code(worker,74),
-        new_code(fusion,75),new_code(WEMM_SCORER % (wemm_config,),76)
+        new_code(fusion,75),new_code(WEMM_SCORER % (wemm_config,LABELS12),76)
     ])
     for c in cells:
         if c.get("cell_type")=="code":
