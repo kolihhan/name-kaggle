@@ -1,0 +1,61 @@
+name: NTL Omkar frozen-head no-training source decision ONCE
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-omkar-frozen-head-audit-once-20261113.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect pinned public Kaggle source control flow and frozen classifier provenance ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-omkar-frozen-audit
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-omkar-frozen-audit -m >/dev/null
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          root=Path("/tmp/ntl-omkar-frozen-audit")
+          notebooks=list(root.glob("*.ipynb"))
+          assert len(notebooks)==1
+          sha=hashlib.sha256(notebooks[0].read_bytes()).hexdigest()
+          assert sha=="1702ea2b9c6101c78244ddbf169cc25c87fef61fcaca05937a24822e1b2e71a8", "public author SHA drift"
+          nb=json.loads(notebooks[0].read_text())
+          meta=json.loads((root/"kernel-metadata.json").read_text())
+          def source(c):
+              x=c.get("source",[])
+              return "".join(x) if isinstance(x,list) else str(x)
+          def norm(s):return " ".join(s.strip().split())[:220]
+          danger=re.compile(r"(?i)(token|password|bearer|secret|api_key|credential)")
+          def safe(s):
+              if danger.search(s):return "<redacted>"
+              return re.sub(r"/kaggle/input/[^\s'\x22]+", "<PUBLIC_MOUNT>",norm(s))
+          selected=re.compile(r"(?i)(wemm|qwen2\.5|2\.5.*7b|gaussian|gauss\.fit|model\.fit|model\.train|logistic|ridge|lightgbm|xgboost|\.predict_proba|\.predict\(|load_file|\.joblib|\.pkl|\.pickle|\.npz|train_final|--train-final|train.*csv|test.*csv|score|weights|classifier|submission|FAST_COMMIT|pretrained|freeze|embedding|torch\.no_grad|inference_mode)")
+          for ix,c in enumerate(nb["cells"]):
+              if c.get("cell_type")!="code":continue
+              lines=source(c).splitlines()
+              hits=[(ii,safe(v)) for ii,v in enumerate(lines) if selected.search(v) and not danger.search(v)]
+              if not hits:continue
+              print("OMKAR_FROZEN_HEAD_CELL="+json.dumps({
+                  "cell":ix,"lines":len(lines),"head":[safe(v) for v in lines[:3]],
+                  "critical":[{"line":ii+1,"code":snippet} for ii,snippet in hits[:60]],
+                  "more_hits_omitted":max(0,len(hits)-60)
+              },sort_keys=True),flush=True)
+          print("OMKAR_FROZEN_HEAD_META="+json.dumps({
+             "public_ref":meta["id"],
+             "kernel_sources":meta.get("kernel_sources"),
+             "model_sources":meta.get("model_sources"),
+             "dataset_sources":meta.get("dataset_sources"),
+             "expected_sha":sha,
+             "num_code_cells":sum(c.get("cell_type")=="code" for c in nb["cells"])
+          },sort_keys=True),flush=True)
+          print("OMKAR_STATIC_ONLY_NO_FIT_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
+          PY
