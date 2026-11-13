@@ -361,3 +361,44 @@ jobs:
               print("NTL_FROZEN_MODEL_NEW_SOURCE_SCAN="+json.dumps(record,sort_keys=True),flush=True)
           print("NTL_PUBLIC_MODEL_SCAN_READONLY_NO_GPU_NO_FIT_NO_SUBMISSION=TRUE",flush=True)
           PY
+
+
+      - name: Trace Omkar new WeMM and Qwen2.5 supervised-fit runtime callsites only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-omkar-nofit-readonly
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-omkar-nofit-readonly -m >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import json,re,hashlib
+          p=next(Path("/tmp/ntl-omkar-nofit-readonly").glob("*.ipynb"))
+          sha=hashlib.sha256(p.read_bytes()).hexdigest()
+          assert sha=="1702ea2b9c6101c78244ddbf169cc25c87fef61fcaca05937a24822e1b2e71a8"
+          nb=json.loads(p.read_text())
+          hits=[]
+          triggers=re.compile(r"(?i)\.fit\s*\(|\.fit_transform\s*\(|\.train\s*\(|partial_fit\s*\(|train_final|FAST_COMMIT|len\s*\(\s*test|read_csv\s*\([^)]*test.csv|submission\.parquet")
+          risky=re.compile(r"(?i)(password|secret|api[_-]?key|bearer|authorization|credential)")
+          for ix,cell in enumerate(nb["cells"]):
+              if cell.get("cell_type")!="code":continue
+              v=cell.get("source",[])
+              code="".join(v) if isinstance(v,list) else str(v)
+              lines=code.splitlines()
+              for i,line in enumerate(lines):
+                  if not triggers.search(line):continue
+                  context=[]
+                  for j in range(max(0,i-5),min(len(lines),i+5)):
+                      s=lines[j]
+                      s=re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_INPUT_MOUNT>",s)
+                      if risky.search(s):s="<redacted suspicious config>"
+                      context.append({"line":j+1,"code":s[:190]})
+                  hits.append({"cell":ix,"line":i+1,"excerpt":context})
+          print("NTL_OMKAR_SOURCE_TRAINING_REACHABILITY="+json.dumps({
+               "public_ref":"omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex",
+               "source_sha256":sha,"callsite_hits":hits[:34],"total_hits":len(hits),
+               "has_submission_output":any("submission.parquet" in
+                 ("".join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source","")))
+                 for c in nb["cells"] if c.get("cell_type")=="code"),
+               "code_only_no_run_or_new_training":True},ensure_ascii=False,sort_keys=True),flush=True)
+          print("NTL_OMKAR_PUBLIC_CODE_ONLY_NO_NEW_GPU_OR_SUBMISSION=TRUE",flush=True)
+          PY
