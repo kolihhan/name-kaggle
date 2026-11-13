@@ -194,3 +194,28 @@ jobs:
                     sort_keys=True),flush=True)
           print("NTL_OMKAR_DUPLICATE_READONLY_ONLY=TRUE",flush=True)
           PY
+
+
+      - name: Preflight minimal single-fold WeMM-only worker required imports and CLI, without running GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-isolated-wemm-spec
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-isolated-wemm-spec -m >/dev/null
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          p=next(Path("/tmp/ntl-isolated-wemm-spec").glob("*.ipynb"))
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=="1702ea2b9c6101c78244ddbf169cc25c87fef61fcaca05937a24822e1b2e71a8"
+          nb=json.loads(p.read_text())
+          def src(c):
+              v=c.get("source",[])
+              return "".join(v) if isinstance(v,list) else str(v)
+          def safe(s):
+              if re.search(r"(?i)(password|token|secret|bearer|api.?key)",s):return "<redacted>"
+              return re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_MOUNT>"," ".join(s.strip().split())[:220])
+          for idx,start,end in [(3,1,45),(42,1,44),(51,1,65),(51,300,363),(53,1,64),(54,1,20)]:
+              ls=src(nb["cells"][idx]).splitlines()
+              print("NTL_ISOLATED_WEMM_WORKER_SPEC="+json.dumps({"cell":idx,"range":[start,end],
+                 "lines":[{"i":i,"code":safe(ls[i-1])} for i in range(start,min(end,len(ls))+1)]},sort_keys=True),flush=True)
+          PY
