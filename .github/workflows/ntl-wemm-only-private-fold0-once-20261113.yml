@@ -110,3 +110,5 @@ jobs:
           print("NTL_WEMM_ONLY_FOLD0_REAL_GPU_VALIDATED=TRUE",flush=True)
           print("NTL_WEMM_ONLY_OFFICIAL_COMPETITION_SUBMISSIONS_CREATED=ZERO",flush=True)
           PY
+
+# Re-arm after CPU-only double-assignment config parsing fix; no prior GPU push occurred.
