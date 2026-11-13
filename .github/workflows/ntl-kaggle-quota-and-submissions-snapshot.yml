@@ -180,3 +180,30 @@ jobs:
                 "start_lines":[x[:120] for x in lines[:3]],"matched_regions":preview},sort_keys=True),flush=True)
           print("NTL_AREEB_NO_NEW_GPU_OR_TRAINING_OR_SUBMISSION=TRUE",flush=True)
           PY
+
+      - name: Pin Areeb source inference switches for no-fit 8-model alternative
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-areeb-switches
+          kaggle kernels pull areebbb/0-684-i-m-better -p /tmp/ntl-areeb-switches -m >/dev/null 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          nb=json.loads(next(Path("/tmp/ntl-areeb-switches").glob("*.ipynb")).read_text())
+          for i in (2,23,28,30):
+            c=nb["cells"][i]; s=c.get("source",[])
+            t=("".join(s) if isinstance(s,list) else str(s)).splitlines()
+            if i==2:ranges=[(35,54),(100,136)]
+            elif i==23:ranges=[(36,67),(165,220),(340,387),(615,635)]
+            elif i==28:ranges=[(1,30)]
+            else:ranges=[(1,9)]
+            for start,end in ranges:
+              lines=[]
+              for n in range(start,min(end,len(t))+1):
+                v=" ".join(t[n-1].strip().split())[:220]
+                v=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT_MOUNT>",v)
+                if re.search("(?i)(token|secret|password|api_key|bearer)",v):v="<redacted>"
+                lines.append({"line":n,"code":v})
+              print("NTL_AREEB_EXACT_INFERENCE_SWITCHES="+json.dumps({"cell":i,"span":f"{start}-{end}","lines":lines},sort_keys=True),flush=True)
+          PY
