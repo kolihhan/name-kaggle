@@ -1,0 +1,54 @@
+name: NTL 0.683-vs-WeMM paired84 frozen source NO-GPU preflight
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-paired84-no-gpu-preflight-20261113.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/attribution-bottleneck-review-20261106
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compile and inspect imports before any GPU, public data stays ephemeral
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_areeb8_wemm_paired84_private_20261113.py
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 nbformat==5.10.4
+          mkdir -p /tmp/ntl-paired84/champion /tmp/ntl-paired84/wemm /tmp/ntl-paired84/capsule
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 -p /tmp/ntl-paired84/champion -m >/dev/null
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-paired84/wemm -m >/dev/null
+          python -m scripts.ntl_areeb8_wemm_paired84_private_20261113 \
+            --champion /tmp/ntl-paired84/champion \
+            --omkar /tmp/ntl-paired84/wemm \
+            --capsules /tmp/ntl-paired84/capsule \
+            --out /tmp/ntl-paired84/new
+          python - <<'PY'
+          from pathlib import Path
+          import json,re
+          root=Path('/tmp/ntl-paired84/new')
+          meta=json.loads((root/'kernel-metadata.json').read_text())
+          nb=json.loads((root/meta['code_file']).read_text())
+          assert meta['id']=='kolihhan/ntl-areeb8-wemm-paired84-nov13'
+          assert meta['is_private'] and meta['enable_gpu'] and not meta['enable_internet']
+          assert meta['competition_sources']==['name-that-llm']
+          assert len(meta['model_sources'])==9
+          code='\n'.join(''.join(c.get('source',[])) if isinstance(c.get('source',[]),list)
+               else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code')
+          assert code.count('NTL_PAIRED84_FROZEN_RESCUE_REGRESSION')==1
+          assert 'NTL_PAIRED84_INPUT_VERIFIED' in code and 'NTL_PAIRED84_NO_OFFICIAL_SUBMISSION_OR_TRAINING' in code
+          assert 'FAST_COMMIT = False' in code and 'NO_NEW_TRAINING: supervised classifier fitting forbidden' in code
+          assert 'test.csv' in code and 'NTL_PAIRED84_INPUT_VERIFIED' in code
+          assert not re.search(r'kaggle\s+competitions\s+submit',code,re.I)
+          print('NTL_PAIRED84_NO_GPU_FULL_SOURCE_PREFLIGHT_PASS=TRUE',flush=True)
+          print('NTL_PAIRED84_PRIVATE_NOTEBOOK_BYTES='+str((root/meta['code_file']).stat().st_size),flush=True)
+          PY
+          echo NTL_PAIRED84_NO_GPU_GPU_CONSUMPTION_ZERO=TRUE
