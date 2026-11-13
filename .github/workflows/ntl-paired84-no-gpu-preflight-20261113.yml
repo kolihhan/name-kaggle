@@ -52,3 +52,5 @@ jobs:
           print('NTL_PAIRED84_PRIVATE_NOTEBOOK_BYTES='+str((root/meta['code_file']).stat().st_size),flush=True)
           PY
           echo NTL_PAIRED84_NO_GPU_GPU_CONSUMPTION_ZERO=TRUE
+
+# Recheck after static-percent source format fix, prior run consumed zero GPU.
