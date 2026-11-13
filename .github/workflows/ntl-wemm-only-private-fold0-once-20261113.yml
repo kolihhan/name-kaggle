@@ -1,0 +1,112 @@
+name: NTL WeMM ONLY frozen fold0 real GPU smoke ONCE (NO official submission)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-wemm-only-private-fold0-once-20261113.yml]
+permissions: {contents: read}
+jobs:
+  private_one_shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/attribution-bottleneck-review-20261106
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: CPU one-fold no-fit and source-drift unit tests
+        run: |
+          set -euo pipefail
+          python -m unittest -q tests.test_ntl_wemm_isolated_fold0_smoke_20261113
+      - name: One pinned no-training Kaggle private Notebook source preflight (zero GPU)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-wemm-fold0-source
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-wemm-fold0-source -m >/dev/null
+          python scripts/ntl_wemm_isolated_fold0_smoke_20261113.py --source /tmp/ntl-wemm-fold0-source --out /tmp/ntl-wemm-fold0-private
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("/tmp/ntl-wemm-fold0-private")
+          m=json.loads((p/"kernel-metadata.json").read_text())
+          n=json.loads((p/m["code_file"]).read_text())
+          assert m["is_private"] and m["enable_gpu"] and not m["enable_internet"]
+          assert not m["competition_sources"] and not m["kernel_sources"]
+          assert len(n["cells"])==7 and m["id"]=="kolihhan/ntl-wemm-only-fold0-smoke-nov13"
+          print("WEMM_ONLY_PRIVATE_SOURCE_ONE_SHOT_PREFLIGHT=TRUE",flush=True)
+          PY
+      - name: Push just one NEW private no-competition Kaggle real GPU smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle quota
+          python - <<'PY'
+          import subprocess
+          slug="kolihhan/ntl-wemm-only-fold0-smoke-nov13"
+          s=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=60)
+          if s.returncode == 0:
+              raise RuntimeError("pilot slug already exists: NEVER push/overwrite or rerun")
+          if any(t in (s.stdout+s.stderr).lower() for t in ("unauthorized", "forbidden", "invalid token", "quota exceeded")):
+              raise RuntimeError("auth or quota error; do not start private GPU")
+          print("WEMM_ONLY_NO_EXISTING_KERNEL_VERIFIED=TRUE",flush=True)
+          PY
+          kaggle kernels push -p /tmp/ntl-wemm-fold0-private
+          echo 'NTL_WEMM_ONLY_PRIVATE_KAGGLE_PUSH_ACCEPTED=TRUE'
+          echo 'OFFICIAL_KAGGLE_COMPETITION_SUBMISSION=NONE'
+      - name: Poll ONLY the existing private kernel, never push twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,time
+          slug="kolihhan/ntl-wemm-only-fold0-smoke-nov13"
+          for poll in range(65):
+              p=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=60)
+              value=p.stdout+" "+p.stderr
+              if p.returncode:
+                  raise RuntimeError("private kernel status query failed: "+value[:300])
+              if "KernelWorkerStatus.COMPLETE" in value:
+                  print("NTL_WEMM_ONLY_PRIVATE_GPU_TERMINAL=COMPLETE",flush=True)
+                  break
+              if any(s in value for s in ("KernelWorkerStatus.ERROR","KernelWorkerStatus.CANCEL","KernelWorkerStatus.FAILED")):
+                  print("NTL_WEMM_ONLY_PRIVATE_GPU_TERMINAL=ERROR",flush=True)
+                  raise RuntimeError("private GPU source failed; no official submission")
+              if poll % 5 == 0:
+                  print("WEMM_ONLY_EXISTING_PRIVATE_GPU_STATUS="+value.strip()[:160],flush=True)
+              time.sleep(60)
+          else:
+              print("NTL_WEMM_ONLY_PRIVATE_GPU_TERMINAL=UNCONFIRMED_AFTER_POLL",flush=True)
+              raise RuntimeError("poll bound elapsed; do not rerun")
+          PY
+      - name: Verify private log marker and numeric shape only; NEVER submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-wemm-fold0-observed
+          kaggle kernels output kolihhan/ntl-wemm-only-fold0-smoke-nov13 -p /tmp/ntl-wemm-fold0-observed -o >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          folder=Path("/tmp/ntl-wemm-fold0-observed")
+          seen=[]
+          for p in folder.rglob("*"):
+              if p.suffix not in (".log",".txt"):continue
+              try:s=p.read_text(errors="replace")
+              except:continue
+              for line in s.splitlines():
+                  if ("NTL_WEMM_ONLY_FROZEN_REAL_INFERENCE=" in line or
+                      "NTL_WEMM_FROZEN_FOLD0_SYNTHETIC_ROWS=" in line or
+                      "NTL_WEMM_FROZEN_FOLD0_CLASS_COUNT=" in line or
+                      "NTL_WEMM_FROZEN_FOLD0_ARGMAX=" in line or
+                      "WEMM_ONLY_FOLD0_EXIT=" in line or
+                      "WEMM_ONLY_FOLD0_WALL_S=" in line):
+                      seen.append(line.strip()[:220])
+          for line in seen:print("WEMM_ONLY_AUTHENTICATED_PRIVATE_MARKER="+line,flush=True)
+          if not any("NTL_WEMM_ONLY_FROZEN_REAL_INFERENCE=TRUE" in v for v in seen):
+              raise RuntimeError("kernel COMPLETE but marker not found: do not infer model ran")
+          print("NTL_WEMM_ONLY_FOLD0_REAL_GPU_VALIDATED=TRUE",flush=True)
+          print("NTL_WEMM_ONLY_OFFICIAL_COMPETITION_SUBMISSIONS_CREATED=ZERO",flush=True)
+          PY
