@@ -61,7 +61,7 @@ panel=panel.sort_values(['source','prompt_id','model'],kind='stable').reset_inde
 assert len(panel)==84 and not panel.text.isna().any()
 assert set(panel.model)==set(L12)
 assert set(panel.groupby('model').size())=={7}
-panel.insert(0,'id',['diag-%03d'%%i for i in range(84)])
+panel.insert(0,'id',['diag-%%03d'%%i for i in range(84)])
 def digest(s):return _ph.sha256(' '.join(str(s).split()).casefold().encode()).hexdigest()
 assert panel.text.map(digest).is_unique
 official_train=_pp.read_csv(_po.path.join(DATA,'train.csv'),usecols=['text'])
