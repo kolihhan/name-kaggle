@@ -102,3 +102,46 @@ jobs:
             print("NTL_PUBLIC_ARCHITECTURE="+json.dumps(out,sort_keys=True),flush=True)
           print("PUBLIC_SOURCE_READONLY_NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
           PY
+
+      - name: Inspect best-source data provenance, fit call sites, and public runtime before selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-audit-inference
+          python - <<'PY'
+          import json,re,subprocess
+          from pathlib import Path
+          specs=["areebbb/0-684-i-m-better","kirilltym/lora-trained27-evidence-for-close-calls",
+                 "alexchilton/name-that-llm-0-684-all-public-what-failed",
+                 "heliosli/name-that-llm-lv683-a15"]
+          for j,slug in enumerate(specs):
+            folder=Path("/tmp/ntl-audit-inference")/str(j);folder.mkdir()
+            p=subprocess.run(["kaggle","kernels","pull",slug,"-p",str(folder),"-m"],
+                             capture_output=True,text=True,timeout=110)
+            if p.returncode:
+              print("NTL_SOURCE_METHOD_DETAIL="+json.dumps({"ref":slug,"fetch_ok":False},sort_keys=True));continue
+            nb=json.loads(next(folder.glob("*.ipynb")).read_text())
+            meta=json.loads((folder/"kernel-metadata.json").read_text())
+            calls=[];paths=[]
+            for ix,cell in enumerate(nb["cells"]):
+              if cell.get("cell_type")!="code":continue
+              src="".join(cell.get("source",[])) if isinstance(cell.get("source"),list) else str(cell.get("source",""))
+              lines=src.splitlines()
+              for li,ln in enumerate(lines):
+                if re.search(r"\b(?:\.fit\s*\(|\.fit_transform\s*\(|\.train\s*\(|train_final|test_csv|submission.parquet)",ln):
+                  st=" ".join(ln.strip().split())[:170]
+                  if re.search(r"(?i)(secret|token|password|bearer|api_key)",st):st="<redacted>"
+                  if "/kaggle/input" in st:st=re.sub(r"/kaggle/input/[^\s'\x22]+","<SOURCE_MOUNT>",st)
+                  calls.append({"cell":ix,"line":li+1,"code":st})
+            keys=("competition_sources","dataset_sources","kernel_sources","model_sources")
+            out={"ref":slug,"notebook_cells":len(nb["cells"]),
+                 "metadata_sources":{key:meta.get(key) if key!="dataset_sources" else
+                         [x for x in meta.get(key,[]) if re.search("prefit|lora|model|svm|svc|gauss|artifacts",x,re.I)]
+                         for key in keys},
+                 "fit_training_or_input_sites":calls[:70],
+                 "fit_site_count":len(calls)}
+            print("NTL_SOURCE_METHOD_DETAIL="+json.dumps(out,sort_keys=True),flush=True)
+            s=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=60)
+            print("NTL_SOURCE_PUBLISHED_KERNEL_STATUS="+json.dumps({"ref":slug,"status":" ".join((s.stdout+s.stderr).split())[:140]},sort_keys=True),flush=True)
+          print("NO_NEW_TRAINING_OR_GPU_OR_OFFICIAL_SUBMISSION=TRUE",flush=True)
+          PY
