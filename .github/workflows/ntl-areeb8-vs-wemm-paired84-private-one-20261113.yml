@@ -1,0 +1,126 @@
+name: NTL 0.683-vs-WeMM paired84 private GPU ONE (no submission, no training)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-areeb8-vs-wemm-paired84-private-one-20261113.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-areeb8-wemm-paired84-once-20261113
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 235
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-areeb8-wemm-paired84-nov13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/attribution-bottleneck-review-20261106
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Pin source, capsule and zero-training no-submit CPU gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m py_compile scripts/ntl_areeb8_wemm_paired84_private_20261113.py
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess
+          q=subprocess.run(["kaggle","quota","--format","json"],check=True,capture_output=True,text=True,timeout=120)
+          g=[x for x in json.loads(q.stdout) if x.get("resource")=="GPU"]
+          assert len(g)==1
+          remain=float(str(g[0]["remaining"]).rstrip("h"))
+          print("NTL_PAIRED84_GPU_QUOTA_HOURS="+str(remain),flush=True)
+          if remain<3.0:raise SystemExit("STOP: not enough Kaggle GPU budget for one-shot 84-row paired comparison")
+          slug="kolihhan/ntl-areeb8-wemm-paired84-nov13"
+          s=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=60)
+          if s.returncode==0 or "KernelWorkerStatus." in (s.stdout+s.stderr):
+              raise SystemExit("STOP: same private Notebook already exists, never push twice")
+          if any(t in (s.stdout+s.stderr).lower() for t in ("unauthorized","forbidden","quota exceeded","invalid token")):
+              raise SystemExit("STOP: Kaggle credentials/quota inaccessible")
+          print("NTL_PAIRED84_UNIQUE_PRIVATE_DESTINATION=TRUE",flush=True)
+          PY
+          mkdir -p /tmp/ntl-pairstudy/champion /tmp/ntl-pairstudy/wemm /tmp/ntl-pairstudy/capsule
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 -p /tmp/ntl-pairstudy/champion -m >/dev/null
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-pairstudy/wemm -m >/dev/null
+          python -m scripts.ntl_areeb8_wemm_paired84_private_20261113 \
+            --champion /tmp/ntl-pairstudy/champion \
+            --omkar /tmp/ntl-pairstudy/wemm \
+            --capsules /tmp/ntl-pairstudy/capsule \
+            --out /tmp/ntl-pairstudy/new
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          folder=Path('/tmp/ntl-pairstudy/new')
+          meta=json.loads((folder/'kernel-metadata.json').read_text())
+          code=(folder/meta['code_file']).read_text()
+          assert meta["id"]=="kolihhan/ntl-areeb8-wemm-paired84-nov13"
+          assert meta["is_private"] and meta["enable_gpu"] and not meta["enable_internet"]
+          assert len(meta["model_sources"])==9
+          assert "NTL_PAIRED84_FROZEN_RESCUE_REGRESSION" in code
+          assert "NTL_PAIRED84_INPUT_VERIFIED" in code
+          print("NTL_PAIRED84_BUILD_AND_GUARDS_PASS=TRUE",flush=True)
+          PY
+      - name: Push ONE private full pretrained GPU run, never Kaggle competition submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p /tmp/ntl-pairstudy/new --accelerator NvidiaTeslaT4 --timeout 13200 >/tmp/ntl-pairstudy/push.log 2>&1 || {
+            echo STOP_NTL_PAIRED84_PRIVATE_PUSH_FAILED
+            exit 1
+          }
+          echo NTL_PAIRED84_PRIVATE_KAGGLE_KERNEL_PUSHED=TRUE
+          echo NTL_PAIRED84_OFFICIAL_COMPETITION_SUBMISSION_CREATED=NONE
+      - name: Watch only this private version until terminal, never resubmit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,subprocess,time
+          slug=os.environ["KERNEL"]
+          for i in range(219):
+              p=subprocess.run(["kaggle","kernels","status",slug],capture_output=True,text=True,timeout=70)
+              status=(p.stdout+" "+p.stderr).strip()
+              if p.returncode:raise RuntimeError("private Kaggle status unavailable: "+status[:240])
+              if "KernelWorkerStatus.COMPLETE" in status:
+                  print("NTL_PAIRED84_KAGGLE_PRIVATE_TERMINAL=COMPLETE",flush=True);break
+              if any("KernelWorkerStatus."+x in status for x in ("ERROR","CANCELLED","FAILED","CANCEL")):
+                  print("NTL_PAIRED84_KAGGLE_PRIVATE_TERMINAL=ERROR",flush=True)
+                  raise RuntimeError("private model failure, no competition submission")
+              if i%15==0:print("NTL_PAIRED84_PRIVATE_STATUS="+status[:140],flush=True)
+              time.sleep(60)
+          else:raise RuntimeError("bounded 219-minute polling exhausted; do not push again")
+          PY
+      - name: Extract only safe 12-class paired aggregate, never row-level predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-pairstudy/observed
+          kaggle kernels output "$KERNEL" -p /tmp/ntl-pairstudy/observed -o >/tmp/ntl-pairstudy/output.log 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path("/tmp/ntl-pairstudy/observed")
+          exact=list(root.rglob("paired84-summary.json"))
+          if len(exact)!=1:
+              print("NTL_PAIRED84_SUMMARY_FILE_COUNT="+str(len(exact)),flush=True)
+              raise RuntimeError("private kernel COMPLETE but no verified paired aggregates")
+          record=json.loads(exact[0].read_text())
+          assert record["scope"]=="SPENT_TWO_SOURCE_12_LABEL_DIAGNOSTIC_ONLY"
+          assert record["no_new_training"] and record["official_submission"] is False
+          assert record["champion_pinned_official_public_BA"]==.683
+          assert record["champion_official_submission_ref"]=="58295802"
+          assert record["source_prompt_blocks"]==7 and record["wemm_folds_evaluated"]==[0]
+          a=record["combined"]
+          assert a["rows"]==84 and a["true_labels"]==12
+          assert a["rescues"]+a["regressions"]+a["both_right"]+a["both_wrong"]==84
+          assert sum(x["rows"] for x in record["per_source"].values())==84
+          print("NTL_PAIRED84_VERIFIED_AGGREGATES="+json.dumps(record,sort_keys=True),flush=True)
+          print("NTL_PAIRED84_ROW_LEVEL_PREDICTIONS_NEVER_PUBLISHED=TRUE",flush=True)
+          print("NTL_PAIRED84_OFFICIAL_SUBMISSIONS_CREATED=ZERO",flush=True)
+          PY
