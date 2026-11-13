@@ -103,3 +103,54 @@ jobs:
           print("OMKAR_INVOKED_FIT_SITES="+json.dumps(name_check,sort_keys=True),flush=True)
           print("OMKAR_STATIC_PATH_ONLY_NO_FIT_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
           PY
+
+
+      - name: Determine WeMM active config, finalizer supervision and deadline without evaluating any rows
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-omkar-actual-path
+          kaggle kernels pull omkarpattanaik123/name-that-llm-v28-sovereign-titan-apex -p /tmp/ntl-omkar-actual-path -m >/dev/null
+          python - <<'PY'
+          import json,re,hashlib
+          from pathlib import Path
+          p=next(Path("/tmp/ntl-omkar-actual-path").glob("*.ipynb"))
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=="1702ea2b9c6101c78244ddbf169cc25c87fef61fcaca05937a24822e1b2e71a8"
+          nb=json.loads(p.read_text())
+          code={}
+          for i,c in enumerate(nb["cells"]):
+              if c.get("cell_type")!="code":continue
+              v=c.get("source",[])
+              code[i]="".join(v) if isinstance(v,list) else str(v)
+          def safe(s):
+              if re.search(r"(?i)(password|bearer|secret|api.?key|credential)",s):return "<redacted>"
+              return re.sub(r"/kaggle/input/[^\s\x22']+","<PUBLIC_MOUNT>"," ".join(s.strip().split())[:250])
+          print("OMKAR_REACHABLE_WEIGHTS="+json.dumps({
+              "config_wemm_literal":[safe(s) for s in code[54].splitlines() if "wemm_embedding" in s],
+              "config_native_literal":[safe(s) for s in code[54].splitlines() if "native_embedding" in s],
+              "config_activations":[safe(s) for s in code[54].splitlines() if
+                any(x in s for x in ("sequence_classifiers","additional_sparse","gsq_share","gauss","deadline","submit"))],
+              "wemm_share_matches":re.findall(r"(?i)['\x22]share['\x22]\s*:\s*([.\d]+)",code[54]),
+              "wemm_deadline_seconds":re.findall(r"(?i)['\x22]deadline_seconds['\x22]\s*:\s*([.\d]+)",code[54]),
+          },sort_keys=True),flush=True)
+          e=code[44].splitlines()
+          for lo,hi in [(140,179),(179,205)]:
+              print("OMKAR_ENSEMBLE_EXECUTED_STAGE="+json.dumps({"start":lo,"end":hi,
+                 "lines":[{"line":i,"code":safe(e[i-1])} for i in range(lo,min(len(e),hi)+1)]},
+                 sort_keys=True),flush=True)
+          for i,s in code.items():
+              if not s.startswith("%%writefile") or not re.search(r"(?i)(core_math|native_fusion|sibling_style)",s.splitlines()[0]):continue
+              hits=[(j+1,safe(t)) for j,t in enumerate(s.splitlines())
+                    if re.search(r"(?i)(def finalize|def finish_native|\.fit\s*\(|fit_transform|train_labels|train_texts|typography|sibling_style|gauss\.fit|fit\()",t)]
+              print("OMKAR_FINALIZER_TRAIN_LABEL_CALLS="+json.dumps({"cell":i,"file":safe(s.splitlines()[0]),
+                "hits":[{"line":j,"code":t} for j,t in hits[:35]]},sort_keys=True),flush=True)
+          all_sources="\n".join(code.values())
+          print("OMKAR_SOURCE_PATH_INVENTORY="+json.dumps({
+              "weMM_workers_and_true_heads": "trainables.safetensors" in all_sources and "wemm_embedding_worker.py" in all_sources,
+              "active_wemm_enabled_in_config": bool(re.search(r"['\x22]share['\x22]\s*:\s*0\.[0-9]*[1-9]",code[54])),
+              "sequence_classifiers_explicitly_off": "CONFIG['sequence_classifiers'] = []" in code[54],
+              "sibling_style_external_call_excluding_module": any("sibling_style" in s for i,s in code.items()
+                  if i!=43 and not s.startswith("%%writefile")),
+              "static_only":True},sort_keys=True),flush=True)
+          print("OMKAR_NO_TRAIN_NO_GPU_NO_SUBMISSION_READONLY=TRUE",flush=True)
+          PY
