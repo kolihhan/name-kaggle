@@ -145,3 +145,38 @@ jobs:
             print("NTL_SOURCE_PUBLISHED_KERNEL_STATUS="+json.dumps({"ref":slug,"status":" ".join((s.stdout+s.stderr).split())[:140]},sort_keys=True),flush=True)
           print("NO_NEW_TRAINING_OR_GPU_OR_OFFICIAL_SUBMISSION=TRUE",flush=True)
           PY
+
+      - name: Identify exact supervised fitting reachability in best Areeb public candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-areeb-training-reachability
+          kaggle kernels pull areebbb/0-684-i-m-better -p /tmp/ntl-areeb-training-reachability -m >/tmp/ntl-areeb-source-fetch.log 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          root=Path("/tmp/ntl-areeb-training-reachability")
+          nb=json.loads(next(root.glob("*.ipynb")).read_text())
+          for ix,c in enumerate(nb.get("cells",[])):
+            if c.get("cell_type")!="code":continue
+            raw=c.get("source",[])
+            code="".join(raw) if isinstance(raw,list) else str(raw)
+            lines=code.splitlines()
+            hits=[i for i,line in enumerate(lines) if
+                  any(s in line for s in ("_svc.fit(","_ga.fit(","def main(","__main__",
+                      "emit_known_preview","preview =","TRAIN_FINAL","train_final",
+                      "test.csv","train.csv","from_pretrained","competition.submit"))]
+            preview=[]
+            for at in hits[:30]:
+              snippet=[]
+              for j in range(max(0,at-5),min(len(lines),at+6)):
+                x=" ".join(lines[j].strip().split())[:200]
+                x=re.sub(r"/kaggle/input/[^\s'\x22]+","<INPUT_MOUNT>",x)
+                if re.search("(?i)(token|password|secret|bearer|api_key)",x):x="<redacted>"
+                snippet.append({"line":j+1,"code":x})
+              preview.append({"target":at+1,"region":snippet})
+            if hits:
+              print("NTL_AREEB_CONTROL_REACHABILITY="+json.dumps({"cell":ix,"cell_lines":len(lines),
+                "start_lines":[x[:120] for x in lines[:3]],"matched_regions":preview},sort_keys=True),flush=True)
+          print("NTL_AREEB_NO_NEW_GPU_OR_TRAINING_OR_SUBMISSION=TRUE",flush=True)
+          PY
