@@ -1,0 +1,177 @@
+name: NTL Areeb eight-model frozen-only realpath gate then ONE Kaggle submission
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-areeb8-prefit-only-official-one-20261113.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-areeb8-nofit-one-code-submission-20261113
+  cancel-in-progress: false
+jobs:
+  one_official_if_realpath:
+    if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'GO_NTL_AREEB8_NOFIT_ONE_OFFICIAL_20261113' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 310
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      SOURCE: areebbb/0-684-i-m-better
+      KERNEL: kolihhan/ntl-areeb8-prefit-only-nov13
+      MARKER: NTL Areeb distinct eight model frozen-only realpath exploratory 20261113
+      OUT: /tmp/ntl-areeb-prefit-only-v1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_areeb8_prefit_only_candidate_20261113.py
+            tests/test_ntl_areeb8_prefit_only_candidate_20261113.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Frozen source, no-training regressions, one-shot quota and asset checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m unittest -q tests.test_ntl_areeb8_prefit_only_candidate_20261113
+          python -m py_compile scripts/ntl_areeb8_prefit_only_candidate_20261113.py
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import csv,io,json,os,subprocess
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          q=api.competition_get_submission_limits("name-that-llm")
+          if int(q.num_allowed_now or 0)<1:raise SystemExit("STOP_NTL_NO_OFFICIAL_SLOT")
+          b=subprocess.run(["kaggle","quota","--format","json"],capture_output=True,text=True,check=True,timeout=120)
+          gpu=[x for x in json.loads(b.stdout) if x.get("resource")=="GPU"]
+          if len(gpu)!=1:raise SystemExit("STOP_NTL_GPU_QUOTA_NOT_KNOWN")
+          remaining=float(str(gpu[0]["remaining"]).rstrip("h"))
+          if remaining<3.0:raise SystemExit("STOP_NTL_NOT_ENOUGH_GPU_FOR_REALPATH")
+          entry=subprocess.run(["kaggle","competitions","submissions","name-that-llm","-v","-q"],capture_output=True,text=True,check=True,timeout=120)
+          rows=list(csv.DictReader(io.StringIO(entry.stdout.lstrip("\ufeff"))))
+          if any(r.get("description")==os.environ["MARKER"] for r in rows):
+            raise SystemExit("STOP_NTL_CANDIDATE_ALREADY_SUBMITTED")
+          p=subprocess.run(["kaggle","kernels","status",os.environ["KERNEL"]],capture_output=True,text=True,timeout=60)
+          if p.returncode==0 or "KernelWorkerStatus." in p.stdout+p.stderr:
+            raise SystemExit("STOP_NTL_CANDIDATE_KERNEL_ALREADY_EXISTS")
+          print("NTL_NEW_EIGHT_MODEL_OFFICIAL_QUOTA="+str(q.num_allowed_now),flush=True)
+          print("NTL_NEW_EIGHT_MODEL_PRIVATE_GPU_HOURS="+str(remaining),flush=True)
+          PY
+          mkdir -p "$OUT/source"
+          kaggle kernels pull "$SOURCE" -p "$OUT/source" -m >/tmp/ntl-areeb-public-fetch.log 2>&1
+          python -m scripts.ntl_areeb8_prefit_only_candidate_20261113 --source "$OUT/source" --out "$OUT" > "$OUT/build-manifest.jsonl"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ["OUT"])
+          text=(root/"build-manifest.jsonl").read_text().strip()
+          if not text.startswith("NTL_AREEB_PREFIT_ONLY_CANDIDATE="):
+            raise SystemExit("STOP_NTL_BUILD_REPORT_MISSING")
+          d=json.loads(text.split("=",1)[1])
+          if (d["new_training"] or not d["runtime_supervised_fit_blocked"]
+              or not d["original_preview_bypass_removed"] or
+              not d["different_eight_model_stack"]):
+            raise SystemExit("STOP_NTL_NO_TRAINING_CONTRACT_FAILED")
+          print("NTL_NEW_REALPATH_PREFIT_CANDIDATE_BUILT="+json.dumps(d,sort_keys=True),flush=True)
+          PY
+      - name: Push exactly one original full-inference private GPU Notebook (NOT official submission)
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$OUT/kernel" --accelerator NvidiaTeslaT4 --timeout 32400 >/tmp/ntl-areeb-push.log 2>&1 || {
+            echo STOP_NTL_REALPATH_PUSH_FAILED; exit 1;
+          }
+          echo NTL_NEW_EIGHT_MODEL_PRIVATE_FULLPATH_PUSHED=TRUE
+          echo NTL_NEW_TRAINING_DISABLED_AND_PREVIEW_BYPASSED=TRUE
+      - name: Await genuine full-path Kaggle GPU terminal; NO repeated push
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 295); do
+            s="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+            if grep -q 'KernelWorkerStatus.COMPLETE' <<<"$s";then
+              echo NTL_NEW_EIGHT_MODEL_PRIVATE_GPU_COMPLETE=TRUE
+              exit 0
+            fi
+            if grep -Eq 'KernelWorkerStatus.(ERROR|FAILED|CANCELLED)' <<<"$s";then
+              echo STOP_NTL_NEW_CANDIDATE_PRIVATE_GPU_ERROR
+              exit 1
+            fi
+            if [ "$i" -eq 1 ] || [ $((i%30)) -eq 0 ];then echo NTL_NEW_PRIVATE_POLL="$i";fi
+            sleep 45
+          done
+          echo STOP_NTL_NEW_CANDIDATE_PRIVATE_GPU_EXCEEDED_4H
+          exit 1
+      - name: Require real model output, no supervised fitting and exact unchanged Notebook before official entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT/remote" "$OUT/pulled"
+          kaggle kernels output "$KERNEL" -p "$OUT/remote" -o >/tmp/ntl-areeb-output-fetch.log 2>&1
+          kaggle kernels pull "$KERNEL" -p "$OUT/pulled" -m >/tmp/ntl-areeb-source-pull.log 2>&1
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          import pandas as pd
+          root=Path(os.environ["OUT"])
+          p=root/"remote/submission.parquet"
+          if not p.is_file():raise SystemExit("STOP_NTL_NEW_NO_REAL_OUTPUT")
+          df=pd.read_parquet(p)
+          if (len(df)!=3 or list(df.columns)!=["id","model"] or not df.id.is_unique or df.model.isna().any()):
+            raise SystemExit("STOP_NTL_NEW_OUTPUT_SCHEMA_OR_ROW_COUNT")
+          expected=list((root/"kernel").glob("*.ipynb")); observed=list((root/"pulled").glob("*.ipynb"))
+          if len(expected)!=1 or len(observed)!=1:raise SystemExit("STOP_NTL_NEW_AMBIGUOUS_NOTEBOOK")
+          def code(path):
+            n=json.loads(path.read_text())
+            return "\n".join("".join(c.get("source",[])) if isinstance(c.get("source"),list)
+               else str(c.get("source","")) for c in n["cells"] if c.get("cell_type")=="code")
+          a=code(expected[0]);b=code(observed[0])
+          if a!=b:raise SystemExit("STOP_NTL_NEW_REMOTE_SOURCE_DRIFT")
+          if ("FAST_COMMIT = False" not in a or "NO_NEW_TRAINING: supervised classifier fitting forbidden" not in a
+              or a.count('"gauss": 0.0')!=2 or "_ga.fit(" in a):
+            raise SystemExit("STOP_NTL_NEW_SUPERVISED_FIT_OR_FIXTURE_REAPPEARED")
+          logs=[x for x in (root/"remote").rglob("*") if x.is_file() and x.suffix in (".log",".txt")]
+          text="\n".join(f.read_text(errors="replace") for f in logs if f.stat().st_size<15_000_000)
+          if "NTL_AREEB_NO_SUPERVISED_FIT_GUARD=TRUE" not in text:
+            raise SystemExit("STOP_NTL_NEW_REAL_GPU_COMPLETED_WITHOUT_INFERENCE_GUARD_EVIDENCE")
+          print("NTL_NEW_EIGHT_MODEL_REAL_PRIVATE_3ROWS="+json.dumps(
+             {"rows":len(df),"unique_labels":int(df.model.nunique()),"source_sha256":hashlib.sha256(a.encode()).hexdigest(),
+              "candidate_distinct_from_champion":True,"supervised_fit_prevented":True,
+              "new_training":False,"score_estimate":None,"new_official_entry":False},sort_keys=True),flush=True)
+          PY
+      - name: Submit exact version 1 to Kaggle ONCE; verify authenticated receipt (not a numeric score)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,os,re,subprocess,time
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          contest="name-that-llm";slug=os.environ["KERNEL"];marker=os.environ["MARKER"]
+          api=KaggleApi();api.authenticate()
+          def ledger():
+            p=subprocess.run(["kaggle","competitions","submissions",contest,"-v","-q"],capture_output=True,text=True,timeout=120,check=True)
+            return list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+          if any(r.get("description")==marker for r in ledger()):
+            raise SystemExit("STOP_NTL_NEW_ALREADY_OFFICIALLY_SUBMITTED")
+          q=api.competition_get_submission_limits(contest)
+          if int(q.num_allowed_now or 0)<1:raise SystemExit("STOP_NTL_NEW_NO_OFFICIAL_SLOT")
+          p=subprocess.run(["kaggle","competitions","submit",contest,"-k",slug,
+            "-v","1","-f","submission.parquet","-m",marker],
+            capture_output=True,text=True,timeout=190)
+          if p.returncode:raise SystemExit("STOP_NTL_NEW_KAGGLE_OFFICIAL_SUBMIT_FAILED_NO_RETRY")
+          refs=re.findall(r"Submission ref:\s*(\d+)",p.stdout+"\n"+p.stderr,re.I)
+          if len(refs)!=1:raise SystemExit("STOP_NTL_NEW_OFFICIAL_RECEIPT_AMBIGUOUS_NO_RETRY")
+          ref=refs[0]
+          print("NTL_NEW_EIGHT_MODEL_OFFICIAL_SUBMISSION_REF="+ref,flush=True)
+          for i in range(20):
+            same=[r for r in ledger() if r.get("ref")==ref and r.get("description")==marker]
+            if len(same)==1:
+              print("NTL_NEW_EIGHT_MODEL_AUTHENTICATED_KAGGLE_RECEIPT="+json.dumps(
+                 {k:same[0].get(k) for k in ("ref","status","publicScore","privateScore","description","date")},sort_keys=True),flush=True)
+              break
+            time.sleep(9)
+          else:raise SystemExit("STOP_NTL_NEW_RECEIPT_LEDGER_DELAY_NO_RESUBMIT")
+          PY
