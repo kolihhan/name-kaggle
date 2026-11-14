@@ -56,5 +56,25 @@ jobs:
               print('NTL_0694_PRIVATE_SDK_STATUS='+json.dumps(out,sort_keys=True),flush=True)
           except Exception as exc:
               print('NTL_0694_PRIVATE_SDK_STATUS_UNAVAILABLE='+type(exc).__name__,flush=True)
+          # Compare against known previously accessible owned private kernel.
+          import subprocess
+          old=subprocess.run(['kaggle','kernels','status',
+                  'kolihhan/ntl-areeb8-prefit-only-nov13'],
+                  text=True,capture_output=True,timeout=40)
+          t=old.stdout+old.stderr
+          print('NTL_KAGGLE_EXISTING_PRIVATE_CONTROL='+json.dumps({
+            'rc':old.returncode,'has_kernel_status':('KernelWorkerStatus.' in t),
+            'permission_denied':('403' in t or 'permission' in t.lower()),
+            'not_found':('404' in t or 'not found' in t.lower())
+          },sort_keys=True),flush=True)
+          try:
+              owned=api.kernels_list(user='kolihhan',page_size=100,page=1)
+              refs=[str(getattr(x,'ref','')) for x in owned]
+              print('NTL_0694_OWN_KERNEL_LIST_DIAG='+json.dumps({
+                'listed':len(refs),'target_found':('kolihhan/ntl-lightning0694-real-no-fit-nov15' in refs),
+                'control_found':('kolihhan/ntl-areeb8-prefit-only-nov13' in refs),
+              },sort_keys=True),flush=True)
+          except Exception as exc:
+              print('NTL_0694_OWN_KERNEL_LIST_UNAVAILABLE='+type(exc).__name__,flush=True)
           print('NTL_0694_READ_ONLY=TRUE;NEW_GPU_TASKS=0;TRAINING=FALSE;SUBMISSION=FALSE',flush=True)
           PY
