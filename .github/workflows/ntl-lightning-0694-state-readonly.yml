@@ -25,6 +25,24 @@ jobs:
           elif [[ "$raw" == *KernelWorkerStatus.ERROR* || "$raw" == *KernelWorkerStatus.FAILED* ]]; then state=ERROR
           else state=UNKNOWN; fi
           echo "NTL_0694_PRIVATE_ACTUAL_STATE=$state"
+          # The Kaggle CLI may expose unfamiliar intermediate enums or an API error.
+          # Categorize only, do not emit token-bearing untrusted HTTP bodies.
+          export KERNEL_STATUS_OUTPUT="$raw"
+          python - <<'PY'
+          import os,json,re
+          v=os.environ.get('KERNEL_STATUS_OUTPUT','')
+          flags={name:bool(re.search(pat,v,re.I)) for name,pat in {
+            'not_found':r'not found|404|does not exist',
+            'permission_denied':r'permission|forbidden|403',
+            'rate_limited':r'too many requests|429|rate limit',
+            'queued_words':r'queued|pending|waiting',
+            'running_words':r'running|active',
+            'finished_words':r'complete|success',
+            'error_words':r'error|failed|invalid',
+          }.items()}
+          flags['enum_tokens']=re.findall(r'KernelWorkerStatus\\.[A-Z_]+',v)[:4]
+          print('NTL_0694_UNKNOWN_STATUS_DIAG='+json.dumps(flags,sort_keys=True),flush=True)
+          PY
           python - <<'PY'
           import json
           from kaggle.api.kaggle_api_extended import KaggleApi
