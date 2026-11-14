@@ -57,9 +57,20 @@ jobs:
           assert len(nb['cells'])>0
           terminal=''.join(nb['cells'][-1]['source'])
           assert terminal.count('ntl_glm_official_runner.finalize(')==1
-          assert 'competition_submit_code' not in terminal
-          assert 'new_training' not in terminal
-          assert 'truth.csv' not in terminal
+          import ast
+          cell=ast.parse(terminal)
+          called=[n.func.attr for n in ast.walk(cell) if isinstance(n,ast.Call)
+                  and isinstance(n.func,ast.Attribute)]
+          assert 'finalize' in called
+          assert not set(called) & {'fit', 'train', 'fit_transform', 'competition_submit_code'}
+          production=ast.parse(Path('kaggle/ntl_glm_official_runner.py').read_text())
+          actual_calls=[n for n in ast.walk(production) if isinstance(n,ast.Call)]
+          assert not any(isinstance(n.func,ast.Attribute) and n.func.attr in
+                         {'fit', 'train', 'fit_transform', 'competition_submit_code'}
+                         for n in actual_calls)
+          csv_calls=[n for n in actual_calls if isinstance(n.func,ast.Attribute)
+                     and n.func.attr=='read_csv']
+          assert len(csv_calls)==1 and ast.unparse(csv_calls[0].args[0])=="data / 'test.csv'"
           print('NTL_GLM_OFFICIAL_PRIVATE_NOTEBOOK_CPU_READY=TRUE')
           print('NTL_GLM_OFFICIAL_KERNEL='+meta['id'])
           print('NO_GPU_OR_OFFICIAL_SUBMISSION=TRUE')
