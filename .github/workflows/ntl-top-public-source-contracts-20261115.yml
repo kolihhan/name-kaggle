@@ -28,6 +28,7 @@ jobs:
           python - <<'PY'
           import hashlib,json,re
           from pathlib import Path
+          fingerprints={}
           for key in ('feiyu','lightning','sanpier','non_glm'):
               folder=Path('/tmp')/f'ntl-check-{key}'
               meta_files=list(folder.glob('kernel-metadata.json'))
@@ -44,6 +45,24 @@ jobs:
               else:
                   codes=[body]
               code='\n'.join(codes)
+              # Extract AST call RECEIVER identifiers, not code or text passages.
+              import ast
+              owners=[]
+              for cell in codes:
+                  try: tree=ast.parse(cell)
+                  except SyntaxError: continue
+                  for node in ast.walk(tree):
+                      if not isinstance(node,ast.Call) or not isinstance(node.func,ast.Attribute):
+                          continue
+                      if node.func.attr not in ('fit','fit_transform','train'):
+                          continue
+                      target=node.func.value
+                      owner=target.id if isinstance(target,ast.Name) else (
+                          target.attr if isinstance(target,ast.Attribute) else 'expression')
+                      if re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]{0,40}',owner):
+                          owners.append(owner+'.'+node.func.attr)
+              terms=re.findall(r'[A-Za-z_][A-Za-z_0-9]{2,}',code.casefold())
+              fingerprints[key]=set(zip(terms,terms[1:],terms[2:],terms[3:]))
               # Strings are detected only, never executed, printed or committed.
               indicators={
                   'glm':bool(re.search(r'glm.{0,15}(?:likelihood|gguf|5.3)',code,re.I)),
@@ -63,7 +82,18 @@ jobs:
                   'model_count':len(meta.get('model_sources') or []),
                   'competition_count':len(meta.get('competition_sources') or []),
                   'flags':indicators,
+                  'call_receivers':sorted(set(owners))[:45],
               }
               print('NTL_TOP_PUBLIC_CONTRACT='+json.dumps(summary,sort_keys=True),flush=True)
+          from itertools import combinations
+          for a,b in combinations(sorted(fingerprints),2):
+              sa,sb=fingerprints[a],fingerprints[b]
+              shared=len(sa&sb)
+              union=len(sa|sb)
+              print('NTL_SOURCE_4GRAM_OVERLAP='+json.dumps({
+                'pair':[a,b],'jaccard':round(shared/union,4) if union else None,
+                'left_coverage':round(shared/len(sa),4) if sa else None,
+                'right_coverage':round(shared/len(sb),4) if sb else None,
+              },sort_keys=True),flush=True)
           print('NTL_ONLY_PUBLIC_SOURCE_RECON=TRUE;NO_GPU=TRUE;NO_TRAINING=TRUE;NO_SUBMISSION=TRUE')
           PY
