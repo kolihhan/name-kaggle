@@ -1,0 +1,63 @@
+name: "NTL 18-class open pool bounded provenance metadata only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-openpool-public-metadata-20261115.yml]
+permissions: {contents: read}
+jobs:
+  public_provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect public dataset metadata, no raw text download, no fitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,re
+          ref='crtproduction/name-that-llm-open-pool'
+          commands=[
+            ['kaggle','datasets','files',ref,'-v'],
+            ['kaggle','datasets','files',ref,'--csv'],
+          ]
+          for cmd in commands:
+              try:
+                  proc=subprocess.run(cmd,timeout=60,capture_output=True,text=True)
+                  # File inventory only; never print data rows or raw dataset text.
+                  lines=proc.stdout.splitlines()
+                  candidates=[s.strip()[:190] for s in lines
+                    if re.search(r'(?i)(name|size|\.parquet|\.csv|\.json|\.md|\.zip|\.txt)',s)]
+                  print('NTL_PUBLIC_OPENPOOL_FILE_INVENTORY='+json.dumps({
+                    'mode':cmd[-1], 'rc':proc.returncode,
+                    'line_count':len(lines),'metadata_lines':candidates[:40],
+                    'stderr_class':'command_rejected' if proc.returncode else 'none'
+                  },sort_keys=True),flush=True)
+              except Exception as e:
+                  print('NTL_PUBLIC_OPENPOOL_METADATA_EXCEPTION='+type(e).__name__,flush=True)
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          for method in ('dataset_list_files','datasets_list_files'):
+              if not hasattr(api,method): continue
+              try:
+                  x=getattr(api,method)(ref)
+                  d=x.to_dict() if hasattr(x,'to_dict') else (
+                      x if isinstance(x,dict) else {})
+                  files=d.get('datasetFiles',d.get('files',[]))
+                  print('NTL_PUBLIC_OPENPOOL_SDK_FILES='+json.dumps({
+                    'method':method,'top_keys':sorted(d.keys()),
+                    'file_count':len(files),
+                    'entries':[{
+                      'name':str(x.get('name',''))[:120],
+                      'size':x.get('totalBytes',x.get('size'))}
+                      for x in files[:30] if isinstance(x,dict)]
+                  },sort_keys=True),flush=True)
+              except Exception as e:
+                  print('NTL_PUBLIC_OPENPOOL_SDK_ERROR='+type(e).__name__,flush=True)
+          print('NTL_DATASET_RAW_ROWS_EXPORTED=FALSE;TRAINING=FALSE;NO_GPU=TRUE;NO_SUBMIT=TRUE')
+          PY
