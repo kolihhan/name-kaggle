@@ -60,4 +60,38 @@ jobs:
               except Exception as e:
                   print('NTL_PUBLIC_OPENPOOL_SDK_ERROR='+type(e).__name__,flush=True)
           print('NTL_DATASET_RAW_ROWS_EXPORTED=FALSE;TRAINING=FALSE;NO_GPU=TRUE;NO_SUBMIT=TRUE')
+      - name: Inspect four tiny public metadata tables; never materialize passage table
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-openpool-manifests
+          for file in sources.csv source_protocol.csv per_model.csv removal_summary.csv; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$file" \
+              -p /tmp/ntl-openpool-manifests --unzip >/dev/null
+          done
+          python - <<'PY'
+          import csv,json,re
+          from pathlib import Path
+          folder=Path('/tmp/ntl-openpool-manifests')
+          safe_key=re.compile(r'(source|dataset|origin|provider|license|model|label|rows|count|status|type|id)',re.I)
+          safe_val=re.compile(r'^[a-zA-Z0-9_./:+@-]{1,120}
+          PY
+)
+          for name in ('sources.csv','source_protocol.csv','per_model.csv','removal_summary.csv'):
+              p=folder/name
+              with p.open(newline='',encoding='utf-8-sig') as f:
+                  reader=csv.DictReader(f)
+                  rows=list(reader)
+                  columns=reader.fieldnames or []
+              examples=[]
+              for row in rows[:8]:
+                  z={k:str(v)[:120] for k,v in row.items()
+                     if k and safe_key.search(k) and v is not None and safe_val.fullmatch(str(v))}
+                  examples.append(z)
+              print('NTL_OPENPOOL_PUBLIC_METADATA_TABLE='+json.dumps({
+                  'file':name,'rows':len(rows),'columns':columns[:35],
+                  'public_manifest_examples':examples
+              },sort_keys=True),flush=True)
+          print('NTL_METADATA_ONLY_FOUR_SMALL_FILES=TRUE;NO_PASSAGE_TEXT=TRUE;NO_TRAINING=TRUE',flush=True)
+          PY
           PY
