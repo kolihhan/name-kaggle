@@ -1,0 +1,58 @@
+name: "NTL Lightning inference-only source gate CPU"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning-inference-only-gate-20261115.yml]
+permissions: {contents: read}
+jobs:
+  source_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Audit latest public contender source without executing notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-lightning
+          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora \
+            -p /tmp/ntl-lightning -m >/tmp/ntl-lightning-pull.log 2>&1
+          python - <<'PY'
+          import ast,hashlib,json,re
+          from pathlib import Path
+          [source]=list(Path('/tmp/ntl-lightning').glob('*.ipynb'))
+          raw=source.read_bytes()
+          if hashlib.sha256(raw).hexdigest()!='9808d997185c125d92b0a67501bb763eb1813ae5223d3d06ce82a5518f205a2e':
+              raise SystemExit('STOP_PUBLIC_VERSION_DRIFT')
+          nb=json.loads(raw); info=[]
+          for i,cell in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
+              code=''.join(cell['source']) if isinstance(cell['source'],list) else cell['source']
+              try: tree=ast.parse(code)
+              except SyntaxError: tree=None
+              calls=[]
+              if tree:
+                  for node in ast.walk(tree):
+                      if not isinstance(node,ast.Call): continue
+                      fn=node.func
+                      if isinstance(fn,ast.Attribute) and fn.attr in ('fit','fit_transform','train','exec'):
+                          receiver=fn.value
+                          name=receiver.id if isinstance(receiver,ast.Name) else ('attribute' if isinstance(receiver,ast.Attribute) else 'expression')
+                          calls.append(name+'.'+fn.attr)
+                      elif isinstance(fn,ast.Name) and fn.id in ('fit','train','exec','eval'):
+                          calls.append(fn.id)
+              if calls or 'train.csv' in code or 'preview' in code.casefold():
+                  info.append({'i':i,'chars':len(code),'ast_parseable':tree is not None,
+                               'calls':sorted(set(calls))[:30],
+                               'train_csv_literal':bool(re.search('train[.]csv',code,re.I)),
+                               'preview_literal':bool(re.search('preview',code,re.I))})
+          print('NTL_LIGHTNING_PUBLIC_SOURCE_AUDIT='+json.dumps({
+              'sha256':hashlib.sha256(raw).hexdigest(),'cells':len([x for x in nb['cells'] if x['cell_type']=='code']),
+              'flagged_cells':info,'training_executed':False,'private_kernel_run':False,
+              'competition_submission':False,'score_verified_by_own_account':False
+          },sort_keys=True),flush=True)
+          PY
