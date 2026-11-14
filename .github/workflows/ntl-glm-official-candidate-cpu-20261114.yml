@@ -1,3 +1,4 @@
+# Retry only CPU: test import path now distinct from installed Kaggle SDK.
 name: NTL frozen GLM conditional official candidate CPU packaging (NO submit)
 on:
   push:
