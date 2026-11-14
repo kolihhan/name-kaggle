@@ -86,6 +86,25 @@ jobs:
                        (r.get(settings_field) or '') if settings_field else '')
                   blocks[key].add(r['model'].strip())
           paired=sum(set((full,flash))<=models for models in blocks.values())
+          pair_rows=collections.defaultdict(lambda:collections.Counter())
+          for row in glm:
+              prompt=(row.get(prompt_field) or '').strip() if prompt_field else ''
+              if not prompt:continue
+              key=(prompt,(row.get(length_field) or '') if length_field else '',
+                   (row.get(settings_field) or '') if settings_field else '')
+              pair_rows[key][row['model'].strip()] += 1
+          unique_pairs=sum(v[full]==1 and v[flash]==1 for v in pair_rows.values())
+          pairs_distinct_pids=len({r.get('pid') for r in glm if r.get('pid')})
+          returned_by_label={
+              label:dict(collections.Counter(r.get('returned_model','').strip() for r in glm
+                   if r['model'].strip()==label))
+              for label in (full,flash)
+          }
+          provider_by_label={
+              label:dict(collections.Counter(r.get('provider','').strip() for r in glm
+                   if r['model'].strip()==label))
+              for label in (full,flash)
+          }
           prompt_hashes=len({hashlib.sha256((r.get(prompt_field) or '').encode()).hexdigest()
                              for r in glm if prompt_field and r.get(prompt_field)})
           output={
@@ -93,7 +112,11 @@ jobs:
               'dataset':'lxdlxdlxd/ntl-synth-generations-v1',
               'csv_count':len(candidates),'rows':len(rows),'label_count':len(counts),
               'glm_5_3':counts[full],'glm_5_3_flash':counts[flash],
-              'exact_glm_pair_groups':paired,'distinct_glm_prompt_hashes':prompt_hashes,
+              'csv_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+              'exact_glm_pair_groups':paired,'unique_singleton_pair_groups':unique_pairs,
+              'distinct_glm_pid_values':pairs_distinct_pids,
+              'returned_ids_by_label':returned_by_label,
+              'provider_counts_by_label':provider_by_label,'distinct_glm_prompt_hashes':prompt_hashes,
               'schema':sorted(fields),'prompt_field':prompt_field,'length_field':length_field,
               'settings_field':settings_field,'requested_field':requested_field,
               'served_field':served_field,
