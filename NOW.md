@@ -1,3 +1,10 @@
+## 2026-11-14 17:59 MYT — GLM64 PRIVATE KAGGLE GPU IS QUEUED (NOT HUNG IN INFERENCE)
+
+- **Verified** [one-off authenticated status probe #43583035766](https://github.com/kolihhan/name-kaggle/actions/runs/43583035766) completed SUCCESS at 09:58 UTC: private Kaggle kernel `kolihhan/ntl-glm-crosssource-paired64-nov14` reports **`KernelWorkerStatus.QUEUED`**. The real-model inference has **not started**, and there is **no 128-row paired result**. Prior 7/7 CPU test and 64 distinct paired prompt-source gates passed; [original Actions #43576646653](https://github.com/kolihhan/name-kaggle/actions/runs/43576646653) is already polling the *same single queued kernel*. Do **not** push duplicate kernels or call this a model-performance failure.
+- Current blocker is **Kaggle GPU scheduling**, not missing model fit, code unit-test failure or exhausted preflight GPU-hours (the initial quota was 25.75h). If the current Actions poll job expires before Kaggle finishes, retrieve the **existing kernel's** aggregate result using a one-time authenticated read-only collection; do not start/rewrite the experimental cohort. No new competition submission; official NTL remains **0.683**.
+
+---
+
 ## 2026-11-14 16:38 MYT — EXTERNAL GLM TRANSFER SOURCE VERIFIED; 64-PAIR PRIVATE GPU RUN LAUNCHED
 
 - Authenticated CPU [source audit #43576093433](https://github.com/kolihhan/name-kaggle/actions/runs/43576093433) **SUCCESS**: `lxdlxdlxd/ntl-synth-generations-v1` exact `generations.csv` SHA256 `8339081afee1d4aed0b806a686d91978f0d7815bc67fb8f620860477e0895675`, 4,758 records / 13 labels, GLM-5.3 **406** and Flash **413**. There are **285 one-to-one same-request, target length and setting GLM paired groups**, across 328 GLM `pid` values, 473 unique GLM user messages. All 819 GLM records have matching returned model IDs and the same `zhipu` provider. This is stronger protocol provenance than the prior 5 strict GLM pairs. **Not a clean 18-class independent holdout**; indirect exposure through current champion prefit data remains unknown.
