@@ -17,7 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          TARGET=kolihhan/ntl-lightning0694-real-no-fit-nov15
+          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
           raw="$(kaggle kernels status "$TARGET" 2>&1 || true)"
           if [[ "$raw" == *KernelWorkerStatus.COMPLETE* ]]; then state=COMPLETE
           elif [[ "$raw" == *KernelWorkerStatus.RUNNING* ]]; then state=RUNNING
@@ -48,7 +48,7 @@ jobs:
           from kaggle.api.kaggle_api_extended import KaggleApi
           api=KaggleApi();api.authenticate()
           try:
-              s=api.kernels_status('kolihhan/ntl-lightning0694-real-no-fit-nov15')
+              s=api.kernels_status('kolihhan/lightning-0-694-authentic-no-fit-inference')
               if hasattr(s,'to_dict'): v=s.to_dict()
               elif isinstance(s,dict):v=s
               else:v={}
@@ -71,7 +71,7 @@ jobs:
               owned=api.kernels_list(user='kolihhan',page_size=100,page=1)
               refs=[str(getattr(x,'ref','')) for x in owned]
               print('NTL_0694_OWN_KERNEL_LIST_DIAG='+json.dumps({
-                'listed':len(refs),'target_found':('kolihhan/ntl-lightning0694-real-no-fit-nov15' in refs),
+                'listed':len(refs),'target_found':('kolihhan/lightning-0-694-authentic-no-fit-inference' in refs),
                 'control_found':('kolihhan/ntl-areeb8-prefit-only-nov13' in refs),
               },sort_keys=True),flush=True)
           except Exception as exc:
