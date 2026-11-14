@@ -1,3 +1,10 @@
+## 2026-11-14 14:35 MYT — SELECTIVE GLM PRIVATE FEASIBILITY EXPERIMENT LAUNCHED
+
+- **Actual new implementation** [`kaggle/ntl_glm_conditional_runner.py`](kaggle/ntl_glm_conditional_runner.py) and [builder](scripts/ntl_glm_conditional_private.py) run the unchanged scored 0.683 champion first and send only its GLM-5.3 / Flash predictions (26/252 on previous cohort) to the same pinned frozen GLM likelihood models. No labels, topic, prompt or length enter selection; all other predictions remain unchanged, zero is still tie threshold. **No training, no official Kaggle submission.** Five synthetic tests passed in [Actions #43567036778](https://github.com/kolihhan/name-kaggle/actions/runs/43567036778); authenticated render succeeded, private GPU one-shot is currently in progress. Exact private kernel `kolihhan/ntl-glm-conditional-compare-nov14`.
+- **Stop/promotion gate:** retrieve this existing kernel once and compare the *same* 252-row panel against its previous full-262-row likelihood test: six rescues, one regression and no non-GLM changes should remain if row-wise inference is stable. Record actual new two-model runtime and eligible subset size. Even an identical +5 signal on already-used texts is **not independent validation**; a new official 0.700 claim/submission remains gated on full-18 independent transfer and 9-hour hidden feasibility.
+
+---
+
 ## 2026-11-14 12:29 MYT — NTL ACTUAL GLM LIKELIHOOD +5 NET ON 252 EXTERNAL TEXTS, NO SUBMISSION
 
 - **VERIFIED** [Actions #43548137138](https://github.com/kolihhan/name-kaggle/actions/runs/43548137138) terminal SUCCESS: frozen 0.683 champion **150/252** (18-class BA **0.595238**) vs GLM-only likelihood-routed **155/252** (BA **0.615079**) on same external 18-label texts. **6 rescues / 1 regression / 14 changed**, GLM matched ranking **13/14**, strict protocol pair ranking **4/5**. Flash / full GPU stages **1013.8 / 1543.2s** for 262 texts; incumbent had only **26/252** predictions in GLM sibling family. Results are observational, lack verified generator-source independence; no new training or competition submission. Current official best **0.683** (#58295802).
