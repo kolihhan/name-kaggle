@@ -62,7 +62,7 @@ jobs:
                   continue
               lines=raw.splitlines()
               filename=lines[0].split(' ',1)[1].strip()
-              body='\\n'.join(lines[1:])
+              body='\n'.join(lines[1:])
               tree=ast.parse(body,filename=filename)
               compile(tree,filename,'exec')
               owners=[]
