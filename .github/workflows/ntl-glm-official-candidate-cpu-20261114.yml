@@ -1,0 +1,65 @@
+name: NTL frozen GLM conditional official candidate CPU packaging (NO submit)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-official-candidate-cpu-20261114.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-glm-official-candidate-cpu-20261114
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Test frozen prediction routing and production output contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check "pandas==2.2.3" "pyarrow==19.0.1" "numpy==1.26.4" "kaggle==2.2.5" "six==1.17.0"
+          python -m unittest -q tests.test_ntl_glm_conditional tests.test_ntl_glm_official_runner
+          python -m py_compile kaggle/ntl_glm_official_runner.py scripts/ntl_glm_official_candidate.py
+          echo NTL_GLM_OFFICIAL_OUTPUT_CPU_TESTS=PASS
+      - name: Pull exact 0.683 scored source and render no-fit, private candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-glm-official-candidate/champion
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 \
+            -p /tmp/ntl-glm-official-candidate/champion -m >/dev/null
+          python -m scripts.ntl_glm_official_candidate \
+            --champion /tmp/ntl-glm-official-candidate/champion \
+            --out /tmp/ntl-glm-official-candidate/ready
+      - name: Static release inspection without GPU and without Kaggle submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          out=Path('/tmp/ntl-glm-official-candidate/ready')
+          meta=json.loads((out/'kernel-metadata.json').read_text())
+          assert meta['is_private'] is True and meta['enable_gpu'] is True
+          assert meta['enable_internet'] is False
+          assert meta['competition_sources']==['name-that-llm']
+          assert len(meta['dataset_sources'])>=21 and len(meta['model_sources'])==8
+          assert meta['kernel_sources'] and len(meta['kernel_sources'])>=1
+          [nb_path]=out.glob('*.ipynb')
+          nb=json.loads(nb_path.read_text())
+          assert len(nb['cells'])>0
+          terminal=''.join(nb['cells'][-1]['source'])
+          assert terminal.count('ntl_glm_official_runner.finalize(')==1
+          assert 'competition_submit_code' not in terminal
+          assert 'new_training' not in terminal
+          assert 'truth.csv' not in terminal
+          print('NTL_GLM_OFFICIAL_PRIVATE_NOTEBOOK_CPU_READY=TRUE')
+          print('NTL_GLM_OFFICIAL_KERNEL='+meta['id'])
+          print('NO_GPU_OR_OFFICIAL_SUBMISSION=TRUE')
+          PY
