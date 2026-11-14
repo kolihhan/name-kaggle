@@ -43,7 +43,23 @@ jobs:
                   if {'model','text'} <= fields:
                       rows=list(reader)
                       candidates.append((p,rows,fields))
-          if not candidates:raise SystemExit('STOP_NO_EXACT_MODEL_TEXT_COLUMNS')
+          if not candidates:
+              files=[]
+              for item in root.rglob('*'):
+                  if not item.is_file():continue
+                  fields=[]
+                  if item.suffix.lower()=='.csv':
+                      with item.open(encoding='utf-8-sig',errors='replace') as file:
+                          fields=next(csv.reader(file),[])
+                  elif item.suffix.lower() in ('.json','.jsonl'):
+                      try:
+                          with item.open(encoding='utf-8-sig') as file:
+                              first=json.loads(file.readline())
+                          fields=sorted(first) if isinstance(first,dict) else []
+                      except (OSError, ValueError):pass
+                  files.append({'name':item.name,'ext':item.suffix,'size':item.stat().st_size,'fields':fields})
+              print('NTL_SOURCE_SCHEMA_ONLY='+json.dumps(files[:20],sort_keys=True),flush=True)
+              raise SystemExit('STOP_NO_EXACT_MODEL_TEXT_COLUMNS')
           p,rows,fields=max(candidates,key=lambda x:len(x[1]))
           if len(rows)<50:raise SystemExit('STOP_SOURCE_TOO_SMALL')
           counts=collections.Counter(r.get('model','').strip() for r in rows)
