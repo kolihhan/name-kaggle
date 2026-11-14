@@ -1,0 +1,58 @@
+name: "NTL Lightning 0.694 new genuine no-fit candidate real source CPU gate"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-lightning-0694-new-candidate-cpu.yml
+      - scripts/ntl_lightning_0694_no_fit_candidate.py
+permissions: {contents: read}
+jobs:
+  source_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Build new pinned genuine inference candidate using public source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e train.csv && test ! -e test.csv
+          python -m py_compile scripts/ntl_lightning_0694_no_fit_candidate.py
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-lightning-original
+          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora \
+            -p /tmp/ntl-lightning-original -m >/tmp/ntl-lightning-pull.log 2>&1
+          python -m scripts.ntl_lightning_0694_no_fit_candidate \
+            --source /tmp/ntl-lightning-original --out /tmp/ntl-lightning-0694-guarded
+          python - <<'PY'
+          import json, pathlib
+          from scripts.ntl_lightning_0694_no_fit_candidate import BLOCK_GAUSS
+          p=pathlib.Path('/tmp/ntl-lightning-0694-guarded')
+          meta=json.loads((p/'kernel-metadata.json').read_text())
+          name=meta['code_file']
+          nb=json.loads((p/name).read_text())
+          code='\n'.join(''.join(c['source']) for c in nb['cells']
+                         if c['cell_type']=='code')
+          assert 'gauss.fit(' not in code
+          assert 'preview = False  # always genuine model inference' in code
+          assert 'NO_NEW_TRAINING: Atlas training blocked' in code
+          assert code.count('NO_NEW_TRAINING: Gaussian fit blocked')==1
+          assert meta['is_private'] is True and meta['enable_gpu'] is True
+          assert len(meta['model_sources'])==6
+          namespace={}
+          exec(BLOCK_GAUSS,namespace)
+          try:
+              namespace['_ntl_no_supervised_gauss']([],[])
+              raise AssertionError('forbidden gaussian fit returned')
+          except RuntimeError as e:
+              assert str(e)=='NO_NEW_TRAINING: Gaussian fit blocked'
+          print('NTL_0694_NEW_CANDIDATE_REAL_PUBLIC_SOURCE_CPU_PASS=TRUE',flush=True)
+          print('NTL_0694_GUARD_STATIC_CHECK=PASS;PREVIEW=REAL_INFERENCE_ONLY',flush=True)
+          print('NTL_0694_NEW_GPU_RUN=FALSE;SUPERVISED_FIT=FALSE;COMPETITION_SUBMISSION=FALSE',flush=True)
+          PY
