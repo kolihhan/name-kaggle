@@ -55,9 +55,9 @@ jobs:
           cell_anchors=[]
           for i,cell in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
               code=''.join(cell['source']) if isinstance(cell['source'],list) else cell['source']
-              fits=list(re.finditer(r'\\.fit\\s*\\(',code))
+              fits=list(re.finditer(r'\.fit\s*\(',code))
               if not fits: continue
-              norm='\\n'.join(line for line in code.splitlines() if not line.lstrip().startswith(('!','%')))
+              norm='\n'.join(line for line in code.splitlines() if not line.lstrip().startswith(('!','%')))
               try: parsed=ast.parse(norm)
               except SyntaxError: parsed=None
               actual=[]
