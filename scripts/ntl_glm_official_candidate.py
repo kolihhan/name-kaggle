@@ -32,6 +32,7 @@ def build(champion_dir: Path, out: Path, payload: str) -> dict:
     [notebook_path] = champion_dir.glob("*.ipynb")
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
     original_cells = notebook["cells"]
+    original_cell_count = len(original_cells)
     source = "\n".join(cell_text(cell) for cell in original_cells if cell.get("cell_type") == "code")
     if hashlib.sha256(source.encode()).hexdigest() != CHAMP_CODE_SHA256:
         raise ValueError("not the 0.683 champion executable")
@@ -47,10 +48,10 @@ def build(champion_dir: Path, out: Path, payload: str) -> dict:
     for name, path in EXTRA_CODE.items():
         code = (ROOT / path).read_text(encoding="utf-8")
         compile(code, path, "exec")
-        if ("competition_submit_code" in code or
-            name == "ntl_glm_official_runner.py" and ("truth.csv" not in code or "scorer.scores(payload)" not in code)):
-            # Truth is referenced only in a negative assertion/docstring; never loaded.
-            raise ValueError("unsupported or unexpected module")
+        if "competition_submit_code" in code:
+            raise ValueError("official notebook must not self-submit")
+        if name == "ntl_glm_official_runner.py" and "scorer.scores(payload)" not in code:
+            raise ValueError("official code lost frozen GLM scoring call")
     injected = (
         "from pathlib import Path\n"
         "import sys\n"
@@ -89,8 +90,8 @@ def build(champion_dir: Path, out: Path, payload: str) -> dict:
             name: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
             for name, path in EXTRA_CODE.items()
         },
-        "original_code_cells": len(original_cells),
-        "appended_cells": len(notebook["cells"]) - len(original_cells),
+        "original_code_cells": original_cell_count,
+        "appended_cells": len(notebook["cells"]) - original_cell_count,
         "kernel": DEST,
         "new_training": False, "official_submission_created": False,
         "truth_used_by_production": False,
