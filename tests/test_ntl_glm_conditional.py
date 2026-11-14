@@ -8,7 +8,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from kaggle.ntl_glm_conditional_runner import eligible_inputs, routed_predictions, FULL, FLASH
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kaggle"))
+from ntl_glm_conditional_runner import eligible_inputs, routed_predictions, FULL, FLASH
 
 
 class ConditionalGLMContract(unittest.TestCase):
