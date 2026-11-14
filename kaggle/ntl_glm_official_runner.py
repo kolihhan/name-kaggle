@@ -12,12 +12,12 @@ from pathlib import Path
 from ntl_glm_conditional_runner import eligible_inputs, routed_predictions
 
 
-def finalize(data, payload):
+def finalize(data, payload, *, output_root=Path('/kaggle/working')):
     import pandas as pd
     import ntl_glm_runner as scorer
 
     data = Path(data)
-    output = Path("/kaggle/working/submission.parquet")
+    output = Path(output_root) / "submission.parquet"
     champion = pd.read_parquet(output)
     if list(champion.columns) != ["id", "model"] or len(champion) == 0:
         raise ValueError("unexpected frozen champion submission format")
@@ -68,7 +68,7 @@ def finalize(data, payload):
         "changed": changes, "stage_seconds": stages,
         "new_training": False, "used_truth_labels": False,
     }
-    Path("/kaggle/working/glm-candidate-runtime.json").write_text(
+    (Path(output_root) / "glm-candidate-runtime.json").write_text(
         json.dumps(metrics, sort_keys=True))
     print("NTL_CONDITIONAL_CANDIDATE_COMPLETED=" +
           json.dumps(metrics, sort_keys=True), flush=True)
