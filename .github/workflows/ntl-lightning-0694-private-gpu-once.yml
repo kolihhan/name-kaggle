@@ -24,7 +24,7 @@ jobs:
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          TARGET=kolihhan/ntl-lightning0694-real-no-fit-nov15
+          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
           existing="$(kaggle kernels status "$TARGET" 2>&1 || true)"
           if [[ "$existing" == *KernelWorkerStatus.* ]]; then
             echo "NTL_0694_PRIVATE_KERNEL_ALREADY_EXISTS=TRUE"
@@ -39,7 +39,7 @@ jobs:
           # No competition submission, no model fitting, no source-data materialization on GitHub.
           kaggle kernels push -p /tmp/ntl-lightning0694-new-private \
             --accelerator NvidiaTeslaT4 --timeout 32400 > /tmp/ntl0694-push.log 2>&1
-          if ! grep -Eq 'Kernel version 1 successfully pushed|https://www.kaggle.com/code/kolihhan/ntl-lightning0694-real-no-fit-nov15' /tmp/ntl0694-push.log; then
+          if ! grep -Eq 'Kernel version 1 successfully pushed|https://www.kaggle.com/code/kolihhan/lightning-0-694-authentic-no-fit-inference' /tmp/ntl0694-push.log; then
             echo 'NTL_0694_PUSH_RECEIPT_NOT_CONFIRMED=TRUE'
             exit 1
           fi
