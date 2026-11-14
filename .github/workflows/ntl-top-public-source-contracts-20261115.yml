@@ -1,0 +1,69 @@
+name: "NTL top-ranked public candidate source contracts CPU only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-top-public-source-contracts-20261115.yml]
+permissions: {contents: read}
+jobs:
+  inspect_public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Pull 4 PUBLIC notebook sources and inspect bounded non-sensitive architecture summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          cd /tmp
+          for key in feiyu lightning sanpier non_glm; do mkdir -p "ntl-check-$key"; done
+          kaggle kernels pull feiyu26/ntl-0684-v1-graft -p /tmp/ntl-check-feiyu -m >/tmp/ntl-pull-feiyu.log 2>&1
+          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora -p /tmp/ntl-check-lightning -m >/tmp/ntl-pull-lightning.log 2>&1
+          kaggle kernels pull sanpier/0-693-real-glm-5-3-glm-5-3-flash-likelihood -p /tmp/ntl-check-sanpier -m >/tmp/ntl-pull-sanpier.log 2>&1
+          kaggle kernels pull dhananjayk2609/name-that-llm-style-fingerprints-llm-ensemble -p /tmp/ntl-check-non_glm -m >/tmp/ntl-pull-non_glm.log 2>&1
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          for key in ('feiyu','lightning','sanpier','non_glm'):
+              folder=Path('/tmp')/f'ntl-check-{key}'
+              meta_files=list(folder.glob('kernel-metadata.json'))
+              code_files=list(folder.glob('*.ipynb'))+list(folder.glob('*.py'))
+              if len(meta_files)!=1 or len(code_files)!=1:
+                  raise SystemExit('STOP_PUBLIC_SOURCE_MISSING_OR_AMBIGUOUS_'+key)
+              meta=json.loads(meta_files[0].read_text())
+              path=code_files[0]; body=path.read_text(encoding='utf-8')
+              if path.suffix=='.ipynb':
+                  nb=json.loads(body)
+                  codes=[(''.join(c.get('source',[])) if isinstance(c.get('source'),list)
+                          else c.get('source','')) for c in nb.get('cells',[])
+                          if c.get('cell_type')=='code']
+              else:
+                  codes=[body]
+              code='\n'.join(codes)
+              # Strings are detected only, never executed, printed or committed.
+              indicators={
+                  'glm':bool(re.search(r'glm.{0,15}(?:likelihood|gguf|5.3)',code,re.I)),
+                  'qwen27b':bool(re.search(r'qwen3[._-]?8.{0,12}27b',code,re.I)),
+                  'fit_calls':len(re.findall(r'\.fit\s*\(',code)),
+                  'load_adapters':bool(re.search(r'PeftModel|adapter_model|lora',code,re.I)),
+                  'read_test_csv':bool(re.search(r'test[.]csv',code,re.I)),
+                  'write_submission_parquet':bool(re.search(r'submission[.]parquet',code,re.I)),
+                  'potential_preview_shortcut':bool(re.search(r'len\(\s*(?:test|df|frame)\s*\)\s*[=<>!]+\s*[13]|preview',code,re.I)),
+              }
+              summary={
+                  'ref':meta.get('id'),'title':meta.get('title'),
+                  'sha256':hashlib.sha256(body.encode('utf-8')).hexdigest(),
+                  'code_cells':len(codes),'total_code_chars':len(code),
+                  'dataset_count':len(meta.get('dataset_sources') or []),
+                  'kernel_count':len(meta.get('kernel_sources') or []),
+                  'model_count':len(meta.get('model_sources') or []),
+                  'competition_count':len(meta.get('competition_sources') or []),
+                  'flags':indicators,
+              }
+              print('NTL_TOP_PUBLIC_CONTRACT='+json.dumps(summary,sort_keys=True),flush=True)
+          print('NTL_ONLY_PUBLIC_SOURCE_RECON=TRUE;NO_GPU=TRUE;NO_TRAINING=TRUE;NO_SUBMISSION=TRUE')
+          PY
