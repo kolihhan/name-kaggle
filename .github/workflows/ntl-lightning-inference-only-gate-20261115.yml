@@ -97,6 +97,22 @@ jobs:
                           own.append('try')
                   own.reverse()
                   owner_report.append({'cell':i,'line':node.lineno,'parents':own})
+          # Public notebook literal configuration audit; only labels/booleans/counts,
+          # never row-level source or private predictions.
+          config_details=[]
+          for i,c in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
+              code=''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              if not any(k in code for k in ('gaussian_branch','source-test-conditioned','"gauss"'," 'gauss':", "'gauss'")):
+                  continue
+              relevant=[]
+              for line in code.splitlines():
+                  t=line.strip()
+                  if any(k in t for k in ('gaussian_branch','source-test-conditioned',"'gauss':",'"gauss":','spec.get("gauss"',"spec.get('gauss'")):
+                      # Contains public control values only, not free-form prompts.
+                      if len(t)<180 and not any(x in t for x in ('print(', 'prompt', 'text', 'response')):
+                          relevant.append(t[:150])
+              config_details.append({'cell':i,'matches':relevant[:20]})
+          print('NTL_LIGHTNING_NOFIT_PUBLIC_CONFIG='+json.dumps(config_details,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_GAUSS_FIT_CONTROL_FLOW='+json.dumps(owner_report,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_FIT_CALL_PROVENANCE='+json.dumps(cell_anchors,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_PUBLIC_SOURCE_AUDIT='+json.dumps({
