@@ -1,0 +1,34 @@
+name: NTL GLM 64-pair private kernel state ONE READ ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-paired64-state-readonly-20261114.yml]
+permissions: {contents: read}
+jobs:
+  check_state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Get only current private notebook state; do not fetch source, data or outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          status="$(kaggle kernels status kolihhan/ntl-glm-crosssource-paired64-nov14 2>&1)" || {
+            echo NTL_GLM64_PRIVATE_KERNEL_STATUS_UNAVAILABLE
+            exit 1
+          }
+          case "$status" in
+            *KernelWorkerStatus.COMPLETE*) echo NTL_GLM64_PRIVATE_KERNEL_STATE=COMPLETE ;;
+            *KernelWorkerStatus.RUNNING*) echo NTL_GLM64_PRIVATE_KERNEL_STATE=RUNNING ;;
+            *KernelWorkerStatus.QUEUED*) echo NTL_GLM64_PRIVATE_KERNEL_STATE=QUEUED ;;
+            *KernelWorkerStatus.ERROR*) echo NTL_GLM64_PRIVATE_KERNEL_STATE=ERROR ;;
+            *KernelWorkerStatus.FAILED*) echo NTL_GLM64_PRIVATE_KERNEL_STATE=FAILED ;;
+            *) echo NTL_GLM64_PRIVATE_KERNEL_STATE=UNKNOWN ;;
+          esac
+          echo NO_GPU_NO_DATA_NO_SUBMIT=TRUE
