@@ -52,6 +52,39 @@ jobs:
               raise AssertionError('forbidden gaussian fit returned')
           except RuntimeError as e:
               assert str(e)=='NO_NEW_TRAINING: Gaussian fit blocked'
+          import ast
+          modules=[]
+          for c in nb['cells']:
+              if c['cell_type']!='code':
+                  continue
+              raw=''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              if not raw.startswith('%%writefile '):
+                  continue
+              lines=raw.splitlines()
+              filename=lines[0].split(' ',1)[1].strip()
+              body='\\n'.join(lines[1:])
+              tree=ast.parse(body,filename=filename)
+              compile(tree,filename,'exec')
+              owners=[]
+              for node in ast.walk(tree):
+                  if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute):
+                      if node.func.attr in ('fit','fit_transform','partial_fit','backward','step'):
+                          receiver=(node.func.value.id if isinstance(node.func.value,ast.Name)
+                                    else 'attribute_or_expression')
+                          owners.append(receiver+'.'+node.func.attr)
+              modules.append({'file':pathlib.Path(filename).name,
+                              'fit_family_calls':sorted(set(owners))})
+          if len(modules)!=37:
+              raise RuntimeError('generated_module_inventory_drift')
+          supervised=[]
+          for m in modules:
+              for name in m['fit_family_calls']:
+                  if name.endswith('.fit') or name.endswith('.partial_fit') or name.endswith('.backward'):
+                      supervised.append({'file':m['file'],'name':name})
+          if supervised:
+              raise RuntimeError('unguarded_supervised_fit_or_backward_sources:'+str(supervised))
+          print('NTL_0694_GENERATED_PY_MODULES_SYNTAX_PASS='+str(len(modules)),flush=True)
+          print('NTL_0694_UNGUARDED_TRAINING_CALLS=0',flush=True)
           print('NTL_0694_NEW_CANDIDATE_REAL_PUBLIC_SOURCE_CPU_PASS=TRUE',flush=True)
           print('NTL_0694_GUARD_STATIC_CHECK=PASS;PREVIEW=REAL_INFERENCE_ONLY',flush=True)
           print('NTL_0694_NEW_GPU_RUN=FALSE;SUPERVISED_FIT=FALSE;COMPETITION_SUBMISSION=FALSE',flush=True)
