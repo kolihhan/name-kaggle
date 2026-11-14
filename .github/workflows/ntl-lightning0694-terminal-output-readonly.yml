@@ -1,0 +1,86 @@
+name: "NTL Lightning0694 exact owned GPU terminal and parquet quality one-shot"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-terminal-output-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Check exact private kernel and download output ONLY if complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess
+          ref='kolihhan/lightning-0-694-authentic-no-fit-inference'
+          p=subprocess.run(['kaggle','kernels','status',ref],text=True,capture_output=True,timeout=80)
+          s=p.stdout+p.stderr
+          status=next((v for v in ('COMPLETE','RUNNING','QUEUED','PENDING','ERROR','FAILED','CANCELLED')
+                       if 'KernelWorkerStatus.'+v in s),'UNKNOWN')
+          print('NTL0694_REAL_PRIVATE_STATUS='+json.dumps({'status':status,'cli_rc':p.returncode},sort_keys=True),flush=True)
+          print('NTL0694_READ_ONLY=TRUE;NEW_GPU_RUNS=0;MODEL_TRAINING=FALSE;OFFICIAL_SUBMISSION=FALSE',flush=True)
+          if p.returncode or status not in ('COMPLETE','RUNNING','QUEUED','PENDING','ERROR','FAILED','CANCELLED'):
+              raise SystemExit('NTL0694_STATUS_UNCONFIRMED_NO_OUTPUT_INSPECTION')
+          if status!='COMPLETE':
+              print('NTL0694_TERMINAL_PARQUET_NOT_YET_INSPECTABLE=TRUE',flush=True)
+              raise SystemExit(0)
+          PY
+          python -m pip install -q --disable-pip-version-check pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl0694-authenticated-finished
+          kaggle kernels output kolihhan/lightning-0-694-authentic-no-fit-inference \
+              -p /tmp/ntl0694-authenticated-finished -o > /tmp/ntl0694-pull.log 2>&1 || {
+                echo "NTL0694_COMPLETE_BUT_OUTPUT_DOWNLOAD_FAILED=TRUE"
+                exit 1
+              }
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          import pandas as pd
+          base=Path('/tmp/ntl0694-authenticated-finished')
+          files=[p for p in base.rglob('*') if p.is_file()]
+          candidates=[p for p in files if p.name=='submission.parquet']
+          if len(candidates)!=1:
+              raise SystemExit('NTL0694_SUBMISSION_PARQUET_MISSING_OR_AMBIGUOUS')
+          p=candidates[0]
+          df=pd.read_parquet(p)
+          labels={'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra',
+                  'gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.7-flash',
+                  'gemini-3.8-flash','claude-fable-5','claude-opus-4-6',
+                  'claude-opus-4-8','claude-opus-5','claude-sonnet-5',
+                  'qwen3.8-max','glm-5.3','glm-5.3-flash','kimi-k3'}
+          if (list(df.columns)!=['id','model'] or len(df)==0 or len(df)>10000
+              or df['id'].isna().any() or df['model'].isna().any()
+              or not df['id'].is_unique or not set(df['model']).issubset(labels)):
+              raise SystemExit('NTL0694_OUTPUT_SCHEMA_OR_18CLASS_LABEL_INVALID')
+          logs=[x for x in files if x.suffix=='.log']
+          stage=[x for x in logs if any(k in x.name.lower() for k in ('core-','atlas','ensemble','gsq','qwen'))]
+          fails=[]
+          for x in logs:
+              if x.stat().st_size>5000000: continue
+              content=x.read_text(encoding='utf-8',errors='replace')
+              if re.search(r'(RuntimeError|Traceback).*NO_NEW_TRAINING|NO_NEW_TRAINING.*(RuntimeError|Traceback)',content,re.I|re.S):
+                  fails.append(x.name[:70])
+          result={
+            'rows':len(df),'unique_model_predictions':int(df['model'].nunique()),
+            'unique_ids':True,'all_models_in_18class_taxonomy':True,
+            'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+            'stage_log_count':len(stage),'log_count':len(logs),
+            'no_fit_exceptions_in_logs':not bool(fails),
+            'source_independent_BA_measured':False,
+            'full_hidden_runtime_proven':False,
+            'new_competition_submission':False,
+          }
+          print('NTL0694_COMPLETED_PRIVATE_OUTPUT_CHECK='+json.dumps(result,sort_keys=True),flush=True)
+          if fails: raise SystemExit('NTL0694_FORBIDDEN_FIT_GUARD_TRIGGERED')
+          if not stage: raise SystemExit('NTL0694_REAL_MODEL_STAGE_LOGS_ABSENT')
+          print('NTL0694_VALID_PRIVATE_INFERENCE_OUTPUT=TRUE',flush=True)
+          PY
