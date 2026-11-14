@@ -125,6 +125,15 @@ jobs:
                       if len(stripped)<180 and not any(t in stripped for t in ('token','password','secret','api_key','kaggle.json')):
                           lines.append({'line':lineno,'code':stripped[:150]})
               if lines:preview_lines.append({'cell':i,'lines':lines[:35]})
+          assignments=[]
+          for i,c in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
+              code=''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              for num,line in enumerate(code.splitlines(),1):
+                  stripped=line.strip()
+                  if re.search(r'(?<![a-zA-Z_])preview\\s*=|(?:FAST_COMMIT|emit_known_preview|preview_mode)',stripped):
+                      if len(stripped)<200 and not any(t in stripped.lower() for t in ('password','api_key','secret','token')):
+                          assignments.append({'cell':i,'line':num,'code':stripped[:180]})
+          print('NTL_LIGHTNING_PREVIEW_ASSIGNMENTS='+json.dumps(assignments[:30],sort_keys=True),flush=True)
           print('NTL_LIGHTNING_HIDDEN_PREVIEW_CONTROL='+json.dumps(preview_lines,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_0694_BUILDER_ANCHORS='+json.dumps({
              'counts':{x:all_code.count(x) for x in prefixes},
