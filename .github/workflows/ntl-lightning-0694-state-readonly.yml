@@ -25,6 +25,101 @@ jobs:
           elif [[ "$raw" == *KernelWorkerStatus.ERROR* || "$raw" == *KernelWorkerStatus.FAILED* ]]; then state=ERROR
           else state=UNKNOWN; fi
           echo "NTL_0694_PRIVATE_ACTUAL_STATE=$state"
+          if [[ "$state" == COMPLETE ]]; then
+            mkdir -p /tmp/ntl-694-finished
+            if kaggle kernels output "$TARGET" -p /tmp/ntl-694-finished \
+                 --file-pattern '^submission[.]parquet
+          # The Kaggle CLI may expose unfamiliar intermediate enums or an API error.
+          # Categorize only, do not emit token-bearing untrusted HTTP bodies.
+          export KERNEL_STATUS_OUTPUT="$raw"
+          python - <<'PY'
+          import os,json,re
+          v=os.environ.get('KERNEL_STATUS_OUTPUT','')
+          flags={name:bool(re.search(pat,v,re.I)) for name,pat in {
+            'not_found':r'not found|404|does not exist',
+            'permission_denied':r'permission|forbidden|403',
+            'rate_limited':r'too many requests|429|rate limit',
+            'queued_words':r'queued|pending|waiting',
+            'running_words':r'running|active',
+            'finished_words':r'complete|success',
+            'error_words':r'error|failed|invalid',
+          }.items()}
+          flags['enum_tokens']=re.findall(r'KernelWorkerStatus\\.[A-Z_]+',v)[:4]
+          print('NTL_0694_UNKNOWN_STATUS_DIAG='+json.dumps(flags,sort_keys=True),flush=True)
+          PY
+          python - <<'PY'
+          import json
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          try:
+              s=api.kernels_status('kolihhan/lightning-0-694-authentic-no-fit-inference')
+              if hasattr(s,'to_dict'): v=s.to_dict()
+              elif isinstance(s,dict):v=s
+              else:v={}
+              out={str(k):str(v[k])[:70] for k in ('status','status_name','version','versionNumber') if k in v}
+              print('NTL_0694_PRIVATE_SDK_STATUS='+json.dumps(out,sort_keys=True),flush=True)
+          except Exception as exc:
+              print('NTL_0694_PRIVATE_SDK_STATUS_UNAVAILABLE='+type(exc).__name__,flush=True)
+          # Compare against known previously accessible owned private kernel.
+          import subprocess
+          old=subprocess.run(['kaggle','kernels','status',
+                  'kolihhan/ntl-areeb8-prefit-only-nov13'],
+                  text=True,capture_output=True,timeout=40)
+          t=old.stdout+old.stderr
+          print('NTL_KAGGLE_EXISTING_PRIVATE_CONTROL='+json.dumps({
+            'rc':old.returncode,'has_kernel_status':('KernelWorkerStatus.' in t),
+            'permission_denied':('403' in t or 'permission' in t.lower()),
+            'not_found':('404' in t or 'not found' in t.lower())
+          },sort_keys=True),flush=True)
+          try:
+              owned=api.kernels_list(user='kolihhan',page_size=100,page=1)
+              refs=[str(getattr(x,'ref','')) for x in owned]
+              print('NTL_0694_OWN_KERNEL_LIST_DIAG='+json.dumps({
+                'listed':len(refs),'target_found':('kolihhan/lightning-0-694-authentic-no-fit-inference' in refs),
+                'control_found':('kolihhan/ntl-areeb8-prefit-only-nov13' in refs),
+              },sort_keys=True),flush=True)
+          except Exception as exc:
+              print('NTL_0694_OWN_KERNEL_LIST_UNAVAILABLE='+type(exc).__name__,flush=True)
+          hits=[]
+          for page in (1,2,3,4):
+              try:
+                  page_list=api.kernels_list(user='kolihhan',page_size=100,page=page)
+                  for entry in page_list:
+                      ref=str(getattr(entry,'ref',''))
+                      title=str(getattr(entry,'title',''))
+                      if ('lightning' in ref.lower() or 'lightning' in title.lower()) and ('694' in ref or '694' in title):
+                          hits.append({'ref':ref[:100], 'page':page})
+              except Exception:
+                  break
+          print('NTL_0694_OWN_KERNEL_SEARCH_PAGES='+json.dumps(hits[:20],sort_keys=True),flush=True)
+          print('NTL_0694_READ_ONLY=TRUE;NEW_GPU_TASKS=0;TRAINING=FALSE;SUBMISSION=FALSE',flush=True)
+          PY
+ -o >/dev/null 2>&1; then
+              python -m pip install -q --disable-pip-version-check pyarrow==22.0.0
+              python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import pyarrow.parquet as pq
+          outputs=list(Path('/tmp/ntl-694-finished').rglob('submission.parquet'))
+          if len(outputs)!=1:
+              print('NTL_0694_PRIVATE_PARQUET_PRESENT=FALSE',flush=True)
+          else:
+              p=outputs[0]; file=pq.ParquetFile(p)
+              names=file.schema_arrow.names
+              out={'present':True,
+                   'rows':file.metadata.num_rows,
+                   'row_groups':file.metadata.num_row_groups,
+                   'columns':names,
+                   'bytes':p.stat().st_size,
+                   'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+                   'full_hidden_4k_runtime_proven':False,
+                   'official_score_verified':False}
+              print('NTL_0694_PRIVATE_PARQUET_METADATA='+json.dumps(out,sort_keys=True),flush=True)
+          PY
+            else
+              echo 'NTL_0694_PRIVATE_PARQUET_PRESENT=FALSE'
+            fi
+          fi
           # The Kaggle CLI may expose unfamiliar intermediate enums or an API error.
           # Categorize only, do not emit token-bearing untrusted HTTP bodies.
           export KERNEL_STATUS_OUTPUT="$raw"
