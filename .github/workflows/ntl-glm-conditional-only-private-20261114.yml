@@ -1,0 +1,100 @@
+name: NTL GLM predicted-family selective private runtime (NO submit)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-conditional-only-private-20261114.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-glm-conditional-20261114
+  cancel-in-progress: false
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-glm-conditional-compare-nov14
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: No-new-training source and synthetic CPU gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -q tests.test_ntl_glm_conditional
+          python -m py_compile kaggle/ntl_glm_conditional_runner.py scripts/ntl_glm_conditional_private.py
+          echo NTL_CONDITIONAL_CPU_GATES=PASS
+      - name: Authenticate, check GPU allowance, render pinned private test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-glm-conditional/champion
+          kaggle quota --format json >/tmp/ntl-glm-conditional/quota.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q=json.loads(Path('/tmp/ntl-glm-conditional/quota.json').read_text())
+          [hours]=[float(x['remaining'].rstrip('h')) for x in q if x['resource']=='GPU']
+          print('NTL_CONDITIONAL_GPU_HOURS='+str(hours))
+          if hours < 2.5:
+              raise SystemExit('Not enough remaining GPU for bounded conditional pilot')
+          PY
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 -p /tmp/ntl-glm-conditional/champion -m >/dev/null
+          python -m scripts.ntl_glm_conditional_private \
+            --champion /tmp/ntl-glm-conditional/champion \
+            --out /tmp/ntl-glm-conditional/kernel
+      - name: Execute exactly one already-frozen private observational cohort
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! kaggle kernels status "$KERNEL" >/tmp/ntl-glm-conditional/existing.log 2>&1; then
+            if grep -Eiq 'unauthorized|forbidden|invalid token|quota exceeded' /tmp/ntl-glm-conditional/existing.log; then
+              echo NTL_CONDITIONAL_KAGGLE_ACCESS_FAILED; exit 1
+            fi
+            kaggle kernels push -p /tmp/ntl-glm-conditional/kernel \
+              --accelerator NvidiaTeslaT4 --timeout 16200 \
+              >/tmp/ntl-glm-conditional/push.log 2>&1 || {
+                echo NTL_CONDITIONAL_KERNEL_PUSH_FAILED
+                exit 1
+              }
+          fi
+          echo "NTL_CONDITIONAL_PRIVATE_KERNEL=$KERNEL"
+          for i in $(seq 1 215); do
+            status="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+            case "$status" in
+              *KernelWorkerStatus.COMPLETE*) exit 0 ;;
+              *KernelWorkerStatus.ERROR*|*KernelWorkerStatus.CANCELLED*|*KernelWorkerStatus.FAILED*)
+                echo "NTL_CONDITIONAL_PRIVATE_FAILED=$status"; exit 1 ;;
+            esac
+            if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then echo "NTL_CONDITIONAL_STATUS=$status"; fi
+            sleep 55
+          done
+          echo NTL_CONDITIONAL_PRIVATE_TIMED_OUT
+          exit 1
+      - name: Retrieve only aggregated paired quality and GPU timing
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-glm-conditional/result
+          kaggle kernels output "$KERNEL" -p /tmp/ntl-glm-conditional/result \
+            --file-pattern '^glm-conditional-summary[.]json$' -o >/tmp/ntl-glm-conditional/read.log 2>&1
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          [f]=Path('/tmp/ntl-glm-conditional/result').rglob('glm-conditional-summary.json')
+          d=json.loads(f.read_text())
+          assert d['scope']=='OBSERVATIONAL_DEVELOPMENT_ONLY' and d['champion_ref']=='58295802'
+          assert d['new_training'] is d['official_submission'] is d['independent_holdout'] is False
+          assert d['conditional_only'] is True and d['rows']==252 and len(d['by_label'])==18
+          assert all(x['rows']==14 for x in d['by_label'].values())
+          assert 0 <= d['eligible_glm'] <= 252
+          o=d['overall']
+          assert o['routed_correct']-o['champion_correct']==o['rescues']-o['regressions']
+          print('NTL_CONDITIONAL_PAIRED_VERIFIED='+json.dumps(d,sort_keys=True))
+          PY
+          echo NO_NEW_TRAINING_OR_COMPETITION_SUBMISSION=TRUE
