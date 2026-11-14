@@ -112,6 +112,12 @@ jobs:
                       if len(t)<180 and not any(x in t for x in ('print(', 'prompt', 'text', 'response')):
                           relevant.append(t[:150])
               config_details.append({'cell':i,'matches':relevant[:20]})
+          all_code='\\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in nb['cells'] if c['cell_type']=='code')
+          prefixes=['%%writefile','import gauss','def member_scores','model = AtlasModel(base, labels, config)','if training:','if FAST_COMMIT:','FAST_COMMIT =','train_final','--train-final','if not preview:','if not train_final','if not args.train_final','submission.parquet','gauss.fit(']
+          print('NTL_LIGHTNING_0694_BUILDER_ANCHORS='+json.dumps({
+             'counts':{x:all_code.count(x) for x in prefixes},
+             'cell_magic_kinds':[(''.join(c['source']) if isinstance(c['source'],list) else c['source']).splitlines()[0][:120] for c in nb['cells'] if c['cell_type']=='code' and (''.join(c['source']) if isinstance(c['source'],list) else c['source']).startswith('%%writefile')],
+          },sort_keys=True),flush=True)
           print('NTL_LIGHTNING_NOFIT_PUBLIC_CONFIG='+json.dumps(config_details,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_GAUSS_FIT_CONTROL_FLOW='+json.dumps(owner_report,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_FIT_CALL_PROVENANCE='+json.dumps(cell_anchors,sort_keys=True),flush=True)
