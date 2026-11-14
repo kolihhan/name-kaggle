@@ -47,7 +47,9 @@ jobs:
           python - <<'PY'
           import csv,hashlib,json,os,subprocess
           from pathlib import Path
-          from kaggle.ntl_glm_crosssource_private import SOURCE_SHA, PAIRS, select_pairs
+          import sys
+          sys.path.insert(0, str(Path('kaggle').resolve()))
+          from ntl_glm_crosssource_private import SOURCE_SHA, PAIRS, select_pairs
           root=Path(os.environ['OUT'])
           p=root/'source/generations.csv'
           if not p.is_file():raise SystemExit('STOP_GLM_SOURCE_NOT_ACCESSIBLE')
@@ -98,7 +100,7 @@ jobs:
           echo STOP_GLM_TRANSFER_TIMEOUT
           exit 1
       - name: Retrieve only safe aggregate held-out-prompt result
-        if: always()
+        if: success()
         shell: bash
         run: |
           set -euo pipefail
