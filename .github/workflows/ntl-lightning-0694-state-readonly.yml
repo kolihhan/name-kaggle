@@ -82,7 +82,8 @@ jobs:
                   page_list=api.kernels_list(user='kolihhan',page_size=100,page=page)
                   for entry in page_list:
                       ref=str(getattr(entry,'ref',''))
-                      if 'lightning0694' in ref or 'ntl-lightning' in ref:
+                      title=str(getattr(entry,'title',''))
+                      if ('lightning' in ref.lower() or 'lightning' in title.lower()) and ('694' in ref or '694' in title):
                           hits.append({'ref':ref[:100], 'page':page})
               except Exception:
                   break
