@@ -22,6 +22,7 @@ jobs:
           sparse-checkout: |
             scripts/ntl_glm_observational_pair.py
             scripts/ntl_glm_crosssource_private.py
+            scripts/ntl_0679_transfer_private_once.py
             scripts/ntl_areeb8_wemm_paired84_private_20261113.py
             scripts/ntl_wemm_isolated_fold0_smoke_20261113.py
             kaggle/ntl_glm_observational_pair.py
