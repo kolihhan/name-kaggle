@@ -79,6 +79,8 @@ jobs:
           for i,c in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
               if i not in [x['cell'] for x in cell_anchors]: continue
               code=''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              if code.lstrip().startswith('%%writefile'):
+                  code='\n'.join(code.splitlines()[1:])
               tree=ast.parse(code)
               parent={child:node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
               for node in ast.walk(tree):
