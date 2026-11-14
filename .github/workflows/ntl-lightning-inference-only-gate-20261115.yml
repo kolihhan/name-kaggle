@@ -114,6 +114,18 @@ jobs:
               config_details.append({'cell':i,'matches':relevant[:20]})
           all_code='\\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in nb['cells'] if c['cell_type']=='code')
           prefixes=['%%writefile','import gauss','def member_scores','model = AtlasModel(base, labels, config)','if training:','if FAST_COMMIT:','FAST_COMMIT =','train_final','--train-final','if not preview:','if not train_final','if not args.train_final','submission.parquet','gauss.fit(']
+          preview_lines=[]
+          for i,c in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
+              code=''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              if i < 40: continue
+              lines=[]
+              for lineno,line in enumerate(code.splitlines(),1):
+                  stripped=line.strip()
+                  if any(t in stripped for t in ('preview =','preview=','if not preview:','if preview:','emit_known','train_final','--train-final','submission.parquet','import ensemble','ensemble.py','core_worker.py')):
+                      if len(stripped)<180 and not any(t in stripped for t in ('token','password','secret','api_key','kaggle.json')):
+                          lines.append({'line':lineno,'code':stripped[:150]})
+              if lines:preview_lines.append({'cell':i,'lines':lines[:35]})
+          print('NTL_LIGHTNING_HIDDEN_PREVIEW_CONTROL='+json.dumps(preview_lines,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_0694_BUILDER_ANCHORS='+json.dumps({
              'counts':{x:all_code.count(x) for x in prefixes},
              'cell_magic_kinds':[(''.join(c['source']) if isinstance(c['source'],list) else c['source']).splitlines()[0][:120] for c in nb['cells'] if c['cell_type']=='code' and (''.join(c['source']) if isinstance(c['source'],list) else c['source']).startswith('%%writefile')],
