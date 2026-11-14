@@ -40,7 +40,12 @@ jobs:
               if p.stat().st_size>150_000_000: continue
               with p.open(newline='',encoding='utf-8-sig',errors='replace') as f:
                   reader=csv.DictReader(f); fields=set(reader.fieldnames or ())
-                  if {'model','text'} <= fields:
+                  if {'text','label'} <= fields:
+                      rows=list(reader)
+                      for row in rows:
+                          row['model'] = row['label']
+                      candidates.append((p,rows,fields | {'model'}))
+                  elif {'text','model'} <= fields:
                       rows=list(reader)
                       candidates.append((p,rows,fields))
           if not candidates:
@@ -70,7 +75,7 @@ jobs:
           length_field=next((k for k in ('target_words','target_word_count') if k in fields),None)
           served_field=next((k for k in ('returned_model','served_model') if k in fields),None)
           requested_field=next((k for k in ('requested_model','api_model') if k in fields),None)
-          settings_field=next((k for k in ('settings','temperature') if k in fields),None)
+          settings_field=next((k for k in ('setting','settings','temperature') if k in fields),None)
           blocks=collections.defaultdict(set)
           if prompt_field:
               for r in glm:
