@@ -1,0 +1,86 @@
+name: NTL GLM cross-source provenance intake (CPU only, no inference)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-cross-source-provenance-20261114.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Authenticated read-only public dataset intake; print aggregate metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-glm-sources/lxdlxdlxd
+          kaggle datasets download -d lxdlxdlxd/ntl-synth-generations-v1 \
+            -p /tmp/ntl-glm-sources/lxdlxdlxd --unzip >/tmp/ntl-glm-dataset-fetch.log 2>&1 || {
+               echo "NTL_SOURCE_DOWNLOAD_FAILED=lxdlxdlxd"; exit 1;
+            }
+          python - <<'PY'
+          import csv, collections, json, hashlib, os
+          from pathlib import Path
+          root=Path('/tmp/ntl-glm-sources/lxdlxdlxd')
+          candidates=[]
+          for p in root.rglob('*.csv'):
+              if p.stat().st_size>150_000_000: continue
+              with p.open(newline='',encoding='utf-8-sig',errors='replace') as f:
+                  reader=csv.DictReader(f); fields=set(reader.fieldnames or ())
+                  if {'model','text'} <= fields:
+                      rows=list(reader)
+                      candidates.append((p,rows,fields))
+          if not candidates:raise SystemExit('STOP_NO_EXACT_MODEL_TEXT_COLUMNS')
+          p,rows,fields=max(candidates,key=lambda x:len(x[1]))
+          if len(rows)<50:raise SystemExit('STOP_SOURCE_TOO_SMALL')
+          counts=collections.Counter(r.get('model','').strip() for r in rows)
+          full,flash='glm-5.3','glm-5.3-flash'
+          glm=[r for r in rows if r.get('model','').strip() in (full,flash)]
+          keys=[k for k in ('user_message','prompt','prompt_text','instruction') if k in fields]
+          prompt_field=keys[0] if keys else None
+          length_field=next((k for k in ('target_words','target_word_count') if k in fields),None)
+          served_field=next((k for k in ('returned_model','served_model') if k in fields),None)
+          requested_field=next((k for k in ('requested_model','api_model') if k in fields),None)
+          settings_field=next((k for k in ('settings','temperature') if k in fields),None)
+          blocks=collections.defaultdict(set)
+          if prompt_field:
+              for r in glm:
+                  prompt=(r.get(prompt_field) or '').strip()
+                  if not prompt:continue
+                  # pair key includes exact prompt, requested length, and generation settings
+                  key=(prompt,(r.get(length_field) or '') if length_field else '',
+                       (r.get(settings_field) or '') if settings_field else '')
+                  blocks[key].add(r['model'].strip())
+          paired=sum(set((full,flash))<=models for models in blocks.values())
+          prompt_hashes=len({hashlib.sha256((r.get(prompt_field) or '').encode()).hexdigest()
+                             for r in glm if prompt_field and r.get(prompt_field)})
+          output={
+              'scope':'EXTERNAL_METADATA_ONLY_NOT_INDEPENDENT_VALIDATION',
+              'dataset':'lxdlxdlxd/ntl-synth-generations-v1',
+              'csv_count':len(candidates),'rows':len(rows),'label_count':len(counts),
+              'glm_5_3':counts[full],'glm_5_3_flash':counts[flash],
+              'exact_glm_pair_groups':paired,'distinct_glm_prompt_hashes':prompt_hashes,
+              'schema':sorted(fields),'prompt_field':prompt_field,'length_field':length_field,
+              'settings_field':settings_field,'requested_field':requested_field,
+              'served_field':served_field,
+              'served_id_present_glm':sum(bool((r.get(served_field) or '').strip()) for r in glm) if served_field else 0,
+              'requested_id_present_glm':sum(bool((r.get(requested_field) or '').strip()) for r in glm) if requested_field else 0,
+              'new_training':False,'model_inference':False,'official_submission':False,
+              'independence_proven':False
+          }
+          assert sum(counts.values())==len(rows)
+          print('NTL_GLM_NEW_SOURCE_PROVENANCE='+json.dumps(output,sort_keys=True),flush=True)
+          if min(counts[full],counts[flash])<30 or paired<12 or not served_field:
+              print('NTL_GLM_TRANSFER_GATE=STOP_INSUFFICIENT_PROVENANCE_OR_PAIRS')
+          else:
+              print('NTL_GLM_TRANSFER_GATE=METADATA_CANDIDATE_ONLY_NEEDS_EXPOSURE_AUDIT')
+          PY
