@@ -50,6 +50,31 @@ jobs:
                                'calls':sorted(set(calls))[:30],
                                'train_csv_literal':bool(re.search('train[.]csv',code,re.I)),
                                'preview_literal':bool(re.search('preview',code,re.I))})
+          # Identify whether the apparent .fit is executable supervised training or only text.
+          import tokenize,io
+          cell_anchors=[]
+          for i,cell in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
+              code=''.join(cell['source']) if isinstance(cell['source'],list) else cell['source']
+              fits=list(re.finditer(r'\\.fit\\s*\\(',code))
+              if not fits: continue
+              norm='\\n'.join(line for line in code.splitlines() if not line.lstrip().startswith(('!','%')))
+              try: parsed=ast.parse(norm)
+              except SyntaxError: parsed=None
+              actual=[]
+              if parsed:
+                  for node in ast.walk(parsed):
+                      if not isinstance(node,ast.Call) or not isinstance(node.func,ast.Attribute) or node.func.attr!='fit':
+                          continue
+                      owner=node.func.value
+                      name=owner.id if isinstance(owner,ast.Name) else 'nested_expression'
+                      actual.append({'receiver':name,'line':node.lineno})
+              cell_anchors.append({
+                 'cell':i,'raw_fit_occurrences':len(fits),
+                 'ast_executable_fit':actual,'ast_parseable_without_notebook_magics':parsed is not None,
+                 'likely_text_or_comment_fit':len(fits)-len(actual),
+                 'contains_train_csv':bool(re.search(r'train[.]csv',code,re.I))
+              })
+          print('NTL_LIGHTNING_FIT_CALL_PROVENANCE='+json.dumps(cell_anchors,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_PUBLIC_SOURCE_AUDIT='+json.dumps({
               'sha256':hashlib.sha256(raw).hexdigest(),'cells':len([x for x in nb['cells'] if x['cell_type']=='code']),
               'flagged_cells':info,'training_executed':False,'private_kernel_run':False,
