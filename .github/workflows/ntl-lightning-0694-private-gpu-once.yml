@@ -1,0 +1,57 @@
+name: "NTL NEW 0.694 pretrained Lightning private genuine full-path GPU one-shot"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning-0694-private-gpu-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-lightning0694-real-nofit-nov15-single-private-kernel
+  cancel-in-progress: false
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Push exactly one NEW private GPU inference notebook after source/no-fit gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/ntl-lightning0694-real-no-fit-nov15
+          existing="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$existing" == *KernelWorkerStatus.* ]]; then
+            echo "NTL_0694_PRIVATE_KERNEL_ALREADY_EXISTS=TRUE"
+            echo "NTL_0694_NO_DUPLICATE_GPU_SUBMITTED=TRUE"
+            exit 0
+          fi
+          mkdir -p /tmp/ntl-lightning0694-public
+          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora \
+            -p /tmp/ntl-lightning0694-public -m >/tmp/ntl-lightning0694-pull.log 2>&1
+          python -m scripts.ntl_lightning_0694_no_fit_candidate \
+            --source /tmp/ntl-lightning0694-public --out /tmp/ntl-lightning0694-new-private
+          # No competition submission, no model fitting, no source-data materialization on GitHub.
+          kaggle kernels push -p /tmp/ntl-lightning0694-new-private \
+            --accelerator NvidiaTeslaT4 --timeout 32400 > /tmp/ntl0694-push.log 2>&1
+          if ! grep -Eq 'Kernel version 1 successfully pushed|https://www.kaggle.com/code/kolihhan/ntl-lightning0694-real-no-fit-nov15' /tmp/ntl0694-push.log; then
+            echo 'NTL_0694_PUSH_RECEIPT_NOT_CONFIRMED=TRUE'
+            exit 1
+          fi
+          echo "NTL_0694_PRIVATE_GPU_KERNEL_LAUNCHED=TRUE"
+          echo "NTL_0694_PRIVATE_KERNEL_REF=$TARGET"
+          echo "NTL_0694_PUBLIC_SCORE_UNKNOWN=TRUE"
+          echo "NTL_0694_TRAINING_EXECUTED_BY_CONTROLLER=FALSE"
+          echo "NTL_0694_OFFICIAL_SUBMISSION=FALSE"
+          status="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$status" == *KernelWorkerStatus.RUNNING* ]]; then state=RUNNING
+          elif [[ "$status" == *KernelWorkerStatus.QUEUED* ]]; then state=QUEUED
+          elif [[ "$status" == *KernelWorkerStatus.COMPLETE* ]]; then state=COMPLETE
+          elif [[ "$status" == *KernelWorkerStatus.ERROR* ]]; then state=ERROR
+          else state=UNCONFIRMED; fi
+          echo "NTL_0694_PRIVATE_GPU_INITIAL_STATE=$state"
