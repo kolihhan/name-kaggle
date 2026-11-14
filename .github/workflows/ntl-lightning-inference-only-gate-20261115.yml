@@ -74,6 +74,28 @@ jobs:
                  'likely_text_or_comment_fit':len(fits)-len(actual),
                  'contains_train_csv':bool(re.search(r'train[.]csv',code,re.I))
               })
+          # Syntactic owner and branch of the one public Gaussian fitting call.
+          owner_report=[]
+          for i,c in enumerate(x for x in nb['cells'] if x['cell_type']=='code'):
+              if i not in [x['cell'] for x in cell_anchors]: continue
+              code=''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              tree=ast.parse(code)
+              parent={child:node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+              for node in ast.walk(tree):
+                  if not (isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute) and node.func.attr=='fit'): continue
+                  own=[]; cur=node
+                  while cur in parent:
+                      cur=parent[cur]
+                      if isinstance(cur,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                          own.append('function:'+cur.name[:50])
+                      elif isinstance(cur,ast.If):
+                          expression=ast.unparse(cur.test)
+                          own.append('if:'+expression[:100])
+                      elif isinstance(cur,ast.Try):
+                          own.append('try')
+                  own.reverse()
+                  owner_report.append({'cell':i,'line':node.lineno,'parents':own})
+          print('NTL_LIGHTNING_GAUSS_FIT_CONTROL_FLOW='+json.dumps(owner_report,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_FIT_CALL_PROVENANCE='+json.dumps(cell_anchors,sort_keys=True),flush=True)
           print('NTL_LIGHTNING_PUBLIC_SOURCE_AUDIT='+json.dumps({
               'sha256':hashlib.sha256(raw).hexdigest(),'cells':len([x for x in nb['cells'] if x['cell_type']=='code']),
