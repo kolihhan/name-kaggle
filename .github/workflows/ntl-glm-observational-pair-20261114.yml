@@ -1,0 +1,87 @@
+name: NTL 0.683 vs actual GLM likelihood on observational texts (private)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-observational-pair-20261114.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-glm-observational-pair-20261114
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-areeb8-glm-observational-nov14
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Authenticate and render the exact frozen 0.683 reference
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -m py_compile scripts/ntl_glm_observational_pair.py kaggle/ntl_glm_observational_pair.py
+          mkdir -p /tmp/ntl-glm-study/champion
+          kaggle quota --format json >/tmp/ntl-glm-study/quota.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q = json.loads(Path('/tmp/ntl-glm-study/quota.json').read_text())
+          [hours] = [float(x['remaining'].rstrip('h')) for x in q if x['resource'] == 'GPU']
+          print('NTL_GLM_GPU_HOURS=' + str(hours))
+          if hours < 4.5:
+              raise SystemExit('GPU time remaining is below the notebook cap')
+          PY
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 -p /tmp/ntl-glm-study/champion -m >/dev/null
+          python -m scripts.ntl_glm_observational_pair \
+            --champion /tmp/ntl-glm-study/champion --out /tmp/ntl-glm-study/kernel
+      - name: Run the frozen observational diagnostic without an official submission
+        run: |
+          set -euo pipefail
+          if ! kaggle kernels status "$KERNEL" >/tmp/ntl-glm-study/current.log 2>&1; then
+            if grep -Eiq 'unauthorized|forbidden|invalid token|quota exceeded' /tmp/ntl-glm-study/current.log; then
+              echo NTL_GLM_KAGGLE_ACCESS_FAILED; exit 1
+            fi
+            kaggle kernels push -p /tmp/ntl-glm-study/kernel --accelerator NvidiaTeslaT4 --timeout 16200 \
+              >/tmp/ntl-glm-study/push.log 2>&1 || {
+                echo NTL_GLM_PRIVATE_KERNEL_PUSH_FAILED
+                exit 1
+              }
+          fi
+          echo "NTL_GLM_PRIVATE_KERNEL=$KERNEL"
+          for i in $(seq 1 285); do
+            status="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+            case "$status" in
+              *KernelWorkerStatus.COMPLETE*) exit 0 ;;
+              *KernelWorkerStatus.ERROR*|*KernelWorkerStatus.CANCELLED*|*KernelWorkerStatus.FAILED*)
+                echo "NTL_GLM_PRIVATE_FAILED=$status"; exit 1 ;;
+            esac
+            if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then echo "NTL_GLM_STATUS=$status"; fi
+            sleep 55
+          done
+          exit 1
+      - name: Retrieve the aggregate paired metrics
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-glm-study/observed
+          kaggle kernels output "$KERNEL" -p /tmp/ntl-glm-study/observed \
+            --file-pattern '^glm-ratio-summary[.]json$' -o >/tmp/ntl-glm-study/read.log 2>&1
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          [source] = Path('/tmp/ntl-glm-study/observed').rglob('glm-ratio-summary.json')
+          d = json.loads(source.read_text())
+          assert d['scope'] == 'OBSERVATIONAL_DEVELOPMENT_ONLY' and d['champion_ref'] == '58295802'
+          assert d['official_submission'] is d['new_training'] is d['independent_holdout'] is False
+          assert d['overall']['rows'] == 252 and len(d['by_label']) == 18
+          assert all(x['rows'] == 14 for x in d['by_label'].values())
+          assert d['strict_requested_prompt_glm_ranking']['pairs'] == 5
+          assert d['observational_glm_ranking']['pairs'] == 14
+          o = d['overall']
+          assert o['routed_correct'] - o['champion_correct'] == o['rescues'] - o['regressions']
+          print('NTL_GLM_PAIRED_VERIFIED=' + json.dumps(d, sort_keys=True))
+          PY
