@@ -19,6 +19,17 @@ jobs:
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
+          state="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$state" == *KernelWorkerStatus.QUEUED* || "$state" == *KernelWorkerStatus.PENDING* || "$state" == *KernelWorkerStatus.RUNNING* ]]; then
+            echo "NTL0694_PRIVATE_GPU_NOT_TERMINAL=TRUE"
+            echo "NTL0694_NO_OUTPUT_DOWNLOAD_OR_TRAINING=TRUE"
+            exit 0
+          fi
+          if [[ "$state" != *KernelWorkerStatus.COMPLETE* ]]; then
+            echo "NTL0694_PRIVATE_TERMINAL_STATUS_UNKNOWN_OR_FAILED=TRUE"
+            exit 1
+          fi
           python - <<'PY'
           import json,subprocess
           ref='kolihhan/lightning-0-694-authentic-no-fit-inference'
