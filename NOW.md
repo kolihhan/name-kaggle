@@ -1,3 +1,10 @@
+## 2026-11-14 12:29 MYT — NTL ACTUAL GLM LIKELIHOOD +5 NET ON 252 EXTERNAL TEXTS, NO SUBMISSION
+
+- **VERIFIED** [Actions #43548137138](https://github.com/kolihhan/name-kaggle/actions/runs/43548137138) terminal SUCCESS: frozen 0.683 champion **150/252** (18-class BA **0.595238**) vs GLM-only likelihood-routed **155/252** (BA **0.615079**) on same external 18-label texts. **6 rescues / 1 regression / 14 changed**, GLM matched ranking **13/14**, strict protocol pair ranking **4/5**. Flash / full GPU stages **1013.8 / 1543.2s** for 262 texts; incumbent had only **26/252** predictions in GLM sibling family. Results are observational, lack verified generator-source independence; no new training or competition submission. Current official best **0.683** (#58295802).
+- **NEXT:** minimize GPU cost by gating GLM likelihood inference only on champion-predicted GLM rows, then check identical decisions and hidden-scale runtime; no automatic promotion or submission on this spent data. [Full evidence](artifacts/research/ntl-glm-frozen-likelihood-20261114/RESULT.md).
+
+---
+
 ## 2026-11-14 00:28 MYT — VERIFIED PAIRED NTL 0.683 vs WeMM4B RESULT: WE MM NEGATIVE (NO official submission)
 
 - **Fully completed and authenticated**: [GitHub Action #43454221159](https://github.com/kolihhan/name-kaggle/actions/runs/43454221159), private Kaggle paired 84 rows 12 observed classes, 7 source-shared prompt panels. Both exact frozen 8-model Areeb champion (scored official ref **58295802 Public BA 0.683**) and WeMM 4B frozen fold0 predicted the identical 84 unlabelled texts. **Success/COMPLETE**, no training, no competition submission. Full verified artifact: [RESULT_20261114.md](artifacts/research/ntl-areeb8-vs-wemm-paired84/RESULT_20261114.md).
