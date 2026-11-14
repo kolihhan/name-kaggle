@@ -32,3 +32,42 @@ jobs:
             *) echo NTL_GLM64_PRIVATE_KERNEL_STATE=UNKNOWN ;;
           esac
           echo NO_GPU_NO_DATA_NO_SUBMIT=TRUE
+
+      - name: Read only safe 64-pair aggregate from completed private kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-glm64-safe
+          kaggle kernels output kolihhan/ntl-glm-crosssource-paired64-nov14 \
+            -p /tmp/ntl-glm64-safe --file-pattern '^glm-external-paired64-result[.]json$' -o \
+            >/tmp/ntl-glm64-download.log 2>&1 || {
+              echo NTL_GLM64_AGGREGATE_UNAVAILABLE; exit 1;
+            }
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = list(Path('/tmp/ntl-glm64-safe').rglob('glm-external-paired64-result.json'))
+          if len(paths) != 1:
+              raise SystemExit('STOP_NTL_GLM64_MISSING_OR_DUPLICATE_RESULT')
+          r = json.loads(paths[0].read_text())
+          assert r['scope'] == 'EXTERNAL_SOURCE_GLM_PAIR_DIAGNOSTIC_NOT_FULL_18'
+          assert (r['pairs'], r['rows'], r['distinct_prompt_ids']) == (64,128,64)
+          assert r['csv_sha256'] == '8339081afee1d4aed0b806a686d91978f0d7815bc67fb8f620860477e0895675'
+          assert r['champion_ref'] == '58295802'
+          assert r['new_training'] is False and r['competition_submission'] is False
+          assert r['independence_proven'] is False
+          assert set(r['by_label']) == {'glm-5.3','glm-5.3-flash'}
+          assert all(v['rows'] == 64 for v in r['by_label'].values())
+          overall = r['overall']
+          assert overall['rows'] == 128
+          assert overall['routed_correct']-overall['champion_correct'] == overall['rescues']-overall['regressions']
+          print('NTL_GLM64_VERIFIED_AGGREGATE='+json.dumps({
+              'overall':overall,'by_label':r['by_label'],
+              'eligible_glm':r['eligible_glm'],
+              'two_label_ba_champion':r['two_label_ba_champion'],
+              'two_label_ba_routed':r['two_label_ba_routed'],
+              'model_stage_seconds':r['model_stage_seconds'],
+              'independence_proven':False,
+              'official_submission':False},sort_keys=True),flush=True)
+          print('NTL_GLM64_DECISION='+('POSITIVE_SOURCE_LIMITED_HYPOTHESIS' if overall['routed_correct']>overall['champion_correct'] else 'NO_PROMOTION'),flush=True)
+          PY
