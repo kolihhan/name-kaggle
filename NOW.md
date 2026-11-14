@@ -1,3 +1,10 @@
+## 2026-11-15 — Higher-ranked Lightning source has conditional supervised Gaussian fit; no new NTL score
+
+- **Actual public-source structural test, no notebook execution:** [Action #43620763389](https://github.com/kolihhan/name-kaggle/actions/runs/43620763389) SUCCESS on immutable published `lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora` notebook, SHA256 `9808d997185c125d92b0a67501bb763eb1813ae5223d3d06ce82a5518f205a2e`. After correctly parsing the `%%writefile` Python module cell (index 17), an **actual executable call** `gauss.fit(...)` exists inside `member_scores` and is gated by **both** `spec.get('gauss', 0) > 0` and `branch['gaussian_branch'] == 'source-test-conditioned'`. This is not a comment-only false alarm; the exact intended runtime branch/default and actual supervised data flow are still unverified.
+- **Decision:** never fork/run the public candidate unmodified and assert `no-new-training`. Removing this branch changes the published scorer and may remove any reported gain. A valid attribution-only alternative needs frozen no-fit source, genuine full-path private inference, same-row disjoint 18-class transfer and the 9-hour execution gate. None has passed. Original author title's `0.694` is **not** an authenticated new score for this account; current **0.683** champion #58295802 remains unchanged. No new GPU, official NTL submission or training run launched.
+
+---
+
 ## 2026-11-15 — NTL 18-label pool real provenance gate, 65 sources, 0 complete panels
 
 - **Actual source API access recovered**, correcting previous metadata-parser blocker: [Kaggle API Action #43618832400](https://github.com/kolihhan/name-kaggle/actions/runs/43618832400) returned **20 real public dataset files** in `crtproduction/name-that-llm-open-pool`, including `ntl_open_pool.parquet` **112,851,698 bytes**, `sources.csv`, `source_protocol.csv`, `per_model.csv`. Previous zero parsed entries were a client/parser failure, not absence of dataset files.
