@@ -1,0 +1,68 @@
+name: "NTL feiyu candidate training and hidden-path CPU gate"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-feiyu-candidate-train-guard-cpu-20261115.yml]
+permissions: {contents: read}
+jobs:
+  public_source_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect exact PUBLIC source without training, model load or data access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-feiyu
+          kaggle kernels pull feiyu26/ntl-0684-v1-graft -p /tmp/ntl-feiyu -m >/tmp/ntl-feiyu-pull.log 2>&1
+          python - <<'PY'
+          import ast,hashlib,json,re
+          from collections import Counter
+          from pathlib import Path
+          base=Path('/tmp/ntl-feiyu')
+          files=list(base.glob('*.ipynb'))
+          if len(files)!=1:
+              raise SystemExit('STOP_FEIYU_NOTEBOOK_SOURCE_MISSING')
+          nb=json.loads(files[0].read_text(encoding='utf-8'))
+          cells=[(''.join(x['source']) if isinstance(x['source'],list) else x['source'])
+                 for x in nb['cells'] if x['cell_type']=='code']
+          body='\n'.join(cells)
+          source_sha=hashlib.sha256(files[0].read_bytes()).hexdigest()
+          assert source_sha=='00a0ee5b4695490c558a904cadbf8ab649656e0a2eab85647b84ddc17f5b2316', 'public source changed'
+          receivers=Counter()
+          for m in re.finditer(r'\b([a-zA-Z_][a-zA-Z_0-9]{0,40})\.(fit|fit_transform|train)\s*\(',body):
+              receivers[m.group(1)+'.'+m.group(2)]+=1
+          cell_report=[]
+          for i,cell in enumerate(cells):
+              fits=len(re.findall(r'\.fit\s*\(',cell))
+              cleaned='\n'.join(line for line in cell.splitlines()
+                                 if not line.lstrip().startswith(('!','%')))
+              try: ast.parse(cleaned); parseable=True
+              except SyntaxError: parseable=False
+              cell_report.append({'i':i,'chars':len(cell),'fit_call_strings':fits,
+                                  'ast_parseable':parseable,
+                                  'train_csv_literal':bool(re.search(r'train[.]csv',cell,re.I)),
+                                  'test_csv_literal':bool(re.search(r'test[.]csv',cell,re.I)),
+                                  'fit_final_string':bool(re.search(r'fit_final|train_final|train-final',cell,re.I)),
+                                  'preview_literal':bool(re.search(r'preview|len\s*\(\s*(?:test|frame)\s*\)\s*==\s*[13]',cell,re.I))})
+          result={
+            'source_sha256':source_sha,
+            'code_cells':len(cells),
+            'fit_receiver_counts':dict(receivers.most_common(30)),
+            'cells':cell_report,
+            'exec_like_calls':len(re.findall(r'\b(?:exec|eval)\s*\(',body)),
+            'potential_train_dataset_reads':len(re.findall(r'train[.]csv',body,re.I)),
+            'potential_test_dataset_reads':len(re.findall(r'test[.]csv',body,re.I)),
+            'genuine_hidden_path_verified':False,
+            'training_executed':False,
+            'gpu_executed':False,
+            'official_submission':False,
+          }
+          print('NTL_FEIYU_PUBLIC_SOURCE_GATE='+json.dumps(result,sort_keys=True),flush=True)
+          PY
