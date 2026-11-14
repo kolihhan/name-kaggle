@@ -42,6 +42,17 @@ jobs:
                       if value>0.683 and ref and '/' in ref:
                           hits.append({'ref':ref,'score':round(value,5)})
           print('NTL_PUBLIC_NOTEBOOK_SCORE_HEADERS='+json.dumps(schemas),flush=True)
+          # Kaggle API omits numerical public score for active competitions.
+          # Preserve original scoreDescending rank, never convert rank to score.
+          ranked=[]
+          for page in (1,2):
+              with (Path('/tmp/ntl-public-only')/f'page{page}.csv').open(newline='',encoding='utf-8') as f:
+                  for entry in csv.DictReader(f):
+                      ref=entry.get('ref',''); title=entry.get('title','')
+                      if ref and '/' in ref:
+                          ranked.append({'ref':ref,'title':title[:160]})
+          print('NTL_PUBLIC_NOTEBOOK_SCORE_RANKED_TOP20='+json.dumps(ranked[:20],ensure_ascii=False),flush=True)
+          print('NTL_PUBLIC_SCORE_VALUES_EXPOSED_BY_API=FALSE',flush=True)
           print('NTL_PUBLIC_STRONGER_NOTEBOOKS='+json.dumps(hits[:25],sort_keys=True),flush=True)
           print('NTL_PUBLIC_STRONGER_FOUND='+str(len(hits)),flush=True)
           print('NTL_SCAN_SCOPE=PUBLIC_METADATA_TWO_PAGES_ONLY',flush=True)
