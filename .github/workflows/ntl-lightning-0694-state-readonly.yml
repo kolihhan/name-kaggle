@@ -76,5 +76,16 @@ jobs:
               },sort_keys=True),flush=True)
           except Exception as exc:
               print('NTL_0694_OWN_KERNEL_LIST_UNAVAILABLE='+type(exc).__name__,flush=True)
+          hits=[]
+          for page in (1,2,3,4):
+              try:
+                  page_list=api.kernels_list(user='kolihhan',page_size=100,page=page)
+                  for entry in page_list:
+                      ref=str(getattr(entry,'ref',''))
+                      if 'lightning0694' in ref or 'ntl-lightning' in ref:
+                          hits.append({'ref':ref[:100], 'page':page})
+              except Exception:
+                  break
+          print('NTL_0694_OWN_KERNEL_SEARCH_PAGES='+json.dumps(hits[:20],sort_keys=True),flush=True)
           print('NTL_0694_READ_ONLY=TRUE;NEW_GPU_TASKS=0;TRAINING=FALSE;SUBMISSION=FALSE',flush=True)
           PY
