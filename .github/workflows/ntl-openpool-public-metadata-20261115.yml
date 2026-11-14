@@ -90,5 +90,36 @@ jobs:
                 'file':name,'rows':len(data),'columns':cols[:40],
                 'public_metadata_examples':clean
               },sort_keys=True),flush=True)
+          from collections import Counter
+          def read_table(name):
+              with (root/name).open(newline='',encoding='utf-8-sig') as handle:
+                  return list(csv.DictReader(handle))
+          sources=read_table('sources.csv')
+          checks=read_table('source_protocol.csv')
+          labels=read_table('per_model.csv')
+          provenance={r['source_dataset']:str(r.get('served_model_check','')).lower().strip()
+                      for r in checks}
+          def model_count(row):
+              try: return int(row.get('models') or 0)
+              except ValueError: return 0
+          complete=[r['source_dataset'] for r in sources if model_count(r)==18]
+          full_verified=[r['source_dataset'] for r in sources
+                         if model_count(r)==18 and provenance.get(r['source_dataset'])=='yes']
+          weakest=sorted([(r['model'],int(r['sources'])) for r in labels],
+                         key=lambda t:t[1])[:7]
+          count=Counter(provenance.values())
+          print('NTL_OPENPOOL_SOURCE_INDEPENDENCE_AUDIT='+json.dumps({
+             'sources':len(sources),
+             'served_id_checks':dict(count),
+             'source_count_18_classes':len(complete),
+             'complete_source_refs':complete[:10],
+             'source_18_and_served_id_checked':full_verified[:10],
+             'source_18_and_served_id_checked_n':len(full_verified),
+             'source_count_at_least_17':sum(model_count(r)>=17 for r in sources),
+             'source_license_missing':sum(not str(r.get('source_license') or '').strip() for r in sources),
+             'classes_least_sources':weakest,
+             'prompt_independence_proven':False,
+             'incumbent_prefit_disjointness_proven':False
+          },sort_keys=True),flush=True)
           print('NTL_OPENPOOL_PRIVATE_OR_COMPETITION_DATA_READ=FALSE;NO_GPU=TRUE;NO_TRAINING=TRUE',flush=True)
           PY
