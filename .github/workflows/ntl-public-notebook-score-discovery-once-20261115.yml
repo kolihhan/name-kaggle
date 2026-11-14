@@ -1,0 +1,49 @@
+name: "NTL bounded public notebook score discovery CPU only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-public-notebook-score-discovery-once-20261115.yml]
+permissions: {contents: read}
+jobs:
+  public_source_recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect two pages of public code only; no competition train/test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-public-only
+          for page in 1 2; do
+            kaggle kernels list --competition name-that-llm --sort-by scoreDescending \
+              --page-size 30 --page "$page" --csv >"/tmp/ntl-public-only/page$page.csv"
+          done
+          python - <<'PY'
+          import csv,json
+          from pathlib import Path
+          hits=[]; schemas=[]
+          for page in (1,2):
+              with (Path('/tmp/ntl-public-only')/f'page{page}.csv').open(newline='',encoding='utf-8') as f:
+                  reader=csv.DictReader(f)
+                  fieldnames=reader.fieldnames or []
+                  schemas.append(fieldnames)
+                  for entry in reader:
+                      lower={str(k).strip().lower():v for k,v in entry.items() if k}
+                      ref=lower.get('ref') or lower.get('kernelref') or lower.get('kernel_ref') or ''
+                      score=lower.get('score') or lower.get('currentversionpublicscore') or ''
+                      try: value=float(score)
+                      except (TypeError,ValueError): continue
+                      if value>0.683 and ref and '/' in ref:
+                          hits.append({'ref':ref,'score':round(value,5)})
+          print('NTL_PUBLIC_NOTEBOOK_SCORE_HEADERS='+json.dumps(schemas),flush=True)
+          print('NTL_PUBLIC_STRONGER_NOTEBOOKS='+json.dumps(hits[:25],sort_keys=True),flush=True)
+          print('NTL_PUBLIC_STRONGER_FOUND='+str(len(hits)),flush=True)
+          print('NTL_SCAN_SCOPE=PUBLIC_METADATA_TWO_PAGES_ONLY',flush=True)
+          print('NTL_GPU_USED=FALSE;TRAINING=FALSE;OFFICIAL_SUBMISSION=FALSE',flush=True)
+          PY
