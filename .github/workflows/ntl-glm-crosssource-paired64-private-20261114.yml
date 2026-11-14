@@ -1,0 +1,131 @@
+name: NTL GLM frozen external 64-pair private transfer (NO submit)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-crosssource-paired64-private-20261114.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-glm-external-paired64-20261114
+  cancel-in-progress: false
+jobs:
+  one_private:
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-glm-crosssource-paired64-nov14
+      OUT: /tmp/ntl-glm-crosssource-paired64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_glm_observational_pair.py
+            scripts/ntl_glm_crosssource_private.py
+            scripts/ntl_areeb8_wemm_paired84_private_20261113.py
+            scripts/ntl_wemm_isolated_fold0_smoke_20261113.py
+            kaggle/ntl_glm_observational_pair.py
+            kaggle/ntl_glm_conditional_runner.py
+            kaggle/ntl_glm_crosssource_private.py
+            tests/test_ntl_glm_conditional.py
+            tests/test_ntl_glm_crosssource_selector.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Frozen source identity, pair selection, quota and no-training CPU preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -m unittest -q tests.test_ntl_glm_conditional tests.test_ntl_glm_crosssource_selector
+          python -m py_compile kaggle/ntl_glm_crosssource_private.py scripts/ntl_glm_crosssource_private.py
+          mkdir -p "$OUT/source" "$OUT/champion"
+          kaggle datasets download -d lxdlxdlxd/ntl-synth-generations-v1 \
+             -p "$OUT/source" --unzip >/tmp/ntl-glm-external-source.log 2>&1
+          python - <<'PY'
+          import csv,hashlib,json,os,subprocess
+          from pathlib import Path
+          from kaggle.ntl_glm_crosssource_private import SOURCE_SHA, PAIRS, select_pairs
+          root=Path(os.environ['OUT'])
+          p=root/'source/generations.csv'
+          if not p.is_file():raise SystemExit('STOP_GLM_SOURCE_NOT_ACCESSIBLE')
+          if hashlib.sha256(p.read_bytes()).hexdigest()!=SOURCE_SHA:
+              raise SystemExit('STOP_GLM_SOURCE_CONTENT_CHANGED')
+          with p.open(newline='',encoding='utf-8-sig') as fh:
+              rows=list(csv.DictReader(fh))
+          selected=select_pairs(rows)
+          if len(rows)!=4758 or len(selected)!=2*PAIRS:
+              raise SystemExit('STOP_GLM_SOURCE_COHORT_NOT_FROZEN')
+          print('NTL_GLM_TRANSFER_SOURCE_CPU_VERIFIED='+json.dumps({
+              'all_source_rows':len(rows),'paired_rows':len(selected),
+              'paired_groups':PAIRS,'sha256':SOURCE_SHA,'model_fit':False,
+              'official_submission':False},sort_keys=True),flush=True)
+          p=subprocess.run(['kaggle','quota','--format','json'],capture_output=True,text=True,
+                           check=True,timeout=120)
+          [quota]=[q for q in json.loads(p.stdout) if q['resource']=='GPU']
+          remaining=float(str(quota['remaining']).rstrip('h'))
+          if remaining<3.0:raise SystemExit('STOP_NOT_ENOUGH_KAGGLE_GPU_HOURS')
+          print('NTL_GLM_TRANSFER_GPU_QUOTA='+str(remaining),flush=True)
+          PY
+          if kaggle kernels status "$KERNEL" >/tmp/ntl-glm-paired-existing.log 2>&1; then
+            echo STOP_NTL_GLM_TRANSFER_KERNEL_ALREADY_EXISTS; exit 1
+          fi
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 \
+             -p "$OUT/champion" -m >/tmp/ntl-glm-champion-pull.log 2>&1
+          python -m scripts.ntl_glm_crosssource_private \
+             --champion "$OUT/champion" --out "$OUT/kernel"
+      - name: Execute one private actual GLM model transfer on 64 new source prompts
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$OUT/kernel" --accelerator NvidiaTeslaT4 \
+            --timeout 10800 >/tmp/ntl-glm-transfer-push.log 2>&1 || {
+              echo STOP_GLM_TRANSFER_PUSH_FAILED; exit 1;
+            }
+          echo NTL_GLM_TRANSFER_PRIVATE_PUSHED=TRUE
+          for i in $(seq 1 210); do
+             status="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+             case "$status" in
+               *KernelWorkerStatus.COMPLETE*) echo NTL_GLM_TRANSFER_PRIVATE_COMPLETE=TRUE; exit 0 ;;
+               *KernelWorkerStatus.ERROR*|*KernelWorkerStatus.FAILED*|*KernelWorkerStatus.CANCELLED*)
+                  echo STOP_GLM_TRANSFER_PRIVATE_TERMINAL_ERROR; exit 1 ;;
+             esac
+             if [ "$i" -eq 1 ] || [ $((i%15)) -eq 0 ]; then echo NTL_GLM_TRANSFER_POLL="$i"_"$status";fi
+             sleep 48
+          done
+          echo STOP_GLM_TRANSFER_TIMEOUT
+          exit 1
+      - name: Retrieve only safe aggregate held-out-prompt result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT/result"
+          kaggle kernels output "$KERNEL" -p "$OUT/result" \
+            --file-pattern '^glm-external-paired64-result[.]json$' -o \
+            >/tmp/ntl-glm-transfer-output.log 2>&1
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['OUT'])
+          [p]=list((root/'result').rglob('glm-external-paired64-result.json'))
+          r=json.loads(p.read_text())
+          assert r['scope']=='EXTERNAL_SOURCE_GLM_PAIR_DIAGNOSTIC_NOT_FULL_18'
+          assert (r['pairs'],r['rows'],r['distinct_prompt_ids'])==(64,128,64)
+          assert r['champion_ref']=='58295802'
+          assert r['csv_sha256']=='8339081afee1d4aed0b806a686d91978f0d7815bc67fb8f620860477e0895675'
+          assert r['new_training'] is False and r['competition_submission'] is False
+          assert r['independence_proven'] is False
+          assert set(r['by_label'])=={'glm-5.3','glm-5.3-flash'}
+          assert all(v['rows']==64 for v in r['by_label'].values())
+          o=r['overall']
+          assert o['routed_correct']-o['champion_correct']==o['rescues']-o['regressions']
+          print('NTL_GLM_TRANSFER_PAIRED_VERIFIED='+json.dumps(r,sort_keys=True),flush=True)
+          if o['routed_correct']>o['champion_correct']:
+              print('NTL_GLM_TRANSFER_DECISION=POSITIVE_SOURCE_LIMITED_HYPOTHESIS')
+          else:
+              print('NTL_GLM_TRANSFER_DECISION=NO_PROMOTION')
+          PY
+          echo NO_TRAINING_NO_OFFICIAL_SUBMISSION=TRUE
