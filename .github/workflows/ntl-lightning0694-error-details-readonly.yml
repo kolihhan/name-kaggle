@@ -1,0 +1,77 @@
+name: "NTL 0694 Kaggle ERROR root-cause evidence read-only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-error-details-readonly.yml]
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Diagnose failed existing Kaggle run, no new GPU or submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json, re, subprocess
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          ref="kolihhan/lightning-0-694-authentic-no-fit-inference"
+          resp=api.kernels_status(ref)
+          print("NTL_ERROR_SDK_TYPE="+type(resp).__name__,flush=True)
+          if isinstance(resp,(list,tuple)):
+              print("NTL_ERROR_SDK_TUPLE_TYPES="+json.dumps([type(x).__name__ for x in resp]),flush=True)
+          if hasattr(resp,"__dict__"):
+              data=vars(resp)
+              print("NTL_ERROR_SDK_ATTRIBUTE_KEYS="+json.dumps(sorted(str(k)[:60] for k in data.keys())),flush=True)
+          try:
+              status,message=resp if isinstance(resp,(list,tuple)) and len(resp)==2 else (resp,"")
+              print("NTL_ERROR_STATUS_ENUM="+str(status)[:100],flush=True)
+              msg=str(message)
+              needles=[
+                "OutOfMemoryError","CUDA out of memory","ModuleNotFoundError","ImportError",
+                "FileNotFoundError","PermissionError","No space left on device",
+                "RuntimeError","ValueError","KeyError","AssertionError",
+                "NO_NEW_TRAINING","pretrained","Checkpoint","kaggle/temp",
+                "No such file","expired","No GPUs","Timeout","time limit",
+                "Killed","Process exited","Error","Traceback"
+              ]
+              print("NTL_ERROR_MESSAGE_CLASSIFIER="+json.dumps({"chars":len(msg),
+                "matched":sorted(v for v in needles if v.lower() in msg.lower()),
+                "contains_line_numbers":bool(re.search(r'\bline \d+\b',msg)),
+                "contains_python_traceback":"Traceback (most recent call last)" in msg
+              },sort_keys=True),flush=True)
+              # Only share exception type at traceback footer; avoid leaking input examples.
+              rows=[x.strip() for x in msg.splitlines()
+                     if re.match(r"^[A-Za-z_][\w.]*(Error|Exception):",x.strip())]
+              print("NTL_ERROR_EXCEPTION_TYPES="+json.dumps(
+                  sorted(set(x.split(":",1)[0][:80] for x in rows))[:15]),flush=True)
+          except Exception as exc:
+              print("NTL_ERROR_RESPONSE_PARSE_FAILED="+type(exc).__name__,flush=True)
+          p=subprocess.run(["kaggle","kernels","output",ref,"-p","/tmp/ntl0694-error-details",
+                    "--file-pattern",r".*\.(?:log|txt|json)$","-o"],
+                    text=True,capture_output=True,timeout=120)
+          from pathlib import Path
+          files=[x for x in Path("/tmp/ntl0694-error-details").rglob("*") if x.is_file()]
+          print("NTL_ERROR_OUTPUT_ACCESS="+json.dumps({"return_code":p.returncode,
+              "file_count":len(files),"names":[x.name[:80] for x in files][:30],
+              "download_error_permission":bool(re.search(r'403|forbidden|permission',p.stderr,re.I))},sort_keys=True),flush=True)
+          for f in files:
+              if f.stat().st_size>5_000_000:continue
+              x=f.read_text(encoding="utf-8",errors="replace")
+              patterns=["CUDA out of memory","RuntimeError","ModuleNotFoundError",
+                 "ImportError","FileNotFoundError","PermissionError","ValueError",
+                 "AssertionError","KeyError","NO_NEW_TRAINING","Traceback",
+                 "No space left on device","No GPUs","Killed","timeout"]
+              print("NTL_ERROR_FILE_CLASSIFICATION="+json.dumps({"name":f.name,
+                "size":f.stat().st_size,
+                "matched":[q for q in patterns if q.lower() in x.lower()]},sort_keys=True),flush=True)
+          print("NTL_NO_NEW_EXECUTION_NO_GPU_NO_TRAINING_NO_OFFICIAL_SUBMISSION=TRUE",flush=True)
+          PY
