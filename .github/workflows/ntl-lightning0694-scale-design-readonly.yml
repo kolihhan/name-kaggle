@@ -1,0 +1,40 @@
+name: "NTL0694 frozen V2 64-row pilot insertion-point read-only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-scale-design-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify exact source insertion point for unlabeled controlled inference scale test
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/frozen-ntl694-v2
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference -m -p /tmp/frozen-ntl694-v2 >/dev/null 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          p=next(Path('/tmp/frozen-ntl694-v2').glob('*.ipynb'))
+          nb=json.loads(p.read_text())
+          cells=[(''.join(c['source']) if isinstance(c['source'],list) else c['source'])
+                  for c in nb['cells'] if c['cell_type']=='code']
+          hits=[]
+          for ci,text in enumerate(cells):
+              if text.startswith('%%writefile '):continue
+              ln=text.splitlines()
+              for i,line in enumerate(ln):
+                  s=line.strip()
+                  if (len(s)>200 or not re.search(r'(?:\bDATA\s*=|\bEXPLICIT_PATHS\s*=|\bCONFIG\s*=|paths.*test_csv|write_text\(json\.dumps\(CONFIG|if not preview:|pd\.read_csv\(DATA|RUNTIME|submission\.parquet)',s)):
+                      continue
+                  if any(k in s.lower() for k in ('token','secret','password','api_key')):continue
+                  hits.append({'cell':ci,'line':i+1,'source':s[:160]})
+          print('NTL0694_V2_INFERENCE_INJECTION_ANCHORS='+json.dumps(hits[:120],sort_keys=True),flush=True)
+          PY
