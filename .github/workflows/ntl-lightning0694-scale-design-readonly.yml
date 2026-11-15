@@ -36,5 +36,13 @@ jobs:
                       continue
                   if any(k in s.lower() for k in ('token','secret','password','api_key')):continue
                   hits.append({'cell':ci,'line':i+1,'source':s[:160]})
+          cfg=[]
+          for ci,text in enumerate(cells):
+              for i,line in enumerate(text.splitlines()):
+                  if not any(k in line for k in ('min_texts','fallback_s10','n_sel =','n_sel=','n_selected','max_texts')):
+                      continue
+                  if len(line.strip())<200 and not any(k in line.lower() for k in ('password','token','secret','api_key')):
+                      cfg.append({'cell':ci,'line':i+1,'code':line.strip()[:170]})
+          print('NTL0694_V2_GSQ_SELECTION_CONTRACT='+json.dumps(cfg[:50],sort_keys=True),flush=True)
           print('NTL0694_V2_INFERENCE_INJECTION_ANCHORS='+json.dumps(hits[:120],sort_keys=True),flush=True)
           PY
