@@ -1,0 +1,45 @@
+name: NTL PRO exact new #58375806 official score receipt (read only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-58375806-score-20261116.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read only frozen Kaggle submission receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,subprocess
+          comp='name-that-llm'
+          p=subprocess.run(['kaggle','competitions','submissions',comp,'-v','-q'],text=True,
+               capture_output=True,timeout=90,check=True)
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          refs=['58375806','58295802']
+          out=[]
+          for ref in refs:
+              matches=[r for r in rows if str(r.get('ref'))==ref]
+              if len(matches)!=1: raise SystemExit('UNVERIFIED_OFFICIAL_REF_'+ref)
+              v=matches[0]
+              out.append({'ref':ref,'status':str(v.get('status') or ''),
+               'publicScore':str(v.get('publicScore') or ''),
+               'description':str(v.get('description') or '')[:130]})
+          print('PRO_EXACT_OFFICIAL_SUBMISSION_RECEIPTS='+json.dumps(out,sort_keys=True),flush=True)
+          new,base=out
+          if new['publicScore']:
+              delta=float(new['publicScore'])-float(base['publicScore'])
+              print('PRO_AUTHENTICATED_SCORE_DELTA_VS_BEST='+str(round(delta,7)),flush=True)
+          else:
+              print('PRO_NEW_SCORE_STILL_UNAVAILABLE=TRUE',flush=True)
+          print('PRO_NO_NEW_GPU_NO_TRAINING_NO_SUBMISSION=TRUE',flush=True)
+          PY
