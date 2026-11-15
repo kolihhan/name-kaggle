@@ -74,5 +74,21 @@ jobs:
           if signals:raise RuntimeError('guard_triggered')
           if status!='applied' or not isinstance(count,int) or count<50:
               raise RuntimeError('GSQ_FALLBACK_PERSISTS_AT_300_ROWS')
+          elapsed=[]
+          patterns=(
+              re.compile(r'(?i)\\b(?:elapsed(?:_seconds)?|wall(?:time)?|duration)\\b\\s*[:=]\\s*([0-9]{1,6}(?:\\.[0-9]{1,3})?)'),
+              re.compile(r'(?i)\\b([0-9]{1,5}(?:\\.[0-9]{1,3})?)\\s*(?:seconds|secs)\\b')
+          )
+          for pth in logs:
+              if pth.stat().st_size>10_000_000:continue
+              for ln in pth.read_text(encoding='utf-8',errors='replace').splitlines():
+                  if len(ln)>300 or not re.search(r'elapsed|wall|duration|seconds|secs',ln,re.I):
+                      continue
+                  for pat in patterns:
+                      match=pat.search(ln)
+                      if match:
+                          elapsed.append({'stage':pth.name,'value':float(match.group(1)),'time_unit':'as_logged'})
+                          break
+          print('NTL0694_SCALE300_ELAPSED_LOG_VALUES='+json.dumps(elapsed[-60:],sort_keys=True),flush=True)
           print('NTL0694_SCALE300_REAL_GSQ_TRAINING_FREE_PATH=PASS',flush=True)
           PY
