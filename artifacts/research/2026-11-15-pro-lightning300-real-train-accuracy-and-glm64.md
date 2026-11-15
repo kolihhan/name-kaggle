@@ -1,0 +1,15 @@
+# 2026-11-15 — PRO continuation: real Lightning300 historical-train score and GLM64 decision
+
+## Lightning 300: genuine frozen inference, **spent training truth**
+
+- [Authenticated CPU read-only Action #43689106610](https://github.com/kolihhan/name-kaggle/actions/runs/43689106610) completed SUCCESS. It downloaded the **already completed** `kolihhan/ntl-lightning0694-scale300-nov15` output and compared it to the **first 300 text rows** of the exact official competition train snapshot (SHA256 `40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707`). Output parquet SHA256 `bb085772ad7933d90879d4ba45281806c7c48ec1629beef5c1602dc71ca5ff97` matched its earlier verified genuine inference result.
+- Outcome: **288/300 correct**, ordinary accuracy **0.960000**, **18/18 truth-label support**, macro true-class balanced accuracy **0.960279**. All class supports 9–26; lowest class recall among the 18 labels: GLM-5.3 **0.833333** and Kimi-K3 **0.846154**. This is calculated on historical *train* rows, not official Kaggle hidden, OOF, disjoint evaluation or honest external validation.
+- The Lightning candidate uses frozen, previously supervised/pretrained external assets, and the official training texts may have been exposed to those assets. **Therefore the 0.960279 is NOT evidence of a new scorer result, cross-source transfer, or 0.7 Public BA**. The experiment cannot distinguish memorization from robust author fingerprints. Do not use this historical accuracy to tune thresholds or select a blend.
+- Decision: **Retain Lightning as an unsolved external-transfer candidate, not a promoted model.** Existing 1200-row throughput notebook is still RUNNING as verified at 2026-11-15 07:07 UTC by [Action #43688521742](https://github.com/kolihhan/name-kaggle/actions/runs/43688521742). That run measures runtime and completeness, not accuracy; no duplicate GPU/submission.
+- Discriminating next gate: a never-used 18-label, source/prompt-disjoint, training-provenance-qualified same-row set against exact 0.683 champion; or an admissible independent transfer source as exploratory pre-filter. If none exists, stop. **Do not infer score gain from the 96% train result.**
+
+## GLM likelihood: previously completed negative independently recovered
+
+- [Existing Action #43612072194](https://github.com/kolihhan/name-kaggle/actions/runs/43612072194) had already reported a complete, 128-row external source, 64 matching prompt GLM sibling contrast. Exact frozen champion **88/128**, GLM conditional-likelihood routed **77/128**, paired **6 rescues / 17 regressions**, net **−11**. Two-label BA **0.687500 → 0.6015625**. 95 champion GLM-family eligible predictions; no certified prefit independence and no full-18 support.
+- **RETIRE the tested GLM likelihood routing as a score-improvement candidate.** No relaunch, no threshold/ratio retuning on these spent pairs; the independent representation hypothesis remains unproven.
+- Our authenticated official Kaggle best is still **0.683** (#58295802); these are *not* new competition submissions.
