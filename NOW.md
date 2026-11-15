@@ -1,3 +1,12 @@
+## 2026-11-15 12:15 MYT — NTL Lightning0694 300-row TRUE GSQ run **COMPLETE**, 60 rows applied
+
+- Real owned Kaggle private `kolihhan/ntl-lightning0694-scale300-nov15` terminal **COMPLETE**, 300 genuine predictions with exact synthetic IDs, legal `id/model` schema, 18 different predicted labels, no supervised-training guard exceptions, 14 stage logs. Actual `report.json`: **`status=applied` and `n_selected=60`** (vs `fallback_s10` for 3-row preview). Exact parquet SHA256 `bb085772ad7933d90879d4ba45281806c7c48ec1629beef5c1602dc71ca5ff97`.
+- **Output validator bug fixed**: initial read-only [Action #43667819549 attempt 5](https://github.com/kolihhan/name-kaggle/actions/runs/43667819549) failed **because it incorrectly required intermediate `status=selected`**, despite real final `status=applied`; corrected condition and [read-only Action #43675737063](https://github.com/kolihhan/name-kaggle/actions/runs/43675737063) **SUCCESS**, prints `gsq_full_path_activated=true` and `NTL0694_SCALE300_REAL_GSQ_TRAINING_FREE_PATH=PASS`. This fixes the checker ONLY, not the frozen model or Kaggle code.
+- [Read-only numeric duration extraction #43675841860](https://github.com/kolihhan/name-kaggle/actions/runs/43675841860) **SUCCESS**, but explicit `elapsed` markers absent (`[]`). Therefore **do not claim** 4,000-row completion under 9 hours based only on 300-row success or bounded status polling.
+- Source is a frozen attributed Lightning public reproduction with no new supervised fit, not proven accurate or independent 18-class transferable. No new official Kaggle entry. **Best authenticated Public BA remains 0.683** (#58295802), goal >=0.700.
+
+---
+
 ## 2026-11-15 10:25 MYT — New NTL 0694 **300 text-row genuine GSQ private GPU pilot RUNNING**
 
 - **V2 genuine 3-row full baseline now COMPLETE, output verified**: [terminal evidence #43657937346](https://github.com/kolihhan/name-kaggle/actions/runs/43657937346) and [parquet validation #43626287786](https://github.com/kolihhan/name-kaggle/actions/runs/43626287786), with legal `submission.parquet` schema, 3 non-null unique predictions, nine model-stage logs, no observed supervised-fitting exceptions. **No official submission**, 0.683 remains own best.
