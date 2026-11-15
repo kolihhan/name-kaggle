@@ -25,3 +25,19 @@ Date: 2026-11-15 MYT. Status: PRIVATE KAGGLE QUEUED; official submission NOT aut
 
 ## Factual current score
 Our authenticated official best remains **0.683**, submission **58295802**. New candidate official score **UNKNOWN**. This is an external open-source reproduction adapted for safe inference, **not a new original model**.
+
+---
+
+## Post-failure infrastructure repair addendum — 2026-11-15 08:38 MYT (no model changes)
+
+The initial GPU private V1 **failed early before inference**, with `AssertionError: _missing` for 42 required paths. This is a real observed exception, not a model-quality evaluation. The original asset-source manifests were unchanged; a separately completed **CPU-only** Kaggle mount census established the new actual owner-qualified directory namespace. This makes a **single repair of already-frozen code paths** a justified engineering correction, not model or hyperparameter tuning.
+
+Immutable repair evidence:
+- Frozen V1 private notebook: `kolihhan/lightning-0-694-authentic-no-fit-inference`, original external author source SHA256 `9808d997185c125d92b0a67501bb763eb1813ae5223d3d06ce82a5518f205a2e`, original builder output SHA256 `669976456fddc0434d4c348deb7155d2951060ace89ea3a7dd6ea15d712248b9`.
+- A new pull of the upstream author Notebook has **drifted**, and was correctly rejected; V2 source is our own previously frozen failed V1 ONLY.
+- Actual 10-root CPU mount census: [#43658593119](https://github.com/kolihhan/name-kaggle/actions/runs/43658593119), exact owner/slug mount identity.
+- Remap-only V2 from frozen V1: [#43659017715](https://github.com/kolihhan/name-kaggle/actions/runs/43659017715), **75** hard-coded dataset path occurrences updated across 10 roots, **37** modules compiled, original pretrained source references **23/9/6** unchanged, existing no-training guards present.
+- Authenticated Kaggle version 2 pushed to **the same existing private kernel**; status `RUNNING` at 2026-11-15 00:38:14 UTC ([read-only #43657937346](https://github.com/kolihhan/name-kaggle/actions/runs/43657937346)).
+- No Kaggle competition submission, training or new quality evidence has yet been produced.
+
+Advance only on completed V2 real inference and the prior independent 18-label, full-input runtime and output gates. Do not optimize source weights against the Public leaderboard, and do not multiply GPU attempts without a newly demonstrated root cause.
