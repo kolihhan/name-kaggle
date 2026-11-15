@@ -1,0 +1,79 @@
+name: "NTL 0694 CPU-only actual input mount census single push"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-mount-census-cpu-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl0694-mount-census-cpu-once
+  cancel-in-progress: false
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Test actual dataset mount roots without GPU or model inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/ntl-694-mount-census-cpu-nov15
+          mkdir -p /tmp/ntl694-mount-public /tmp/ntl694-mount-cpu
+          state="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$state" == *KernelWorkerStatus.* ]]; then
+            echo "NTL0694_MOUNT_CPU_DIAG_ALREADY_EXISTS_NO_DUPLICATE=TRUE"
+            exit 0
+          fi
+          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora -m -p /tmp/ntl694-mount-public >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          meta=json.loads(Path('/tmp/ntl694-mount-public/kernel-metadata.json').read_text())
+          assert meta['competition_sources']==['name-that-llm']
+          assert len(meta['dataset_sources'])==23
+          assert len(meta['model_sources'])==6
+          assert len(meta['kernel_sources'])==9
+          label='ntl-694-mount-census-cpu-nov15'
+          meta.pop('id_no',None)
+          meta.pop('docker_image',None)
+          meta.pop('machine_shape',None)
+          meta.update({'id':'kolihhan/'+label,'title':label,
+              'is_private':True,'enable_gpu':False,'enable_tpu':False,
+              'enable_internet':False,'code_file':'ntl694_mount_census.ipynb'})
+          code="""import json
+          from pathlib import Path
+          root=Path('/kaggle/input')
+          top=sorted(p.name for p in root.iterdir()) if root.is_dir() else []
+          required=['nlm-enc-v5','nlm-l24-adapters','nlm-l24-adapters-v5',
+           'ntl-atlas-qwen3-8b-v1','ntl-handwriting-blend','ntl-q14-lora',
+           'ntl-q14-lora-v4','ntl-spectral-style-heads-paired-4404',
+           'ntl-svc-prefit-pool-v4n','ntl-two-stage-encoders']
+          matched={x:sorted(str(p.relative_to(root).parent)[:120]
+              for p in root.glob('**/'+x) if p.is_dir())[:4] for x in required}
+          print('NTL0694_MOUNT_CENSUS='+json.dumps({'input_present':root.is_dir(),
+            'root_entries':len(top),'top_roots':top[:90],
+            'missing_flat_roots':[x for x in required if not (root/x).is_dir()],
+            'alternate_mount_parent':matched},sort_keys=True),flush=True)
+          """
+          cell={'cell_type':'code','execution_count':None,'metadata':{},
+                'outputs':[],'source':code.splitlines(keepends=True)}
+          nb={'nbformat':4,'nbformat_minor':5,'metadata':{'kernelspec':
+                {'display_name':'Python 3','language':'python','name':'python3'},
+                'language_info':{'name':'python'}},'cells':[cell]}
+          dest=Path('/tmp/ntl694-mount-cpu')
+          (dest/'ntl694_mount_census.ipynb').write_text(json.dumps(nb))
+          (dest/'kernel-metadata.json').write_text(json.dumps(meta,indent=2))
+          print('NTL0694_MOUNT_CPU_MANIFEST_VERIFIED=TRUE',flush=True)
+          PY
+          kaggle kernels push -p /tmp/ntl694-mount-cpu --timeout 3600 > /tmp/ntl694-mount-push.log 2>&1
+          if ! grep -Eq 'successfully pushed|https://www.kaggle.com/code/' /tmp/ntl694-mount-push.log; then
+            echo "NTL0694_MOUNT_CPU_PUSH_RECEIPT_UNKNOWN=TRUE"
+            exit 1
+          fi
+          echo "NTL0694_MOUNT_CPU_ONE_PRIVATE_KERNEL_PUSH_CONFIRMED=TRUE"
+          echo "NTL0694_MOUNT_DIAG_GPU=FALSE;MODEL_INFERENCE=FALSE;TRAINING=FALSE;SUBMISSION=FALSE"
