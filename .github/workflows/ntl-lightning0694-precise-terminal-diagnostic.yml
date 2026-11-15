@@ -1,0 +1,64 @@
+name: "NTL 0694 precise Kaggle private status and terminal evidence"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-precise-terminal-diagnostic.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Diagnose single EXISTING GPU kernel without rerun or official submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json, subprocess, re
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          target="kolihhan/lightning-0-694-authentic-no-fit-inference"
+          cli=subprocess.run(["kaggle","kernels","status",target],
+                             text=True,capture_output=True,timeout=80)
+          out=cli.stdout+"\n"+cli.stderr
+          m=re.search(r"KernelWorkerStatus\.([A-Z_]+)",out)
+          status=m.group(1) if m else "UNKNOWN"
+          flags={
+            "permission_denied":bool(re.search(r"permission|403|forbidden",out,re.I)),
+            "not_found":bool(re.search(r"not found|404|does not exist",out,re.I)),
+            "api_error":bool(re.search(r"ApiException|HttpError|Traceback",out,re.I)),
+            "queued_word":bool(re.search(r"\bqueued\b|\bpending\b",out,re.I)),
+            "running_word":bool(re.search(r"\brunning\b",out,re.I))
+          }
+          api=KaggleApi(); api.authenticate()
+          owned=api.kernels_list(user="kolihhan",page=1,page_size=100)
+          refs=[str(getattr(k,"ref","")) for k in owned]
+          print("NTL0694_DIAG="+json.dumps({"ref":target,
+                   "cli_return_code":cli.returncode, "status":status,
+                   "flags":flags, "owned_first_page":target in refs,
+                   "listed_entries":len(refs)},sort_keys=True),flush=True)
+          if status in {"QUEUED","RUNNING","PENDING","INITIALIZING"}:
+              print("NTL0694_GPU_NOT_COMPLETE_DO_NOT_RESUBMIT=TRUE",flush=True)
+              raise SystemExit(0)
+          if status=="UNKNOWN":
+              print("NTL0694_SOURCE_STATUS_UNCERTAIN_NO_RELAUNCH=TRUE",flush=True)
+              raise SystemExit(0)
+          if status in {"ERROR","FAILED","CANCELLED","COMPLETE"}:
+              listing=subprocess.run(["kaggle","kernels","files",target,"-v","--page-size","200"],
+                       text=True,capture_output=True,timeout=90)
+              names=[]
+              for line in listing.stdout.splitlines():
+                  x=re.search(r"(?i)([\w./-]+\.(?:log|txt|json|parquet))",line)
+                  if x: names.append(x.group(1).rsplit("/",1)[-1][:110])
+              print("NTL0694_TERMINAL_FILES="+json.dumps({"file_listing_rc":listing.returncode,
+                "file_names":sorted(set(names))[:80],"file_count_hint":len(names),
+                "listing_pages_truncated":"Next Page Token" in listing.stdout},sort_keys=True),flush=True)
+          else:
+              print("NTL0694_UNRECOGNIZED_ENUM="+status,flush=True)
+          print("NTL0694_NO_TRAINING_NO_GPU_RELAUNCH_NO_OFFICIAL_SUBMISSION=TRUE",flush=True)
+          PY
