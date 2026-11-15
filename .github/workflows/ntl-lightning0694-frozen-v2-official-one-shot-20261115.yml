@@ -1,4 +1,4 @@
-name: NTL Lightning0694 fixed prefit V2 one official score bet 20261115
+name: NTL Lightning0694 fixed prefit V2 one official score bet 20261115 corrected
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
@@ -46,7 +46,7 @@ jobs:
           nb=json.loads(notebooks[0].read_text(encoding='utf-8'))
           cells=[c for c in nb['cells'] if c.get('cell_type')=='code']
           assert len(cells)==50
-          contents='\\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in cells)
+          contents='\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in cells)
           sha=hashlib.sha256(contents.encode()).hexdigest()
           assert sha=='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c','UNEXPECTED_SOURCE_DRIFT'
           for marker in ('preview = False  # always genuine model inference',
@@ -76,7 +76,7 @@ jobs:
           if int(limit.num_allowed_now)<1:raise SystemExit('STOP_OFFICIAL_QUOTA_FULL')
           proc=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],
               capture_output=True,text=True,check=True,timeout=95)
-          records=list(csv.DictReader(io.StringIO(proc.stdout.lstrip('\\ufeff'))))
+          records=list(csv.DictReader(io.StringIO(proc.stdout.lstrip('\ufeff'))))
           if not records or not any(str(r.get('ref'))=='58295802' for r in records):
               raise SystemExit('STOP_CANNOT_VERIFY_PREEXISTING_CHAMPION')
           marker='Lightning0694 pinned V2 no-fit research bet 20261115'
@@ -111,7 +111,7 @@ jobs:
           import csv,io,subprocess
           proc=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],
               text=True,capture_output=True,check=True,timeout=95)
-          rows=list(csv.DictReader(io.StringIO(proc.stdout.lstrip('\\ufeff'))))
+          rows=list(csv.DictReader(io.StringIO(proc.stdout.lstrip('\ufeff'))))
           marker='Lightning0694 pinned V2 no-fit research bet 20261115'
           matches=[r for r in rows if str(r.get('description') or '')==marker]
           if len(matches)!=1:raise SystemExit('STOP_MISSING_OR_DUPLICATE_OFFICIAL_REF')
