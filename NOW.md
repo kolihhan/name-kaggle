@@ -1,3 +1,11 @@
+## 2026-11-15 16:01 MYT — NEW official NTL Lightning0694 submission #58375806 accepted (PENDING, NOT scored)
+
+- [Authenticated one-shot action #43692500733](https://github.com/kolihhan/name-kaggle/actions/runs/43692500733) **SUCCESS**. Exact frozen private source `kolihhan/lightning-0-694-authentic-no-fit-inference` **version 2**, genuine source code SHA `cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c`. Unique official Kaggle code submission **#58375806**, descriptor `Lightning0694 pinned V2 no-fit research bet 20261115`; immediate status **PENDING**, Public BA **blank**. **NO new scored gain, NO new training, NO extra private GPU.** [Full authorized receipt and gates](artifacts/research/2026-11-15-pro-lightning0694-authenticated-one-official-submission.md).
+- Before submission, verified previous authentic 1200/1200 frozen predictions, 18 classes, GSQ actually applied to 240, no fitted branch and quota **5 allowed**. Known stale legacy pending **#58167751** ignored as a different older candidate; any other active or newer submission would still block. Two earlier attempts stopped **BEFORE** submit (one SHA expression error, one stale old-pending gate); only this workflow created a new Kaggle ref.
+- Current **scored best still 0.683** (#58295802). External author title 0.694 and 0.9582 historical-train BA are NOT authenticated our Kaggle outcomes. **Do not re-submit or tune on leaderboard; wait for the unique numeric receipt**.
+
+---
+
 ## 2026-11-15 PRO: REAL 1200 Lightning predictions complete; historical accuracy vs batch instability quantified
 
 - [Existing frozen 1200 inference terminal #43691415910](https://github.com/kolihhan/name-kaggle/actions/runs/43691415910) **SUCCESS**: 1200/1200 legal predictions, 18 output labels, GSQ genuinely **`applied` to 240 texts**, no training guard exceptions; parquet SHA256 `926dffc6ab0909f63767e8fcec7ca9488f7d1dc7c49656b0eaa8cf50064e0826`. No numeric elapsed marker in logs; do not invent a runtime.
