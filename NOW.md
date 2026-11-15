@@ -1,3 +1,10 @@
+## 2026-11-16 02:06 MYT — NTL official best 0.691; saved expert caches are token-level, NOT ready for arbitrary ablation
+
+- [Authenticated exact Kaggle score #43743764085](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085): `#58375806` COMPLETE **Public BA 0.691**, previous `#58295802` COMPLETE **0.683**; **+0.008**. New official champion pinned to Lightning0694 V2, attributed pretrained no-training reproduction, not the author's 0.694 title. [Full evidence](artifacts/research/2026-11-16-ntl-0691-official-and-expert-ablation-eligibility.md). Do not tune against Public LB.
+- [Saved stage geometry #43744050448](https://github.com/kolihhan/name-kaggle/actions/runs/43744050448) and [safe NPZ headers #43744548740](https://github.com/kolihhan/name-kaggle/actions/runs/43744548740): Flash and GLM53 caches each hold `[27869,4]` token-level scores for 240 selected items, plus `ids` `object` arrays. **Do NOT call this per-row 18-way expert logits or claim component ablation**, do not unpickle. No new GPU, training, submission.
+
+---
+
 ## 2026-11-16 01:55 MYT — NEW VERIFIED NTL OFFICIAL BEST **0.691** (#58375806)
 
 - **ACTUAL KAGGLE SCORE CONFIRMED**: [read-only authenticated Action #43743764085](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085) returned `#58375806` `SubmissionStatus.COMPLETE`, **Public BA 0.691**. Frozen own Lightning0694 source V2, no new training. Previous authenticated best `#58295802` was **0.683**. New official **+0.008** absolute; 0.009 below 0.700. **DO NOT** claim 0.694 from author's title, 0.9582 historical TRAIN BA as hidden accuracy, or original algorithm invention. This is an attributed pretrained-public-source reproduction and one Kaggle official outcome.
