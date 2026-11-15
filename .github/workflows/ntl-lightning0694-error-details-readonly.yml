@@ -73,5 +73,21 @@ jobs:
               print("NTL_ERROR_FILE_CLASSIFICATION="+json.dumps({"name":f.name,
                 "size":f.stat().st_size,
                 "matched":[q for q in patterns if q.lower() in x.lower()]},sort_keys=True),flush=True)
+          for f in files:
+              if not f.name.endswith('.log') or f.stat().st_size>200_000: continue
+              raw=f.read_text(encoding='utf-8',errors='replace').splitlines()
+              matches=[]
+              for i,line in enumerate(raw):
+                  stripped=line.strip()
+                  if re.search(r'^Traceback|^AssertionError|^\s*File "[^"]+", line \d+|^assert\s|^\s+assert\s|^\w+(Error|Exception):',line):
+                      clean=re.sub(r'/kaggle/input/[^\s"\']+', '/kaggle/input/[ASSET]',line)
+                      clean=re.sub(r'(?i)(api[_-]?key|token|password)\s*[=:]\s*\S+',r'\1=[REDACTED]',clean)
+                      matches.append({'i':i,'line':clean[:230]})
+              print('NTL_ERROR_TRACEBACK_LOCATIONS='+json.dumps(matches[-30:],sort_keys=True),flush=True)
+              print('NTL_ERROR_LOG_HEAD_MARKERS='+json.dumps({
+                 'lines':len(raw),
+                 'has_GPU_boot':bool(re.search(r'CUDA|GPU|Tesla|NVIDIA',' '.join(raw[:60]),re.I)),
+                 'has_model_forward':bool(re.search(r'forward|inference|encode|classifier',' '.join(raw),re.I)),
+              },sort_keys=True),flush=True)
           print("NTL_NO_NEW_EXECUTION_NO_GPU_NO_TRAINING_NO_OFFICIAL_SUBMISSION=TRUE",flush=True)
           PY
