@@ -1,3 +1,11 @@
+## 2026-11-15 15:15 MYT — PRO new real quality evidence: Lightning300 train BA 0.960279; GLM64 route negative
+
+- **AUTHENTICATED ACTUAL INFERENCE ON HISTORICAL TRAIN:** [Action #43689106610](https://github.com/kolihhan/name-kaggle/actions/runs/43689106610) PASS: frozen real Lightning300 parquet exact SHA matches prior authentic GPU output; first 300 official train rows, 18 supported classes; **288/300 correct**, **BA 0.960279**. **In-sample only, possible supervised checkpoint exposure, NOT an independent transfer estimate or new Kaggle score.** [Exact decision](artifacts/research/2026-11-15-pro-lightning300-real-train-accuracy-and-glm64.md).
+- **EXISTING GLM64 REAL PAIRED NEGATIVE:** [Action #43612072194](https://github.com/kolihhan/name-kaggle/actions/runs/43612072194): 0.683 champion 88/128, GLM likelihood 77/128; **6 rescues, 17 regressions (net -11)**; RETIRE this routing, not a valid 18-class transfer.
+- **RESOURCES:** [Action #43688521742](https://github.com/kolihhan/name-kaggle/actions/runs/43688521742) observed existing Lightning1200 RUNNING at 07:07 UTC; no duplicate GPU/new competition submission. Own official scored best remains **0.683**. NEXT: verify unseen 18-label source-disjoint truth and prefit exposure before any promotion.
+
+---
+
 ## 2026-11-15 PRO round 2 — actual zero-fit representation class experiment: negative
 
 - **EXECUTED:** [Action #43683503696](https://github.com/kolihhan/name-kaggle/actions/runs/43683503696) SUCCESS on 2,699 existing train responses / 150 prompt groups / 18 labels, using fixed prompt-excluded 1-NN with stateless feature hashing. Raw char3-5 **BA 0.138938 (375 correct)**; format-stripped char **0.130780 (353)**; word1-2 **0.105959 (286)**. Paired vs raw char: stripped **56 rescues / 78 regressions**, word **170 / 259**.
