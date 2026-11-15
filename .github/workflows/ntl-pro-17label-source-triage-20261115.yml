@@ -1,0 +1,56 @@
+name: NTL PRO 17-label source leads, served-ID and champion mount triage
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-17label-source-triage-20261115.yml]
+permissions: {contents: read}
+jobs:
+  candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect three >=17-label upstream-source identities, NO passages or inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-pro-source-triage /tmp/ntl-pro-champion
+          kaggle kernels pull kolihhan/ntl-ozertuu-0683-guarded-no-train -p /tmp/ntl-pro-champion -m \
+            >/tmp/ntl-pro-champion.log 2>&1
+          for file in sources.csv source_protocol.csv; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool \
+              -f "$file" -p /tmp/ntl-pro-source-triage --unzip >/tmp/ntl-pro-data.log 2>&1
+          done
+          python - <<'PY'
+          import csv,json
+          from pathlib import Path
+          root=Path('/tmp/ntl-pro-source-triage')
+          def csv_rows(name):
+              with (root/name).open(encoding='utf-8-sig',newline='') as f:
+                  return list(csv.DictReader(f))
+          sources=csv_rows('sources.csv')
+          protocol={r['source_dataset']:r for r in csv_rows('source_protocol.csv')}
+          metadata=json.loads(Path('/tmp/ntl-pro-champion/kernel-metadata.json').read_text())
+          direct=set(metadata.get('dataset_sources') or [])
+          selected=[r for r in sources if int(r['models'])>=17]
+          if len(selected)!=3 or len(sources)!=65: raise SystemExit('STOP_METADATA_SNAPSHOT_CHANGED')
+          data=[]
+          for s in selected:
+              name=s['source_dataset']; p=protocol.get(name,{})
+              data.append({'source':name,'models':int(s['models']),
+                           'rows':int(s['passages']),'license':s['source_license'],
+                           'served_model_check':p.get('served_model_check','unknown'),
+                           'route_documented':bool(p.get('route')),
+                           'sampling_documented':bool(p.get('sampling')),
+                           'post_processing_documented':bool(p.get('post_processing')),
+                           'champion_direct_dataset':name in direct,
+                           'independent_prompts_verified':False,
+                           'champion_prefit_independence_verified':False})
+          print('NTL_17LABEL_SOURCE_LEADS='+json.dumps(data,sort_keys=True),flush=True)
+          print('NTL_NO_MODEL_INFERENCE_NO_GPU_NO_NEW_SUBMISSION=TRUE',flush=True)
+          PY
