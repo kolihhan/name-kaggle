@@ -1,0 +1,29 @@
+name: NTL PRO existing Lightning 1200 state check no rerun
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-existing-1200-state-20261115.yml]
+permissions: {contents: read}
+jobs:
+  existing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Authenticate and inspect only existing single private Lightning notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          ref=kolihhan/ntl-lightning0694-scale1200-nov15
+          status="$(kaggle kernels status "$ref" 2>&1 || true)"
+          case "$status" in
+            *KernelWorkerStatus.COMPLETE*) echo NTL_PRO_EXISTING_1200=COMPLETE ;;
+            *KernelWorkerStatus.RUNNING*) echo NTL_PRO_EXISTING_1200=RUNNING ;;
+            *KernelWorkerStatus.QUEUED*) echo NTL_PRO_EXISTING_1200=QUEUED ;;
+            *KernelWorkerStatus.ERROR*|*KernelWorkerStatus.FAILED*) echo NTL_PRO_EXISTING_1200=ERROR ;;
+            *) echo NTL_PRO_EXISTING_1200=UNKNOWN ;;
+          esac
+          echo "NTL_PRO_NO_GPU_NO_NEW_KERNEL_NO_SUBMISSION=TRUE"
