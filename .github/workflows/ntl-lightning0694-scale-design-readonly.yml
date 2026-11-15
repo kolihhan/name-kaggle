@@ -43,6 +43,12 @@ jobs:
                       continue
                   if len(line.strip())<200 and not any(k in line.lower() for k in ('password','token','secret','api_key')):
                       cfg.append({'cell':ci,'line':i+1,'code':line.strip()[:170]})
+          args=[]
+          for ci,text in enumerate(cells):
+              for i,line in enumerate(text.splitlines()):
+                  if any(k in line.lower() for k in ('max_cover','min-texts','max-cover','--min_texts','--max_cover')):
+                      if len(line)<210:args.append({'cell':ci,'line':i+1,'code':line.strip()[:180]})
+          print('NTL0694_V2_GSQ_ARGS='+json.dumps(args[:50],sort_keys=True),flush=True)
           print('NTL0694_V2_GSQ_SELECTION_CONTRACT='+json.dumps(cfg[:50],sort_keys=True),flush=True)
           print('NTL0694_V2_INFERENCE_INJECTION_ANCHORS='+json.dumps(hits[:120],sort_keys=True),flush=True)
           PY
