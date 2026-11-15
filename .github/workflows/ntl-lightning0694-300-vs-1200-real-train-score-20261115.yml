@@ -1,0 +1,93 @@
+name: NTL Lightning0694 real 300-vs-1200 batch stability and training-truth score
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-300-vs-1200-real-train-score-20261115.yml]
+permissions: {contents: read}
+jobs:
+  compare_existing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 21
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Audit existing authenticated 300 and 1200 outputs, no new GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-pro-300 /tmp/ntl-pro-1200
+          for n in 300 1200; do
+            ref="kolihhan/ntl-lightning0694-scale${n}-nov15"
+            status="$(kaggle kernels status "$ref" 2>&1 || true)"
+            if [[ "$status" != *KernelWorkerStatus.COMPLETE* ]]; then
+              echo "NTL_PRO_MISSING_TERMINAL_SCALE=${n}"; exit 1
+            fi
+            kaggle kernels output "$ref" -p "/tmp/ntl-pro-${n}" -o \
+              >"/tmp/ntl-pro-download-${n}.log" 2>&1
+          done
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import pandas as pd
+          root=Path('data/train.csv')
+          assert hashlib.sha256(root.read_bytes()).hexdigest()=='40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
+          truth=pd.read_csv(root,usecols=['text','model'],dtype=str,nrows=1200)
+          assert len(truth)==1200 and truth.notna().all().all()
+          expected={
+            300:'bb085772ad7933d90879d4ba45281806c7c48ec1629beef5c1602dc71ca5ff97',
+            1200:'926dffc6ab0909f63767e8fcec7ca9488f7d1dc7c49656b0eaa8cf50064e0826',
+          }
+          outputs={}
+          true=truth['model'].astype(str)
+          labels=sorted(set(true))
+          assert len(labels)==18
+          for n,sha in expected.items():
+            files=list(Path(f'/tmp/ntl-pro-{n}').rglob('submission.parquet'))
+            assert len(files)==1
+            f=files[0]
+            assert hashlib.sha256(f.read_bytes()).hexdigest()==sha,'FROZEN_REAL_OUTPUT_SHA_DRIFT'
+            frame=pd.read_parquet(f)
+            assert frame.columns.tolist()==['id','model']
+            assert frame['id'].astype(str).tolist()==[f'scale{n}_{i:04d}' for i in range(n)]
+            assert frame['model'].notna().all()
+            assert set(frame['model']).issubset(set(labels))
+            outputs[n]=frame['model'].astype(str).reset_index(drop=True)
+          def score(pred,offset=0):
+            target=true.iloc[offset:offset+len(pred)].reset_index(drop=True)
+            support=target.value_counts().to_dict()
+            correct=(pred==target)
+            count=int(correct.sum())
+            recalls={label:float(correct[target==label].mean()) for label in sorted(support)}
+            return {'rows':len(pred),'correct':count,'accuracy':round(count/len(pred),6),
+                    'class_support':len(support),
+                    'macro_recall_on_supported_classes':round(sum(recalls.values())/len(recalls),6),
+                    'lowest_3_class_recall':[[k,round(v,5)] for k,v in sorted(recalls.items(),key=lambda x:x[1])[:3]]}
+          old=outputs[300]
+          prefix=outputs[1200].iloc[:300].reset_index(drop=True)
+          tail=outputs[1200].iloc[300:].reset_index(drop=True)
+          target300=true.iloc[:300].reset_index(drop=True)
+          correct_old=(old==target300)
+          correct_new=(prefix==target300)
+          pair={'old_300_correct_new_300_wrong':int((correct_old & ~correct_new).sum()),
+                'old_300_wrong_new_300_correct':int((~correct_old & correct_new).sum()),
+                'both_wrong':int((~correct_old & ~correct_new).sum()),
+                'both_correct':int((correct_old & correct_new).sum()),
+                'same_row_prediction_changed':int((old!=prefix).sum())}
+          report={'truth_source':'SPENT_OFFICIAL_TRAIN_FIRST_1200_NOT_UNSEEN',
+                  'frozen_benchmarks':'SAME_PRETRAINED_ASSETS_TWO_DIFFERENT_BATCH_SIZES',
+                  'old300':score(old),'new1200':score(outputs[1200]),
+                  'first300_with_1200_context':score(prefix),
+                  'last900_with_1200_context':score(tail,offset=300),
+                  'first300_batch_context_paired':pair,
+                  'class_count_full':len(labels),
+                  'new_gpu':False,'new_training':False,'new_competition_submission':False,
+                  'hidden_score_inference_valid':False,
+                  'independent_transfer_valid':False}
+          print('NTL_PRO_FROZEN_BATCHSIZE_STABILITY_REAL='+json.dumps(report,sort_keys=True),flush=True)
+          PY
