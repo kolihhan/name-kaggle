@@ -84,10 +84,19 @@ jobs:
               raise SystemExit('STOP_ALREADY_SUBMITTED_EXACT_CANDIDATE')
           active=[r for r in records if str(r.get('status') or '').upper().split('.')[-1]
                   in ('PENDING','QUEUED','RUNNING','SCORING','EVALUATING')]
-          if active:
-              print('NTL0694_EXISTING_ACTIVE_SUBMISSION_REFS='+json.dumps(
-                  [r.get('ref') for r in active],sort_keys=True),flush=True)
-              raise SystemExit('STOP_EXISTING_COMPETITION_SUBMISSION_ACTIVE')
+          # Known older Lightning submission has been stuck PENDING since before
+          # the already-scored #58295802 champion. It is NOT this candidate.
+          # Any other active or newer submission is an explicit stop.
+          known_old_stale={'58167751'}
+          unexpected=[r for r in active if str(r.get('ref')) not in known_old_stale]
+          if unexpected:
+              print('NTL0694_OTHER_ACTIVE_SUBMISSION_REFS='+json.dumps(
+                  [r.get('ref') for r in unexpected],sort_keys=True),flush=True)
+              raise SystemExit('STOP_DIFFERENT_ACTIVE_SUBMISSION_EXISTS')
+          if any(int(str(r['ref']))>=58295802 for r in active):
+              raise SystemExit('STOP_NEWER_ACTIVE_SUBMISSION_EXISTS')
+          print('NTL0694_PREEXISTING_OLD_PENDING_IGNORED='+json.dumps(
+              [r.get('ref') for r in active],sort_keys=True),flush=True)
           print('NTL0694_OFFICIAL_QUOTA_AND_IDEMPOTENCY=PASS',flush=True)
           PY
       - name: Submit frozen V2 Kaggle CODE once (official rerun not GitHub GPU)
