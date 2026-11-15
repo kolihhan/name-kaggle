@@ -1,4 +1,4 @@
-name: NTL PRO exact saved flash GLM expert score interface and paired feasibility
+name: NTL PRO safe NPY header-only flash GLM expert score inventory
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
@@ -25,20 +25,29 @@ jobs:
           kaggle kernels output kolihhan/ntl-lightning0694-scale1200-nov15 \
             -p /tmp/ntl-pro-expert-saved -o >/tmp/ntl-pro-expert-output.log 2>&1
           python - <<'PY'
-          import hashlib,json
+          import hashlib,json,zipfile
           import numpy as np
+          from numpy.lib import format as fmt
           from pathlib import Path
           root=Path('/tmp/ntl-pro-expert-saved')
           for name in ('flash_scores.npz','glm53_scores.npz'):
               paths=list(root.rglob(name))
               if len(paths)!=1:raise RuntimeError('EXACT_ONE_CACHED_EXPERT_FILE_REQUIRED_'+name)
               p=paths[0]
-              f=np.load(p,allow_pickle=False)
               arrays={}
-              for key in f.files:
-                  a=f[key]
-                  arrays[key]={'shape':list(a.shape),'dtype':str(a.dtype),
-                      'all_finite':bool(np.isfinite(a).all()) if a.dtype.kind in 'iuf' else None}
+              with zipfile.ZipFile(p,'r') as z:
+                  for member in z.namelist():
+                      if not member.endswith('.npy'):raise RuntimeError('NPZ_UNEXPECTED_MEMBER')
+                      if member.count('/')>0 or len(member)>120:raise RuntimeError('NPZ_UNSAFE_MEMBER_NAME')
+                      with z.open(member) as fd:
+                          version=fmt.read_magic(fd)
+                          if version==(1,0):reader=fmt.read_array_header_1_0
+                          elif version in ((2,0),(3,0)):reader=fmt.read_array_header_2_0
+                          else:raise RuntimeError('UNEXPECTED_ARRAY_HEADER_VERSION')
+                          shape,fortran,dtype=reader(fd)
+                          arrays[member[:-4]]={'shape':list(shape),'dtype':str(dtype),
+                              'object_payload_BLOCKED':bool(dtype.hasobject),
+                              'fortran':bool(fortran)}
               print('NTL_PRO_EXACT_EXPERT_SCORE_CACHE='+json.dumps({
                   'name':name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
                   'arrays':arrays},sort_keys=True),flush=True)
