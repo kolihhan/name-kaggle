@@ -1,0 +1,58 @@
+{
+  "champion_official_submission_ref": "58295802",
+  "champion_pinned_official_public_BA": 0.683,
+  "combined": {
+    "both_right": 53,
+    "both_wrong": 21,
+    "champ_conditional12_BA": 0.714286,
+    "champ_correct": 60,
+    "oracle_any_correct_upper_bound_not_deployable": 0.75,
+    "prediction_disagreements": 15,
+    "regressions": 7,
+    "rescues": 3,
+    "rows": 84,
+    "true_labels": 12,
+    "wemm_conditional12_BA": 0.666667,
+    "wemm_correct": 56
+  },
+  "no_new_training": true,
+  "official_submission": false,
+  "per_source": {
+    "nimitha": {
+      "both_right": 32,
+      "both_wrong": 12,
+      "champ_conditional12_BA": 0.708333,
+      "champ_correct": 34,
+      "oracle_any_correct_upper_bound_not_deployable": 0.75,
+      "prediction_disagreements": 7,
+      "regressions": 2,
+      "rescues": 2,
+      "rows": 48,
+      "true_labels": 12,
+      "wemm_conditional12_BA": 0.708333,
+      "wemm_correct": 34
+    },
+    "toan": {
+      "both_right": 21,
+      "both_wrong": 9,
+      "champ_conditional12_BA": 0.722222,
+      "champ_correct": 26,
+      "oracle_any_correct_upper_bound_not_deployable": 0.75,
+      "prediction_disagreements": 8,
+      "regressions": 5,
+      "rescues": 1,
+      "rows": 36,
+      "true_labels": 12,
+      "wemm_conditional12_BA": 0.611111,
+      "wemm_correct": 22
+    }
+  },
+  "private_row_level_output": "not_published",
+  "scope": "SPENT_TWO_SOURCE_12_LABEL_DIAGNOSTIC_ONLY",
+  "source_prompt_blocks": 7,
+  "weMM_calibration_mode": "singleton_no_prompt_oracle",
+  "wemm_folds_evaluated": [
+    0
+  ],
+  "wemm_wall_seconds": 85.59
+}
