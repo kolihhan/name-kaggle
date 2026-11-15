@@ -1,0 +1,78 @@
+name: "NTL 0694 V2 fallback and real 27B evidence read-only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-fallback-evidence-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect existing terminal output for meaningful model stage without new compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
+          state="$(kaggle kernels status "$TARGET" 2>&1)"
+          [[ "$state" == *KernelWorkerStatus.COMPLETE* ]]
+          mkdir -p /tmp/ntl-694-existing
+          kaggle kernels output "$TARGET" -p /tmp/ntl-694-existing -o >/dev/null 2>&1
+          python - <<'PY'
+          import json,re,collections
+          from pathlib import Path
+          root=Path('/tmp/ntl-694-existing')
+          report=list(root.rglob('report.json'))
+          assert len(report)==1
+          obj=json.loads(report[0].read_text())
+          def describe(value,depth=0):
+              if depth>2:return '[nested]'
+              if isinstance(value,dict):
+                  return {k:describe(v,depth+1) for k,v in value.items()
+                      if re.search('status|fallback|time|elapsed|load|stage|active|used|model|token|rows|s10|result|weights|adapter|path',k,re.I)}
+              if isinstance(value,list):return {'count':len(value),'type':'list'}
+              if isinstance(value,(int,float,bool)) or value is None:return value
+              if isinstance(value,str):return value[:85] if re.fullmatch(r'[A-Za-z0-9_.,\- :/]{1,85}',value) else '[redacted]'
+              return '[other]'
+          print('NTL0694_V2_REPORT_KEYS='+json.dumps(sorted(obj.keys()),sort_keys=True),flush=True)
+          print('NTL0694_V2_REPORT_SAFE='+json.dumps(describe(obj),sort_keys=True),flush=True)
+          logs=list(root.rglob('*.log'))
+          patterns=['fallback','model loaded','adapter loaded','checkpoint','lora','27b','qwen','model_source','failed','skipped','NO_NEW_TRAINING','runtime','elapsed','wall','total','gpu','cuda']
+          rows=[]
+          for file in logs:
+              contents=file.read_text(encoding='utf-8',errors='replace')
+              lines=contents.splitlines()
+              matched={pat:[i+1 for i,l in enumerate(lines) if pat in l.lower()][:20] for pat in patterns}
+              matched={k:{'lines':len(v),'first_lines':v[:7]} for k,v in matched.items() if v}
+              if matched:
+                  rows.append({'file':file.name,'lines':len(lines),'signals':matched})
+          print('NTL0694_V2_FALLBACK_LOG_SIGNALS='+json.dumps(rows,sort_keys=True),flush=True)
+          PY
+          mkdir -p /tmp/ntl-694-existing-source
+          kaggle kernels pull "$TARGET" -m -p /tmp/ntl-694-existing-source >/dev/null 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          src=next(Path('/tmp/ntl-694-existing-source').glob('*.ipynb'))
+          nb=json.loads(src.read_text())
+          texts=[''.join(c['source']) if isinstance(c['source'],list) else c['source']
+              for c in nb['cells'] if c.get('cell_type')=='code']
+          for needle in ['fallback_s10','estimated_token_rows','source-test-conditioned','Qwen3.8','qwen','adapter']:
+              found=[]
+              for ci,t in enumerate(texts):
+                  lines=t.splitlines()
+                  matched=[i for i,v in enumerate(lines) if needle.lower() in v.lower()]
+                  if matched:
+                      found.append({'cell':ci,'matches':len(matched),
+                         'first_line':matched[0]+1,'nearby_code_safe':[
+                              re.sub(r'["\'][^"\']{90,}["\']','"[redacted]"',lines[max(0,matched[0]-1)][:170]),
+                              re.sub(r'["\'][^"\']{90,}["\']','"[redacted]"',lines[matched[0]][:170])]})
+              print('NTL0694_V2_CODE_NEEDLE='+json.dumps({'needle':needle,'hits':found[:16]},sort_keys=True),flush=True)
+          print('NTL0694_V2_NO_NEW_GPU_OR_TRAINING_OR_SUBMISSION=TRUE',flush=True)
+          PY
