@@ -1,3 +1,10 @@
+## 2026-11-15 — PRO source-intake result: 3 candidate 17-label cohorts, none verified
+
+- [Authenticated new metadata Action #43690975535](https://github.com/kolihhan/name-kaggle/actions/runs/43690975535) SUCCESS: from 65 public open-pool upstream sources, exactly three nominal 17-label cohorts (20,400 / 2,000 / 698 publisher-reported rows) have no direct 0.683 champion dataset mount, but **all have unknown served-model-ID verification and unproven prompt/prefit independence**. ZERO 18-label *single upstream* sources in existing metadata inventory. [Per-source decision](artifacts/research/2026-11-15-pro-17class-source-leads-no-promotion.md). No honest full-18 independent transfer yet; no GPU rerun or submission.
+- The **0.960279 Lightning BA** is first-300 historical **training-set** BA, not independent accuracy. Own official remains **0.683**; Lightning1200 is a throughput-only running Kernel as last authenticated status. Avoid fitting/blending on spent data.
+
+---
+
 ## 2026-11-15 15:15 MYT — PRO new real quality evidence: Lightning300 train BA 0.960279; GLM64 route negative
 
 - **AUTHENTICATED ACTUAL INFERENCE ON HISTORICAL TRAIN:** [Action #43689106610](https://github.com/kolihhan/name-kaggle/actions/runs/43689106610) PASS: frozen real Lightning300 parquet exact SHA matches prior authentic GPU output; first 300 official train rows, 18 supported classes; **288/300 correct**, **BA 0.960279**. **In-sample only, possible supervised checkpoint exposure, NOT an independent transfer estimate or new Kaggle score.** [Exact decision](artifacts/research/2026-11-15-pro-lightning300-real-train-accuracy-and-glm64.md).
