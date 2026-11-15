@@ -76,8 +76,8 @@ jobs:
               raise RuntimeError('GSQ_FALLBACK_PERSISTS_AT_1200_ROWS')
           elapsed=[]
           patterns=(
-              re.compile(r'(?i)\\b(?:elapsed(?:_seconds)?|wall(?:time)?|duration)\\b\\s*[:=]\\s*([0-9]{1,6}(?:\\.[0-9]{1,3})?)'),
-              re.compile(r'(?i)\\b([0-9]{1,5}(?:\\.[0-9]{1,3})?)\\s*(?:seconds|secs)\\b')
+              re.compile(r'(?i)\b(?:elapsed(?:_seconds)?|wall(?:time)?|duration)\b\s*[:=]\s*([0-9]{1,6}(?:\.[0-9]{1,3})?)'),
+              re.compile(r'(?i)\b([0-9]{1,5}(?:\.[0-9]{1,3})?)\s*(?:seconds|secs)\b')
           )
           for pth in logs:
               if pth.stat().st_size>10_000_000:continue
