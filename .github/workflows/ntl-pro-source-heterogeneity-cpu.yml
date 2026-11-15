@@ -1,0 +1,23 @@
+name: "NTL PRO sibling length source-confounding exact posthoc research"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-source-heterogeneity-cpu.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Frozen previously-authenticated aggregate Fisher source-shift study
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -q tests.test_ntl_pro_source_heterogeneity
+          python -m py_compile scripts/ntl_pro_source_heterogeneity.py
+          python -m scripts.ntl_pro_source_heterogeneity
+          echo "NTL_PRO_NEW_GPU=FALSE;TRAINING=FALSE;SUBMISSION=FALSE;RAW_TEXT_EXPORTED=FALSE"
