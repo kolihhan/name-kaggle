@@ -1,3 +1,11 @@
+## 2026-11-15 PRO round 2 — actual zero-fit representation class experiment: negative
+
+- **EXECUTED:** [Action #43683503696](https://github.com/kolihhan/name-kaggle/actions/runs/43683503696) SUCCESS on 2,699 existing train responses / 150 prompt groups / 18 labels, using fixed prompt-excluded 1-NN with stateless feature hashing. Raw char3-5 **BA 0.138938 (375 correct)**; format-stripped char **0.130780 (353)**; word1-2 **0.105959 (286)**. Paired vs raw char: stripped **56 rescues / 78 regressions**, word **170 / 259**.
+- **DECISION:** REJECT these three zero-fit retrieval classes as standalone competitors; no new GPU/training/submission. The same already-spent source is not an independent benchmark or a same-row comparison with frozen official **0.683**. [Exact method, limitations, source links](artifacts/research/2026-11-15-pro-zero-fit-representation-ablation.md).
+- **NEXT:** evaluate a genuinely different frozen conditional-likelihood/pretrained representation only on qualified, same-row source/prompt-disjoint evidence; first check existing GLM pilot status, no duplicate compute. Do not tune n-grams/thresholds on this spent panel.
+
+---
+
 ## 2026-11-15 — PRO decision: universal sibling length rule falsified across sources (research only)
 
 - **Mechanism research executed** with [CPU Action #43682442089](https://github.com/kolihhan/name-kaggle/actions/runs/43682442089) **SUCCESS**: source-specific GPT Sol>Luna direction **75/150 official**, **195/196 SWEeper**, **20/47 proxy**, posthoc Fisher p=2.74e-32 and p=4.71e-22 against SWEeper; in proxy requested target length matched observed ordering 47/47. These are *existing, spent aggregate cohorts*, not fresh heldout or BA results. Competing H1 invariant-length fingerprint is contradicted as a universal rule; H2 source/request confounding remains credible, not causally proven. [Research decision](artifacts/research/2026-11-15-pro-source-heterogeneity-decision.md).
