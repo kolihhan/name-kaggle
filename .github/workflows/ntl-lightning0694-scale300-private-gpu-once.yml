@@ -1,0 +1,74 @@
+name: "NTL 0694 frozen V2 genuine 300-row GSQ throughput private GPU once"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-scale300-private-gpu-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-lightning0694-scale300-private-gpu-once
+  cancel-in-progress: false
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Frozen V2 code/guards and 300-row test-only build; single private GPU push
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          test ! -e data/train.csv && test ! -e data/test.csv
+          python -m py_compile scripts/ntl_lightning_0694_scale300_private.py
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/ntl-lightning0694-scale300-nov15
+          current="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$current" == *KernelWorkerStatus.* ]]; then
+             echo "NTL0694_SCALE300_PREEXISTING_KERNEL=TRUE"
+             echo "NTL0694_SCALE300_NEW_PRIVATE_GPU_PUSH=FALSE"
+             exit 0
+          fi
+          mkdir -p /tmp/ntl-0694-own-v2-source
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference \
+              -m -p /tmp/ntl-0694-own-v2-source >/tmp/ntl-0694-own-v2-pull.log 2>&1
+          python -m scripts.ntl_lightning_0694_scale300_private \
+              --source /tmp/ntl-0694-own-v2-source \
+              --out /tmp/ntl-0694-scale300-frozen
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('/tmp/ntl-0694-scale300-frozen')
+          meta=json.loads((root/'kernel-metadata.json').read_text())
+          nb=json.loads((root/meta['code_file']).read_text())
+          code='\n'.join(''.join(c['source']) for c in nb['cells'] if c['cell_type']=='code')
+          assert meta['id']=='kolihhan/ntl-lightning0694-scale300-nov15'
+          assert meta['title']=='ntl-lightning0694-scale300-nov15'
+          assert 'usecols=[\'text\']' in code and 'nrows=300' in code
+          assert 'NTL0694_SCALE300_INPUT_TEXT_ONLY' in code
+          assert 'preview = False  # always genuine model inference' in code
+          assert 'gauss.fit(' not in code
+          assert code.count('NO_NEW_TRAINING: Gaussian fit blocked')==1
+          assert code.count('NO_NEW_TRAINING: Atlas training blocked')==1
+          assert (len(meta['dataset_sources']),len(meta['model_sources']),len(meta['kernel_sources']))==(23,6,9)
+          print('NTL0694_SCALE300_FROZEN_NOFIT_CPU_GATE=PASS',flush=True)
+          PY
+          kaggle kernels push -p /tmp/ntl-0694-scale300-frozen \
+            --accelerator NvidiaTeslaT4 --timeout 32400 > /tmp/ntl-0694-scale300-push.log 2>&1
+          if ! grep -q 'Kernel version 1 successfully pushed' /tmp/ntl-0694-scale300-push.log; then
+             echo 'NTL0694_SCALE300_PUSH_RECEIPT_UNCONFIRMED=TRUE'
+             exit 1
+          fi
+          echo 'NTL0694_SCALE300_NEW_PRIVATE_GPU_PUSH_CONFIRMED=TRUE'
+          echo 'NTL0694_SCALE300_INPUT=300_UNLABELED_OFFICIAL_TRAIN_TEXTS'
+          echo 'NTL0694_SCALE300_TRAINING=FALSE;NO_OFFICIAL_SUBMISSION=TRUE;NO_ACCURACY_ESTIMATE=TRUE'
+          status="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$status" == *KernelWorkerStatus.QUEUED* ]]; then state=QUEUED
+          elif [[ "$status" == *KernelWorkerStatus.RUNNING* ]]; then state=RUNNING
+          elif [[ "$status" == *KernelWorkerStatus.COMPLETE* ]]; then state=COMPLETE
+          else state=UNCONFIRMED;fi
+          echo "NTL0694_SCALE300_PRIVATE_INITIAL_STATE=$state"
