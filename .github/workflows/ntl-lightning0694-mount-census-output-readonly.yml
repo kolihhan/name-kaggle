@@ -1,0 +1,58 @@
+name: "NTL 0694 CPU mount census exact status and log read-only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-mount-census-output-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read CPU-only kernel status and actual directory mount census
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/ntl-694-mount-census-cpu-nov15
+          state="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$state" == *KernelWorkerStatus.COMPLETE* ]]; then status=COMPLETE
+          elif [[ "$state" == *KernelWorkerStatus.ERROR* ]]; then status=ERROR
+          elif [[ "$state" == *KernelWorkerStatus.RUNNING* ]]; then status=RUNNING
+          elif [[ "$state" == *KernelWorkerStatus.QUEUED* || "$state" == *KernelWorkerStatus.PENDING* ]]; then status=QUEUED
+          else status=UNKNOWN; fi
+          echo "NTL0694_CPU_MOUNT_STATUS=$status"
+          if [[ "$status" != COMPLETE && "$status" != ERROR ]]; then
+            echo "NTL0694_NO_GPU_NO_TRAINING_NO_SUBMISSION=TRUE"
+            exit 0
+          fi
+          mkdir -p /tmp/ntl694-cpu-census-output
+          kaggle kernels output "$TARGET" -p /tmp/ntl694-cpu-census-output \
+            --file-pattern '.*[.]log$' -o >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import json,re
+          logs=list(Path('/tmp/ntl694-cpu-census-output').rglob('*.log'))
+          for p in logs:
+              rows=[]
+              for line in p.read_text(errors='replace').splitlines():
+                  try:
+                      row=json.loads(line.strip().lstrip(','))
+                      rows.append(str(row.get('data','')))
+                  except ValueError: continue
+              text=''.join(rows)
+              match=re.search(r'NTL0694_MOUNT_CENSUS=(\{[^\n]+\})',text)
+              if match:
+                  print('NTL0694_ACTUAL_CPU_MOUNT_CENSUS='+match.group(1),flush=True)
+              else:
+                  print('NTL0694_CENSUS_RESULT_NOT_EMITTED='+json.dumps({
+                     'log_size':p.stat().st_size,
+                     'has_traceback':'Traceback' in text,
+                     'has_assertion':'AssertionError' in text,
+                     'has_import_error':'ModuleNotFoundError' in text},sort_keys=True),flush=True)
+          print('NTL0694_NO_GPU_NO_TRAINING_NO_SUBMISSION=TRUE',flush=True)
+          PY
