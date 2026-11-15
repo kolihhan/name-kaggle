@@ -25,9 +25,8 @@ FEATURES = ("raw_char_3to5", "strip_format_char_3to5", "word_1to2")
 
 def strip_format(text: str) -> str:
     # Fixed before observing results; intentionally removes punctuation signals.
-    text = re.sub(r"[`*_#>~|\\[\\]{}]", " ", text)
-    text = re.sub(r"[^\\w\\s]", " ", text.lower(), flags=re.UNICODE)
-    return re.sub(r"\\s+", " ", text).strip()
+    text = re.sub(r"[^\w\s]", " ", text.lower(), flags=re.UNICODE)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def predict(texts: list[str], prompt_ids: list[str], family: str) -> np.ndarray:
