@@ -1,3 +1,10 @@
+## 2026-11-16 01:55 MYT — NEW VERIFIED NTL OFFICIAL BEST **0.691** (#58375806)
+
+- **ACTUAL KAGGLE SCORE CONFIRMED**: [read-only authenticated Action #43743764085](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085) returned `#58375806` `SubmissionStatus.COMPLETE`, **Public BA 0.691**. Frozen own Lightning0694 source V2, no new training. Previous authenticated best `#58295802` was **0.683**. New official **+0.008** absolute; 0.009 below 0.700. **DO NOT** claim 0.694 from author's title, 0.9582 historical TRAIN BA as hidden accuracy, or original algorithm invention. This is an attributed pretrained-public-source reproduction and one Kaggle official outcome.
+- **NEXT RESEARCH DECISION**: freeze and preserve 0.691 winner. Compare *architecture/mechanism and legal pretrained provenance* against previous winner using CPU/source manifests, then test a genuinely distinct hypothesis with held-out source/prompt transfer when possible. **No Public leaderboard parameter sweep**, no duplicate official submission. New 0.691 is a score, not independent proof of an attribution mechanism.
+
+---
+
 ## 2026-11-15 16:01 MYT — NEW official NTL Lightning0694 submission #58375806 accepted (PENDING, NOT scored)
 
 - [Authenticated one-shot action #43692500733](https://github.com/kolihhan/name-kaggle/actions/runs/43692500733) **SUCCESS**. Exact frozen private source `kolihhan/lightning-0-694-authentic-no-fit-inference` **version 2**, genuine source code SHA `cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c`. Unique official Kaggle code submission **#58375806**, descriptor `Lightning0694 pinned V2 no-fit research bet 20261115`; immediate status **PENDING**, Public BA **blank**. **NO new scored gain, NO new training, NO extra private GPU.** [Full authorized receipt and gates](artifacts/research/2026-11-15-pro-lightning0694-authenticated-one-official-submission.md).
