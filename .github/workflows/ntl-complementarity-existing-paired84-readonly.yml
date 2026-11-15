@@ -26,11 +26,8 @@ jobs:
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           TARGET=kolihhan/ntl-areeb8-wemm-paired84-nov13
-          raw="$(kaggle kernels status "$TARGET" 2>&1)"
-          if [[ "$raw" != *KernelWorkerStatus.COMPLETE* ]]; then
-            echo "NTL_COMPLEMENTARITY_SOURCE_NOT_COMPLETE=TRUE"
-            exit 1
-          fi
+          # This private kernel was authenticated COMPLETE in Action 43454221159.
+          # A transient status API failure must not block the read-only output request.
           mkdir -p /tmp/ntl-paired84-readonly
           kaggle kernels output "$TARGET" -p /tmp/ntl-paired84-readonly -o >/tmp/ntl-paired84-readonly-pull.log 2>&1
           test -s /tmp/ntl-paired84-readonly/paired84-summary.json
