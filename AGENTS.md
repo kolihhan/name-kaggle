@@ -43,6 +43,7 @@ Do not restart from chat assumptions when repo state is available.
 - Change one major scientific variable at a time.
 - Do not convert infrastructure/public-safety work into a new experiment phase.
 - Do not turn a temporary method restriction into permanent doctrine. Apply the restriction/pivot-trigger contract in `RESEARCH_DOCTRINE.md`.
+- Before starting a new score-improvement lane, use `RESEARCH_DOCTRINE.md` §11: at least two competing mechanisms, one falsifier, same-row independent evidence, costs and a predeclared promotion/stop rule. Fixing a kernel is not model-quality progress.
 - Do not create Phase N+1 merely because Phase N stopped improving. If repeated local tweaks stop transferring, reconsider the representation, model family, objective, data strategy, calibration, or problem formulation.
 
 ## Completion standard
