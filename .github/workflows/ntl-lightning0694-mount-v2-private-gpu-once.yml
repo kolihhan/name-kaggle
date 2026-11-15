@@ -18,68 +18,51 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Compile exact ten root namespace repairs and push ONE existing GPU kernel version
+      - name: Build only from own frozen V1, prove resource fix, push single corrected GPU V2
         shell: bash
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           test ! -e data/train.csv && test ! -e data/test.csv
-          python -m py_compile scripts/ntl_lightning_0694_no_fit_candidate.py scripts/ntl_lightning_0694_mount_repair_v2.py
+          python -m py_compile scripts/ntl_lightning_0694_mount_repair_v2.py
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          mkdir -p /tmp/ntl-694-fixed-original /tmp/ntl-694-fixed-target
-          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora \
-              -m -p /tmp/ntl-694-fixed-original >/dev/null
+          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
+          mkdir -p /tmp/ntl-694-v1-freeze
+          kaggle kernels pull "$TARGET" -m -p /tmp/ntl-694-v1-freeze >/dev/null
+          if grep -lq '/kaggle/input/datasets/dhruvtibarewal/nlm-enc-v5' /tmp/ntl-694-v1-freeze/*.ipynb; then
+            echo "NTL0694_PRIVATE_FIXED_V2_ALREADY_PRESENT_NO_DUPLICATE_GPU=TRUE"
+            exit 0
+          fi
+          prior="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$prior" != *KernelWorkerStatus.ERROR* ]]; then
+            echo "NTL0694_V2_PREVIOUS_FROZEN_KERNEL_NOT_FAILED_STOP=TRUE"
+            exit 1
+          fi
           python -m scripts.ntl_lightning_0694_mount_repair_v2 \
-              --source /tmp/ntl-694-fixed-original --out /tmp/ntl-694-fixed-target
+              --frozen-own-v1 /tmp/ntl-694-v1-freeze \
+              --out /tmp/ntl-694-mount-fixed-v2
           python - <<'PY'
-          import json
           from pathlib import Path
-          p=Path('/tmp/ntl-694-fixed-target')
+          import json
+          p=Path('/tmp/ntl-694-mount-fixed-v2')
           m=json.loads((p/'kernel-metadata.json').read_text())
           n=json.loads((p/m['code_file']).read_text())
           code='\n'.join(''.join(c['source']) for c in n['cells'] if c['cell_type']=='code')
-          expected='/kaggle/input/datasets/dhruvtibarewal/nlm-enc-v5'
-          assert expected in code
+          assert '/kaggle/input/datasets/dhruvtibarewal/nlm-enc-v5' in code
           assert '/kaggle/input/nlm-enc-v5' not in code
-          assert "NO_NEW_TRAINING: Gaussian fit blocked" in code
-          assert "NO_NEW_TRAINING: Atlas training blocked" in code
+          assert 'gauss.fit(' not in code
+          assert 'NO_NEW_TRAINING: Gaussian fit blocked' in code
+          assert 'NO_NEW_TRAINING: Atlas training blocked' in code
           assert m['id']=='kolihhan/lightning-0-694-authentic-no-fit-inference'
           assert m['enable_gpu'] is True and m['enable_internet'] is False
           assert (len(m['dataset_sources']),len(m['model_sources']),len(m['kernel_sources']))==(23,6,9)
-          print('NTL0694_V2_REAL_MOUNTS_CPU_STATIC_GATE=PASS',flush=True)
+          print('NTL0694_V2_FROZEN_PRIVATE_SOURCE_AND_CPU_STATIC_MOUNTS=PASS',flush=True)
           PY
-          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
-          prior="$(kaggle kernels status "$TARGET" 2>&1 || true)"
-          if [[ "$prior" != *KernelWorkerStatus.ERROR* ]]; then
-            echo "NTL0694_V2_PRIOR_NOT_PROVEN_ERROR_STOP=TRUE"
-            exit 1
-          fi
-          mkdir -p /tmp/ntl-694-previous-v1
-          kaggle kernels pull "$TARGET" -m -p /tmp/ntl-694-previous-v1 >/dev/null
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('/tmp/ntl-694-previous-v1')
-          nbs=list(p.glob('*.ipynb'))
-          assert len(nbs)==1
-          code='\n'.join(''.join(c['source']) for c in json.loads(nbs[0].read_text())['cells'] if c['cell_type']=='code')
-          if '/kaggle/input/datasets/dhruvtibarewal/nlm-enc-v5' in code:
-              print('NTL0694_V2_ALREADY_INSTALLED_NO_DUPLICATE=TRUE',flush=True)
-              raise SystemExit(20)
-          if ("/kaggle/input/nlm-enc-v5" not in code
-               or "NO_NEW_TRAINING: Gaussian fit blocked" not in code
-               or "preview = False  # always genuine model inference" not in code):
-              raise SystemExit('STOP_PREVIOUS_KERNEL_NOT_EXPECTED_V1')
-          print('NTL0694_V2_OLD_VERSION_KNOWN_TO_FAIL_ASSET_ROOTS=TRUE',flush=True)
-          PY
-          # The previous Python check exits 20 only for an already-fixed v2.
-          # We never reach here on that condition, so no accidental version 3.
-          kaggle kernels push -p /tmp/ntl-694-fixed-target \
+          kaggle kernels push -p /tmp/ntl-694-mount-fixed-v2 \
               --accelerator NvidiaTeslaT4 --timeout 32400 >/tmp/ntl694-v2-push.log 2>&1
           if ! grep -q 'Kernel version 2 successfully pushed' /tmp/ntl694-v2-push.log; then
             echo "NTL0694_V2_PUSH_VERSION_RECEIPT_NOT_CONFIRMED=TRUE"
             exit 1
           fi
-          echo "NTL0694_V2_PRIVATE_GPU_PUSH_CONFIRMED=TRUE"
-          echo "NTL0694_V2_MODEL_WEIGHTS_UNCHANGED=TRUE"
-          echo "NTL0694_V2_NO_NEW_TRAINING_NO_OFFICIAL_COMPETITION_SUBMISSION=TRUE"
+          echo "NTL0694_V2_ONE_PRIVATE_GPU_KERNEL_VERSION_CONFIRMED=TRUE"
+          echo "NTL0694_V2_TRAINING=FALSE;WEIGHTS_UNCHANGED=TRUE;OFFICIAL_SUBMISSION=FALSE"
