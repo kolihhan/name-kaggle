@@ -1,3 +1,11 @@
+## 2026-11-15 — PRO decision: universal sibling length rule falsified across sources (research only)
+
+- **Mechanism research executed** with [CPU Action #43682442089](https://github.com/kolihhan/name-kaggle/actions/runs/43682442089) **SUCCESS**: source-specific GPT Sol>Luna direction **75/150 official**, **195/196 SWEeper**, **20/47 proxy**, posthoc Fisher p=2.74e-32 and p=4.71e-22 against SWEeper; in proxy requested target length matched observed ordering 47/47. These are *existing, spent aggregate cohorts*, not fresh heldout or BA results. Competing H1 invariant-length fingerprint is contradicted as a universal rule; H2 source/request confounding remains credible, not causally proven. [Research decision](artifacts/research/2026-11-15-pro-source-heterogeneity-decision.md).
+- **Durable PRO protocol active** in [RESEARCH_DOCTRINE.md](RESEARCH_DOCTRINE.md) §11 and [AGENTS.md](AGENTS.md): competitor methods are hypotheses; prioritize information gain, 2 distinct mechanisms, disjoint evidence, same-row rescues/regressions, actual official score before promotion. No more repeatedly adding feasibility gates in place of model progress.
+- **Next core mechanism test**: frozen strong 0.683 control vs one genuinely different protocol/length-robust sibling fingerprint on same-source/prompt-disjoint evidence with exact label coverage; no source-conditioned thresholds or naive WeMM blend. NTL Lightning1200 remains throughput evidence until terminal, never quality evidence. No new training/GPU/submission from this analysis.
+
+---
+
 ## 2026-11-15 12:49 MYT — NTL real paired complementarity gate confirms negative; Lightning1200 still running
 
 - **Authenticated existing 84-row candidate-vs-champion diagnostic replayed without GPU:** [Action #43678379655](https://github.com/kolihhan/name-kaggle/actions/runs/43678379655) **SUCCESS**, from frozen numeric-only aggregate of original authenticated private Kaggle [Action #43454221159](https://github.com/kolihhan/name-kaggle/actions/runs/43454221159), source artifact [verified aggregate](artifacts/research/ntl-areeb8-vs-wemm-paired84/verified-aggregates-43454221159.json). Real incumbent **60/84**, isolated WeMM fold0 **56/84**, **3 rescues vs 7 regressions**, net **−4**; by source Nimitha 0, Toan −4. **REJECT current WeMM fold0**, no blind blend.
