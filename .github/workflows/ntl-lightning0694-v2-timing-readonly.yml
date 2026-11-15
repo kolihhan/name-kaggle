@@ -1,0 +1,77 @@
+name: "NTL 0694 V2 real GPU timing and stage report read-only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-v2-timing-readonly.yml]
+permissions: {contents: read}
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect existing V2 completed stage timings only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/lightning-0-694-authentic-no-fit-inference
+          status="$(kaggle kernels status "$TARGET" 2>&1)"
+          if [[ "$status" != *KernelWorkerStatus.COMPLETE* ]]; then
+             echo "NTL0694_TIMING_NOT_TERMINAL=TRUE"
+             exit 0
+          fi
+          mkdir -p /tmp/ntl694-v2-stage-output
+          kaggle kernels output "$TARGET" -p /tmp/ntl694-v2-stage-output -o >/dev/null 2>&1
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          root=Path('/tmp/ntl694-v2-stage-output')
+          logs=sorted(root.rglob('*.log'))
+          assert len(logs)>=8, 'missing_stage_logs'
+          summary=[]
+          for p in logs:
+              if p.stat().st_size>20_000_000:
+                  raise RuntimeError('oversized_unexpected_log')
+              txt=p.read_text(encoding='utf-8',errors='replace')
+              lines=txt.splitlines()
+              # Only lines with performance semantics, output numeric extracted values;
+              # never leak passages, prediction contents, paths, or credentials.
+              hits=[]
+              for x in lines:
+                  if not re.search(r'(?:elapsed|duration|took|seconds| sec |time | wall |rows|batch|tokens/sec|it/s|s/it)',x,re.I):
+                      continue
+                  nums=re.findall(r'(?<![\w.-])\d{1,8}(?:\.\d{1,6})?(?![\w.-])',x)
+                  if nums: hits.append({'numeric_tokens':nums[:4],'kind':
+                      ('elapsed' if 'elapsed' in x.lower() else
+                       'rows' if 'rows' in x.lower() else
+                       'batch' if 'batch' in x.lower() else 'time_or_rate')})
+              summary.append({'stage':p.name,'bytes':p.stat().st_size,
+                  'lines':len(lines),'metric_line_count':len(hits),
+                  'metric_numeric_samples':hits[-10:]})
+          print('NTL0694_V2_MODEL_STAGE_METRICS='+json.dumps(summary,sort_keys=True),flush=True)
+          for name in ('report.json','execution-contract.json','core-parallel.json'):
+              xs=list(root.rglob(name))
+              if len(xs)!=1:
+                  print('NTL0694_V2_REPORT_FILE='+json.dumps({'name':name,'found':len(xs)},sort_keys=True),flush=True)
+                  continue
+              try: obj=json.loads(xs[0].read_text(encoding='utf-8'))
+              except Exception:
+                  print('NTL0694_V2_REPORT_FILE='+json.dumps({'name':name,'parse':'error'},sort_keys=True),flush=True)
+                  continue
+              def safe(x,depth=0):
+                  if depth>2:return None
+                  if isinstance(x,dict):
+                      return {k:safe(v,depth+1) for k,v in x.items()
+                           if re.search(r'(?:time|durat|elapsed|second|count|rows|batch|status|exit|failure|error|stage|runtime|success|wall)',k,re.I)}
+                  if isinstance(x,list):return [safe(v,depth+1) for v in x[:15]]
+                  if isinstance(x,(int,float,bool)) or x is None:return x
+                  if isinstance(x,str) and len(x)<70 and re.fullmatch(r'[A-Za-z0-9_ .:-]{1,70}',x):return x
+                  return '[omitted]'
+              print('NTL0694_V2_SAFE_JSON='+json.dumps({'name':name,'fields':safe(obj)},sort_keys=True),flush=True)
+          print('NTL0694_V2_TIMING_READ_ONLY=TRUE;NO_NEW_GPU=TRUE;NO_SUBMISSION=TRUE',flush=True)
+          PY
