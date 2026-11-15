@@ -1,0 +1,47 @@
+name: NTL PRO exact saved flash GLM expert score interface and paired feasibility
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-flash-glm-expert-scores-20261116.yml]
+permissions: {contents: read}
+jobs:
+  score_shapes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect exact cached score tensors, no model or training
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.5 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-pro-expert-saved
+          kaggle kernels output kolihhan/ntl-lightning0694-scale1200-nov15 \
+            -p /tmp/ntl-pro-expert-saved -o >/tmp/ntl-pro-expert-output.log 2>&1
+          python - <<'PY'
+          import hashlib,json
+          import numpy as np
+          from pathlib import Path
+          root=Path('/tmp/ntl-pro-expert-saved')
+          for name in ('flash_scores.npz','glm53_scores.npz'):
+              paths=list(root.rglob(name))
+              if len(paths)!=1:raise RuntimeError('EXACT_ONE_CACHED_EXPERT_FILE_REQUIRED_'+name)
+              p=paths[0]
+              f=np.load(p,allow_pickle=False)
+              arrays={}
+              for key in f.files:
+                  a=f[key]
+                  arrays[key]={'shape':list(a.shape),'dtype':str(a.dtype),
+                      'all_finite':bool(np.isfinite(a).all()) if a.dtype.kind in 'iuf' else None}
+              print('NTL_PRO_EXACT_EXPERT_SCORE_CACHE='+json.dumps({
+                  'name':name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+                  'arrays':arrays},sort_keys=True),flush=True)
+          print('NTL_PRO_SCORE_CACHE_PASSAGES_VALUES_AND_IDS_NOT_EXPORTED=TRUE',flush=True)
+          print('NTL_PRO_NO_TRAINING_NO_NEW_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
