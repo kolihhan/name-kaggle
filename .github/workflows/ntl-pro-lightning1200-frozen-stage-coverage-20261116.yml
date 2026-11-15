@@ -1,0 +1,73 @@
+name: NTL PRO real Lightning1200 stage ablation feasibility frozen artifacts
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-lightning1200-frozen-stage-coverage-20261116.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Audit already-complete frozen 1200 outputs for paired component ablation feasibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          ref=kolihhan/ntl-lightning0694-scale1200-nov15
+          status="$(kaggle kernels status "$ref" 2>&1)"
+          [[ "$status" == *KernelWorkerStatus.COMPLETE* ]] || { echo 'STOP_FROZEN_1200_NOT_COMPLETE'; exit 1; }
+          mkdir -p /tmp/ntl-pro-stage-1200 /tmp/ntl-pro-stage-winner /tmp/ntl-pro-stage-prior
+          kaggle kernels output "$ref" -p /tmp/ntl-pro-stage-1200 -o >/tmp/ntl-pro-stage-out.log 2>&1
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference \
+              -p /tmp/ntl-pro-stage-winner -m >/tmp/ntl-pro-stage-winner.log 2>&1
+          kaggle kernels pull kolihhan/ntl-areeb8-prefit-only-nov13 \
+              -p /tmp/ntl-pro-stage-prior -m >/tmp/ntl-pro-stage-prior.log 2>&1
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import re
+          roots={k:Path('/tmp/ntl-pro-stage-'+k) for k in ('1200','winner','prior')}
+          def safe_files(root):
+              return sorted([{'file':str(p.relative_to(root))[:170],
+                  'size':p.stat().st_size,'kind':p.suffix.lower() or 'none'}
+                  for p in root.rglob('*') if p.is_file()
+                  and p.suffix.lower() in ('.npy','.npz','.pkl','.pickle','.json','.parquet','.csv','.pt','.safetensors','.log','.txt')],key=lambda x:x['file'])
+          inventory=safe_files(roots['1200'])
+          candidates=[x for x in inventory if x['kind'] in ('.npy','.npz','.pkl','.pickle','.pt','.safetensors','.parquet')]
+          print('NTL_PRO_FROZEN_1200_STAGE_INVENTORY='+json.dumps({
+              'total_allowed_stage_files':len(inventory),
+              'candidate_intermediate_files':candidates[:120],
+              'candidate_intermediate_file_count':len(candidates),
+              'has_multiple_scoring_artifacts':len(candidates)>1
+              },sort_keys=True),flush=True)
+          for label in ('winner','prior'):
+              root=roots[label]
+              files=list(root.glob('*.ipynb'))
+              if len(files)!=1: raise SystemExit('STOP_SOURCE_NOTEBOOK_AMBIGUITY_'+label)
+              meta=json.loads((root/'kernel-metadata.json').read_text())
+              nb=json.loads(files[0].read_text())
+              code_cells=[c for c in nb['cells'] if c.get('cell_type')=='code']
+              compiled_modules=[]
+              for cell in code_cells:
+                  src=cell.get('source','')
+                  src=''.join(src) if isinstance(src,list) else str(src)
+                  if src.startswith('%%writefile '):
+                      path=src.splitlines()[0][len('%%writefile '):].strip()
+                      compiled_modules.append(Path(path).name)
+              report={'candidate':label,'id':meta.get('id'),
+                  'code_cells':len(code_cells),'written_modules':sorted(set(compiled_modules)),
+                  'dataset_mounts':len(meta.get('dataset_sources') or []),
+                  'model_mounts':len(meta.get('model_sources') or []),
+                  'kernel_mounts':len(meta.get('kernel_sources') or []),
+                  'has_gsq_module':any('gsq' in x for x in compiled_modules),
+                  'has_ensemble_module':any('ensemble' in x for x in compiled_modules)}
+              print('NTL_PRO_FROZEN_WINNER_VS_PRIOR_SOURCE_GEOMETRY='+json.dumps(report,sort_keys=True),flush=True)
+          print('NTL_PRO_PUBLIC_WINNER_TITLE_IS_NOT_MECHANISM_ABLATION=TRUE',flush=True)
+          print('NTL_PRO_RAW_TEXT_OR_LOGITS_EXPORTED=FALSE;NO_GPU_NO_TRAINING_NO_SUBMISSION=TRUE',flush=True)
+          PY
