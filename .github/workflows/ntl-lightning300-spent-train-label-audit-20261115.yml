@@ -1,0 +1,63 @@
+name: NTL Lightning300 actual predictions vs spent official-train labels read only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning300-spent-train-label-audit-20261115.yml]
+permissions: {contents: read}
+jobs:
+  score_spent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env: {KAGGLE_API_TOKEN: "${{ secrets.KAGGLE_API_TOKEN }}"}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compare only already completed 300 genuine predictions with existing historical truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          ref=kolihhan/ntl-lightning0694-scale300-nov15
+          status="$(kaggle kernels status "$ref" 2>&1)"
+          [[ "$status" == *KernelWorkerStatus.COMPLETE* ]] || { echo 'STOP_EXISTING_KERNEL_NOT_COMPLETE'; exit 1; }
+          mkdir -p /tmp/ntl300-audit-private
+          kaggle kernels output "$ref" -p /tmp/ntl300-audit-private -o >/tmp/ntl300-audit-download.log 2>&1
+          python - <<'PY'
+          import csv,hashlib,json
+          from collections import Counter
+          from pathlib import Path
+          import pandas as pd
+          source=Path('data/train.csv')
+          assert hashlib.sha256(source.read_bytes()).hexdigest()=='40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
+          with source.open(encoding='utf-8-sig',newline='') as f:
+              rows=[r for _,r in zip(range(300),csv.DictReader(f))]
+          assert len(rows)==300 and all(r['model'] and r['text'] for r in rows)
+          out=list(Path('/tmp/ntl300-audit-private').rglob('submission.parquet'))
+          assert len(out)==1
+          # Already independently verified output byte hash and genuine GSQ.
+          sha=hashlib.sha256(out[0].read_bytes()).hexdigest()
+          assert sha=='bb085772ad7933d90879d4ba45281806c7c48ec1629beef5c1602dc71ca5ff97', 'STOP_ACTUAL_OUTPUT_DRIFT'
+          pred=pd.read_parquet(out[0])
+          assert pred.columns.tolist()==['id','model']
+          assert pred.id.astype(str).tolist()==[f'scale300_{i:04d}' for i in range(300)]
+          truth=[str(r['model']) for r in rows]
+          guessed=pred.model.astype(str).tolist()
+          assert set(guessed).issubset(set(truth))
+          support=Counter(truth)
+          scored={c:sum(a==b for a,b in zip(truth,guessed) if a==c) for c in support}
+          # Contrast is purely descriptive on historical training rows; never a new heldout.
+          recall={c:round(scored[c]/support[c],5) for c in sorted(support)}
+          bacc=sum(recall.values())/len(recall)
+          result={'n':len(rows),'true_label_support':len(support),
+                  'correct':sum(a==b for a,b in zip(truth,guessed)),
+                  'accuracy':round(sum(a==b for a,b in zip(truth,guessed))/300,6),
+                  'conditional_supported_class_ba':round(bacc,6),
+                  'per_class_support':dict(sorted(support.items())),
+                  'per_class_recall':recall,
+                  'source':'spent_official_train_first_300_NOT_INDEPENDENT',
+                  'comparison_to_scored_champion':'INVALID_DIFFERENT_ROWS_AND_EVIDENCE',
+                  'new_gpu':False,'new_training':False,'new_submission':False}
+          print('NTL_LIGHTNING300_HISTORICAL_TRUTH_AUDIT='+json.dumps(result,sort_keys=True))
+          PY
