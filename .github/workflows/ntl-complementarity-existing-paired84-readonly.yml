@@ -7,29 +7,22 @@ permissions: {contents: read}
 jobs:
   assess:
     runs-on: ubuntu-latest
-    timeout-minutes: 14
-    env:
-      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - name: Validate 12-label blocker and paired arithmetic with synthetic unit tests
+      - name: Replay previously authenticated Kaggle aggregate, no private data or new GPU
+        shell: bash
         run: |
           set -euo pipefail
           python -m unittest -q tests.test_ntl_complementarity_gate
           python -m py_compile scripts/ntl_complementarity_gate.py
-      - name: Evaluate existing authenticated private paired 84 aggregate, NO model inference
-        run: |
-          set -euo pipefail
-          test -n "$KAGGLE_API_TOKEN"
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          TARGET=kolihhan/ntl-areeb8-wemm-paired84-nov13
-          # This private kernel was authenticated COMPLETE in Action 43454221159.
-          # A transient status API failure must not block the read-only output request.
-          mkdir -p /tmp/ntl-paired84-readonly
-          kaggle kernels output "$TARGET" -p /tmp/ntl-paired84-readonly -o >/tmp/ntl-paired84-readonly-pull.log 2>&1
-          test -s /tmp/ntl-paired84-readonly/paired84-summary.json
-          python -m scripts.ntl_complementarity_gate --aggregate /tmp/ntl-paired84-readonly/paired84-summary.json
-          echo "NTL_COMPLEMENTARITY_READ_ONLY=TRUE;NEW_GPU=FALSE;TRAINING=FALSE;SUBMISSION=FALSE"
+          # Immutable numeric-only snapshot was copied from verified Kaggle
+          # Action 43454221159, job 131983985764 (not re-scored here).
+          INPUT=artifacts/research/ntl-areeb8-vs-wemm-paired84/verified-aggregates-43454221159.json
+          test -s "$INPUT"
+          python -m scripts.ntl_complementarity_gate --aggregate "$INPUT"
+          echo "NTL_COMPLEMENTARITY_REPLAY_FROM_AUTHENTICATED_PRIOR_RUN=TRUE"
+          echo "NTL_COMPLEMENTARITY_NEW_GPU=FALSE;TRAINING=FALSE;SUBMISSION=FALSE"
