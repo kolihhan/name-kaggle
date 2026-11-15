@@ -79,7 +79,7 @@ jobs:
               matches=[]
               for i,line in enumerate(raw):
                   stripped=line.strip()
-                  if re.search(r'^Traceback|^AssertionError|^\s*File "[^"]+", line \d+|^assert\s|^\s+assert\s|^\w+(Error|Exception):',line):
+                  if re.search(r'Traceback|AssertionError|File ".+", line \d+|assert\s+|\b\w+(?:Error|Exception):',line,re.I):
                       clean=re.sub(r'/kaggle/input/[^\s"\']+', '/kaggle/input/[ASSET]',line)
                       clean=re.sub(r'(?i)(api[_-]?key|token|password)\s*[=:]\s*\S+',r'\1=[REDACTED]',clean)
                       matches.append({'i':i,'line':clean[:230]})
