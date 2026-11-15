@@ -1,0 +1,71 @@
+name: "NTL 0694 failed Kaggle asset mount root-cause audit read only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-input-mount-diff-readonly.yml]
+permissions: {contents: read}
+jobs:
+  mount_diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compare public vs owned Kaggle input manifests and failed paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-public-694 /tmp/ntl-owned-694 /tmp/ntl-failed-694
+          kaggle kernels pull lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora -m -p /tmp/ntl-public-694 >/dev/null
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference -m -p /tmp/ntl-owned-694 >/dev/null
+          kaggle kernels output kolihhan/lightning-0-694-authentic-no-fit-inference \
+            --file-pattern '.*[.]log$' -p /tmp/ntl-failed-694 -o >/dev/null
+          python - <<'PY'
+          import ast,json,os,re
+          from pathlib import Path
+          root=Path('/tmp')
+          public=json.loads((root/'ntl-public-694'/'kernel-metadata.json').read_text())
+          own=json.loads((root/'ntl-owned-694'/'kernel-metadata.json').read_text())
+          for key in ('dataset_sources','model_sources','kernel_sources','competition_sources'):
+              a=public.get(key) or []
+              b=own.get(key) or []
+              print('NTL_0694_SOURCE_MANIFEST_DIFF='+json.dumps({
+                 'type':key,'upstream_count':len(a),'owned_count':len(b),
+                 'lost_from_owned':[str(x) for x in a if x not in b][:40],
+                 'added_to_owned':[str(x) for x in b if x not in a][:40],
+              },sort_keys=True),flush=True)
+          logs=list((root/'ntl-failed-694').rglob('*.log'))
+          assert len(logs)==1
+          stderr=[]
+          for line in logs[0].read_text(errors='replace').splitlines():
+              line=line.lstrip(',').strip()
+              try:
+                  obj=json.loads(line)
+              except (ValueError,TypeError):
+                  continue
+              if obj.get('stream_name')=='stderr':
+                  stderr.append(str(obj.get('data','')))
+          err=''.join(stderr)
+          matches=re.findall(r'AssertionError:\s*(\[[^\]]+\])',err,re.S)
+          if len(matches)!=1:
+              print('NTL_0694_MISSING_ASSETS_PARSE_COUNT='+str(len(matches)),flush=True)
+          else:
+              missing=ast.literal_eval(matches[0])
+              assert isinstance(missing,list) and all(isinstance(x,str) for x in missing)
+              print('NTL_0694_MISSING_ASSETS='+json.dumps({
+                'count':len(missing),
+                'names':[str(x).replace('/kaggle/input/','')[:150] for x in missing][:40]
+              },sort_keys=True),flush=True)
+          for tag,meta in [('upstream',public),('owned',own)]:
+              print('NTL_0694_META_STATIC='+json.dumps({'label':tag,
+                  'enable_gpu':meta.get('enable_gpu'),
+                  'is_private':meta.get('is_private'),
+                  'machine_shape':meta.get('machine_shape'),
+                  'title':str(meta.get('title',''))[:80]
+              },sort_keys=True),flush=True)
+          print('NTL_0694_ASSET_DIFF_READ_ONLY_NO_GPU_NO_TRAINING_NO_SUBMISSION=TRUE',flush=True)
+          PY
