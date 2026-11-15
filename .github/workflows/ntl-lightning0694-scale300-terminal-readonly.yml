@@ -1,0 +1,78 @@
+name: "NTL 0694 scale300 real GSQ activation and timing read only"
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-scale300-terminal-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Existing scale300 terminal report, no GPU or competition submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          TARGET=kolihhan/ntl-lightning0694-scale300-nov15
+          raw="$(kaggle kernels status "$TARGET" 2>&1 || true)"
+          if [[ "$raw" == *KernelWorkerStatus.QUEUED* || "$raw" == *KernelWorkerStatus.PENDING* ]]; then
+             echo 'NTL0694_SCALE300_STATE=QUEUED;OUTPUT_NOT_TERMINAL=TRUE'
+             exit 0
+          elif [[ "$raw" == *KernelWorkerStatus.RUNNING* ]]; then
+             echo 'NTL0694_SCALE300_STATE=RUNNING;OUTPUT_NOT_TERMINAL=TRUE'
+             exit 0
+          elif [[ "$raw" == *KernelWorkerStatus.ERROR* || "$raw" == *KernelWorkerStatus.FAILED* ]]; then
+             echo 'NTL0694_SCALE300_STATE=ERROR;NO_NEW_GPU=TRUE'
+             exit 0
+          elif [[ "$raw" != *KernelWorkerStatus.COMPLETE* ]]; then
+             echo 'NTL0694_SCALE300_STATE=UNKNOWN;NO_NEW_GPU=TRUE'
+             exit 0
+          fi
+          python -m pip install -q --disable-pip-version-check pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl0694scale300
+          kaggle kernels output "$TARGET" -p /tmp/ntl0694scale300 -o > /tmp/ntl0694-scale300-output.log 2>&1
+          python - <<'PY'
+          import json,re,hashlib
+          from pathlib import Path
+          import pandas as pd
+          root=Path('/tmp/ntl0694scale300')
+          p=list(root.rglob('submission.parquet'))
+          if len(p)!=1:raise RuntimeError('submission_parquet_missing_or_ambiguous')
+          df=pd.read_parquet(p[0])
+          labels={'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra',
+                  'gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.7-flash',
+                  'gemini-3.8-flash','claude-fable-5','claude-opus-4-6',
+                  'claude-opus-4-8','claude-opus-5','claude-sonnet-5',
+                  'qwen3.8-max','glm-5.3','glm-5.3-flash','kimi-k3'}
+          if not (df.columns.tolist()==['id','model'] and len(df)==300
+                  and df.id.tolist()==[f'scale300_{i:04d}' for i in range(300)]
+                  and not df.isna().any().any() and set(df.model).issubset(labels)):
+              raise RuntimeError('scale300_output_shape_ids_or_labels_invalid')
+          reports=list(root.rglob('report.json'))
+          rep=json.loads(reports[0].read_text()) if len(reports)==1 else {}
+          status=rep.get('status','UNKNOWN')
+          count=rep.get('n_selected')
+          logs=list(root.rglob('*.log'))
+          signals=[]
+          for f in logs:
+              if f.stat().st_size>10_000_000: continue
+              content=f.read_text(encoding='utf-8',errors='replace')
+              if 'NO_NEW_TRAINING' in content and ('Traceback' in content or 'RuntimeError' in content):
+                  signals.append(f.name)
+          out={'rows':len(df),'unique_model_predictions':int(df.model.nunique()),
+               'gsq_report_status':status,'gsq_n_selected':count,
+               'gsq_full_path_activated':status=='selected' and isinstance(count,int) and count>=50,
+               'stage_logs':len(logs),'no_train_guard_errors':not bool(signals),
+               'parquet_sha256':hashlib.sha256(p[0].read_bytes()).hexdigest(),
+               'BA_measured':False,'new_competition_submission':False}
+          print('NTL0694_SCALE300_GSQ_REAL_RESULT='+json.dumps(out,sort_keys=True),flush=True)
+          if signals:raise RuntimeError('guard_triggered')
+          if status!='selected' or not isinstance(count,int) or count<50:
+              raise RuntimeError('GSQ_FALLBACK_PERSISTS_AT_300_ROWS')
+          print('NTL0694_SCALE300_REAL_GSQ_TRAINING_FREE_PATH=PASS',flush=True)
+          PY
