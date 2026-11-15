@@ -178,3 +178,36 @@ WHAT RESULT WOULD CAUSE AN ARCHITECTURE-LEVEL PIVOT?:
 ```
 
 Do not reflexively continue the existing lineage. Do not reflexively redesign it either. Follow the strongest independent evidence available.
+
+
+## 11. Competition-Grandmaster research operating loop (2026-11-15)
+
+**Purpose:** learn the transferable *decision process* demonstrated by strong cross-domain Kaggle competitors, including Yuanzhe Zhou. This is our own operational synthesis, **not** a claim that the competitor published this exact protocol. The goal is **official 18-class hidden balanced accuracy**; our authenticated best remains **0.683** until a later official score is verified.
+
+**Research beats ritual:** an artifact, green CI, status poll, time-budget proof, or compliant submission is engineering feasibility, **not** a better attribution system. Do not spend the main research budget adding gates, auditing the same source, or copying another Notebook merely because it has a higher score in its title.
+
+**For each research cycle, follow this sequence:**
+1. **Model the problem:** state the competition metric and data-generating process; list the dominant observed confusions, data-lineage uncertainty, source/prompt shifts, and why the incumbent fails. Label observations FACT / HYPOTHESIS / UNKNOWN. Inspect original solutions and strong alternatives **for a mechanism**, not for a template.
+2. **Competing hypotheses:** maintain at least two *materially different* explanations (e.g., generator-specific conditional token likelihood vs source/channel/length artifacts vs correlated ensemble failures). Name the cheapest **observable prediction that differs** between them. Distinguish source effect from generator identity.
+3. **Value of information:** prioritize experiments by expected ability to change a submission decision or underlying research belief, not number of scripts/runs. Prefer one cheap discriminating test to several restatements of an already-known negative. Keep no-training as a **current candidate-specific constraint**, not a permanent ban on future method classes.
+4. **One controlled change and honest evidence:** freeze candidate/control/labels/source and evaluation protocol first. Analyze same-row rescue/regression, per-class recalls and source slices; a 12/18-label diagnostic cannot certify 18-way BA, and repeatedly seen corpora are not fresh holdouts. Unused evidence must remain untouched until the mechanism is frozen. No adaptive Public LB parameter search.
+5. **Promotion decision:** pass feasibility separately from quality. A candidate only earns an official submission budget when it has a testable generalization argument and sufficient disjoint evidence, or a clearly labeled, tightly bounded one-shot research bet. A leaderboard score is an outcome, not a mechanism explanation. Record cost, time, regressions, alternative explanations and confidence.
+6. **Stop or pivot:** if 2–3 *independent* informative experiments contradict a mechanism, retire that hypothesis or broaden the representation/model/objective search; do not hide a failure behind another cosmetic phase, blend coefficient, or guard. Conversely, **do not** permanently prohibit a model class because a tiny or spent dataset was negative.
+
+**Minimum evidence table for an executable new idea:**
+
+| Field | Required entry |
+| --- | --- |
+| Scoring target | Official 18-class BA; comparison to 0.683 |
+| Observed bottleneck | Concrete error cohort(s), source, support and lineage |
+| Hypotheses A vs B | Competing mechanisms and a different expected observation |
+| Intervention | ONE main scientific change; strong frozen control |
+| Independent evidence | Source/prompt-group disjointness, coverage and prefit exposure |
+| Discriminating test | Same-row prediction/rescue/regression + source/class stratification |
+| Cost / stop rule | GPU time, runtime budget and failure criterion declared before run |
+| Decision | Promote / revise / retire with what is still unknown |
+
+**Immediate lane (not automatic promotion):** compare *mechanisms* behind sibling-model confusions and source/prompt shift on verified evidence, not a fourth no-label Lightning throughput test. The frozen Lightning0694 scale test is useful for runtime **only**. The verified WeMM fold0 84-row experiment is **3 rescue / 7 regression on spent 12-label sources** and does not justify blending or condemn every alternative representation. First seek or certify a fresh full-18 and source-aware benchmark, or another observable diagnostic that can separate representation ceiling from source artifacts without touching a final blind set.
+
+When updating \`NOW.md\`, write a single short **research decision** before operational status; log an independent negative once instead of duplicating it across runs.
+
