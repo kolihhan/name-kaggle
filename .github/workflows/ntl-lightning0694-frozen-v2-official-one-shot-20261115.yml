@@ -1,0 +1,123 @@
+name: NTL Lightning0694 fixed prefit V2 one official score bet 20261115
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-lightning0694-frozen-v2-official-one-shot-20261115.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-lightning-0694-frozen-v2-official-20261115-single-shot
+  cancel-in-progress: false
+jobs:
+  official_one:
+    if: "${{ github.event.head_commit.message == 'GO_NTL_LIGHTNING0694_FROZEN_V2_OFFICIAL_ONCE_20261115' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify source provenance, prior REAL GPU full-path, official quota and no duplicate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/test.csv && test ! -e data/sample_submission.parquet
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-0694-official-source /tmp/ntl-0694-known-1200
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference \
+            -p /tmp/ntl-0694-official-source -m >/tmp/ntl-0694-source-pull.log 2>&1
+          kaggle kernels output kolihhan/ntl-lightning0694-scale1200-nov15 \
+            -p /tmp/ntl-0694-known-1200 -o >/tmp/ntl-0694-1200-pull.log 2>&1
+          python - <<'PY'
+          import csv,hashlib,json
+          from pathlib import Path
+          import pandas as pd
+          source=Path('/tmp/ntl-0694-official-source')
+          meta=json.loads((source/'kernel-metadata.json').read_text())
+          assert meta['id']=='kolihhan/lightning-0-694-authentic-no-fit-inference'
+          assert meta['competition_sources']==['name-that-llm']
+          assert meta['is_private'] and meta['enable_gpu'] and not meta['enable_internet']
+          assert tuple(len(meta[k]) for k in ('dataset_sources','model_sources','kernel_sources'))==(23,6,9)
+          notebooks=list(source.glob('*.ipynb'))
+          assert len(notebooks)==1
+          nb=json.loads(notebooks[0].read_text(encoding='utf-8'))
+          cells=[c for c in nb['cells'] if c.get('cell_type')=='code']
+          assert len(cells)==50
+          contents='\\n'.join(''.join(c['source']) if isinstance(c['source'],list) else c['source'] for c in cells)
+          sha=hashlib.sha256(contents.encode()).hexdigest()
+          assert sha=='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c','UNEXPECTED_SOURCE_DRIFT'
+          for marker in ('preview = False  # always genuine model inference',
+               'NO_NEW_TRAINING: Gaussian fit blocked','NO_NEW_TRAINING: Atlas training blocked'):
+              assert contents.count(marker)==1, 'NO_FIT_GUARD_DRIFT'
+          assert 'gauss.fit(' not in contents
+          files=list(Path('/tmp/ntl-0694-known-1200').rglob('submission.parquet'))
+          assert len(files)==1
+          assert hashlib.sha256(files[0].read_bytes()).hexdigest()=='926dffc6ab0909f63767e8fcec7ca9488f7d1dc7c49656b0eaa8cf50064e0826'
+          pred=pd.read_parquet(files[0])
+          assert len(pred)==1200 and pred.columns.tolist()==['id','model'] and pred.model.nunique()==18
+          reports=list(Path('/tmp/ntl-0694-known-1200').rglob('report.json'))
+          assert len(reports)==1
+          rep=json.loads(reports[0].read_text())
+          assert rep.get('status')=='applied' and rep.get('n_selected')==240
+          print('NTL0694_OFFICIAL_ONE_SHOT_FROZEN_SOURCE_SHA='+sha,flush=True)
+          print('NTL0694_OFFICIAL_ONE_SHOT_REAL_1200_GSQ_VERIFIED=TRUE',flush=True)
+          PY
+          python - <<'PY'
+          import csv,io,json,subprocess
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          limit=api.competition_get_submission_limits('name-that-llm')
+          summary={'num_allowed_now':limit.num_allowed_now,
+                   'limited_by_total':limit.limited_by_total}
+          print('NTL0694_OFFICIAL_LIMITS='+json.dumps(summary,sort_keys=True),flush=True)
+          if int(limit.num_allowed_now)<1:raise SystemExit('STOP_OFFICIAL_QUOTA_FULL')
+          proc=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],
+              capture_output=True,text=True,check=True,timeout=95)
+          records=list(csv.DictReader(io.StringIO(proc.stdout.lstrip('\\ufeff'))))
+          if not records or not any(str(r.get('ref'))=='58295802' for r in records):
+              raise SystemExit('STOP_CANNOT_VERIFY_PREEXISTING_CHAMPION')
+          marker='Lightning0694 pinned V2 no-fit research bet 20261115'
+          if any(marker in str(r.get('description') or '') for r in records):
+              raise SystemExit('STOP_ALREADY_SUBMITTED_EXACT_CANDIDATE')
+          active=[r for r in records if str(r.get('status') or '').upper().split('.')[-1]
+                  in ('PENDING','QUEUED','RUNNING','SCORING','EVALUATING')]
+          if active:
+              print('NTL0694_EXISTING_ACTIVE_SUBMISSION_REFS='+json.dumps(
+                  [r.get('ref') for r in active],sort_keys=True),flush=True)
+              raise SystemExit('STOP_EXISTING_COMPETITION_SUBMISSION_ACTIVE')
+          print('NTL0694_OFFICIAL_QUOTA_AND_IDEMPOTENCY=PASS',flush=True)
+          PY
+      - name: Submit frozen V2 Kaggle CODE once (official rerun not GitHub GPU)
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          kaggle competitions submit name-that-llm \
+            -k kolihhan/lightning-0-694-authentic-no-fit-inference \
+            -v 2 -f submission.parquet \
+            -m "Lightning0694 pinned V2 no-fit research bet 20261115" \
+            >/tmp/ntl-0694-official-submit.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+              echo "NTL0694_OFFICIAL_SUBMISSION_REJECTED_EXIT=$code"
+              # Avoid printing user data, token or raw Kaggle response.
+              exit 1
+          fi
+          python - <<'PY'
+          import csv,io,subprocess
+          proc=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],
+              text=True,capture_output=True,check=True,timeout=95)
+          rows=list(csv.DictReader(io.StringIO(proc.stdout.lstrip('\\ufeff'))))
+          marker='Lightning0694 pinned V2 no-fit research bet 20261115'
+          matches=[r for r in rows if str(r.get('description') or '')==marker]
+          if len(matches)!=1:raise SystemExit('STOP_MISSING_OR_DUPLICATE_OFFICIAL_REF')
+          r=matches[0]
+          print('NTL0694_NEW_OFFICIAL_SUBMISSION_REF='+str(r.get('ref')),flush=True)
+          print('NTL0694_NEW_OFFICIAL_SUBMISSION_STATUS='+str(r.get('status')),flush=True)
+          print('NTL0694_NEW_OFFICIAL_PUBLIC_SCORE='+str(r.get('publicScore')),flush=True)
+          print('NTL0694_SUBMISSION_SOURCE_FROZEN_V2=TRUE;NEW_TRAINING=FALSE;LEADERBOARD_BET_NOT_GENERALIZATION_PROOF=TRUE',flush=True)
+          PY
