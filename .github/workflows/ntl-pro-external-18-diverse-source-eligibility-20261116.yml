@@ -1,0 +1,93 @@
+name: NTL PRO source-diverse 18-class feasibility after real 0.412 niche-domain result
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-external-18-diverse-source-eligibility-20261116.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify source-quality classes and diverse domains, no prediction or fitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-diverse-external
+          kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+             -f external_cell_metadata.parquet -p /tmp/ntl-diverse-external --unzip -o -q \
+             >/tmp/ntl-diverse-download.log 2>&1
+          python - <<'PY'
+          import hashlib,json
+          import pandas as pd
+          from pathlib import Path
+          from collections import Counter
+          file=Path('/tmp/ntl-diverse-external/external_cell_metadata.parquet')
+          if hashlib.sha256(file.read_bytes()).hexdigest()!='397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079':
+              raise SystemExit('STOP_CORPUS_PROVENANCE_SHA_DRIFT')
+          raw=pd.read_parquet(file)
+          short=raw.loc[raw['view'].eq('short')].copy()
+          if len(short)!=24025:raise SystemExit('STOP_SHORT_SOURCE_CELL_COUNT_CHANGED')
+          models=['claude-fable-5','claude-opus-4-6','claude-opus-4-8',
+              'claude-opus-5','claude-sonnet-5','gemini-3.1-pro-preview',
+              'gemini-3.6-flash','gemini-3.7-flash','gemini-3.8-flash',
+              'glm-5.3','glm-5.3-flash','gpt-5.5','gpt-5.6-luna',
+              'gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra','kimi-k3','qwen3.8-max']
+          if set(short.model)!=set(models):raise SystemExit('STOP_18_TARGET_MODELS_CHANGED')
+          def cat(v):
+              text=str(v) if pd.notna(v) else ''
+              return text.split('/')[0] if text else '[unknown]'
+          short['domain_root']=short['domain'].map(cat)
+          eligible=(short['short_answer_candidate'].eq(True) &
+             short['mechanically_eligible'].eq(True) &
+             short['text_only_suitable'].eq(True) &
+             ~short['text_shared_across_labels'].eq(True) &
+             ~short['license_unknown'].eq(True))
+          strong=short['model_evidence_class'].isin((
+             'request_and_returned_model','raw_api_response_model',
+             'row_request_response_model_id','platform_response_model_label',
+             'row_request_returned_model_source_reported'))
+          nonsensitive=~short['domain_root'].eq('sensitive_topics')
+          no_output_review=~short['output_terms_review'].eq(True)
+          cohorts={
+           'known_license_strong_model_id_all_domains':eligible&strong,
+           'known_license_strong_model_id_non_sensitive':eligible&strong&nonsensitive,
+           'known_license_any_evidence_non_sensitive':eligible&nonsensitive,
+           'known_license_any_evidence_non_sensitive_no_output_review':eligible&nonsensitive&no_output_review,
+           'known_license_strong_model_id_no_output_review':eligible&strong&no_output_review,
+          }
+          out={}
+          for title,mask in cohorts.items():
+              x=short.loc[mask]
+              m={lab:int(x.model.eq(lab).sum()) for lab in models}
+              domain_count=x.domain_root.value_counts()
+              out[title]={
+                  'total_responses':int(len(x)),
+                  'min_class_count':min(m.values()),
+                  'classes_ge_12':int(sum(n>=12 for n in m.values())),
+                  'classes_with_zero':sorted([lab for lab,n in m.items() if n==0]),
+                  'per_model':m,
+                  'top8_domains':{str(k):int(v) for k,v in domain_count.head(8).items()},
+                  'distinct_domain_roots':int(x.domain_root.nunique()),
+                  'n_distinct_source_prompt_groups':int(x.prompt_group_id.nunique()),
+                  'model_id_evidence_by_type':{str(k):int(v) for k,v in
+                      x.model_evidence_class.value_counts().head(10).items()},
+              }
+          root_counts=short.domain_root.value_counts()
+          print('NTL_PRO_EXTERNAL_18_CLASS_SOURCE_DIVERSITY_FEASIBILITY='+json.dumps({
+              'source':'olegzholobov/name-that-llm-response-corpus',
+              'source_short_cells':int(len(short)),
+              'raw_domain_roots':{str(k):int(v) for k,v in root_counts.head(15).items()},
+              'cohorts':out,
+              'new_model_inference':False,
+              'training_or_submission':False,
+              'prior_216_sensitive_topics_seen_now_spent':True,
+              'no_new_18class_accuracy_claim':True,
+          },sort_keys=True),flush=True)
+          PY
