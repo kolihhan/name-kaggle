@@ -31,7 +31,7 @@ jobs:
           assert hashlib.sha256(p.read_bytes()).hexdigest()=='397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079'
           df=pd.read_parquet(p)
           strong=df['model_evidence_class'].eq('request_and_returned_model')
-          mask=(df['view'].eq('all')&df['domain'].fillna('').astype(str).str.strip().eq('prose') &
+          mask=(df['view'].eq('all')&df['domain'].fillna('').astype(str).str.strip().str.split('/').str[0].eq('prose') &
             strong & df['prompt_exact'].eq(True) &
             df['mechanically_eligible'].eq(True) & df['text_only_suitable'].eq(True) &
             ~df['license_unknown'].eq(True) & ~df['text_shared_across_labels'].eq(True) &
