@@ -1,0 +1,47 @@
+name: NTL PRO Oleg 18-model source identity provenance schema read only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg-18-model-source-metadata-20261116.yml]
+permissions: {contents: read}
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect actual current Kaggle dataset version, file sizes and label provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,re
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi()
+          api.authenticate()
+          slug='olegzholobov/name-that-llm-response-corpus'
+          ds=api.dataset_view(slug)
+          listed=api.dataset_list_files(slug)
+          items=getattr(listed,'files',None)
+          if items is None:raise SystemExit('STOP_NO_DATASET_FILE_METADATA')
+          out=[]
+          for f in items:
+              out.append({'name':str(getattr(f,'name',''))[:130],
+                'size':getattr(f,'total_bytes',None) or getattr(f,'totalBytes',None),
+                'type':str(getattr(f,'type',''))[:70]})
+          report={'source':slug,'version':getattr(ds,'current_version_number',None)
+                   or getattr(ds,'currentVersionNumber',None),
+               'slug':getattr(ds,'ref',None),'license':str(getattr(ds,'license_name',None) 
+                   or getattr(ds,'licenseName',None))[:90],
+               'total_files':len(out),'files':out[:75]}
+          if len(out)>75:raise SystemExit('STOP_TOO_MANY_SOURCE_FILES')
+          print('NTL_PRO_18MODEL_OLeg_SOURCE_VERSION_AND_FILE_LIST='+
+                json.dumps(report,sort_keys=True,default=str),flush=True)
+          print('NTL_PRO_SOURCE_METADATA_IS_NOT_INDEPENDENT_18LABEL_VALIDATION=TRUE',flush=True)
+          print('NTL_PRO_NEW_TRAINING_FALSE;GPU_FALSE;SUBMIT_FALSE',flush=True)
+          PY
