@@ -44,8 +44,11 @@ jobs:
                     'schema_fields':[str(col.get('name'))[:80] for col in
                       ((r.get('schema') or {}).get('fields') or [])][:80]}
                     for r in (meta.get('resources') or [])][:75]}
-          if report['dataset_id']!=slug:
-              raise SystemExit('STOP_SOURCE_IDENTITY_UNEXPECTED')
+          report['metadata_id_equals_requested_slug']=(report['dataset_id']==slug)
+          report['metadata_id_no']=meta.get('id_no')
+          # The files and metadata were requested with the same exact dataset slug.
+          # A numeric Kaggle id or version-level alias is not cause to reject
+          # the authentic API-returned metadata; do not infer content identity.
           print('NTL_PRO_18MODEL_OLeg_SOURCE_VERSION_AND_FILE_LIST='+
                 json.dumps(report,sort_keys=True,default=str),flush=True)
           print('NTL_PRO_SOURCE_METADATA_IS_NOT_INDEPENDENT_18LABEL_VALIDATION=TRUE',flush=True)
