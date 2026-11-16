@@ -1,0 +1,72 @@
+name: NTL PRO Oleg source 18-label manifest provenance admission audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg-18-manifest-provenance-20261116.yml]
+permissions: {contents: read}
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect Oleg current original metadata, no corpus passages or training
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-pro-oleg-source-meta
+          for file in README.txt data_dictionary.json manifest.json validation.json source_catalog.csv; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus                -f "$file" -p /tmp/ntl-pro-oleg-source-meta --unzip -o -q                >/tmp/ntl-pro-oleg-download.txt 2>&1 || {
+               echo "NTL_PRO_STOP_OLeg_METADATA_DOWNLOAD_FAILED=$file";exit 1;
+               }
+          done
+          python - <<'PY'
+          import csv,hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/ntl-pro-oleg-source-meta')
+          files=['README.txt','data_dictionary.json','manifest.json',
+                 'validation.json','source_catalog.csv']
+          for name in files:
+              p=root/name
+              if not p.is_file() or p.stat().st_size>200_000:
+                  raise SystemExit('STOP_METADATA_FILE_ABSENT_OR_TOO_LARGE:'+name)
+          manifest=json.loads((root/'manifest.json').read_text())
+          validation=json.loads((root/'validation.json').read_text())
+          dictionary=json.loads((root/'data_dictionary.json').read_text())
+          with (root/'source_catalog.csv').open(newline='') as f:
+              cat=list(csv.DictReader(f))
+          # This dataset has explicit quarantine provenance: labels from a
+          # public source must not automatically be treated as served identities.
+          def summary(obj):
+              if isinstance(obj,dict):
+                  return {str(k):summary(v) for k,v in obj.items()
+                      if len(str(k))<=80}
+              if isinstance(obj,list):
+                  if len(obj)>45:return {'length':len(obj),'sample_keys_only':[
+                    list(v)[:12] for v in obj[:2] if isinstance(v,dict)]}
+                  return [summary(x) for x in obj]
+              if isinstance(obj,(int,float,bool)) or obj is None:
+                  return obj
+              if isinstance(obj,str):
+                  return obj[:180] if not any(k in obj.lower() for k in
+                    ('://','http','/home/','/kaggle/')) else '[URL_OR_PATH]'
+              return str(type(obj).__name__)
+          print('NTL_PRO_OLeg_AUTHOR_PROVENANCE_MANIFEST='+
+                json.dumps(summary(manifest),sort_keys=True,default=str)[:17000],flush=True)
+          print('NTL_PRO_OLeg_AUTHOR_VALIDATION_SUMMARY='+
+                json.dumps(summary(validation),sort_keys=True,default=str)[:12000],flush=True)
+          print('NTL_PRO_OLeg_AUTHOR_DICTIONARY_FIELDS='+
+                json.dumps(summary(dictionary),sort_keys=True,default=str)[:12000],flush=True)
+          print('NTL_PRO_OLeg_SOURCE_CATALOG_COUNTS='+json.dumps({
+            'rows':len(cat),'columns':list(cat[0]) if cat else [],
+            'files':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in [root/f for f in files]},
+          },sort_keys=True),flush=True)
+          print('NTL_PRO_AUTHOR_METADATA_NOT_CLEAN_HELDOUT_PROOF=TRUE',flush=True)
+          print('NTL_PRO_NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
