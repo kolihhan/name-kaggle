@@ -20,26 +20,32 @@ jobs:
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import json,re
-          from kaggle.api.kaggle_api_extended import KaggleApi
-          api=KaggleApi()
-          api.authenticate()
+          import csv,io,json,subprocess,tempfile
+          from pathlib import Path
           slug='olegzholobov/name-that-llm-response-corpus'
-          ds=api.dataset_view(slug)
-          listed=api.dataset_list_files(slug)
-          items=getattr(listed,'files',None)
-          if items is None:raise SystemExit('STOP_NO_DATASET_FILE_METADATA')
-          out=[]
-          for f in items:
-              out.append({'name':str(getattr(f,'name',''))[:130],
-                'size':getattr(f,'total_bytes',None) or getattr(f,'totalBytes',None),
-                'type':str(getattr(f,'type',''))[:70]})
-          report={'source':slug,'version':getattr(ds,'current_version_number',None)
-                   or getattr(ds,'currentVersionNumber',None),
-               'slug':getattr(ds,'ref',None),'license':str(getattr(ds,'license_name',None) 
-                   or getattr(ds,'licenseName',None))[:90],
-               'total_files':len(out),'files':out[:75]}
-          if len(out)>75:raise SystemExit('STOP_TOO_MANY_SOURCE_FILES')
+          p=subprocess.run(['kaggle','datasets','files',slug,'-v','--page-size','200'],
+                 capture_output=True,text=True,timeout=90,check=True)
+          out=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\\ufeff'))))
+          if not out or len(out)>200:raise SystemExit('STOP_DATASET_FILE_LIST_AMBIGUOUS')
+          with tempfile.TemporaryDirectory() as tmp:
+              subprocess.run(['kaggle','datasets','metadata',slug,'-p',tmp],
+                 capture_output=True,text=True,timeout=90,check=True)
+              files=list(Path(tmp).glob('dataset-metadata.json'))
+              if len(files)!=1:raise SystemExit('STOP_DATASET_METADATA_NOT_FOUND')
+              meta=json.loads(files[0].read_text())
+          report={'source':slug,'dataset_id':meta.get('id'),
+                  'title':str(meta.get('title') or '')[:100],
+                  'licenses':meta.get('licenses'),
+                  'metadata_resource_count':len(meta.get('resources') or []),
+                  'version_file_count':len(out),
+                  'files':out[:75],
+                  'resource_columns':[
+                   {'name':str(r.get('path'))[:130],
+                    'schema_fields':[str(col.get('name'))[:80] for col in
+                      ((r.get('schema') or {}).get('fields') or [])][:80]}
+                    for r in (meta.get('resources') or [])][:75]}
+          if report['dataset_id']!=slug:
+              raise SystemExit('STOP_SOURCE_IDENTITY_UNEXPECTED')
           print('NTL_PRO_18MODEL_OLeg_SOURCE_VERSION_AND_FILE_LIST='+
                 json.dumps(report,sort_keys=True,default=str),flush=True)
           print('NTL_PRO_SOURCE_METADATA_IS_NOT_INDEPENDENT_18LABEL_VALIDATION=TRUE',flush=True)
