@@ -1,0 +1,71 @@
+name: NTL PRO new public 0.700-titled copy vs frozen champion changed-cell and method test
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-700-prompt-group-readout-delta-20261116.yml]
+permissions: {contents: read}
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Static public Kaggle notebook comparison; do not execute models
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,hashlib,re,tempfile,subprocess,difflib
+          from pathlib import Path
+          refs=[
+           'kolihhan/lightning-0-694-authentic-no-fit-inference',
+           'lbjyang/ntl-700-v3-share40-cover20-instrumented']
+          content=[]
+          with tempfile.TemporaryDirectory() as tmp:
+            for i,ref in enumerate(refs):
+              folder=Path(tmp)/str(i);folder.mkdir()
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(folder),'-m'],
+                  capture_output=True,text=True,timeout=160)
+              if p.returncode:raise SystemExit('STOP_PUBLIC_NOTEBOOK_SOURCE_UNAVAILABLE')
+              meta=json.loads((folder/'kernel-metadata.json').read_text())
+              book=json.loads((folder/meta['code_file']).read_text())
+              code=[''.join(c.get('source',[]))
+                    for c in book['cells'] if c.get('cell_type')=='code']
+              content.append((meta,code))
+          base,other=content
+          b=base[1];o=other[1]
+          if len(b)!=len(o) or len(b)!=50:raise SystemExit('STOP_DIFFERENT_BASE_NOTEBOOK_GEOMETRY')
+          changes=[]
+          for i,(s,t) in enumerate(zip(b,o)):
+              if s==t:continue
+              x=list(difflib.unified_diff(s.splitlines(),t.splitlines(),n=0))
+              additions=[l[1:].strip() for l in x if l.startswith('+') and not l.startswith('+++')]
+              deletions=[l[1:].strip() for l in x if l.startswith('-') and not l.startswith('---')]
+              numeric_rx=r'(?<![\w.])(?:0?[.][0-9]+|[1-9][0-9]*)(?![\w.])'
+              # Print changed scalar values, not raw scripts or passages
+              added_numbers=sum((re.findall(numeric_rx,l) for l in additions),[])
+              removed_numbers=sum((re.findall(numeric_rx,l) for l in deletions),[])
+              added_words=sum((re.findall(
+                 r'\b(?:prompt|cluster|share|cover|sibling|family|weight|centering|sinkhorn|balanced|prior|GEMMA|GLM|TS|GSQ)\b',
+                 l,re.I) for l in additions),[])
+              changes.append({'cell':i,'n_added_lines':len(additions),
+                              'n_deleted_lines':len(deletions),
+                              'added_numeric_literals':added_numbers[:45],
+                              'removed_numeric_literals':removed_numbers[:45],
+                              'changed_method_keywords':sorted(set(x.lower() for x in added_words)),
+                              'new_cell_sha':hashlib.sha256(t.encode()).hexdigest()})
+          meta_a,meta_b=base[0],other[0]
+          same={k:meta_a.get(k)==meta_b.get(k) for k in
+                   ('dataset_sources','model_sources','kernel_sources')}
+          print('NTL_PRO_PUBLIC_0700_TITLED_METHOD_DIFF='+json.dumps({
+             'candidate':refs[1],'not_a_verified_own_score':True,
+             'same_input_assets':same,
+             'changed_cells':changes,'count_changed_cells':len(changes),
+             'not_an_independent_model_comparison':True,
+             'no_training_gpu_official_submission':True,
+          },sort_keys=True),flush=True)
+          PY
