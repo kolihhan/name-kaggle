@@ -1,0 +1,62 @@
+name: NTL PRO prose 10-model paired-prompt feasibility with frozen Oleg domain stress cohort
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-prose10-matched-prompt-coverage-20261116.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Calculate prompt-paired availability of source-certified prose model outputs, no passage copying
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-prose10-prompts
+          kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+              -f external_cell_metadata.parquet -p /tmp/ntl-prose10-prompts --unzip -o -q \
+              >/tmp/ntl-prose10-download.log 2>&1
+          python - <<'PY'
+          import hashlib,json
+          import pandas as pd
+          from pathlib import Path
+          p=Path('/tmp/ntl-prose10-prompts/external_cell_metadata.parquet')
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079'
+          df=pd.read_parquet(p)
+          strong=df['model_evidence_class'].eq('request_and_returned_model')
+          mask=(df['view'].eq('all')&df['domain'].fillna('').astype(str).str.strip().eq('prose') &
+            strong & df['prompt_exact'].eq(True) &
+            df['mechanically_eligible'].eq(True) & df['text_only_suitable'].eq(True) &
+            ~df['license_unknown'].eq(True) & ~df['text_shared_across_labels'].eq(True) &
+            ~df['possible_truncation'].eq(True) & df['word_count'].between(40,250))
+          x=df.loc[mask]
+          labels=sorted([m for m,n in x.model.value_counts().items() if n>=12])
+          assert len(labels)==10
+          groups=x.groupby('prompt_group_id').model.nunique()
+          full_10=groups.eq(10)
+          by_model={m:int(x.loc[x.model.eq(m),'prompt_group_id'].nunique()) for m in labels}
+          both=[]
+          for gid,g in x.groupby('prompt_group_id'):
+              k=len(set(g.model)&set(labels))
+              if k>=5:both.append(k)
+          print('NTL_PRO_REAL_10CLASS_PROSE_PROMPT_MATCHABILITY='+json.dumps({
+            'qualifying_models':labels,
+            'total_qualified_cells':len(x),
+            'unique_prompt_groups':int(x.prompt_group_id.nunique()),
+            'shared_prompt_groups_all_ten':int(full_10.sum()),
+            'shared_prompt_groups_at_least_five':len(both),
+            'largest_group_models':int(groups.max()),
+            'model_prompt_counts':by_model,
+            'possible_10x12_with_unique_prompt_across_all_classes':x.prompt_group_id.nunique()>=120,
+            'source_pairing_not_guaranteed_by_metadata':True,
+            'existing_sensitive_18class_216_is_spent':True,
+            'no_training_or_gpu':True,
+          },sort_keys=True),flush=True)
+          PY
