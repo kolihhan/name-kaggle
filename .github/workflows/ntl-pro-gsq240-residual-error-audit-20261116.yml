@@ -98,6 +98,42 @@ jobs:
               }
               result[name]['_idx']=indices
           overlap=len(result['flash_scores.npz']['_idx'] & result['glm53_scores.npz']['_idx'])
+          if overlap!=240:raise RuntimeError('SPECIALIST_SELECTION_MISMATCH')
+          selected=result['flash_scores.npz']['_idx']
+          def family(label):
+              for prefix,name in [('gpt-','openai'),('gemini-','google'),
+                                  ('claude-','anthropic'),('qwen','qwen'),
+                                  ('glm-','glm'),('kimi-','kimi')]:
+                  if str(label).startswith(prefix):return name
+              raise ValueError('UNKNOWN_OFFICIAL_MODEL_FAMILY')
+          pred=df.model.astype(str).tolist()
+          true=truth.model.astype(str).tolist()
+          fam_a={}
+          confusions={}
+          for cohort,ids in (('selected',sorted(selected)),
+                             ('unselected',sorted(set(range(1200))-selected))):
+              wrong=[i for i in ids if bool(errors.iloc[i])]
+              siblings=sum(family(pred[i])==family(true[i]) for i in wrong)
+              cross=len(wrong)-siblings
+              by_true={}
+              for i in wrong:
+                  group=family(true[i])
+                  by_true[group]=by_true.get(group,0)+1
+                  key=true[i]+' => '+pred[i]
+                  confusions[key]=confusions.get(key,0)+1
+              fam_a[cohort]={
+                'wrong':len(wrong),'same_provider_family':siblings,
+                'cross_provider_family':cross,
+                'true_family_error_counts':dict(sorted(by_true.items())),
+              }
+          print('NTL_PRO_FROZEN_ERROR_MECHANISM_FAMILY_TEST='+json.dumps({
+             'cohorts':fam_a,
+             'classification':'post-inference residual confusion only',
+             'falsifier':'If most selected errors are cross-family, sibling-only correction cannot recover them',
+             'top3_overall_confusion_pairs':sorted(
+                 confusions.items(),key=lambda x:(-x[1],x[0]))[:3],
+             'no_fitting':True,'not_independent':True,
+          },sort_keys=True),flush=True)
           for key in result:result[key].pop('_idx')
           print('NTL_PRO_ACTUAL_0_691_GSQ_SELECTED_RESIDUAL_ERROR_AUDIT='+json.dumps({
             'source':'FROZEN_COMPLETED_1200_HISTORIC_OFFICIAL_TRAIN',
