@@ -1,0 +1,50 @@
+name: NTL PRO external18 benchmark checkpoint input-source collision census
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-upstream-overlap-audit-20261116.yml]
+permissions: {contents: read}
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read exact frozen own champion external dataset mounts and external corpus source catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-source-v2 /tmp/ntl-catalog-oleg
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference              -m -p /tmp/ntl-source-v2 >/tmp/ntl-private-v2-pull.txt 2>&1
+          kaggle datasets download olegzholobov/name-that-llm-response-corpus              -f source_catalog.csv -p /tmp/ntl-catalog-oleg --unzip -o -q              >/tmp/ntl-catalog-oleg-download.txt 2>&1
+          python - <<'PY'
+          import csv,hashlib,json,re
+          from pathlib import Path
+          own=json.loads(Path('/tmp/ntl-source-v2/kernel-metadata.json').read_text())
+          rows=list(csv.DictReader(Path('/tmp/ntl-catalog-oleg/source_catalog.csv').open()))
+          if len(rows)!=31:raise SystemExit('STOP_OLeg_CATALOG_COUNT_CHANGED')
+          if hashlib.sha256(Path('/tmp/ntl-catalog-oleg/source_catalog.csv').read_bytes()).hexdigest()!='c1033245fa80f8c0ca01104c8aeb2a76be0b823aec111f0c77d04345faec53d3':
+              raise SystemExit('STOP_CATALOG_SHA_DRIFT')
+          mounts=own.get('dataset_sources') or []
+          if len(mounts)!=23:raise SystemExit('STOP_CHAMPION_MOUNT_LIST_CHANGED')
+          sources=[r.get('source','') for r in rows]
+          common=sorted(set(mounts)&set(sources))
+          # Only literal overlap is tested, not whether a fitted checkpoint was
+          # exposed to older mirrored copies or overlapping responses.
+          print('NTL_PRO_FROZEN0691_EXTERNAL_CORPUS_DIRECT_SOURCE_COLLISIONS='+json.dumps({
+              'scored_winner_dataset_mounts':len(mounts),
+              'external_corpus_upstream_sources':len(sources),
+              'direct_same_slug_intersection':len(common),
+              'collision_slugs':common,
+              'external_dataset_is_direct_winner_mount':(
+                 'olegzholobov/name-that-llm-response-corpus' in mounts),
+              'no_upstream_fit_overlap_proven':False,
+              'private_gpu_started_elsewhere_not_touched':True,
+              'new_training':False,
+          },sort_keys=True),flush=True)
+          PY
