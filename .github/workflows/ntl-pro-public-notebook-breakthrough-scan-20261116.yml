@@ -1,0 +1,51 @@
+name: NTL PRO live public notebook candidate discovery no leaderboard fitting
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-public-notebook-breakthrough-scan-20261116.yml]
+permissions: {contents: read}
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read public competition notebook registry for new prefit generalization candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,csv,io,json,re
+          pages=[]
+          for p in (1,2,3):
+              x=subprocess.run(['kaggle','kernels','list',
+                '--competition','name-that-llm','--sort-by','hotness',
+                '--page',str(p),'--page-size','100','--csv'],
+                capture_output=True,text=True,timeout=90)
+              if x.returncode!=0:
+                print('NTL_PRO_KAGGLE_PUBLIC_CODE_DISCOVERY_FAILED='+json.dumps({
+                    'page':p,'error_type':'kaggle kernels list nonzero',
+                    'stderr_last_140':x.stderr[-140:]}),flush=True)
+                raise SystemExit(1)
+              rows=list(csv.DictReader(io.StringIO(x.stdout.lstrip('\ufeff'))))
+              if p==1 and not rows:
+                raise SystemExit('STOP_NO_PUBLIC_COMPETITION_NOTEBOOK_ROWS')
+              pages+=rows
+          if len(pages)>300:raise SystemExit('STOP_UNEXPECTED_PUBLIC_NOTEBOOK_DISCOVERY_SIZE')
+          print('NTL_PRO_KAGGLE_PUBLIC_NOTEBOOK_COLS='+json.dumps(
+            list(pages[0]),sort_keys=True),flush=True)
+          print('NTL_PRO_KAGGLE_PUBLIC_NOTEBOOK_DISCOVERY='+json.dumps({
+             'n_results':len(pages),
+             'top40_public_code':[{
+               k:str(row.get(k,''))[:140]
+               for k in list(row)[:10]} for row in pages[:40]],
+             'no_new_training':True,'no_gpu':True,
+             'no_competition_submission':True,
+             'scores_are_public_not_verified_own':True
+          },sort_keys=True),flush=True)
+          PY
