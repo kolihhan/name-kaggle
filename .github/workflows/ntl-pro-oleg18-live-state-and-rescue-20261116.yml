@@ -1,0 +1,104 @@
+name: NTL PRO exact existing Oleg18 private kernel status and score rescue read only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-live-state-and-rescue-20261116.yml]
+permissions: {contents: read}
+jobs:
+  check_exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Authenticated terminal state of ONE preexisting Kaggle Kernel, no GPU launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import subprocess
+          ref='kolihhan/ntl-oleg18-frozen0691-probe-nov16'
+          p=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=90)
+          raw=(p.stdout+'\n'+p.stderr)
+          states=('COMPLETE','ERROR','FAILED','QUEUED','RUNNING','CANCEL_ACKNOWLEDGED')
+          present=[s for s in states if 'KernelWorkerStatus.'+s in raw]
+          if len(present)!=1:raise SystemExit('STOP_UNRECOGNIZED_EXACT_KERNEL_STATUS')
+          state=present[0]
+          print('NTL_OLeg18_ONE_EXISTING_PRIVATE_KERNEL_STATE='+state,flush=True)
+          print('NTL_OLeg18_NO_TRAINING_NO_NEW_GPU_NO_SUBMISSION=TRUE',flush=True)
+          open('/tmp/ntl_oleg18_state','w').write(state)
+          PY
+      - name: Recover verified actual 18-class BA only if original kernel COMPLETE
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(cat /tmp/ntl_oleg18_state)"
+          if [ "$state" != "COMPLETE" ]; then
+            echo "NTL_OLeg18_TRUE_EXTERNAL_BA_NOT_YET_AVAILABLE=TRUE"
+            exit 0
+          fi
+          mkdir -p /tmp/ntl_oleg18_rescue /tmp/ntl_oleg18_truth
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 \
+            -p /tmp/ntl_oleg18_rescue -o >/tmp/ntl_oleg18_rescue_download.log 2>&1
+          for file in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+               -f "$file" -p /tmp/ntl_oleg18_truth --unzip -o -q \
+               >/tmp/ntl_oleg18_truth_download.log 2>&1
+          done
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          import pandas as pd
+          from scripts.ntl_oleg18_frozen_selector_20261116 import (
+             NTL_OLEG18_MODELS,NTL_OLEG18_SHA,ntl_oleg18_select)
+          truthroot=Path('/tmp/ntl_oleg18_truth')
+          for file,sha in NTL_OLEG18_SHA.items():
+            if hashlib.sha256((truthroot/file).read_bytes()).hexdigest()!=sha:
+              raise SystemExit('STOP_18CLASS_SOURCE_HASH_DRIFT_'+file)
+          truth=ntl_oleg18_select(pd.read_parquet(truthroot/'external_short_wide.parquet'),
+                                  pd.read_parquet(truthroot/'external_cell_metadata.parquet'))
+          if len(truth)!=216 or truth.model.value_counts().ne(12).any() or truth.prompt_group_id.nunique()!=216:
+              raise SystemExit('STOP_18CLASS_SELECTOR_DRIFT')
+          if hashlib.sha256('|'.join(truth.id.astype(str)).encode()).hexdigest()!='48c5237a92349bb168df08f88241b6d3b3e416f63444fdf87b60d422da4cdf44':
+              raise SystemExit('STOP_18CLASS_LOCKED_INPUT_ID_DRIFT')
+          ps=list(Path('/tmp/ntl_oleg18_rescue').rglob('submission.parquet'))
+          if len(ps)!=1:raise SystemExit('STOP_18CLASS_MISSING_PREDICTION_PARQUET')
+          p=pd.read_parquet(ps[0])
+          if (p.columns.tolist()!=['id','model'] or len(p)!=216
+              or p.id.duplicated().any() or set(p.id)!=set(truth.id)
+              or not set(p.model).issubset(set(NTL_OLEG18_MODELS))):
+              raise SystemExit('STOP_18CLASS_WRONG_OUTPUT_ID_OR_CLASSES')
+          joined=truth[['id','model']].merge(p,on='id',
+                               suffixes=('_truth','_pred'),validate='one_to_one')
+          if joined.model_pred.isna().any() or len(joined)!=216:
+              raise SystemExit('STOP_18CLASS_INVALID_JOIN')
+          by_true={label:{
+             'total':12,
+             'correct':int(((joined.model_truth==label)&(joined.model_pred==label)).sum())
+             } for label in NTL_OLEG18_MODELS}
+          correct=sum(x['correct'] for x in by_true.values())
+          def family(x):
+             for k,v in (('claude-','anthropic'),('gemini-','google'),('glm-','glm'),
+                         ('gpt-','openai'),('kimi-','kimi'),('qwen','qwen')):
+               if str(x).startswith(k):return v
+             return 'unknown'
+          wrong=joined[joined.model_truth!=joined.model_pred]
+          cross=int(sum(family(a)!=family(b)
+             for a,b in zip(wrong.model_truth,wrong.model_pred)))
+          print('NTL_OLeg18_REAL_0691_CHAMPION_EXTERNAL_18CLASS_OUTCOME='+json.dumps({
+             'model':'frozen-own-official-0.691-Lightning-V2',
+             'sample_count':216,'n_classes':18,'n_per_class':12,
+             'correct':correct,'balanced_accuracy':round(correct/216,8),
+             'cross_family_errors':cross,'within_family_errors':len(wrong)-cross,
+             'classwise':by_true,'sampled_prompt_groups_all_distinct':True,
+             'independent_weight_prefit_exposure_known':False,
+             'new_official_submission':False,'training':False,'new_gpu':False,
+             'source':'Oleg external curated public corpus',
+          },sort_keys=True),flush=True)
+          PY
