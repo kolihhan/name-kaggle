@@ -1,3 +1,11 @@
+## PRO 2026-11-16 — actual new PUBLIC Apex/GLM architecture differential; NOT verified own >0.691
+
+- [Authenticated 300 current Kaggle public code results #43809843346](https://github.com/kolihhan/name-kaggle/actions/runs/43809843346) and [source/asset/module comparisons #43810053266, #43810418154](https://github.com/kolihhan/name-kaggle/actions/runs/43810418154) checked OZERTUU *Residual Sibling Gating Apex*, Sanpier *0.693 Real GLM Likelihood* and lbjyang's *700* copy. **Title numbers do not establish own Kaggle scored results**. OZERTUU/Sanpier lineage has 26 dataset and 9 model resources vs own 23 and 6, and 0 common exact module hashes; not a one-variable GLM ablation. [Exact 50-cell fork comparison #43810671569](https://github.com/kolihhan/name-kaggle/actions/runs/43810671569) shows lbjyang title-700 changed 7 cells, including share `0.36→0.40`, cover weight `0.20` and model mounts; not single-mechanism evidence.
+- A new independent paid-API [Maniceet source](https://www.kaggle.com/maniceet/name-that-llm-openrouter-openai-generations) claims 7,753 rows but only 10 classes; its authenticated Kaggle dataset fetch returned **access denied** ([#43810239396](https://github.com/kolihhan/name-kaggle/actions/runs/43810239396)), so no actual new class-validating cohort or model accuracy exists. [Full research stop/pivot report](artifacts/research/2026-11-16-pro-public-alternative-architecture-evidence.md).
+- **DECISION:** no new training, GPU, arbitrary title-driven model promotion, or public LB parameter search. Frozen own official score remains **0.691** #58375806; Oleg 216-row 0.412 was a spent single-topic stress test. Need truly independent, source-certified 18-label paired evidence OR a distinct frozen prefit candidate with cost and validity gates before an authorized one-shot official run.
+
+---
+
 ## PRO 2026-11-16 — no weak 10-class GPU overfitting; source-controlled prose dataset too narrow
 
 - [Authenticated source-certified prose cohort #43806583149](https://github.com/kolihhan/name-kaggle/actions/runs/43806583149): **427** real verified 40–250-word prose cells, **only 10/18** model labels have ≥12 qualifying examples. Strong served-model identity + known licence, no observed truncation; NOT a valid all-18 independent source.
