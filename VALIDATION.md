@@ -25,4 +25,20 @@ H0: an architecturally different method does not improve 18-class BA versus froz
 4. **Provisional promotion test (must be frozen before any new run):** candidate's clustered paired 95% CI lower bound >0, no catastrophic class regression, legitimate provenance, and budget compliance; otherwise status **INSUFFICIENT EVIDENCE**, not global rejection. Holdout not recycled to optimize.
 5. Before any official submission write both (local grouped CV or `N/A + reason`, confirmed-source transfer BA with CI, Public LB result) and why candidate selected. Selection rules by independent transfer robustness vs complementary error coverage; never by best observed Public.
 
+## 2026-11-16 — prospective sensitivity check (CPU arithmetic; NOT an experiment result)
+**Hypothesis audited:** proposed `30 independent examples per label` (= 540 total across 18 labels) is sufficient to **detect a tiny +0.009 BA gain** of the kind separating 0.691 from 0.700. **Result: not sufficient under ordinary paired-variance assumptions**.
+
+For balanced equal-class paired binary correctness differences `D in {-1,0,1}`, hypothetical discordance rate `q=P(D!=0)`, target true paired BA gain `delta=0.009`, one two-sided alpha 0.05 and nominal 80% power, approximate optimistic normal-theory independent-response count:
+`N ≈ (z_.975+z_.80)^2 * (q-delta^2)/delta^2` (z sum ≈ 2.8016). No data was sampled and q is **assumed**, not measured on a fresh holdout.
+
+| Assumed paired discordance q | Nominal independent observations N | Per class (18 equal classes) | Detectable delta with N=540 (nominal) |
+| ---: | ---: | ---: | ---: |
+| 0.10 | 9,683 | 538 | ~0.038 |
+| 0.20 | 19,373 | 1,077 | ~0.054 |
+| 0.30 | 29,063 | 1,615 | ~0.066 |
+
+**IMPORTANT:** Reused prompts, provider/source groups and class imbalances make effective N lower; cluster-aware uncertainty and pilot discordance may require **more** than table values. This is a sensitivity illustration, *not a verified requirement to collect 20,000 rows or a power guarantee*. The 540-row proposed floor may detect **larger** interventions, but it cannot be used to certify a marginal +0.009 as statistically robust. Do not re-split the 2,699 known training rows, and do not use Public LB to estimate q or tune the sample size post hoc.
+
+**Decision:** keep the minimum 540 as an *exploratory floor, not advancement evidence*, and prioritize clearly orthogonal candidates expected to produce an effect above plausible detectable delta. For any proposed promotion, size the new source before model evaluation from a fresh blinded pilot, paired disagreements and group correlation; freeze n/CI/decision before scoring.
+
 No new experiment run, GPU inference, or official submission created by this file.
