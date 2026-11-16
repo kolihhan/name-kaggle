@@ -42,17 +42,17 @@ jobs:
           ids=set(wide.id.astype(str).tolist())
           sub=cm.loc[cm.id.astype(str).isin(ids)].copy()
           print('NTL_PRO_OLeg18_ALL_MATCHING_METADATA_VIEW_COUNTS='+json.dumps(
-             sub.view.value_counts(dropna=False).astype(int).to_dict(),
+             sub['view'].value_counts(dropna=False).astype(int).to_dict(),
              sort_keys=True),flush=True)
           print('NTL_PRO_OLeg18_ACTUAL_MODEL_EVIDENCE_CLASSES='+json.dumps(
              sub.model_evidence_class.value_counts(dropna=False).astype(int).to_dict(),
              sort_keys=True),flush=True)
           # Match only the 'short' view of these exact wide-row ids.
-          unique_views=list(sub.view.dropna().unique())
+          unique_views=list(sub['view'].dropna().unique())
           if len(unique_views)!=1:
               raise SystemExit('STOP_SHORT_VIEW_ID_MATCH_AMBIGUOUS')
           view=unique_views[0]
-          sub=sub.loc[sub.view==view]
+          sub=sub.loc[sub['view']==view]
           if sub.duplicated(['id','model']).any():
               raise SystemExit('STOP_DUPLICATE_SOURCE_MODEL_CELL')
           if not set(sub.model.unique()).issubset(set(model_cols)):
