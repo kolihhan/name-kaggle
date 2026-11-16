@@ -1,3 +1,10 @@
+## 2026-11-16 PRO external source overlap audit: zero identical dataset slugs, not zero content leakage
+
+- [Authenticated read-only Action #43786295997](https://github.com/kolihhan/name-kaggle/actions/runs/43786295997): frozen 0.691 champion has **23** dataset mounts; Oleg external response corpus advertises **31** upstream source slugs; **exact slug intersection 0**, and Oleg corpus is not directly mounted by the champion. **This does NOT prove zero overlapping responses or pretrained checkpoint exposure** across mirrored datasets.
+- One genuine private GPU 216-row 18-class external transfer [#43786017843](https://github.com/kolihhan/name-kaggle/actions/runs/43786017843) is still in progress at the last authenticated check. Frozen original 37 modules; no-fit, no competition submission. **No external balanced accuracy or new hidden score claimed.**
+
+---
+
 ## PRO 2026-11-16 — 0.691 champion genuine 18-class transfer test LIVE, source/prompt distinct
 
 - **SCIENTIFIC DECISION**: Do not tune label-specific heuristics against the 1,200 historic official training rows. Own official NTL Public best remains **0.691** (#58375806). Selected GSQ difficulty set 240/1,200 contained 33/51 residual errors, of which 27 were **cross-family**, not just sibling confusion; hypothesis now representation/serving identity vs source/channel format.
