@@ -1,3 +1,10 @@
+## PRO 2026-11-16 — new CC BY 4.0 Kaggle proxy source fails full 18-label scope; NO inference
+
+- [One-source prospective audit](artifacts/research/2026-11-16-kaggle-proxy-source-eligibility.md) checked [zakirkhanaleemi's free Kaggle Benchmarks Model Proxy dataset](https://www.kaggle.com/datasets/zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations). Its data card describes **GPT/Gemini only** (at most **9/18** exact competition labels), despite explicit CC BY 4.0, public CSV/README and useful exact request/prompt metadata. Actual served IDs, per-label rows, source/prefit overlap and independent prompt n unverified. So it **cannot** supply a complete independent 18-class validation. One audited source, **n=0 scored**, CI N/A, GPU=0, Kaggle submissions=0.
+- **DECISION:** source **NOT ADMITTED for 18-way confirmation**, no model elimination. Previous frozen **0.691** #58375806 unchanged. **NEXT:** seek full missing-provider served-ID coverage (Anthropic, Qwen, ZAI, Kimi) with prompt/source independence, not repeatedly score partial-model corpora.
+
+---
+
 ## PRO 2026-11-16 — new third-party 18-label corpus audit: NOT ADMITTED, zero model scoring
 
 - [Static source admission audit](artifacts/research/2026-11-16-pro-source-zayd8890-metadata-admission.md) checked one different public 18-alias collector, [zayd8890/Name_That_LLM](https://github.com/zayd8890/Name_That_LLM/tree/Name_That_LLM): 18 code-defined labels but **0 verifiably eligible actual rows** because public references are DVC pointers without public remote/row census, OpenRouter collection does not preserve actual served model ID, explicit reuse license not found, and prompt/source/prefit separation remains unverified. **0 verified ≠ 0 existing**. Paired model sample **n=0**, accuracy interval N/A.
