@@ -1,0 +1,86 @@
+name: NTL PRO Oleg external all-view 18-class non-sensitive eligibility without GPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-external-all-view-18class-readiness-20261116.yml]
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Confirm full long-answer source eligibility for 18 target classes before GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-pro-fullview
+          kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+             -f external_cell_metadata.parquet -p /tmp/ntl-pro-fullview --unzip -o -q \
+             >/tmp/ntl-pro-fullview-download.log 2>&1
+          python - <<'PY'
+          import hashlib,json
+          import pandas as pd
+          from pathlib import Path
+          p=Path('/tmp/ntl-pro-fullview/external_cell_metadata.parquet')
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079'
+          df=pd.read_parquet(p)
+          names=['claude-fable-5','claude-opus-4-6','claude-opus-4-8',
+              'claude-opus-5','claude-sonnet-5','gemini-3.1-pro-preview',
+              'gemini-3.6-flash','gemini-3.7-flash','gemini-3.8-flash',
+              'glm-5.3','glm-5.3-flash','gpt-5.5','gpt-5.6-luna',
+              'gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra','kimi-k3','qwen3.8-max']
+          views={}
+          for view in ('all','short'):
+              z=df.loc[df['view'].eq(view)].copy()
+              if z.empty:raise SystemExit('STOP_UNEXPECTED_ABSENT_VIEW_'+view)
+              domain=z['domain'].fillna('').astype(str).str.strip().str.split('/').str[0]
+              basic=(z['mechanically_eligible'].eq(True)
+                  & z['text_only_suitable'].eq(True)
+                  & ~z['text_shared_across_labels'].eq(True)
+                  & ~z['license_unknown'].eq(True))
+              if view=='short':
+                  basic &= z['short_answer_candidate'].eq(True)
+              genuine=z['model_evidence_class'].isin((
+                  'request_and_returned_model','raw_api_response_model',
+                  'row_request_response_model_id','platform_response_model_label',
+                  'row_request_returned_model_source_reported'))
+              nonsensitive=domain.ne('sensitive_topics')
+              cuts={
+                 'strong_non_sensitive':basic&genuine&nonsensitive,
+                 'all_evidence_non_sensitive':basic&nonsensitive,
+                 'strong_non_sensitive_no_output_review':basic&genuine&nonsensitive&~z['output_terms_review'].eq(True),
+                 'any_non_sensitive_no_output_review':basic&nonsensitive&~z['output_terms_review'].eq(True),
+                 'strong_all_domains':basic&genuine,
+              }
+              row={'raw_cells':len(z),'gates':{}}
+              for title,mask in cuts.items():
+                  q=z.loc[mask]
+                  count=q['model'].value_counts()
+                  prompts=q.groupby('model')['prompt_group_id'].nunique()
+                  per={m:int(count.get(m,0)) for m in names}
+                  pg={m:int(prompts.get(m,0)) for m in names}
+                  row['gates'][title]={
+                     'n':int(len(q)),
+                     'classes_12_distinct_prompts':sum(pg[m]>=12 for m in names),
+                     'classes_12_cells':sum(per[m]>=12 for m in names),
+                     'models_with_zero':sorted(m for m in names if per[m]==0),
+                     'min_model_count':min(per.values()),
+                     'per_model':per,
+                     'distinct_domain_roots':int(domain.loc[mask].nunique()),
+                     'top6_domains':{str(k):int(v) for k,v in
+                           domain.loc[mask].value_counts().head(6).items()},
+                  }
+              views[view]=row
+          print('NTL_PRO_ALL_VS_SHORT_18_MODEL_SOURCE_DIVERSE_READINESS='+json.dumps({
+              'cohort':'Oleg external response metadata, hash validated',
+              'views':views,'no_model_inference':True,'no_training':True,
+              'no_official_submission':True,
+              'source_provenance_still_required':True,
+          },sort_keys=True),flush=True)
+          PY
