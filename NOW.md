@@ -1,3 +1,9 @@
+## PRO 2026-11-16 — 5th-round decision audit done; n-threshold interpretations corrected
+
+- [Full cross-project small-n audit](artifacts/research/2026-11-16-round5-small-n-decision-audit.md) reopens *general* conclusions extrapolated from 3–4 issue Gemma pilots, Oleg 12 per label, Kimi one-condition 80 pairs, and 12/18-label LoRA tests. Exact tested variants that failed preregistered gates remain not promoted; **no whole research class banned**. Distinguish old configuration stop from general method-science elimination. No new score/GPU/training/submission.
+
+---
+
 ## PRO 2026-11-16 — Validation power gate: 540 samples cannot resolve +0.009 reliably
 
 - [Prospective analytic sensitivity](VALIDATION.md): for paired correctness discordance 0.10/0.20/0.30, a nominal 80%-power two-sided 0.05 test for +0.009 difference requires around **9,683 / 19,373 / 29,063** independent paired responses under optimistic equal-class/iid assumptions. At 540 responses, nominal detectable delta is ~0.038–0.066, not +0.009; source/prompt clustering worsens it. **These are assumptions, NOT observed model disagreement or a verified sample-size minimum.** No GPU, training or submission run.
