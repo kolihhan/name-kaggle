@@ -1,3 +1,12 @@
+## 2026-11-16 — ACTUAL new CPU falsifier: blind prompt grouping fails k=5 full-group gate, but high-precision partial pairs emerge
+
+- [Action #43884199474](https://github.com/kolihhan/name-kaggle/actions/runs/43884199474) **actual completed experimental measurement**, 2699 previously spent official train rows, 150 prompt IDs, same static TF-IDF 1–2 gram + average-linkage cosine clustering at frozen 0.90 cutoff, no supervised fitting or GPU.
+- Three **preselected deterministic draws**, 5 responses per prompt (750 rows): ARI **0.646–0.665**, same-prompt pair recall **0.479–0.501**, pair precision **0.993–1.000**. Predeclared gate ARI≥0.90 and recall≥0.85 in 2/3 draws **FAIL**. Do NOT presume trustworthy complete hidden prompt groups for test-time relative features.
+- **Distinct actionable insight:** over-segmentation rather than false merges dominates. Among *predicted* same-prompt pairs, correctness was ≥99.3% on this spent population. This suggests a separate untested selective high-precision **partial-pair** route, *not* permission to tune on the same rows; source and hidden transfer unproven.
+- **No model BA computed, no official Kaggle submission, Public best 0.691 unchanged.** [Frozen code](scripts/ntl_pro_blind_group_size_falsifier_20261116.py).
+
+---
+
 ## 2026-11-16 evening — score-first dual-project check: NTL NO new improvement
 
 - Re-fetched current Kaggle research branch, rules and latest authentic GitHub Actions ledger; latest NTL run remains [#43810671569](https://github.com/kolihhan/name-kaggle/actions/runs/43810671569) (source comparison only), not a new evaluated submission. Authenticated official best remains **Public BA 0.691**, #58375806. **This round new model scores n=0; improvement unmeasured, not a claimed +0.000 trial**.
