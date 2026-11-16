@@ -1,0 +1,80 @@
+name: NTL PRO frozen 0.691 original pipeline 18-class external blind pilot CPU preflight
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-frozen0691-cpu-20261116.yml]
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Validate source selector correctness and no labels to input on synthetic 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_oleg18_frozen_selector_20261116.py scripts/ntl_oleg18_frozen_champion_pilot_20261116.py
+          python -m pip install -q --disable-pip-version-check pandas==2.3.3 pyarrow==22.0.0 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import pandas as pd
+          from scripts.ntl_oleg18_frozen_selector_20261116 import NTL_OLEG18_MODELS, ntl_oleg18_select
+          wide=[]
+          cells=[]
+          for i,label in enumerate(NTL_OLEG18_MODELS):
+              for j in range(15):
+                  uid=f'fake{i:02d}_{j:02d}'
+                  text=f'This is a synthetic example for evaluation of a deterministic selection method. ' * 7
+                  row={'id':uid,'prompt':'synthetic'}
+                  row.update({m:None for m in NTL_OLEG18_MODELS})
+                  row[label]=text+uid
+                  wide.append(row)
+                  cells.append({'view':'short','id':uid,'model':label,
+                   'prompt_group_id':uid,'short_answer_candidate':True,
+                   'mechanically_eligible':True,'text_only_suitable':True,
+                   'text_shared_across_labels':False,'license_unknown':False,
+                   'model_evidence_class':'request_and_returned_model'})
+          a=ntl_oleg18_select(pd.DataFrame(wide),pd.DataFrame(cells))
+          b=ntl_oleg18_select(pd.DataFrame(wide),pd.DataFrame(cells))
+          assert len(a)==216 and a.equals(b)
+          assert a.model.value_counts().eq(12).all()
+          assert a.prompt_group_id.nunique()==216
+          assert a.id.nunique()==216 and all(v.startswith('e18_') for v in a.id)
+          assert list(a[['id','text']])==['id','text']
+          print('NTL_PRO_BLIND_EXTERNAL_18CLASS_SELECTOR_DETERMINISTIC_SYNTHETIC_PASS=TRUE',flush=True)
+          PY
+      - name: Pull EXISTING exact scored champion notebook source without GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/ntl-pro-oleg18-source
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference              -p /tmp/ntl-pro-oleg18-source -m >/tmp/ntl-pro-oleg18-pull.log 2>&1
+          python -m scripts.ntl_oleg18_frozen_champion_pilot_20261116             --source /tmp/ntl-pro-oleg18-source             --out /tmp/ntl-pro-oleg18-new
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/ntl-pro-oleg18-new')
+          meta=json.loads((root/'kernel-metadata.json').read_text())
+          if (meta['id']!='kolihhan/ntl-oleg18-frozen0691-probe-nov16' or
+              len(meta['dataset_sources'])!=24 or
+              meta['dataset_sources'].count('olegzholobov/name-that-llm-response-corpus')!=1):
+              raise ValueError('external_18_pilot_metadata_invalid')
+          nb=json.loads((root/meta['code_file']).read_text())
+          cs=[''.join(c['source']) for c in nb['cells'] if c.get('cell_type')=='code']
+          assert len(cs)==50
+          assert sum('NTL_OLeg18_FROZEN_18_CLASS_BLIND_INPUT_ONLY' in v for v in cs)==1
+          assert sum('NO_NEW_TRAINING: Gaussian fit blocked' in v for v in cs)==1
+          assert sum('NO_NEW_TRAINING: Atlas training blocked' in v for v in cs)==1
+          assert sum('preview = False  # always genuine model inference' in v for v in cs)==1
+          assert 'NTL0694_SCALE300_INPUT_TEXT_ONLY' not in '\n'.join(cs)
+          assert all(meta[k] is False for k in ('enable_internet','enable_tpu'))
+          assert meta['is_private'] and meta['enable_gpu']
+          print('NTL_PRO_FROZEN_0691_EXTERNAL_18_CLASS_CPU_BUILD_PASS=TRUE',flush=True)
+          print('NTL_PRO_EXTERNAL_18_REAL_INFERENCE=NOT_LAUNCHED;NO_TRAINING=TRUE;NO_SUBMISSION=TRUE',flush=True)
+          PY
