@@ -1,0 +1,114 @@
+name: NTL PRO residual-error targeting of frozen GSQ 240 experts (safe, no fit)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-gsq240-residual-error-audit-20261116.yml]
+permissions: {contents: read}
+jobs:
+  residual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Safely read actual 1200-row frozen predictions and selected expert IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.5 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-gsq-residual-kernel /tmp/ntl-gsq-residual-truth
+          kaggle kernels output kolihhan/ntl-lightning0694-scale1200-nov15 \
+            -p /tmp/ntl-gsq-residual-kernel -o >/tmp/ntl-gsq-residual-kernel-download.log 2>&1
+          kaggle competitions download -c name-that-llm -f train.csv \
+            -p /tmp/ntl-gsq-residual-truth -o >/tmp/ntl-gsq-residual-truth-download.log 2>&1
+          python - <<'PY'
+          import hashlib,io,json,pickletools,re,zipfile
+          from pathlib import Path
+          import pandas as pd
+          import numpy as np
+          from numpy.lib import format as fmt
+          root=Path('/tmp/ntl-gsq-residual-kernel')
+          preds=list(root.rglob('submission.parquet'))
+          assert len(preds)==1
+          assert hashlib.sha256(preds[0].read_bytes()).hexdigest()=='926dffc6ab0909f63767e8fcec7ca9488f7d1dc7c49656b0eaa8cf50064e0826'
+          df=pd.read_parquet(preds[0])
+          assert df.columns.tolist()==['id','model'] and len(df)==1200
+          assert df.id.astype(str).tolist()==['scale1200_%04d'%i for i in range(1200)]
+          train_root=Path('/tmp/ntl-gsq-residual-truth')
+          direct=list(train_root.rglob('train.csv'))
+          if not direct:
+              zips=list(train_root.rglob('*.zip'))
+              if len(zips)!=1:raise RuntimeError('OFFICIAL_TRAIN_SOURCE_MISSING_OR_AMBIGUOUS')
+              with zipfile.ZipFile(zips[0]) as z:
+                  files=[p for p in z.namelist() if p=='train.csv']
+                  if len(files)!=1:raise RuntimeError('OFFICIAL_TRAIN_ZIP_CONTENT_AMBIGUOUS')
+                  buf=z.read(files[0])
+          else:
+              if len(direct)!=1:raise RuntimeError('OFFICIAL_TRAIN_FILE_AMBIGUOUS')
+              buf=direct[0].read_bytes()
+          assert hashlib.sha256(buf).hexdigest()=='40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
+          truth=pd.read_csv(io.BytesIO(buf),usecols=['model'],dtype=str,nrows=1200)
+          assert len(truth)==1200 and truth.model.notna().all()
+          errors=(df.model.astype(str).reset_index(drop=True)!=truth.model.reset_index(drop=True))
+          assert int(errors.sum())==51,'HISTORIC_AUTHENTIC_1200_ERROR_COUNT_DRIFT'
+          expected={
+           'flash_scores.npz':'e0eafd51e12124807d7d3dacb463ee54e3e7ff61ec7736516085732dab6e510b',
+           'glm53_scores.npz':'6f0c041c089d5bf360a96dadef32d02f40f49a96bd018761352681abfa0297c3',
+          }
+          result={}
+          for name,sha in expected.items():
+              paths=list(root.rglob(name))
+              assert len(paths)==1
+              path=paths[0]
+              assert hashlib.sha256(path.read_bytes()).hexdigest()==sha
+              with zipfile.ZipFile(path) as z:
+                  info=z.getinfo('ids.npy')
+                  assert info.file_size<2_000_000
+                  with z.open(info) as f:
+                      version=fmt.read_magic(f)
+                      if version==(1,0):header=fmt.read_array_header_1_0
+                      elif version in ((2,0),(3,0)):header=fmt.read_array_header_2_0
+                      else:raise RuntimeError('UNKNOWN_NPY_VERSION')
+                      shape,_,dtype=header(f)
+                      assert shape==(240,) and dtype.hasobject
+                      raw=f.read()
+              # Parse opcode stream only. NEVER pickle.loads or numpy allow_pickle=True.
+              ids=[arg for op,arg,pos in pickletools.genops(raw)
+                   if isinstance(arg,str) and re.fullmatch(r'scale1200_[0-9]{4}',arg)]
+              if len(ids)!=240 or len(set(ids))!=240:
+                  raise RuntimeError('SAFE_EXPERT_IDS_NOT_IDENTIFIABLE_NO_ABLATION')
+              indices={int(x.rsplit('_',1)[1]) for x in ids}
+              assert all(i in range(1200) for i in indices)
+              selected_wrong=sum(bool(errors.iloc[i]) for i in indices)
+              other_wrong=51-selected_wrong
+              selected_error_rate=selected_wrong/240
+              other_error_rate=other_wrong/960
+              result[name]={
+               'n_selected':240,'selected_residual_errors':selected_wrong,
+               'unselected_residual_errors':other_wrong,
+               'selected_final_error_rate':round(selected_error_rate,5),
+               'unselected_final_error_rate':round(other_error_rate,5),
+               'residual_error_capture':round(selected_wrong/51,5),
+               'selected_vs_unselected_error_ratio':round(
+                    selected_error_rate/other_error_rate,5) if other_error_rate else None,
+               'ids_recovered_without_pickle_execution':True,
+              }
+              result[name]['_idx']=indices
+          overlap=len(result['flash_scores.npz']['_idx'] & result['glm53_scores.npz']['_idx'])
+          for key in result:result[key].pop('_idx')
+          print('NTL_PRO_ACTUAL_0_691_GSQ_SELECTED_RESIDUAL_ERROR_AUDIT='+json.dumps({
+            'source':'FROZEN_COMPLETED_1200_HISTORIC_OFFICIAL_TRAIN',
+            'model_champion_scored_public_BA':0.691,
+            'frozen_full_prediction_errors':51,
+            'total_items':1200,
+            'selected_overlap_count':overlap,
+            'experts':result,
+            'not_pre_gsq_ablation':True,
+            'not_clean_independent_transfer':True,
+            'not_causal_GSQ_benefit':True,
+            'new_gpu':False,'new_training':False,'new_submission':False,
+          },sort_keys=True),flush=True)
+          PY
