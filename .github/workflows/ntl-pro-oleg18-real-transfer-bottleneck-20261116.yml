@@ -59,7 +59,20 @@ jobs:
               pred,on='id',suffixes=('_true','_pred'),validate='one_to_one')
           joined['is_correct']=(joined.model_true==joined.model_pred)
           if int(joined.is_correct.sum())!=89:raise SystemExit('STOP_REAL_89_OVER_216_REFERENCE_DRIFT')
-          meta=cm.loc[cm['view'].eq('short') & cm['id'].isin(set(joined.id))]
+          # Frozen external selector deliberately anonymizes source row IDs:
+          # HMAC-like SHA256(salt | original row id | true label) => e18_...
+          # Recompute the exact SHA prefix, never join against original row ID.
+          from scripts.ntl_oleg18_frozen_selector_20261116 import NTL_OLEG18_SALT
+          meta=cm.loc[cm['view'].eq('short')].copy()
+          meta['anonymous_input_id']=[
+              'e18_'+hashlib.sha256(
+                 (NTL_OLEG18_SALT+'|'+str(i)+'|'+str(m)).encode()
+               ).hexdigest()[:20]
+               for i,m in zip(meta['id'],meta['model'])
+          ]
+          meta=meta.loc[meta['anonymous_input_id'].isin(set(joined.id))].copy()
+          if len(meta)!=216:raise SystemExit('STOP_MISSING_ANONYMIZED_SOURCE_IDS')
+          meta['id']=meta['anonymous_input_id']
           cols=['id','model','model_evidence_class','domain','word_count',
              'prompt_exact','possible_truncation','truncation_metadata_missing',
              'possible_reasoning_in_answer','output_terms_review','short_answer_candidate',
