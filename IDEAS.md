@@ -1,0 +1,12 @@
+# IDEAS — NTL (prioritized 2026-11-16)
+Do not start score-facing experiment until [RULES](RULES.md), [VALIDATION](VALIDATION.md) and frozen [EVALUATION_POLICY](EVALUATION_POLICY.md) pass. **Ideas are not evidence of improvements.** At least 2 of these 5 ideas are orthogonal to current pretrained ensemble recipe.
+
+| Rank | Hypothesis / concrete falsifier | Experiment and gate | Cost / risk | State |
+| --- | --- | --- | --- | --- |
+| 1 | Existing candidate corpora cannot yield a complete unused source/prompt-independent 18-label benchmark | Metadata+rights+served-ID and group overlap census; **zero GPU**; success only if all 18 certified and meaningful clusters across domains. No score until sealed | CPU low; label ambiguity high | PARTLY TESTED: Oleg fails coverage |
+| 2 | Current model errs because generation protocol/source shift dominates label fingerprints | **Orthogonal data acquisition**: host/legal-cost-cleared 18-model same-prompt, multiple-domain source; protocol parity and separation prechecked. Candidate not evaluated until untouched set exists | high provenance/generation cost, paid API blocked pending rules | UNTESTED |
+| 3 | Representation ceiling: new encoder likelihood/stylometry family gives truly complementary errors | **Orthogonal model/representation**; first reproduce legal public source, ablate one major component, frozen paired OOF plus independent transfer; compare rescue/regression, not title number | GPU medium/high, source exposure unknown | UNTESTED |
+| 4 | A simpler non-ensemble family might transfer better than bundled multi-model gates | **Orthogonal single-family** fixed architecture, grouped CV and independent source benchmark, no Public weight sweep | GPU medium; error correlation risk | UNTESTED |
+| 5 | Apparent lift is from routing/batch effects, not a new source identity signal | Frozen same-row batch repeat on already-spent TRAIN only as stability diagnostic, no candidate promotion | CPU/GPU low-medium, NOT independent | PARTLY TESTED: 6 flips in 300 |
+
+**ONE next action:** find and audit ONE genuinely new permitted 18-model served-ID source using *metadata/rights only*. Stop after evidence-gated admission; no arbitrary new data if source/identity cannot be independently certified.
