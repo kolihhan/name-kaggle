@@ -1,3 +1,10 @@
+## PRO 2026-11-16 — new third-party 18-label corpus audit: NOT ADMITTED, zero model scoring
+
+- [Static source admission audit](artifacts/research/2026-11-16-pro-source-zayd8890-metadata-admission.md) checked one different public 18-alias collector, [zayd8890/Name_That_LLM](https://github.com/zayd8890/Name_That_LLM/tree/Name_That_LLM): 18 code-defined labels but **0 verifiably eligible actual rows** because public references are DVC pointers without public remote/row census, OpenRouter collection does not preserve actual served model ID, explicit reuse license not found, and prompt/source/prefit separation remains unverified. **0 verified ≠ 0 existing**. Paired model sample **n=0**, accuracy interval N/A.
+- **DECISION:** SOURCE NOT ADMITTED / **INSUFFICIENT EVIDENCE** for independent 18-label validation; not a model-quality rejection. No GPU, training, paid API, Kaggle submission or duplicate run. Keep last authenticated Public NTL champion **0.691** #58375806. Next search only publicly accessible source data cards with served-ID, license, provenance; do not relax gate.
+
+---
+
 ## PRO 2026-11-16 — actual new PUBLIC Apex/GLM architecture differential; NOT verified own >0.691
 
 - [Authenticated 300 current Kaggle public code results #43809843346](https://github.com/kolihhan/name-kaggle/actions/runs/43809843346) and [source/asset/module comparisons #43810053266, #43810418154](https://github.com/kolihhan/name-kaggle/actions/runs/43810418154) checked OZERTUU *Residual Sibling Gating Apex*, Sanpier *0.693 Real GLM Likelihood* and lbjyang's *700* copy. **Title numbers do not establish own Kaggle scored results**. OZERTUU/Sanpier lineage has 26 dataset and 9 model resources vs own 23 and 6, and 0 common exact module hashes; not a one-variable GLM ablation. [Exact 50-cell fork comparison #43810671569](https://github.com/kolihhan/name-kaggle/actions/runs/43810671569) shows lbjyang title-700 changed 7 cells, including share `0.36→0.40`, cover weight `0.20` and model mounts; not single-mechanism evidence.
