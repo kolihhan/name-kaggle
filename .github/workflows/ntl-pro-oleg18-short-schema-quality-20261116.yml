@@ -1,0 +1,67 @@
+name: NTL PRO Oleg 18-class short-corpus truthful schema and quality eligibility
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-short-schema-quality-20261116.yml]
+permissions: {contents: read}
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read authentic short-text 18-class shape without exporting text or training
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pyarrow==22.0.0 pandas==2.3.3
+          mkdir -p /tmp/ntl-pro-oleg18-stage
+          for file in external_short_wide.parquet external_cell_metadata.parquet external_row_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus               -f "$file" -p /tmp/ntl-pro-oleg18-stage --unzip -o -q               >/tmp/ntl-pro-dataset-download.log 2>&1 || {
+                 echo "STOP_OLeg_18_SOURCE_FILE_UNAVAILABLE=$file"; exit 1;
+              }
+          done
+          python - <<'PY'
+          import hashlib,json
+          import pyarrow.parquet as pq
+          import pandas as pd
+          from pathlib import Path
+          root=Path('/tmp/ntl-pro-oleg18-stage')
+          sha={'external_short_wide.parquet':'15a67d022315b2508af8edd749a7c041d42cc37e266106028c73e405659c400f',
+               'external_cell_metadata.parquet':'397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079',
+               'external_row_metadata.parquet':'e2ee04939c33afecb9a5d8cbf25daca4e9bed9df354873c6ad054760cc6ce5d6'}
+          for name,expected in sha.items():
+              p=root/name
+              if hashlib.sha256(p.read_bytes()).hexdigest()!=expected:
+                  raise SystemExit('STOP_18_CLASS_SOURCE_HASH_DRIFT_'+name)
+              metadata=pq.ParquetFile(p)
+              schema=[{'name':f.name,'type':str(f.type)} for f in metadata.schema_arrow]
+              print('NTL_PRO_OLeg18_ACTUAL_SCHEMA='+json.dumps({
+                  'file':name,'rows':metadata.metadata.num_rows,
+                  'cols':schema,'sha256':expected
+                },sort_keys=True),flush=True)
+          wide=pq.read_table(root/'external_short_wide.parquet').to_pandas()
+          names=['claude-fable-5','claude-opus-4-6','claude-opus-4-8',
+                 'claude-opus-5','claude-sonnet-5','gemini-3.1-pro-preview',
+                 'gemini-3.6-flash','gemini-3.7-flash','gemini-3.8-flash',
+                 'glm-5.3','glm-5.3-flash','gpt-5.5','gpt-5.6-luna',
+                 'gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra','kimi-k3','qwen3.8-max']
+          if not all(x in wide.columns for x in names):
+              raise SystemExit('STOP_MISSING_ANY_TARGET_LABEL')
+          counts={c:int(wide[c].notna().sum()) for c in names}
+          print('NTL_PRO_OLeg18_ACTUAL_SHORT_MODEL_COUNTS='+json.dumps({
+             'n_labels_with_data':sum(c>0 for c in counts.values()),
+             'min_support':min(counts.values()),
+             'max_support':max(counts.values()),
+             'total_occupied_cells':sum(counts.values()),
+             'class_counts':counts,
+             'total_prompt_rows':len(wide),
+             'source_is_external_and_unverified':True,
+             'private_genuine_model_inference_run':False,
+             'already_seen_by_upstream_prefit_unknown':True,
+          },sort_keys=True),flush=True)
+          PY
