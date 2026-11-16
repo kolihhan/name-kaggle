@@ -1,3 +1,12 @@
+## PRO 2026-11-16 — no weak 10-class GPU overfitting; source-controlled prose dataset too narrow
+
+- [Authenticated source-certified prose cohort #43806583149](https://github.com/kolihhan/name-kaggle/actions/runs/43806583149): **427** real verified 40–250-word prose cells, **only 10/18** model labels have ≥12 qualifying examples. Strong served-model identity + known licence, no observed truncation; NOT a valid all-18 independent source.
+- [Exact shared prompt-group audit #43808061989](https://github.com/kolihhan/name-kaggle/actions/runs/43808061989): those 427 qualified cells cover only **75** distinct prompt groups, **4** groups share all 10 qualifying classes, and 50 groups contain ≥5 qualifying classes. 120 globally unique prompt groups for 10×12 not present. A full 10-class paired-topic sample would be only **4 prompts** → unreliable, very high-variance counterfactual. [Scientific stop report](artifacts/research/2026-11-16-pro-prose10-independent-control-feasibility.md).
+- **DECISION:** do **not** burn another GPU inference, tune the spent 216 stress-test items, relax served-identity evidence, or call a 10-class niche benchmark general 18-class BA. Keep frozen scored NTL champion **0.691**, #58375806; external sensitive-domain 216-row stress-test BA **0.412** remains **not matched to Kaggle hidden test**.
+- Next genuinely useful data experiment requires a new source with all 18 real served-ID labels, disjoint prompts/response lineages, sufficient independent domains and known rights; otherwise pivot to method/data strategy rather than pseudo-calibration.
+
+---
+
 ## 2026-11-16 12:38 MYT — REAL 216-row external 18-class BA 0.412; retire Oleg as general domain-balanced benchmark
 
 - **REAL FROZEN CHAMPION INFERENCE RESULT:** [authenticated exact existing private kernel read-only #43804320931](https://github.com/kolihhan/name-kaggle/actions/runs/43804320931) verified `kolihhan/ntl-oleg18-frozen0691-probe-nov16` COMPLETE and exact **89/216 = 0.41203704 18-class BA** on 216 external texts (12/model; distinct prompt groups), while our unchanged Kaggle Public champion is **0.691** (#58375806). This was real GPU inference, no new training or competition submission. **Not same distribution**, no direct scored drop estimate, and checkpoint prefit exposure remains UNKNOWN.
