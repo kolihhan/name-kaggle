@@ -1,0 +1,25 @@
+name: NTL PRO blind prompt grouping sparse-response falsifier
+on:
+  push:
+    branches:
+      - research/attribution-bottleneck-review-20261106
+    paths:
+      - .github/workflows/ntl-pro-blind-group-size-falsifier-20261116.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sparse-grouping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run frozen text-only grouping experiment (no GPU, no model fitting)
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy==2.2.6 pandas==2.2.3 scikit-learn==1.6.1 scipy==1.15.3
+          python -m py_compile scripts/ntl_pro_blind_group_size_falsifier_20261116.py
+          python -m scripts.ntl_pro_blind_group_size_falsifier_20261116
