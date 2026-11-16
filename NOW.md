@@ -1,3 +1,12 @@
+## 2026-11-16 23:22 MYT — REAL no-training frozen 0.691 champion prediction collision triage: high enrichment, FAILED PREDECLARED GATE
+
+- [Actual completed CPU experiment #43895516290](https://github.com/kolihhan/name-kaggle/actions/runs/43895516290) fetched SHA-pinned existing **1200 real frozen champion predictions** (the same already-run Lightning 1200, not new inference) and matched authentic first 1200 **historical/spent TRAIN** ground truth: **51 wrong**, 150 prompt IDs. [Frozen experiment code](scripts/ntl_pro_blind_collision_rescue_gate_20261116.py) used text-only TF-IDF cosine average-linkage 0.90 clusters; labels never entered clustering. It checked predicted-model **duplicates inside blind same-prompt clusters** as unsupervised error-alert flags.
+- **Actual measured blind**: 574 clusters, 11 collision clusters, **22 responses flagged**, **13/22 truly wrong** (59.09% error precision), **13/51 wrong captured** (25.49% recall), **18.32× error enrichment** vs unflagged. Error-review cost **1.69 responses per caught wrong**. **Oracle prompt-ID grouping (non-deployable reference)** flagged 38, caught 22/51 (43.14% recall), 23.2× enrichment.
+- **PREDECLARED gate FAIL:** required at least **15/51 captured mistakes**, >=3× enrichment and <=10 reviews/wrong. The frozen blind rule caught only **13/51**, hence **STOP exact rule as a score-facing candidate**, do NOT post-hoc relax threshold or tune grouping on these spent 1200. The high enrichment is **interesting but not evidence of classifier improvement**, source transfer or a model correction. No new training, GPU, Kaggle submission or BA score. Current own authenticated Public champion still **0.691** #58375806.
+- Next: prioritize a truly complementary new cross-source attribution mechanism over editing this frozen collision gate; missing full-18 independent test remains blocker.
+
+---
+
 ## 2026-11-16 — ACTUAL new CPU falsifier: blind prompt grouping fails k=5 full-group gate, but high-precision partial pairs emerge
 
 - [Action #43884199474](https://github.com/kolihhan/name-kaggle/actions/runs/43884199474) **actual completed experimental measurement**, 2699 previously spent official train rows, 150 prompt IDs, same static TF-IDF 1–2 gram + average-linkage cosine clustering at frozen 0.90 cutoff, no supervised fitting or GPU.
