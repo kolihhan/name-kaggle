@@ -1,0 +1,137 @@
+name: NTL PRO real 0.412 Oleg18 residual bottleneck dissection CPU only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-real-transfer-bottleneck-20261116.yml]
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read genuine 216 locked predictions and disaggregate source-quality failures, without fitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 numpy==2.3.5 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-pro-real-residual /tmp/ntl-pro-real-source
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 \
+            -p /tmp/ntl-pro-real-residual -o >/tmp/ntl-pro-real-kernel-download.log 2>&1
+          for file in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+              -f "$file" -p /tmp/ntl-pro-real-source --unzip -o -q \
+              >/tmp/ntl-pro-real-source-download.log 2>&1
+          done
+          python - <<'PY'
+          import hashlib,json,math,collections
+          import numpy as np
+          import pandas as pd
+          from pathlib import Path
+          from scripts.ntl_oleg18_frozen_selector_20261116 import (
+              NTL_OLEG18_MODELS,NTL_OLEG18_SHA,ntl_oleg18_select)
+          source=Path('/tmp/ntl-pro-real-source')
+          for file,digest in NTL_OLEG18_SHA.items():
+              if hashlib.sha256((source/file).read_bytes()).hexdigest()!=digest:
+                  raise SystemExit('STOP_SOURCE_SHA_CHANGED')
+          wide=pd.read_parquet(source/'external_short_wide.parquet')
+          cm=pd.read_parquet(source/'external_cell_metadata.parquet')
+          truth=ntl_oleg18_select(wide,cm)
+          if len(truth)!=216 or truth.model.value_counts().ne(12).any() or truth.prompt_group_id.nunique()!=216:
+              raise SystemExit('STOP_FROZEN_SELECTOR_DRIFT')
+          if hashlib.sha256('|'.join(truth.id.astype(str)).encode()).hexdigest()!='48c5237a92349bb168df08f88241b6d3b3e416f63444fdf87b60d422da4cdf44':
+              raise SystemExit('STOP_LOCKED_SAMPLE_CHANGED')
+          files=list(Path('/tmp/ntl-pro-real-residual').rglob('submission.parquet'))
+          if len(files)!=1:raise SystemExit('STOP_PREDICTIONS_UNAVAILABLE')
+          pred=pd.read_parquet(files[0])
+          if (pred.columns.tolist()!=['id','model'] or len(pred)!=216
+              or pred.id.duplicated().any() or set(pred.id)!=set(truth.id)):
+              raise SystemExit('STOP_MATCHED_PREDICTIONS_NOT_COMPLETE')
+          labels=NTL_OLEG18_MODELS
+          if not set(pred.model).issubset(set(labels)):raise SystemExit('STOP_PREDICTED_LABEL_INVALID')
+          joined=truth[['id','model','text']].merge(
+              pred,on='id',suffixes=('_true','_pred'),validate='one_to_one')
+          joined['is_correct']=(joined.model_true==joined.model_pred)
+          if int(joined.is_correct.sum())!=89:raise SystemExit('STOP_REAL_89_OVER_216_REFERENCE_DRIFT')
+          meta=cm.loc[cm['view'].eq('short') & cm['id'].isin(set(joined.id))]
+          cols=['id','model','model_evidence_class','domain','word_count',
+             'prompt_exact','possible_truncation','truncation_metadata_missing',
+             'possible_reasoning_in_answer','output_terms_review','short_answer_candidate',
+             'text_only_suitable','license_unknown']
+          if meta.duplicated(['id','model']).any():raise SystemExit('STOP_METADATA_CELL_DUPLICATE')
+          joined=joined.merge(meta[cols],left_on=['id','model_true'],
+                   right_on=['id','model'],validate='one_to_one',how='left')
+          if len(joined)!=216 or joined.model_evidence_class.isna().any():
+              raise SystemExit('STOP_REAL_216_METADATA_MISSING')
+          def family(x):
+              for prefix,fam in (('claude-','anthropic'),('gemini-','google'),
+                  ('glm-','glm'),('gpt-','openai'),('kimi-','kimi'),('qwen','qwen')):
+                  if str(x).startswith(prefix):return fam
+              raise ValueError('UNKNOWN_MODEL_FAMILY')
+          joined['true_family']=joined.model_true.map(family)
+          joined['pred_family']=joined.model_pred.map(family)
+          joined['cross_family_error']=(~joined.is_correct)&(joined.true_family!=joined.pred_family)
+          if int(joined.cross_family_error.sum())!=63:raise SystemExit('STOP_63_CROSS_FAMILY_REFERENCE_DRIFT')
+          joined['length_bucket']=pd.cut(joined.word_count.astype(float),
+               bins=[0,80,140,250,100000],labels=['40-80','81-140','141-250','251+'],
+               include_lowest=True)
+          def summarize(s):
+              n=len(s)
+              return {'n':n,'correct':int(s.is_correct.sum()),
+                'accuracy':round(float(s.is_correct.mean()),4) if n else None,
+                'cross_family_errors':int(s.cross_family_error.sum())}
+          cohorts={}
+          for field in ['model_evidence_class','true_family','length_bucket',
+                        'prompt_exact','possible_truncation','truncation_metadata_missing',
+                        'possible_reasoning_in_answer','output_terms_review']:
+              results={}
+              for v,sub in joined.groupby(field,dropna=False,observed=True):
+                  if len(sub)>=8:
+                      results[str(v)]=summarize(sub)
+              cohorts[field]=dict(sorted(results.items()))
+          domain_rows=joined.assign(domain=joined.domain.fillna('[none]').astype(str))
+          by_domain=[(str(v),summarize(g)) for v,g in domain_rows.groupby('domain')
+                     if len(g)>=8]
+          by_domain.sort(key=lambda x:(-x[1]['n'],x[0]))
+          counts=joined.model_pred.value_counts().reindex(labels,fill_value=0)
+          pred_counts={label:int(counts[label]) for label in labels}
+          confusion=joined[~joined.is_correct].groupby(
+              ['model_true','model_pred']).size().reset_index(name='count')
+          confusion=confusion.sort_values(['count','model_true','model_pred'],
+                  ascending=[False,True,True])
+          top10=[{'true':str(r.model_true),'predicted':str(r.model_pred),
+                   'count':int(r.count)} for r in confusion.head(10).itertuples(index=False)]
+          per_true={label:int(joined.loc[joined.model_true.eq(label),'is_correct'].sum())
+              for label in labels}
+          # Stratified bootstrap quantifies sampling noise only; it does NOT
+          # fix checkpoint prefit exposure or external dataset label quality.
+          rng=np.random.default_rng(20261116)
+          arr=np.asarray([[int(x) for x in
+               joined.loc[joined.model_true.eq(label),'is_correct']] for label in labels])
+          if arr.shape!=(18,12):raise SystemExit('STOP_BOOTSTRAP_CLASS_DENOMINATOR')
+          index=rng.integers(0,12,size=(4000,18,12))
+          draws=np.take_along_axis(arr[None,:,:],index,axis=2).mean(axis=(1,2))
+          interval=[round(float(v),4) for v in np.quantile(draws,[0.025,0.975])]
+          print('NTL_PRO_REAL_OLeg18_BOTTLENECK_216='+json.dumps({
+            'frozen_model_public_kaggle_BA':0.691,
+            'actual_external_BA':round(89/216,8),'n':216,
+            'stratified_bootstrap_interval_95pct':interval,
+            'correct':89,'errors':127,'cross_family_errors':63,
+            'within_family_errors':64,
+            'per_true_correct_out_of_12':per_true,
+            'predicted_class_frequencies':pred_counts,
+            'top10_confusion':top10,
+            'quality_and_source_subgroups_min_n_8':cohorts,
+            'domains_min_n_8':dict(by_domain[:14]),
+            'not_an_independent_hidden_competition_score':True,
+            'checkpoint_prefit_exposure_unknown':True,
+            'one_pilot_no_model_selection_or_threshold_training':True,
+            'no_new_gpu_or_official_submission':True,
+          },sort_keys=True,default=str),flush=True)
+          PY
