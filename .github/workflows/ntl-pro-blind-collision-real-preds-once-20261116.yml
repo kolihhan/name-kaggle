@@ -1,0 +1,38 @@
+name: NTL PRO authentic 1200 frozen predictions blind-collision falsifier
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-blind-collision-real-preds-once-20261116.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  collision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Evaluate exact historical winner predictions on 1200 spent TRAIN only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.2.6 pandas==2.2.3 scikit-learn==1.6.1 scipy==1.15.3 pyarrow==19.0.1
+          python -m py_compile scripts/ntl_pro_blind_collision_rescue_gate_20261116.py
+          mkdir -p /tmp/ntl-collision-frozen
+          kaggle kernels output kolihhan/ntl-lightning0694-scale1200-nov15 -p /tmp/ntl-collision-frozen -o >/tmp/ntl-collision-output-fetch.log 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/ntl-collision-frozen')
+          paths=list(root.rglob('submission.parquet'))
+          if len(paths)!=1:
+              raise SystemExit('STOP_MISSING_OR_AMBIGUOUS_FROZEN_PREDICTION')
+          print('NTL_FROZEN_PREDICTION_FILE_COUNT=1')
+          print('NTL_FROZEN_PREDICTION_SIZE='+str(paths[0].stat().st_size))
+          PY
+          python -m scripts.ntl_pro_blind_collision_rescue_gate_20261116 --train data/train.csv --predictions "$(find /tmp/ntl-collision-frozen -name submission.parquet -type f)"
+          echo NTL_NO_NEW_TRAINING_GPU_OR_SUBMISSION=TRUE
