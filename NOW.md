@@ -1,3 +1,11 @@
+## 2026-11-16 evening — score-first dual-project check: NTL NO new improvement
+
+- Re-fetched current Kaggle research branch, rules and latest authentic GitHub Actions ledger; latest NTL run remains [#43810671569](https://github.com/kolihhan/name-kaggle/actions/runs/43810671569) (source comparison only), not a new evaluated submission. Authenticated official best remains **Public BA 0.691**, #58375806. **This round new model scores n=0; improvement unmeasured, not a claimed +0.000 trial**.
+- Screened another identity-source channel, [llm-id.sh provider baselines](https://llm-id.sh/docs/baselines): its page says provider-checked identity probe answers exist across many frontier models, including **11 matching NTL label names of 18**; however the public docs show no downloadable eligible 40–250-word response rows/rights/prompt partitions or independent proof for 18/18. **NOT ADMITTED for NTL holdout**; no inference, training or official submission. Do not rerun source-only search to manufacture a score.
+- Score-facing scientific next variable: **cross-family source/protocol robustness**, not sibling-only reweighting on the spent 1200 official train rows (GSQ expert-selected error group had 27/33 cross-family errors, 6/33 same-family; already analyzed, NOT held out). Experimental promotion remains frozen until clean fully independent source evidence.
+
+---
+
 ## PRO 2026-11-16 — 5th-round decision audit done; n-threshold interpretations corrected
 
 - [Full cross-project small-n audit](artifacts/research/2026-11-16-round5-small-n-decision-audit.md) reopens *general* conclusions extrapolated from 3–4 issue Gemma pilots, Oleg 12 per label, Kimi one-condition 80 pairs, and 12/18-label LoRA tests. Exact tested variants that failed preregistered gates remain not promoted; **no whole research class banned**. Distinguish old configuration stop from general method-science elimination. No new score/GPU/training/submission.
