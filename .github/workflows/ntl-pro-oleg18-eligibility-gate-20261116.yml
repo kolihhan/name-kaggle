@@ -1,0 +1,94 @@
+name: NTL PRO external 18-label source identity quality and prompt-disjoint feasibility
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-eligibility-gate-20261116.yml]
+permissions: {contents: read}
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compute truthful 18-label independently served evidence eligibility; no inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pyarrow==22.0.0 pandas==2.3.3
+          mkdir -p /tmp/ntl-pro-oleg18-eligibility
+          for name in external_short_wide.parquet external_cell_metadata.parquet external_row_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus              -f "$name" -p /tmp/ntl-pro-oleg18-eligibility --unzip -o -q              >/tmp/ntl-pro-oleg18-lastdownload.log 2>&1
+          done
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          import pandas as pd
+          import pyarrow.parquet as pq
+          root=Path('/tmp/ntl-pro-oleg18-eligibility')
+          original={'external_short_wide.parquet':'15a67d022315b2508af8edd749a7c041d42cc37e266106028c73e405659c400f',
+              'external_cell_metadata.parquet':'397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079',
+              'external_row_metadata.parquet':'e2ee04939c33afecb9a5d8cbf25daca4e9bed9df354873c6ad054760cc6ce5d6'}
+          for name,expected in original.items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==expected
+          wide=pq.read_table(root/'external_short_wide.parquet').to_pandas()
+          cm=pq.read_table(root/'external_cell_metadata.parquet').to_pandas()
+          rm=pq.read_table(root/'external_row_metadata.parquet').to_pandas()
+          model_cols=list(wide.columns)[2:]
+          if len(model_cols)!=18:raise SystemExit('STOP_WRONG_18CLASS_COLUMNS')
+          ids=set(wide.id.astype(str).tolist())
+          sub=cm.loc[cm.id.astype(str).isin(ids)].copy()
+          print('NTL_PRO_OLeg18_ALL_MATCHING_METADATA_VIEW_COUNTS='+json.dumps(
+             sub.view.value_counts(dropna=False).astype(int).to_dict(),
+             sort_keys=True),flush=True)
+          print('NTL_PRO_OLeg18_ACTUAL_MODEL_EVIDENCE_CLASSES='+json.dumps(
+             sub.model_evidence_class.value_counts(dropna=False).astype(int).to_dict(),
+             sort_keys=True),flush=True)
+          # Match only the 'short' view of these exact wide-row ids.
+          unique_views=list(sub.view.dropna().unique())
+          if len(unique_views)!=1:
+              raise SystemExit('STOP_SHORT_VIEW_ID_MATCH_AMBIGUOUS')
+          view=unique_views[0]
+          sub=sub.loc[sub.view==view]
+          if sub.duplicated(['id','model']).any():
+              raise SystemExit('STOP_DUPLICATE_SOURCE_MODEL_CELL')
+          if not set(sub.model.unique()).issubset(set(model_cols)):
+              raise SystemExit('STOP_UNEXPECTED_SOURCE_MODEL')
+          soft=sub['short_answer_candidate'].eq(True) & sub['mechanically_eligible'].eq(True) & sub['text_only_suitable'].eq(True) & (~sub['text_shared_across_labels'].eq(True)) & (~sub['license_unknown'].eq(True))
+          strong=sub['model_evidence_class'].isin((
+           'request_and_returned_model','raw_api_response_model',
+           'row_request_response_model_id','platform_response_model_label',
+           'row_request_returned_model_source_reported',
+          ))
+          conservative=soft & (~sub['possible_truncation'].eq(True)) & (~sub['output_terms_review'].eq(True))
+          cohorts={
+            'basic_mechanics_known_license':soft,
+            'strict_served_id_known_license':soft & strong,
+            'strict_served_id_no_truncation':conservative & strong,
+            'conservative_evidence_any_class':conservative,
+          }
+          report={}
+          for name,mask in cohorts.items():
+              s=sub.loc[mask]
+              counts={m:int((s.model==m).sum()) for m in model_cols}
+              groups=s.groupby('model')['prompt_group_id'].nunique().to_dict()
+              report[name]={
+                'per_label':counts,
+                'model_classes_ge_12':sum(n>=12 for n in counts.values()),
+                'min_label_support':min(counts.values()),
+                'total_cells':sum(counts.values()),
+                'distinct_prompt_groups_per_class':{m:int(groups.get(m,0)) for m in model_cols},
+                'all_18_sufficient_for_12_per_class':all(n>=12 for n in counts.values()),
+              }
+          print('NTL_PRO_OLeg18_ACTUAL_SOURCE_ELIGIBILITY='+json.dumps({
+             'n_models':len(model_cols),'metadata_view':str(view),
+             'total_matching_metadata_cells':len(sub),
+             'row_metadata_matched':int(rm.id.astype(str).isin(ids).sum()),
+             'cohorts':report,
+             'posthoc_no_model_inference':True,
+             'upstream_prefit_exposure_not_verified':True,
+          },sort_keys=True),flush=True)
+          PY
