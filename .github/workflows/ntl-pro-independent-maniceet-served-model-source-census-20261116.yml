@@ -1,0 +1,39 @@
+name: NTL PRO independent paid API response corpus served-model provenance census
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-independent-maniceet-served-model-source-census-20261116.yml]
+permissions: {contents: read}
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect real 2026-11 independent paid API generations raw served-id evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import subprocess,csv,io,json
+          ref='maniceet/name-that-llm-openrouter-openai-generations'
+          p=subprocess.run(['kaggle','datasets','files',ref,'--page-size','100','-v'],
+                    capture_output=True,text=True,timeout=60)
+          if p.returncode:
+            print('NTL_PRO_PURE_EXTERNAL_MANICEET_FILE_DISCOVERY_FAILED='+json.dumps({
+              'source':ref,'stderr':p.stderr[-150:]}),flush=True)
+            raise SystemExit(1)
+          files=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          if not files:raise SystemExit('STOP_EMPTY_EXTERNAL_GENERATION_SOURCE')
+          if len(files)>50:raise SystemExit('STOP_UNEXPECTED_SOURCE_FILE_COUNT')
+          print('NTL_PRO_INDEPENDENT_PAID_API_SOURCE_INVENTORY='+json.dumps({
+             'source':ref,'files':files,'file_count':len(files),
+             'stated_classes':10,
+             'new_GPU':False,'new_training':False,
+             'new_submission':False,'truth_labels_not_yet_audited':True,
+          },sort_keys=True),flush=True)
+          PY
