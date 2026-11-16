@@ -1,0 +1,51 @@
+name: NTL PRO fixed typography identity vs source shift 18-label test
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-typography-crosssource-fixed-test-20261116.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  crosssource:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Frozen exact-source feature transfer, no training or scoring
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.2.6 pandas==2.2.3 pyarrow==19.0.1
+          python -m py_compile scripts/ntl_pro_typography_crosssource_falsifier_20261116.py
+          mkdir -p /tmp/ntl-typ-source
+          for name in external_short_wide.parquet external_cell_metadata.parquet; do
+            if ! kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -f "$name" -p /tmp/ntl-typ-source -o >/tmp/ntl-typ-kaggle-fetch.log 2>&1; then
+              echo NTL_TYPO_STOP=SOURCE_FILE_UNAVAILABLE
+              exit 1
+            fi
+          done
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          target=Path('/tmp/ntl-typ-source')
+          expected={'external_short_wide.parquet','external_cell_metadata.parquet'}
+          for name in expected:
+            path=target/name
+            if path.exists():continue
+            zip_path=target/(name+'.zip')
+            if not zip_path.is_file():raise SystemExit('SOURCE_FILE_MISSING')
+            with zipfile.ZipFile(zip_path) as z:
+              items=[x for x in z.namelist() if x==name]
+              if len(items)!=1:raise SystemExit('SOURCE_ZIP_AMBIGUOUS')
+              if z.getinfo(name).file_size>500_000_000:raise SystemExit('SOURCE_TOO_LARGE')
+              path.write_bytes(z.read(name))
+          print('NTL_EXTERNAL_18_SOURCE_FILES=2')
+          PY
+          python -m scripts.ntl_pro_typography_crosssource_falsifier_20261116 --train data/train.csv --external /tmp/ntl-typ-source
+          echo NTL_TYPOGRAPHY_NO_GPU_TRAINING_OR_SUBMISSION=TRUE
