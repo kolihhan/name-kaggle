@@ -1,0 +1,79 @@
+name: NTL PRO new public 0.693 GLM likelihood exact module and asset delta vs own 0.691
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-apex-vs-own-source-delta-20261116.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect exact new public model source and feature routing without executing inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,hashlib,re,tempfile
+          from pathlib import Path
+          refs=[
+           'kolihhan/lightning-0-694-authentic-no-fit-inference',
+           'sanpier/0-693-real-glm-5-3-glm-5-3-flash-likelihood',
+           'ozertuu/residual-sibling-gating-apex-better']
+          out=[]
+          with tempfile.TemporaryDirectory() as tmp:
+            for i,ref in enumerate(refs):
+              path=Path(tmp)/str(i);path.mkdir()
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(path),'-m'],
+                       capture_output=True,text=True,timeout=130)
+              if p.returncode:raise SystemExit('STOP_PUBLIC_NOTEBOOK_NOT_PULLABLE_'+str(i))
+              meta=json.loads((path/'kernel-metadata.json').read_text())
+              code=json.loads((path/meta['code_file']).read_text())
+              cells=[''.join(c.get('source',[])) for c in code['cells']
+                     if c.get('cell_type')=='code']
+              modules={}
+              for s in cells:
+                 if s.startswith('%%writefile ') or s.startswith('%%writefile\t'):
+                   first=s.splitlines()[0].split()[1]
+                   if first.endswith('.py'):
+                     modules[Path(first).name]=hashlib.sha256(s.encode()).hexdigest()
+              out.append({'ref':ref,'module_hashes':modules,
+                'code_cells':len(cells),
+                'model_mounts':set(meta.get('model_sources') or []),
+                'dataset_mounts':set(meta.get('dataset_sources') or []),
+                'kernel_mounts':set(meta.get('kernel_sources') or []),
+                'raw_source_hash':hashlib.sha256((path/meta['code_file']).read_bytes()).hexdigest()})
+          base=out[0]
+          result=[]
+          for comp in out[1:]:
+              pair={'candidate':comp['ref'],
+                 'cells':comp['code_cells'],
+                 'frozen_champion_cells':base['code_cells'],
+                 'source_SHA':comp['raw_source_hash'],
+                 'model_sources_added':sorted(comp['model_mounts']-base['model_mounts']),
+                 'model_sources_removed':sorted(base['model_mounts']-comp['model_mounts']),
+                 'dataset_sources_added':sorted(comp['dataset_mounts']-base['dataset_mounts']),
+                 'dataset_sources_removed':sorted(base['dataset_mounts']-comp['dataset_mounts']),
+                 'kernel_sources_added':sorted(comp['kernel_mounts']-base['kernel_mounts']),
+                 'changed_common_modules':sorted(k for k in
+                    set(comp['module_hashes'])&set(base['module_hashes'])
+                    if comp['module_hashes'][k]!=base['module_hashes'][k]),
+                 'new_modules':sorted(set(comp['module_hashes'])-set(base['module_hashes'])),
+                 'absent_modules':sorted(set(base['module_hashes'])-set(comp['module_hashes'])),
+                 'common_exact_module_count':sum(
+                   comp['module_hashes'].get(k)==v for k,v in base['module_hashes'].items()),
+                 'own_ensemble_unauthorized_model_retraining':False}
+              result.append(pair)
+          print('NTL_PRO_NEW_PUBLIC_20261116_GLM_LIKELIHOOD_MECHANISM_DELTA='+json.dumps({
+             'frozen_champion_sha':base['raw_source_hash'],
+             'comparisons':result,
+             'candidate_title_scores_not_own_verified':True,
+             'no_training':True,'no_gpu':True,'no_competition_submission':True,
+             'no_private_task_content_logged':True,
+          },sort_keys=True),flush=True)
+          PY
