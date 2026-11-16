@@ -1,3 +1,11 @@
+## 2026-11-16 PRO: 0.691 champion retained; actual difficult selected cohort fails across model families
+
+- [Real historic 1200-row output #43780908827](https://github.com/kolihhan/name-kaggle/actions/runs/43780908827) and [family-error split #43781225182](https://github.com/kolihhan/name-kaggle/actions/runs/43781225182), both **SUCCESS**, no GPU/new training/new competition submission. From immutable Lightning 1200 first official TRAIN rows, 51 wrong. Both Flash and GLM53 selected the **same 240/1200** rows; selected 33 wrong (13.75%), unselected 18 wrong (1.875%). Thus selected 20% contain **33/51=64.7%** of residual mistakes, **7.33×** final error rate.
+- **SCIENTIFIC DECISION:** selected errors are **27 cross-provider-family vs 6 within-family sibling**; unselected errors are 3 cross-family vs 15 sibling. This contradicts a **sibling-only** remedy as the dominant fix for selected uncertain cases. Need stronger general family-discrimination vs source/channel-shift hypotheses, tested on source/prompt-disjoint 18-way truth; do **not** tune label-specific rules on spent data. [Full error mechanism and provenance](artifacts/research/2026-11-16-pro-0691-gsq240-selected-error-mechanism.md).
+- Analysis used safe pickle opcode parsing without object deserialization; no pre-GSQ logits exist for valid causal ablation, so **no claim GSQ caused gains or errors**. Frozen own official best remains **0.691** (#58375806, [authenticated](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085)); target 0.700.
+
+---
+
 ## 2026-11-16 02:06 MYT — NTL official best 0.691; saved expert caches are token-level, NOT ready for arbitrary ablation
 
 - [Authenticated exact Kaggle score #43743764085](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085): `#58375806` COMPLETE **Public BA 0.691**, previous `#58295802` COMPLETE **0.683**; **+0.008**. New official champion pinned to Lightning0694 V2, attributed pretrained no-training reproduction, not the author's 0.694 title. [Full evidence](artifacts/research/2026-11-16-ntl-0691-official-and-expert-ablation-eligibility.md). Do not tune against Public LB.
