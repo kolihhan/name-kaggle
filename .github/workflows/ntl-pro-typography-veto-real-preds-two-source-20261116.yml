@@ -1,0 +1,40 @@
+name: NTL PRO authentic two-source typography incompatibility veto test
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-typography-veto-real-preds-two-source-20261116.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  veto:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: No-fit paired source diagnostic on real frozen champion predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.2.3 numpy==2.2.6 pyarrow==19.0.1
+          python -m py_compile scripts/ntl_pro_two_source_typography_veto_20261116.py
+          mkdir -p /tmp/ntl-veto-train1200 /tmp/ntl-veto-oleg216 /tmp/ntl-veto-oleg-source
+          kaggle kernels output kolihhan/ntl-lightning0694-scale1200-nov15 -p /tmp/ntl-veto-train1200 -o >/tmp/ntl-veto-train-fetch.log 2>&1
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-veto-oleg216 -o >/tmp/ntl-veto-oleg-fetch.log 2>&1
+          for name in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus -f "$name" -p /tmp/ntl-veto-oleg-source --unzip -o -q >/tmp/ntl-veto-source-fetch.log 2>&1
+          done
+          python - <<'PY'
+          from pathlib import Path
+          for p in ('/tmp/ntl-veto-train1200','/tmp/ntl-veto-oleg216'):
+              if len(list(Path(p).rglob('submission.parquet')))!=1:
+                  raise SystemExit('STOP_FROZEN_PREDICTION_COUNT')
+          print('NTL_FROZEN_BOTH_CHAMPION_PREDICTIONS_AUTHENTIC=PASS',flush=True)
+          PY
+          python -m scripts.ntl_pro_two_source_typography_veto_20261116 --train data/train.csv --pred1200 "$(find /tmp/ntl-veto-train1200 -name submission.parquet -type f)" --external /tmp/ntl-veto-oleg-source --external-predictions "$(find /tmp/ntl-veto-oleg216 -name submission.parquet -type f)"
+          echo NTL_TYPO_VETO_NO_NEW_TRAINING_GPU_SUBMISSION=TRUE
