@@ -1,0 +1,145 @@
+name: NTL PRO frozen 0.691 real external 18-class blind paired transfer private GPU once
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-oleg18-frozen0691-private-once-20261116.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-pro-oleg18-frozen0691-one-gpu-20261116
+  cancel-in-progress: false
+jobs:
+  one_real_transfer:
+    if: ${{ github.event.head_commit.message == 'GO_NTL_OLEG18_FROZEN0691_PRIVATE_ONCE_20261116' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 104
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KERNEL: kolihhan/ntl-oleg18-frozen0691-probe-nov16
+      SRC: /tmp/ntl-pro-oleg18-exact-v2
+      NEW: /tmp/ntl-pro-oleg18-exact-new
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Fail-closed exact existing kernel check, authentic GPU quota and no new training
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python -m py_compile scripts/ntl_oleg18_frozen_selector_20261116.py scripts/ntl_oleg18_frozen_champion_pilot_20261116.py
+          state="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+          if [[ "$state" == *KernelWorkerStatus.* ]]; then
+             echo "NTL_PRO_OLeg18_STOP_EXISTING_PRIVATE_KERNEL_NO_DUPLICATE=TRUE"
+             exit 1
+          fi
+          python - <<'PY'
+          import json,subprocess
+          p=subprocess.run(['kaggle','quota','--format','json'],
+            capture_output=True,text=True,timeout=80,check=True)
+          quota=json.loads(p.stdout)
+          pools=[r for r in quota if r.get('resource')=='GPU']
+          if len(pools)!=1:raise SystemExit('STOP_GPU_QUOTA_SOURCE_AMBIGUOUS')
+          hours=float(str(pools[0]['remaining']).rstrip('h'))
+          print('NTL_PRO_OLeg18_AVAILABLE_GPU_HOURS='+str(hours),flush=True)
+          if hours<4:raise SystemExit('STOP_GPU_QUOTA_LT_4_HOURS')
+          PY
+          mkdir -p "$SRC"
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference               -p "$SRC" -m >/tmp/ntl-pro-oleg18-source-pull.log 2>&1
+          python -m scripts.ntl_oleg18_frozen_champion_pilot_20261116               --source "$SRC" --out "$NEW"
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ['NEW'])
+          metadata=json.loads((root/'kernel-metadata.json').read_text())
+          assert metadata['id']==os.environ['KERNEL']
+          notebook=(root/metadata['code_file']).read_bytes()
+          assert hashlib.sha256(notebook).hexdigest()=='e7ea37f4ff1f7aae0fa8dd78b29ce36e1f321b9e714f010e4caaf660333ecd51'
+          assert hashlib.sha256(Path('scripts/ntl_oleg18_frozen_selector_20261116.py').read_bytes()).hexdigest()=='b86cba56fd6d3f167afe29d574dde3e42f110c557b64f042cda13b7d18986f0d'
+          assert metadata['dataset_sources'].count('olegzholobov/name-that-llm-response-corpus')==1
+          assert (len(metadata['dataset_sources']),len(metadata['model_sources']),len(metadata['kernel_sources']))==(24,6,9)
+          assert metadata['is_private'] and metadata['enable_gpu'] and not metadata['enable_internet']
+          print('NTL_PRO_OLeg18_EXACT_CPU_GATE_GPU_PUSH_ELIGIBLE=TRUE',flush=True)
+          PY
+      - name: Start EXACT ONE genuine fullpath inference on 216 unseen-source passages, no official submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p "$NEW" --accelerator NvidiaTeslaT4 --timeout 32400                >/tmp/ntl-pro-oleg18-kernel-push.log 2>&1
+          if ! grep -q 'Kernel version 1 successfully pushed' /tmp/ntl-pro-oleg18-kernel-push.log; then
+             echo 'STOP_OLeg18_PRIVATE_GPU_KERNEL_RECEIPT_NOT_VERIFIED'
+             exit 1
+          fi
+          echo "NTL_PRO_OLeg18_GENUINE_PRIVATE_GPU_KERNEL_LAUNCHED=$KERNEL"
+          echo 'NTL_PRO_OLeg18_NO_SUPERVISED_TRAINING_NO_OFFICIAL_SUBMISSION=TRUE'
+      - name: Observe exact same kernel; compute actual external 18-class BA if completed
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=UNOBSERVED
+          for attempt in $(seq 1 93); do
+            response="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+            case "$response" in
+              *KernelWorkerStatus.COMPLETE*) state=COMPLETE;break ;;
+              *KernelWorkerStatus.ERROR*|*KernelWorkerStatus.FAILED*) state=ERROR;break ;;
+            esac
+            if [ "$attempt" -eq 1 ] || [ $((attempt % 15)) -eq 0 ]; then echo "NTL_PRO_OLeg18_EXISTING_KAGGLE_STATE_CHECK=$attempt";fi
+            sleep 48
+          done
+          echo "NTL_PRO_OLeg18_GENUINE_PRIVATE_KERNEL_STATE=$state"
+          if [ "$state" != COMPLETE ]; then
+             echo 'NTL_PRO_OLeg18_REAL_BA_NOT_YET_VERIFIED=TRUE'
+             exit 0
+          fi
+          mkdir -p /tmp/ntl-pro-oleg18-results /tmp/ntl-pro-oleg18-external-src
+          kaggle kernels output "$KERNEL" -p /tmp/ntl-pro-oleg18-results -o                 >/tmp/ntl-pro-oleg18-result-download.log 2>&1
+          for name in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus                 -f "$name" -p /tmp/ntl-pro-oleg18-external-src --unzip -o -q                 >/tmp/ntl-pro-oleg18-external-download.log 2>&1
+          done
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import pandas as pd
+          from scripts.ntl_oleg18_frozen_selector_20261116 import (
+              NTL_OLEG18_MODELS,NTL_OLEG18_SHA,ntl_oleg18_select
+          )
+          src=Path('/tmp/ntl-pro-oleg18-external-src')
+          for name,sha in NTL_OLEG18_SHA.items():
+              assert hashlib.sha256((src/name).read_bytes()).hexdigest()==sha
+          wide=pd.read_parquet(src/'external_short_wide.parquet')
+          metadata=pd.read_parquet(src/'external_cell_metadata.parquet')
+          truth=ntl_oleg18_select(wide,metadata)
+          assert len(truth)==216 and truth.model.value_counts().eq(12).all()
+          assert hashlib.sha256('|'.join(truth.id.astype(str)).encode()).hexdigest()== '48c5237a92349bb168df08f88241b6d3b3e416f63444fdf87b60d422da4cdf44'
+          paths=list(Path('/tmp/ntl-pro-oleg18-results').rglob('submission.parquet'))
+          if len(paths)!=1:raise SystemExit('STOP_MISSING_OR_MULTIPLE_REAL_PREDICTION_FILES')
+          df=pd.read_parquet(paths[0])
+          if (list(df.columns)!=['id','model'] or len(df)!=216
+              or df.id.duplicated().any() or df.model.isna().any()
+              or set(df.id)!=set(truth.id)
+              or not set(df.model).issubset(set(NTL_OLEG18_MODELS))):
+              raise SystemExit('STOP_EXTERNAL_18CLASS_INFERENCE_OUTPUT_CONTRACT_FAIL')
+          compare=truth[['id','model']].merge(df,on='id',suffixes=('_true','_pred'),
+                    how='left',validate='one_to_one')
+          if len(compare)!=216:raise SystemExit('INVALID_MATCHED_EXTERNAL_TRUTH')
+          per_class={label:sum((compare.model_true==label)&(compare.model_pred==label)) 
+              for label in NTL_OLEG18_MODELS}
+          BA=sum(per_class.values())/216
+          print('NTL_PRO_OLeg18_REAL_FROZEN0691_EXTERNAL_18CLASS_TRANSFER='+json.dumps({
+              'external_source':'olegzholobov/name-that-llm-response-corpus',
+              'model':'frozen Lightning own scored official Public 0.691 (no new training)',
+              'n_class':18,'n_per_class':12,'n_test':216,
+              'real_accuracy':round(BA,8),
+              'real_balanced_accuracy_18class':round(BA,8),
+              'correct_total':sum(per_class.values()),
+              'per_label_correct':per_class,
+              'external_source_sha_verified':True,
+              'source_prompt_group_disjoint':True,
+              'model_trust_evidence':'request_and_returned_model or equivalent strongest observed IDs',
+              'checkpoint_prefit_overlap_unknown':True,
+              'independent_hidden_kaggle_test_score':False,
+              'official_competition_submission_created':False,
+              'new_training':False,
+          },sort_keys=True),flush=True)
+          PY
