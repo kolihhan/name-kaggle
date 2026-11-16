@@ -1,0 +1,39 @@
+name: NTL PRO real 18-model hierarchy vs flat Oleg source transfer CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-hierarchical-vs-flat-real-oleg-20261116.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  source_transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: One preregistered source-transfer model-class experiment (CPU only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 scikit-learn==1.6.1 scipy==1.15.3 numpy==2.2.6 pandas==2.2.3 pyarrow==19.0.1
+          python -m py_compile scripts/ntl_pro_hierarchical_family_vs_flat_20261116.py
+          mkdir -p /tmp/ntl-hier-oleg-source /tmp/ntl-hier-oleg-champion
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-hier-oleg-champion -o >/tmp/ntl-hier-champion-fetch.log 2>&1
+          for name in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus -f "$name" -p /tmp/ntl-hier-oleg-source --unzip -o -q >/tmp/ntl-hier-source-fetch.log 2>&1
+          done
+          python - <<'PY'
+          from pathlib import Path
+          r=Path('/tmp/ntl-hier-oleg-champion')
+          p=list(r.rglob('submission.parquet'))
+          if len(p)!=1:raise SystemExit('STOP_HIERARCHY_AUTHENTIC_CHAMPION_PREDICTION_MISSING')
+          print('NTL_HIERARCHY_FROZEN_CHAMPION_PRESENT=TRUE',flush=True)
+          PY
+          python -m scripts.ntl_pro_hierarchical_family_vs_flat_20261116 --train data/train.csv --external /tmp/ntl-hier-oleg-source --champion "$(find /tmp/ntl-hier-oleg-champion -name submission.parquet -type f)"
+          echo NTL_HIERARCHY_NO_GPU_NO_KAGGLE_SUBMIT=TRUE
