@@ -48,6 +48,42 @@ jobs:
           assert list(a[['id','text']])==['id','text']
           print('NTL_PRO_BLIND_EXTERNAL_18CLASS_SELECTOR_DETERMINISTIC_SYNTHETIC_PASS=TRUE',flush=True)
           PY
+      - name: Verify actual NEW external 18-class data yields 216 group-disjoint blind inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/ntl-pro-oleg18-realinputs
+          for name in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+              -f "$name" -p /tmp/ntl-pro-oleg18-realinputs --unzip -o -q \
+              >/tmp/ntl-pro-real-oleg18-download.log 2>&1
+          done
+          python - <<'PY'
+          import hashlib,json
+          import pandas as pd
+          from pathlib import Path
+          from scripts.ntl_oleg18_frozen_selector_20261116 import (
+            NTL_OLEG18_MODELS, NTL_OLEG18_SHA, ntl_oleg18_select
+          )
+          root=Path('/tmp/ntl-pro-oleg18-realinputs')
+          for name,digest in NTL_OLEG18_SHA.items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest
+          wide=pd.read_parquet(root/'external_short_wide.parquet')
+          meta=pd.read_parquet(root/'external_cell_metadata.parquet')
+          cohort=ntl_oleg18_select(wide,meta)
+          assert len(cohort)==216
+          assert cohort.model.value_counts().eq(12).all()
+          assert len(set(cohort.prompt_group_id))==216
+          assert cohort.id.nunique()==216 and cohort.text.notna().all()
+          report={'examples':216,'models':18,'per_model':12,
+            'distinct_source_prompt_groups':216,
+            'input_ids_sha256':hashlib.sha256(
+             '|'.join(cohort.id.astype(str)).encode()).hexdigest(),
+            'no_train':True,'no_model_inference':True,
+            'not_independent_prefit_lineage_verified':True}
+          print('NTL_PRO_REAL_EXTERNAL_18CLASS_BLIND_SELECTION='+json.dumps(report,sort_keys=True),flush=True)
+          PY
       - name: Pull EXISTING exact scored champion notebook source without GPU
         shell: bash
         run: |
