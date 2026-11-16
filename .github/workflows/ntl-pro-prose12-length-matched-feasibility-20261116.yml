@@ -1,0 +1,60 @@
+name: NTL PRO real prose-domain 12-label class and length matched source feasibility
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pro-prose12-length-matched-feasibility-20261116.yml]
+permissions: {contents: read}
+jobs:
+  feasibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read known public external source metadata only, no passages, no GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/prose12-census
+          kaggle datasets download olegzholobov/name-that-llm-response-corpus \
+             -f external_cell_metadata.parquet -p /tmp/prose12-census --unzip -o -q \
+             >/tmp/prose12-download.log 2>&1
+          python - <<'PY'
+          import json,hashlib
+          import pandas as pd
+          from pathlib import Path
+          p=Path('/tmp/prose12-census/external_cell_metadata.parquet')
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='397af75e5f2809107d0758a147646a68a0132479a6ea77432d86243e92ad9079'
+          d=pd.read_parquet(p)
+          chosen=d.loc[d['view'].eq('all') & d['domain'].fillna('').astype(str).str.strip().str.startswith('prose')].copy()
+          chosen=chosen.loc[
+              chosen['model_evidence_class'].isin((
+                 'request_and_returned_model','raw_api_response_model',
+                 'row_request_response_model_id','platform_response_model_label',
+                 'row_request_returned_model_source_reported'))
+              & chosen['mechanically_eligible'].eq(True)
+              & chosen['text_only_suitable'].eq(True)
+              & ~chosen['text_shared_across_labels'].eq(True)
+              & ~chosen['license_unknown'].eq(True)
+              & chosen['prompt_exact'].eq(True)
+              & ~chosen['possible_truncation'].eq(True)
+              & chosen['word_count'].between(40,250)
+          ]
+          nums=chosen['model'].value_counts()
+          prompt=chosen.groupby('model')['prompt_group_id'].nunique()
+          actual={str(k):{'cells':int(nums[k]),'prompts':int(prompt[k])}
+                  for k in nums.index}
+          eligible=sorted([k for k in actual if actual[k]['cells']>=12
+                           and actual[k]['prompts']>=12])
+          print('NTL_PRO_12CLASS_PROSE_DOMAIN_FEASIBILITY='+json.dumps({
+             'scope':'prose, observed model identity, known license, 40-250 words, byte-exact prompt',
+             'qualifying_label_count':len(eligible),'qualifying_labels':eligible,
+             'per_model':actual,'total_cells':len(chosen),
+             'no_inference':True,'no_new_training':True,'not_18class':True,
+             'next_gate':'12 labels x 12 prompt-disjoint examples only if eligible',
+          },sort_keys=True),flush=True)
+          PY
