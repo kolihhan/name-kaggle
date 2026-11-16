@@ -37,19 +37,20 @@ jobs:
           }
           catalog = Path(os.environ["RUNNER_TEMP"], "ntl-benchmark-models.txt").read_text()
           slugs = [line.split()[0] for line in catalog.splitlines()
-                   if line.strip() and re.fullmatch(r"[a-z0-9_.-]+/[a-z0-9_.@-]+", line.split()[0])]
+                   if line.strip() and re.fullmatch(r"(?:[a-z0-9_.-]+/)?[a-z0-9][a-z0-9_.@-]+", line.split()[0])]
           if not slugs:
               raise SystemExit("No parseable model catalog returned")
           exact = {}
           for slug in slugs:
-              label = slug.split("/", 1)[1].removesuffix("@default")
-              if slug == "openai/gpt-5.5-2026-04-23":
+              label = slug.rsplit("/", 1)[-1].removesuffix("@default").removesuffix("-default")
+              if label == "gpt-5.5-2026-04-23":
                   label = "gpt-5.5"
               if label in labels:
                   exact.setdefault(label, []).append(slug)
           print("NTL_FRESH_PANEL_CATALOG=" + json.dumps({
               "catalog_models": len(slugs), "listed_label_count": len(exact),
               "listed_exact_slug_matches": exact, "unlisted": sorted(labels - exact.keys()),
+              "other_related_slugs": [slug for slug in slugs if any(word in slug for word in ("fable", "kimi", "glm", "qwen3.8", "3.7-flash")) and not any(slug in hits for hits in exact.values())],
               "generation_requests": 0, "new_training": False, "official_submissions": 0,
           }, sort_keys=True))
           PY
