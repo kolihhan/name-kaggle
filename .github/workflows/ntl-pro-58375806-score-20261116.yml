@@ -197,7 +197,18 @@ jobs:
           test -n "${KAGGLE_API_TOKEN:-}"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scipy==1.16.3 scikit-learn==1.7.2
           ref='kolihhan/ntl-oleg216-final18-diagnostic-nov17'
-          status="$(kaggle kernels status "$ref" 2>&1 || true)"
+          set +e
+          status="$(kaggle kernels status "$ref" 2>&1)"
+          status_rc=$?
+          set -e
+          echo "NTL_KAGGLE_STATUS_CLI_EXIT=$status_rc"
+          NTL_STATUS_SANITIZE_INPUT="$status" python - <<'PY'
+          import os,re
+          s=os.environ.get('NTL_STATUS_SANITIZE_INPUT','')
+          s=re.sub(r'(?i)(key|token|secret|password|authorization)[=: ]+\\S+',r'\\1=[REDACTED]',s)
+          s=' '.join(s.split())[:420]
+          print('NTL_KAGGLE_STATUS_SAFE_RESPONSE='+s,flush=True)
+          PY
           state="$(printf '%s' "$status" | grep -oE 'KernelWorkerStatus[.][A-Z_]+' | head -1 || true)"
           if [ -n "$state" ]; then
             echo "NTL_EXACT_PRIVATE_GPU_WORKER_ENUM=$state"
