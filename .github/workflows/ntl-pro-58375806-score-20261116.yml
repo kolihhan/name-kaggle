@@ -242,3 +242,4 @@ jobs:
             --baseline /tmp/ntl-prev-oleg-preds/submission.parquet \
             --truth /tmp/ntl-oleg-truth.csv
           echo 'NTL_REAL_LOGITS_CPU_AUDIT_FINISHED=TRUE'
+# NTL private kernel read-back; no GPU push or model execution.
