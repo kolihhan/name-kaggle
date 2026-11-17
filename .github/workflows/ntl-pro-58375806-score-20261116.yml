@@ -6,6 +6,7 @@ on:
 permissions: {contents: read}
 jobs:
   check:
+    if: "${{ github.event.head_commit.message != 'READ_NTL_OLEG216_FINAL_ONCE_20261117' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 9
     env:
@@ -177,3 +178,67 @@ jobs:
               assert 'repeated_CV' in j
               print('NTL_OLEG216_CPU_EVALUATOR_SYNTHETIC_18CLASS=PASS',flush=True)
           PY
+
+  read_oleg216_final_once:
+    if: "${{ github.event.head_commit.message == 'READ_NTL_OLEG216_FINAL_ONCE_20261117' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read exact one-off Kaggle private kernel; never push or infer
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scipy==1.16.3 scikit-learn==1.7.2
+          ref='kolihhan/ntl-oleg216-final18-diagnostic-nov17'
+          status="$(kaggle kernels status "$ref" 2>&1 || true)"
+          if [[ "$status" == *KernelWorkerStatus.COMPLETE* ]]; then
+            echo 'NTL_EXACT_PRIVATE_GPU_STATUS=COMPLETE'
+          elif [[ "$status" == *KernelWorkerStatus.ERROR* || "$status" == *KernelWorkerStatus.FAILED* || "$status" == *KernelWorkerStatus.CANCELLED* ]]; then
+            echo 'NTL_EXACT_PRIVATE_GPU_STATUS=ERROR_OR_FAILED_SELECT_B'
+            echo 'NTL_OFFICIAL_BEST_STILL=0.691;NEW_SUBMISSION=NONE'
+            exit 0
+          else
+            echo 'NTL_EXACT_PRIVATE_GPU_STATUS=NOT_TERMINAL'
+            echo 'NTL_216_FINAL18_LOGITS_VALIDITY=UNOBSERVED'
+            exit 0
+          fi
+          mkdir -p /tmp/ntl-diag-result /tmp/ntl-prev-oleg-preds /tmp/ntl-truth
+          kaggle kernels output "$ref" -p /tmp/ntl-diag-result -o >/tmp/ntl-kernel-output.log 2>&1
+          echo "NTL_PRIVATE_OUTPUT_FILE_BASENAMES=$(find /tmp/ntl-diag-result -type f -printf '%f ' | head -c 350)"
+          if [ -f /tmp/ntl-diag-result/ntl_oleg216_diag_timeout.json ]; then
+            echo 'NTL_80PCT_WATCHDOG_EXITED_WITHOUT_FINAL_LOGITS=CHOOSE_B'
+            exit 0
+          fi
+          if [ ! -f /tmp/ntl-diag-result/ntl_oleg216_final18_logits.jsonl ]; then
+            echo 'NTL_216_FINAL18_LOGITS_MISSING=CHOOSE_B'
+            exit 0
+          fi
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-prev-oleg-preds -o >/tmp/ntl-previous.log 2>&1
+          for f in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download olegzholobov/name-that-llm-response-corpus -f "$f" -p /tmp/ntl-truth --unzip -o -q >/tmp/ntl-external.log 2>&1
+          done
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          from scripts.ntl_oleg18_frozen_selector_20261116 import ntl_oleg18_select,NTL_OLEG18_SHA
+          import hashlib
+          raw=Path('/tmp/ntl-truth')
+          for name,sha in NTL_OLEG18_SHA.items():
+              assert hashlib.sha256((raw/name).read_bytes()).hexdigest()==sha
+          truth=ntl_oleg18_select(pd.read_parquet(raw/'external_short_wide.parquet'),pd.read_parquet(raw/'external_cell_metadata.parquet'))
+          assert len(truth)==216
+          truth[['id','model']].to_csv('/tmp/ntl-oleg-truth.csv',index=False)
+          print('NTL_EXTERNAL_SOURCE_VERIFIED=TRUE',flush=True)
+          PY
+          python -m scripts.ntl_oleg_offline_eval_20261117 \
+            --dump /tmp/ntl-diag-result/ntl_oleg216_final18_logits.jsonl \
+            --baseline /tmp/ntl-prev-oleg-preds/submission.parquet \
+            --truth /tmp/ntl-oleg-truth.csv
+          echo 'NTL_REAL_LOGITS_CPU_AUDIT_FINISHED=TRUE'
