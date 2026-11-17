@@ -43,3 +43,44 @@ jobs:
               print('PRO_NEW_SCORE_STILL_UNAVAILABLE=TRUE',flush=True)
           print('PRO_NO_NEW_GPU_NO_TRAINING_NO_SUBMISSION=TRUE',flush=True)
           PY
+      - name: Inspect frozen Lightning V2 final scoring surface (CPU only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-owned-v2-src
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference \
+            -p /tmp/ntl-owned-v2-src -m >/tmp/ntl-v2-pull.log 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,re
+          root=Path("/tmp/ntl-owned-v2-src")
+          files=list(root.glob("*.ipynb"))
+          assert len(files)==1, "EXACT_ONE_KAGGLE_NOTEBOOK_REQUIRED"
+          nb=json.loads(files[0].read_text(encoding="utf-8"))
+          cells=[c for c in nb["cells"] if c.get("cell_type")=="code"]
+          assert len(cells)==50,"CODE_CELL_COUNT_DRIFT"
+          source=lambda c: ''.join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source",""))
+          allcode="\n".join(map(source,cells))
+          sha=hashlib.sha256(allcode.encode()).hexdigest()
+          assert sha=="cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c","CHAMPION_SOURCE_SHA_DRIFT"
+          meta=json.loads((root/"kernel-metadata.json").read_text(encoding="utf-8"))
+          assert meta["id"]=="kolihhan/lightning-0-694-authentic-no-fit-inference"
+          print("NTL_FROZEN_V2_CODE_SHA="+sha,flush=True)
+          print("NTL_FROZEN_V2_NOTEBOOK_METADATA="+json.dumps({"slug":meta["id"],"enable_gpu":meta["enable_gpu"],"model_mounts":len(meta.get("model_sources",[]))},sort_keys=True),flush=True)
+          for i,c in enumerate(cells):
+              s=source(c)
+              lines=s.splitlines()
+              head=lines[0].strip() if lines else ""
+              path=head.split(" ",1)[1] if head.startswith("%%writefile ") else "NOTEBOOK_CELL"
+              if re.search(r"(?i)(secret|credential|password|token|api_key|os\.environ)",path):
+                  path="REDACTED"
+              matches=[]
+              for n,line in enumerate(lines,1):
+                  z=line.strip()
+                  if re.search(r"(?i)(secret|credential|password|api.key|bearer|os\.environ)",z):continue
+                  if re.search(r"\bargmax\b|np\.argmax|\.idxmax\(|\bsoftmax\b|\blogits\b|\bensemble\b|submission\.parquet|\.predict\(|\bproba\b|score_matrix|\bfinal_scores\b|\bfinal_pred\b",z):
+                      matches.append({"line":n,"code":z[:180]})
+              if matches:
+                  print("NTL_SCORING_SOURCE="+json.dumps({"cell":i,"module":path,"matches":matches[:20],"remaining_matches":max(0,len(matches)-20)},ensure_ascii=False),flush=True)
+          print("NTL_SOURCE_ONLY_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
+          PY
