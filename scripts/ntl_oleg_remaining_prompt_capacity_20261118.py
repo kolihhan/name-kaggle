@@ -73,6 +73,28 @@ def audit(root):
           "total_prompt_groups_selected":len(local_taken),
           "per_class_frozen_selection_count":reached,
       }
+  # Max-flow is a necessary-and-sufficient test for distinct prompt groups
+  # per true label, ignoring further unique-response-text conflicts (an upper
+  # bound on fully admissible rows). Greedy label order is not proof of
+  # infeasibility, so report this exact matching capacity separately.
+  import networkx as nx
+  edges=unused[["model","prompt_group_id"]].drop_duplicates()
+  exact={}
+  for per_class in (12,18,30):
+      g=nx.DiGraph()
+      source,sink="__SRC__","__SINK__"
+      for label in labels:g.add_edge(source,"L:"+label,capacity=per_class)
+      for lab,pid in edges.itertuples(index=False,name=None):
+          g.add_edge("L:"+str(lab),"G:"+str(pid),capacity=1)
+      for pid in edges.prompt_group_id.unique():
+          g.add_edge("G:"+str(pid),sink,capacity=1)
+      value=nx.maximum_flow_value(g,source,sink)
+      exact[str(per_class)]={
+         "maxflow_distinct_prompt_assignments":int(value),
+         "requested":int(per_class*18),
+         "full_18_labels_feasible_ignoring_response_duplication":bool(value==per_class*18),
+         "upper_bound_only":True,
+      }
   out={
     "used_old_cohort_rows":216,"old_prompt_groups":216,
     "source_name":"olegzholobov/name-that-llm-response-corpus",
@@ -83,6 +105,7 @@ def audit(root):
     "model_count_with_eligible_responses":int(unused.model.nunique()),
     "per_class_capacity":per,
     "frozen_new_group_capacity":max_available,
+    "exact_prompt_flow_upper_bound":exact,
     "all_model_serving_ids_independently_verified":False,
     "source_disjoint_from_spent_Oleg":False,
     "retrospective_method_selection_from_Oleg_not_allowed":True,
