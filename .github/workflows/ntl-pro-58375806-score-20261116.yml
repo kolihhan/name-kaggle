@@ -134,3 +134,46 @@ jobs:
             --out /tmp/ntl-v2-diagnostic-output
           test -e /tmp/ntl-v2-diagnostic-output/kernel-metadata.json
           echo "NTL_FINAL18_DIAGNOSTIC_CPU_BUILD_SANITY=PASS"
+      - name: Verify CPU Oleg216 evaluator on deterministic 18-label synthetic cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q scikit-learn==1.7.2 scipy==1.16.3
+          python - <<'PY'
+          from pathlib import Path
+          import json,tempfile,subprocess,sys
+          import numpy as np,pandas as pd
+          with tempfile.TemporaryDirectory() as d:
+              d=Path(d)
+              labels=[f'c{i:02}' for i in range(18)]
+              ids=[f'syn_{i:04}' for i in range(216)]
+              truth=[labels[i//12] for i in range(216)]
+              logits=np.full((216,18),-4,dtype=np.float32)
+              prediction=[]
+              for i in range(216):
+                  t=i//12
+                  if i<120:
+                      logits[i,t]=3.
+                      logits[i,(t+1)%18]=2.
+                      prediction.append(labels[t])
+                  else:
+                      logits[i,(t+1)%18]=.8
+                      logits[i,t]=.7
+                      prediction.append(labels[(t+1)%18])
+              with (d/'scores.jsonl').open('w') as f:
+                  for i in range(216):
+                      f.write(json.dumps(dict(sample_id=ids[i],labels=labels,
+                          logits=logits[i].tolist(),argmax=prediction[i]))+'\n')
+              pd.DataFrame({'id':ids,'model':prediction}).to_csv(d/'baseline.csv',index=False)
+              pd.DataFrame({'id':ids,'model':truth}).to_csv(d/'truth.csv',index=False)
+              p=subprocess.run([sys.executable,'-m','scripts.ntl_oleg_offline_eval_20261117',
+                  '--dump',str(d/'scores.jsonl'),'--baseline',str(d/'baseline.csv'),
+                  '--truth',str(d/'truth.csv')],text=True,capture_output=True,check=True,timeout=120)
+              j=json.loads(p.stdout.split('NTL_OLEG216_GLOBAL_CPU_AUDIT=',1)[1])
+              assert j['n']==216 and j['n_classes']==18
+              assert j['first5_match'] and j['baseline_agreement']==1
+              assert j['margin_correctness_AUROC']>=.65
+              assert len(j['global_one_parameter_rank_switch'])==4
+              assert 'repeated_CV' in j
+              print('NTL_OLEG216_CPU_EVALUATOR_SYNTHETIC_18CLASS=PASS',flush=True)
+          PY
