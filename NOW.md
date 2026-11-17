@@ -1,3 +1,11 @@
+## 2026-11-17 MYT — Live Kaggle proxy probe produced zero admissible passages
+
+- [Authenticated exact-label requests](https://github.com/kolihhan/name-kaggle/actions/runs/44028778166) used the same original short writing prompt for all 18 target routes. Seventeen returned HTTP 404. Gemini 3.6 Flash returned its own raw model ID and an 8-word completion.
+- [Provider-qualified follow-up](https://github.com/kolihhan/name-kaggle/actions/runs/44029845960) used the documented Chat Completions, Anthropic Messages, and OpenAI Responses interfaces. Results **1 HTTP 200, 12 HTTP 404, 5 HTTP 405**. Only `google/gemini-3.6-flash` returned its exact raw model ID, with 19 words. The direct proxy route list returned 404. All six previously unlisted labels remained without an authenticated passage. Across both probes, **0 passages met the exact raw name and 40–250-word conditions**. The two short Gemini responses stay outside the locked 36-prompt panel.
+- The documented interface changes did not make the direct proxy usable for this 18-class panel. The separate hosted task catalog remains a 12-label lead. Next, obtain original, shareable outputs for the six exact missing labels, starting with Fable 5, before evaluating conditional generator likelihood against the frozen 0.691 champion. No fitting or new competition submission. [Authenticated Public best 0.691, #58375806](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085).
+
+---
+
 ## 2026-11-17 MYT — Original panel: price and snapshot checks for the missing six
 
 - The [authenticated Kaggle Benchmarks catalog](https://github.com/kolihhan/name-kaggle/actions/runs/43909696211) lists 12 of the 18 target labels and contains no related slugs for the other six. Read the live OpenRouter model and provider endpoint catalogs for precisely those six. Found five exact-name route leads (`claude-fable-5`, `gemini-3.7-flash`, `glm-5.3`, `glm-5.3-flash`, `kimi-k3`); the Qwen endpoint resolves to `qwen/qwen3.8-max-0902`. None of the OpenRouter endpoint price rows returned zero for both input and output. These are catalog results, not served-model attestations.
