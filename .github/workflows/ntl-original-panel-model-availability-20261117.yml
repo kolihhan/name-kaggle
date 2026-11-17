@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   source_admission:
-    if: "${{ github.event.head_commit.message == 'Probe actual Kaggle Model Proxy returned models for NTL' }}"
+    if: "${{ github.event.head_commit.message == 'Test Kaggle provider-specific model routes for NTL' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 11
     env:
@@ -25,4 +25,4 @@ jobs:
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           python -m pip -q install --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          python scripts/ntl_probe_kaggle_served_models.py
+          python scripts/ntl_probe_kaggle_served_models.py --provider-endpoints
