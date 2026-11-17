@@ -1,0 +1,170 @@
+name: NTL Frozen Lightning Family Null + Authenticated Quota (Read Only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-current-champion-family-null-and-quota-20261118.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-lightning-null-quota-nov18
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, filter: blob:none}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Current authenticated contest deadline quota and submission usage, no mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          python - <<'PY'
+          import csv,io,json,subprocess,datetime
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi()
+          api.authenticate()
+          try:
+              comp=api.competition_view('name-that-llm')
+              keys=('deadline','maxDailySubmissions','max_daily_submissions',
+                    'maxTeamSize','reward','evaluationMetric')
+              present={k:str(getattr(comp,k)) for k in keys if hasattr(comp,k)}
+              if hasattr(comp,'to_dict'):
+                  raw=comp.to_dict()
+                  if isinstance(raw,dict):
+                      for k,v in raw.items():
+                          if 'submission' in str(k).lower() and ('max' in str(k).lower() or 'daily' in str(k).lower()):
+                              present[str(k)]=str(v)
+              print('NTL_COMPETITION_AUTHENTICATED_META_SAFE='+json.dumps(present,sort_keys=True),flush=True)
+          except Exception as exc:
+              print('NTL_COMPETITION_AUTHENTICATED_META=UNAVAILABLE_'+type(exc).__name__,flush=True)
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v','-q'],
+                           capture_output=True,text=True,timeout=75)
+          if p.returncode:
+              print('NTL_AUTHENTICATED_SUBMISSIONS_LEDGER_UNAVAILABLE=TRUE',flush=True)
+              raise SystemExit(0)
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          today=datetime.datetime.now(datetime.timezone.utc).date()
+          items=[]
+          for r in rows:
+              stamp=str(r.get('date') or r.get('submissionDate') or '')
+              when=stamp[:10]
+              items.append({'id':str(r.get('ref')),'date':when,'status':str(r.get('status') or ''),
+                            'score':str(r.get('publicScore') or '')})
+          used=sum(x['date']==str(today) for x in items)
+          print('NTL_AUTHENTICATED_SUBMISSION_LEDGER_SAFE='+json.dumps({
+              'today_utc':str(today),'observed_today':used,
+              'ledger_rows_returned':len(rows),
+              'latest_submissions':items[:8],
+              'exact_daily_remaining_not_claimed_unless_quota_verified':True
+          },sort_keys=True),flush=True)
+          print('NTL_READONLY_NO_NEW_SUBMISSION=TRUE',flush=True)
+          PY
+      - name: Exact existing 0.691 Lightning Oleg216 predictions and empirical same-family error null
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-lightning-source /tmp/ntl-oleg-truth
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-lightning-source -o >/dev/null
+          for f in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -f "$f" \
+              -p /tmp/ntl-oleg-truth --unzip -o -q >/dev/null
+          done
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from scripts.ntl_oleg18_frozen_selector_20261116 import (
+              ntl_oleg18_select,NTL_OLEG18_SHA,NTL_OLEG18_MODELS)
+          root=Path('/tmp/ntl-oleg-truth')
+          for p,h in NTL_OLEG18_SHA.items():
+              assert hashlib.sha256((root/p).read_bytes()).hexdigest()==h
+          truth=ntl_oleg18_select(pd.read_parquet(root/'external_short_wide.parquet'),
+                                  pd.read_parquet(root/'external_cell_metadata.parquet'))
+          files=list(Path('/tmp/ntl-lightning-source').rglob('submission.parquet'))
+          assert len(files)==1
+          pred=pd.read_parquet(files[0])
+          assert pred.id.is_unique and len(pred)==216 and set(pred.id)==set(truth.id)
+          frame=truth[['id','model']].merge(pred[['id','model']],on='id',validate='one_to_one',
+                                             suffixes=('_true','_pred'))
+          assert len(frame)==216
+          lab=list(NTL_OLEG18_MODELS)
+          assert len(lab)==18 and set(frame.model_true)==set(lab)
+          def family(m):
+              if m.startswith('claude-'):return 'anthropic'
+              if m.startswith('gemini-'):return 'google'
+              if m.startswith('gpt-'):return 'openai'
+              if m.startswith('glm-'):return 'zai'
+              if m.startswith('kimi-'):return 'moonshot'
+              if m.startswith('qwen'):return 'qwen'
+              raise ValueError('UNEXPECTED_CLASS')
+          groups={x:family(x) for x in lab}
+          classes={g:sum(v==g for v in groups.values()) for g in set(groups.values())}
+          true=frame.model_true.to_numpy()
+          predicted=frame.model_pred.to_numpy()
+          wrong=true!=predicted
+          within=np.array([family(a)==family(b) for a,b in zip(true,predicted)])
+          observed=int((wrong&within).sum())
+          num_wrong=int(wrong.sum())
+          assert num_wrong==127 and observed==64 and int((~wrong).sum())==89
+          from collections import Counter
+          predcounts=Counter(predicted)
+          # Explicit random-class-pair baseline, conditional on a classification error:
+          uniform=float(sum(n*(n-1) for n in classes.values())/(18*17))
+          # Correct null for model's observed PREDICTED label distribution; true labels
+          # are class-balanced, shuffle true-label assignments while holding 216 preds fixed.
+          margin=float(sum(predcounts[label]*(classes[groups[label]]-1)
+                           for label in lab)/(216*17))
+          rng=np.random.default_rng(20261118)
+          reps=15000
+          null=np.empty(reps)
+          within_counts=np.empty(reps,dtype=int)
+          for i in range(reps):
+              shuffled=rng.permutation(true)
+              bad=shuffled!=predicted
+              same=np.array([family(a)==family(b) for a,b in zip(shuffled,predicted)])
+              within_counts[i]=int((bad&same).sum())
+              null[i]=within_counts[i]/bad.sum()
+          p=(1+int((null>=observed/num_wrong).sum()))/(reps+1)
+          report={
+              'source':'frozen existing Lightning Oleg216, not competition Public',
+              'incumbent_public_BA':0.691,'external_BA':89/216,
+              'n_total':216,'n_classes':18,'n_per_true_class':12,
+              'errors':num_wrong,'within_family_wrong':observed,
+              'within_family_wrong_rate':observed/num_wrong,
+              'random_distinct_label_pair_family_baseline':uniform,
+              'prediction_marginal_adjusted_family_baseline':margin,
+              'permutation_null_error_rate_median':float(np.median(null)),
+              'permutation_null_error_rate_025':float(np.quantile(null,.025)),
+              'permutation_null_error_rate_975':float(np.quantile(null,.975)),
+              'permutation_one_sided_p_exploratory':p,
+              'family_class_sizes':classes,
+              'prediction_label_counts':dict(predcounts),
+              'model_family_signal_diagnostic_only':True,
+              'source_and_prompt_independence_of_prefit_unproven':True,
+              'winner_candidate_prepared':False,
+              'new_model_inference':False,'new_submission':False,
+              'note':'This tests above-random family errors, not whether a sibling expert adds Public score.'}
+          Path('ntl-lightning-family-null-report.json').write_text(json.dumps(report,sort_keys=True,indent=2))
+          print('NTL_LIGHTNING216_BASELINES_AND_FAMILY_NULL='+json.dumps(
+              {k:v for k,v in report.items() if k!='prediction_label_counts'},
+              sort_keys=True),flush=True)
+          PY
+      - name: Scrub source data, preserve only aggregate diagnostics
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-lightning-source /tmp/ntl-oleg-truth
+          echo NTL_RAW_TEXT_NOT_EXPORTED=TRUE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-lightning-family-null-quota-${{ github.run_id }}
+          path: ntl-lightning-family-null-report.json
+          if-no-files-found: warn
+          retention-days: 14
