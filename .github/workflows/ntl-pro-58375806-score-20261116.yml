@@ -84,3 +84,32 @@ jobs:
                   print("NTL_SCORING_SOURCE="+json.dumps({"cell":i,"module":path,"matches":matches[:20],"remaining_matches":max(0,len(matches)-20)},ensure_ascii=False),flush=True)
           print("NTL_SOURCE_ONLY_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
           PY
+      - name: Inspect post-ensemble V1 last writer, no model execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-v2-final-writer
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference \
+            -p /tmp/ntl-v2-final-writer -m >/tmp/ntl-v2-final-pull.log 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,re
+          p=list(Path('/tmp/ntl-v2-final-writer').glob('*.ipynb'))
+          assert len(p)==1
+          nb=json.loads(p[0].read_text())
+          cells=[c for c in nb['cells'] if c.get('cell_type')=='code']
+          src=lambda cell: ''.join(cell['source']) if isinstance(cell['source'],list) else str(cell['source'])
+          assert hashlib.sha256('\n'.join(map(src,cells)).encode()).hexdigest()=='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c'
+          for idx in (8,41,47,48,49):
+              lines=src(cells[idx]).splitlines()
+              if idx==8:
+                  chosen=[(i,x) for i,x in enumerate(lines,1) if i>=65 and i<=170]
+              elif idx==41:
+                  chosen=[(i,x) for i,x in enumerate(lines,1) if i>=155 and i<=200]
+              else:
+                  chosen=list(enumerate(lines,1))
+              for line_no, line in chosen:
+                  if re.search(r'(?i)(password|secret|api.key|bearer|credential|kaggle_api_token)',line):continue
+                  print('NTL_EXACT_FINAL_CODE='+json.dumps({'cell':idx,'line':line_no,'source':line[:220]},ensure_ascii=False),flush=True)
+          print('NTL_LAST_WRITER_CPU_SOURCE_ONLY=PASS',flush=True)
+          PY
