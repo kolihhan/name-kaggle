@@ -1,0 +1,86 @@
+name: NTL GPT Triad Matched Champion CPU Pilot (Pre-registered, No Submission)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gpt-triad-same-row-probe-cpu-20261118.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-gpt-triad-vs-lightning-cpu-nov18
+  cancel-in-progress: false
+jobs:
+  frozen_probe_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, filter: blob:none}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Enforce pre-registration, code safety and CPU-only computation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m py_compile scripts/ntl_gpt_triad_same_row_probe_20261118.py
+          test -f artifacts/research/ntl-gpt-triad-probe-pre-registration-20261118.md
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('scripts/ntl_gpt_triad_same_row_probe_20261118.py').read_text()
+          for literal in ("GAP=.20","MIN_BA_DELTA=.03","BOOTSTRAPS=5000",
+              'TRIAD=("gpt-5.6-luna","gpt-5.6-sol","gpt-5.6-terra")',
+              "C0_correct","C1_correct","NO_CANDIDATE_GATE_FAILED"):
+              assert literal in s,literal
+          print('NTL_TRIAD_PREREGISTERED_NO_TUNING_CONTRACT=PASS',flush=True)
+          PY
+      - name: Materialize only existing scored 0.691 predictions, official train and fixed Oleg ground truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scikit-learn==1.7.2 scipy==1.16.3
+          mkdir -p /tmp/ntl-triad-incumbent /tmp/ntl-triad-oleg /tmp/ntl-triad-train
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 \
+            -p /tmp/ntl-triad-incumbent -o >/tmp/ntl-triad-old.log 2>&1
+          for f in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download -d olegzholobov/name-that-llm-response-corpus \
+              -f "$f" -p /tmp/ntl-triad-oleg --unzip -o -q >/dev/null
+          done
+          kaggle competitions download -c name-that-llm -f train.csv \
+            -p /tmp/ntl-triad-train --unzip -q >/tmp/ntl-triad-train-cli.log 2>&1
+          test -s /tmp/ntl-triad-train/train.csv
+          echo 'NTL_TRIAD_REAL_PAIRED_DATA_READY=TRUE'
+      - name: Fit GPT-only expert on official train; report same-row paired 18-class result
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t found < <(find /tmp/ntl-triad-incumbent -type f -name submission.parquet)
+          test "${#found[@]}" -eq 1
+          python -m scripts.ntl_gpt_triad_same_row_probe_20261118 \
+            --official-train /tmp/ntl-triad-train/train.csv \
+            --oleg-source /tmp/ntl-triad-oleg \
+            --champion "${found[0]}" \
+            --out ./ntl-gpt-triad-preregistered-result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path('ntl-gpt-triad-preregistered-result.json').read_text())
+          assert j['C0_correct']==89 and j['C0_BA']==0.412037
+          assert j['non_target_label_changes']==0
+          assert j['balanced_classes']==18 and j['frozen_holdout_rows']==216
+          assert not j['new_competition_submission']
+          print('NTL_TRIAD_HONEST_PAIRED_GATE_VERIFIED=TRUE',flush=True)
+          PY
+      - name: Remove all raw text and model fit intermediate
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-triad-incumbent /tmp/ntl-triad-oleg /tmp/ntl-triad-train
+          echo 'NTL_TRIAD_RAW_TEXT_OR_TRAINED_WEIGHT_EXPORTED=FALSE'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-triad-gpt-paired-cpu-${{ github.run_id }}
+          path: ntl-gpt-triad-preregistered-result.json
+          if-no-files-found: warn
+          retention-days: 14
