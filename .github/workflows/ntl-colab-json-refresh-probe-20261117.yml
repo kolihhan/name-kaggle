@@ -1,0 +1,65 @@
+name: NTL Colab JSON OAuth Refresh Only (No GPU)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-colab-json-refresh-probe-20261117.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-colab-adc-refresh-once-20261117
+  cancel-in-progress: false
+jobs:
+  refresh_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/ntl-colab-adc-only-20261117.json
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Authenticate updated ADC JSON without exposing tokens or allocating GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check google-auth==2.43.0 requests==2.32.5
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          raw=os.environ.get('COLAB_ADC_JSON','')
+          if not raw:
+              print('NTL_COLAB_JSON_CHECK=SECRET_MISSING',flush=True)
+              raise SystemExit(1)
+          try:
+              obj=json.loads(raw)
+          except (ValueError,TypeError):
+              print('NTL_COLAB_JSON_CHECK=INVALID_JSON',flush=True)
+              raise SystemExit(1)
+          if obj.get('type')!='authorized_user':
+              print('NTL_COLAB_JSON_CHECK=WRONG_CREDENTIAL_TYPE',flush=True)
+              raise SystemExit(1)
+          if any(not obj.get(k) for k in ('client_id','client_secret','refresh_token')):
+              print('NTL_COLAB_JSON_CHECK=MISSING_REQUIRED_OAUTH_FIELDS',flush=True)
+              raise SystemExit(1)
+          p=Path(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+          try:
+              p.write_text(raw,encoding='utf-8')
+              p.chmod(0o600)
+              import google.auth
+              from google.auth.transport.requests import Request
+              creds,_=google.auth.default(scopes=[
+                'openid','https://www.googleapis.com/auth/cloud-platform',
+                'https://www.googleapis.com/auth/colaboratory'])
+              creds.refresh(Request())
+              if not getattr(creds,'valid',False):
+                  raise RuntimeError('INVALID_AFTER_REFRESH')
+              print('NTL_COLAB_JSON_REFRESH=PASS',flush=True)
+              print('NTL_COLAB_T4_RETRY_CREDENTIAL_GATE=ELIGIBLE_NOT_ALLOCATED',flush=True)
+          except Exception as exc:
+              print('NTL_COLAB_JSON_REFRESH=FAIL_'+type(exc).__name__,flush=True)
+              raise SystemExit(1)
+          finally:
+              p.unlink(missing_ok=True)
+          PY
+      - name: Record no-resource claim
+        if: always()
+        run: echo 'NTL_COLAB_OAUTH_PROBE_GPU_ALLOCATIONS=ZERO; TRAINING=NONE; SUBMISSIONS=NONE'
