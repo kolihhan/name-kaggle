@@ -1,3 +1,11 @@
+## 2026-11-17 MYT — Original panel: price and snapshot checks for the missing six
+
+- The [authenticated Kaggle Benchmarks catalog](https://github.com/kolihhan/name-kaggle/actions/runs/43909696211) lists 12 of the 18 target labels and contains no related slugs for the other six. Read the live OpenRouter model and provider endpoint catalogs for precisely those six. Found five exact-name route leads (`claude-fable-5`, `gemini-3.7-flash`, `glm-5.3`, `glm-5.3-flash`, `kimi-k3`); the Qwen endpoint resolves to `qwen/qwen3.8-max-0902`. None of the OpenRouter endpoint price rows returned zero for both input and output. These are catalog results, not served-model attestations.
+- [Google's developer API pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.7-flash) separately lists a free tier for Gemini 3.7 Flash; no verified free-tier key is available in the research environment. [Original Fable 5](https://openrouter.ai/anthropic/claude-fable-5) has priced provider routes. Do not substitute Fable 5.1/5.2 or assume the Qwen snapshot is the competition snapshot.
+- Admission remains blocked on usable exact served versions for the locked 36 prompts, with source rights and matched request settings. Zero new generations, no model fitting, and no new official submission. [Authenticated Public reference remains 0.691, #58375806](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085). The next model test is conditional generator likelihood on the same rows as the frozen champion, after benchmark admission.
+
+---
+
 ## 2026-11-17 MYT — Matched generation experiment: content-word signal did not replicate for Gemini siblings
 
 - Tested a frozen no-fit content-word overlap measure on [Matched-Regime Pilot v1](https://www.kaggle.com/datasets/sambitpadhan/ntl-original-matched-regime-pilot). Same original prompt, target length, provider defaults, and returned model identity; compare two equivalent wordings. Across 12 prompts and 12 labels, 143 same-model pairs vs 450 within-provider different-model controls: overlap **0.2772 vs 0.2220**, delta **+0.0552**, prompt-cluster 95% CI **[+0.0453, +0.0647]**. The author's six locked prompts give **+0.0441** descriptive.
