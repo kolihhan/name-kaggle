@@ -19,7 +19,7 @@ import time
 import zipfile
 
 WORK=Path("/content/ntl-source-adversarial-nov17")
-DATA=Path("/content/ntl-source-robust-data")
+DATA=Path("/content")
 BASE="answerdotai/ModernBERT-base"
 MAX_TRAIN_STEPS=250
 BATCH=4
