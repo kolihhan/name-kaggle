@@ -1,20 +1,20 @@
-name: NTL PRO frozen 0.691 real external 18-class blind paired transfer private GPU once
+name: NTL owner-approved single 0.691 post-V1 18-logit Oleg216 diagnostic
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-oleg18-frozen0691-private-once-20261116.yml]
 permissions: {contents: read}
 concurrency:
-  group: ntl-pro-oleg18-frozen0691-one-gpu-20261116
+  group: ntl-approved-postv1-logit-diagnostic-once-20261117
   cancel-in-progress: false
 jobs:
   one_real_transfer:
-    if: ${{ github.event.head_commit.message == 'GO_NTL_OLEG18_FROZEN0691_PRIVATE_ONCE_20261116' }}
+    if: ${{ github.event.head_commit.message == 'GO_NTL_OLEG216_ONE_GPU_FINAL18_DIAG_20261117' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 104
+    timeout-minutes: 100
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-      KERNEL: kolihhan/ntl-oleg18-frozen0691-probe-nov16
+      KERNEL: kolihhan/ntl-oleg216-final18-diagnostic-nov17
       SRC: /tmp/ntl-pro-oleg18-exact-v2
       NEW: /tmp/ntl-pro-oleg18-exact-new
     steps:
@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 scikit-learn==1.7.2
           python -m py_compile scripts/ntl_oleg18_frozen_selector_20261116.py scripts/ntl_oleg18_frozen_champion_pilot_20261116.py
           state="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
           if [[ "$state" == *KernelWorkerStatus.* ]]; then
@@ -43,11 +43,15 @@ jobs:
           if len(pools)!=1:raise SystemExit('STOP_GPU_QUOTA_SOURCE_AMBIGUOUS')
           hours=float(str(pools[0]['remaining']).rstrip('h'))
           print('NTL_PRO_OLeg18_AVAILABLE_GPU_HOURS='+str(hours),flush=True)
-          if hours<4:raise SystemExit('STOP_GPU_QUOTA_LT_4_HOURS')
+          if hours<1.6:raise SystemExit('STOP_GPU_QUOTA_LT_1_6_HOURS')
           PY
           mkdir -p "$SRC"
           kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference               -p "$SRC" -m >/tmp/ntl-pro-oleg18-source-pull.log 2>&1
-          python -m scripts.ntl_oleg18_frozen_champion_pilot_20261116               --source "$SRC" --out "$NEW"
+          mkdir -p /tmp/ntl-oleg216-known-pred
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-oleg216-known-pred -o >/tmp/ntl-oleg216-reference-pull.log 2>&1
+          reference="$(find /tmp/ntl-oleg216-known-pred -type f -name submission.parquet)"
+          test -n "$reference" && test "$(echo "$reference" | wc -l)" -eq 1
+          python -m scripts.ntl_oleg18_logit_diagnostic_once_20261117 --source "$SRC" --baseline "$reference" --out "$NEW"
           python - <<'PY'
           import hashlib,json,os
           from pathlib import Path
@@ -55,25 +59,25 @@ jobs:
           metadata=json.loads((root/'kernel-metadata.json').read_text())
           assert metadata['id']==os.environ['KERNEL']
           notebook=(root/metadata['code_file']).read_bytes()
-          assert hashlib.sha256(notebook).hexdigest()=='e7ea37f4ff1f7aae0fa8dd78b29ce36e1f321b9e714f010e4caaf660333ecd51'
+          assert hashlib.sha256(notebook).hexdigest()=='d9da790c90fda8b9f874a018091a790328a50d7afa3ee2c415990102a9775b06'
           assert hashlib.sha256(Path('scripts/ntl_oleg18_frozen_selector_20261116.py').read_bytes()).hexdigest()=='b86cba56fd6d3f167afe29d574dde3e42f110c557b64f042cda13b7d18986f0d'
           assert metadata['dataset_sources'].count('olegzholobov/name-that-llm-response-corpus')==1
           assert (len(metadata['dataset_sources']),len(metadata['model_sources']),len(metadata['kernel_sources']))==(24,6,9)
           assert metadata['is_private'] and metadata['enable_gpu'] and not metadata['enable_internet']
           print('NTL_PRO_OLeg18_EXACT_CPU_GATE_GPU_PUSH_ELIGIBLE=TRUE',flush=True)
           PY
-      - name: Start EXACT ONE genuine fullpath inference on 216 unseen-source passages, no official submit
+      - name: Launch exactly ONE owner-approved 90-minute Kaggle GPU diagnostic, no official submit
         shell: bash
         run: |
           set -euo pipefail
-          kaggle kernels push -p "$NEW" --accelerator NvidiaTeslaT4 --timeout 32400                >/tmp/ntl-pro-oleg18-kernel-push.log 2>&1
+          kaggle kernels push -p "$NEW" --accelerator NvidiaTeslaT4 --timeout 5400                >/tmp/ntl-pro-oleg18-kernel-push.log 2>&1
           if ! grep -q 'Kernel version 1 successfully pushed' /tmp/ntl-pro-oleg18-kernel-push.log; then
              echo 'STOP_OLeg18_PRIVATE_GPU_KERNEL_RECEIPT_NOT_VERIFIED'
              exit 1
           fi
           echo "NTL_PRO_OLeg18_GENUINE_PRIVATE_GPU_KERNEL_LAUNCHED=$KERNEL"
           echo 'NTL_PRO_OLeg18_NO_SUPERVISED_TRAINING_NO_OFFICIAL_SUBMISSION=TRUE'
-      - name: Observe exact same kernel; compute actual external 18-class BA if completed
+      - name: Observe only new diagnostic kernel and analyze frozen Oleg216 outputs when complete
         shell: bash
         run: |
           set -euo pipefail
@@ -141,5 +145,61 @@ jobs:
               'independent_hidden_kaggle_test_score':False,
               'official_competition_submission_created':False,
               'new_training':False,
+          },sort_keys=True),flush=True)
+          PY
+
+      - name: CPU only post-V1 confidence gate (AUROC cutoff frozen at 0.65)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /tmp/ntl-pro-oleg18-results/ntl_oleg216_final18_logits.jsonl ]; then
+             echo "NTL_POSTV1_LOGITS_NOT_AVAILABLE_CHOOSE_B=TRUE";exit 0
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from sklearn.metrics import roc_auc_score
+          from scipy.special import softmax
+          from scripts.ntl_oleg18_frozen_selector_20261116 import ntl_oleg18_select, NTL_OLEG18_MODELS
+          p=Path('/tmp/ntl-pro-oleg18-results/ntl_oleg216_final18_logits.jsonl')
+          records=[json.loads(x) for x in p.read_text(encoding='utf-8').splitlines()]
+          if len(records)!=216:raise SystemExit('INCOMPLETE_18CLASS_DUMP_CHOOSE_B')
+          labels=records[0]['labels']
+          assert len(labels)==len(set(labels))==18 and set(labels)==set(NTL_OLEG18_MODELS)
+          assert all(r['labels']==labels for r in records)
+          ids=[str(r['sample_id']) for r in records]
+          assert len(set(ids))==216
+          Z=np.asarray([r['logits'] for r in records],dtype=np.float32)
+          assert Z.shape==(216,18) and np.isfinite(Z).all()
+          predictions=np.asarray(labels)[Z.argmax(1)]
+          assert (predictions == np.array([r['argmax'] for r in records])).all()
+          old=pd.read_parquet('/tmp/ntl-oleg216-known-pred/submission.parquet').set_index('id').loc[ids]
+          agrees=float((predictions==old.model.to_numpy()).mean())
+          assert (predictions[:5]==old.model.to_numpy()[:5]).all()
+          if agrees<.99:raise SystemExit('BASELINE_99_PERCENT_AGREEMENT_FAIL_CHOOSE_B')
+          root=Path('/tmp/ntl-pro-oleg18-external-src')
+          truth=ntl_oleg18_select(pd.read_parquet(root/'external_short_wide.parquet'),
+              pd.read_parquet(root/'external_cell_metadata.parquet')).set_index('id').loc[ids]
+          correct=(predictions==truth.model.to_numpy()).astype(int)
+          probs=softmax(Z.astype(np.float64),axis=1)
+          ps=np.sort(probs,axis=1)
+          margin=ps[:,-1]-ps[:,-2]
+          auc=float(roc_auc_score(correct,margin))
+          conf=ps[:,-1]
+          ece=0.
+          for left,right in zip(np.linspace(0,1,16)[:-1],np.linspace(0,1,16)[1:]):
+              take=(conf>=left)&((conf<right) if right<1 else (conf<=right))
+              if take.any():ece+=take.mean()*abs(correct[take].mean()-conf[take].mean())
+          quant=lambda mask:[round(float(x),6) for x in np.quantile(margin[mask],[.1,.25,.5,.75,.9])]
+          print('NTL_FINAL18_REAL_CPU_CONFIDENCE_GATE='+json.dumps({
+              'rows':216,'baseline_agreement':round(agrees,6),'correct':int(correct.sum()),
+              'margin_auroc':round(auc,6),'ece_15bin':round(float(ece),6),
+              'margin_correct_q10_q25_q50_q75_q90':quant(correct==1),
+              'margin_wrong_q10_q25_q50_q75_q90':quant(correct==0),
+              'kill_threshold':0.65,
+              'decision':'CHOOSE_B_STOP_NTL' if auc<.65 else 'ALLOW_ONE_GLOBAL_DECISION_MECHANISM',
+              'training':False,'official_submission':False,
+              'distribution':'Oleg sensitive topics, already spent; not Public/Private Kaggle accuracy'
           },sort_keys=True),flush=True)
           PY
