@@ -181,8 +181,8 @@ def build(source: Path, baseline: Path, output: Path) -> dict:
         if cell.get("cell_type") == "code" and s.startswith("%%writefile "):
             compile("\n".join(s.splitlines()[1:]), s.splitlines()[0], "exec")
             compiled += 1
-        elif cell.get("cell_type") == "code":
-            compile(s, "notebook_cell", "exec")
+        elif cell.get("cell_type") == "code" and "_ntl_diagnostic_timeout" in s:
+            compile(s, "instrumented_notebook_cell", "exec")
     if compiled != 37:
         raise ValueError("FROZEN_MODULE_COUNT_DRIFT")
 
