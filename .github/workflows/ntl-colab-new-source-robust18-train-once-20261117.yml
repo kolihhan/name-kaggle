@@ -49,6 +49,25 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - name: Verify updated owner Colab ADC refresh in the exact training job
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check google-auth==2.43.0 requests==2.32.5
+          python - <<'PY'
+          import google.auth
+          from google.auth.transport.requests import Request
+          try:
+              cred,_=google.auth.default(scopes=[
+                  'openid','https://www.googleapis.com/auth/cloud-platform',
+                  'https://www.googleapis.com/auth/colaboratory'])
+              cred.refresh(Request())
+              assert cred.valid
+          except Exception as exc:
+              print('NTL_COLAB_PREFLIGHT_REFRESH=FAIL_'+type(exc).__name__,flush=True)
+              raise SystemExit(1)
+          print('NTL_COLAB_PREFLIGHT_REFRESH=PASS; ALLOCATION_NOT_YET_STARTED',flush=True)
+          PY
       - name: Freeze exact code and protect public GitHub from competition data
         shell: bash
         run: |
