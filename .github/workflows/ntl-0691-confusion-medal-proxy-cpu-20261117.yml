@@ -1,0 +1,152 @@
+name: NTL 0.691 Champion Confusion and Leaderboard Quantiles Readonly
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-0691-confusion-medal-proxy-cpu-20261117.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-champion-confusion-existing-outputs-nov17
+  cancel-in-progress: false
+jobs:
+  frozen_champion_current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_oleg18_frozen_selector_20261116.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read exactly existing champion 216 predictions and source-matched truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          mkdir -p /tmp/ntl-oleg-old-champion /tmp/ntl-oleg-actual-public
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-oleg-old-champion -o >/tmp/ntl-o-champion-read.log 2>&1
+          for f in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -f "$f" \
+              -p /tmp/ntl-oleg-actual-public --unzip -o -q >/dev/null
+          done
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          from collections import Counter
+          import pandas as pd
+          from scripts.ntl_oleg18_frozen_selector_20261116 import (
+              ntl_oleg18_select,NTL_OLEG18_SHA,NTL_OLEG18_MODELS)
+          root=Path('/tmp/ntl-oleg-actual-public')
+          for f,digest in NTL_OLEG18_SHA.items():
+              assert hashlib.sha256((root/f).read_bytes()).hexdigest()==digest
+          truth=ntl_oleg18_select(pd.read_parquet(root/'external_short_wide.parquet'),
+                                  pd.read_parquet(root/'external_cell_metadata.parquet'))
+          paths=list(Path('/tmp/ntl-oleg-old-champion').rglob('submission.parquet'))
+          assert len(paths)==1, 'OLD_CHAMPION_PREDICTION_PARQUET_MISSING'
+          pred=pd.read_parquet(paths[0])
+          assert len(pred)==216 and {'id','model'} <= set(pred.columns)
+          assert pred.id.is_unique and set(pred.id)==set(truth.id)
+          seen=truth[['id','model']].merge(pred[['id','model']],on='id',validate='one_to_one',
+                                          suffixes=('_true','_pred'))
+          assert len(seen)==216
+          labels=list(NTL_OLEG18_MODELS)
+          assert all(x in labels for x in seen.model_pred)
+          correct=int((seen.model_true==seen.model_pred).sum())
+          assert correct==89, f'CHAMPION_REPRODUCIBILITY_DRIFT={correct}'
+          def family(m):
+              return ('anthropic' if m.startswith('claude-') else
+                      'google' if m.startswith('gemini-') else
+                      'openai' if m.startswith(('gpt-','gpt-6')) else
+                      'zai' if m.startswith('glm-') else
+                      'moonshot' if m.startswith('kimi-') else
+                      'qwen' if m.startswith('qwen') else 'other')
+          wrong=seen.loc[seen.model_true!=seen.model_pred]
+          within=int(sum(family(a)==family(b) for a,b in zip(wrong.model_true,wrong.model_pred)))
+          conf=Counter(zip(wrong.model_true,wrong.model_pred))
+          by_true={m:{'count':int((seen.model_true==m).sum()),
+                      'recall':round(float(((seen.model_true==m)&(seen.model_pred==m)).sum()/12),6)}
+                   for m in labels}
+          matrix=[[int(((seen.model_true==t)&(seen.model_pred==p)).sum()) for p in labels]
+                    for t in labels]
+          output={'scope':'frozen_0.691_champion_OLEG216_only_spent_external',
+                  'champion_submission_id':58375806,'public_balanced_accuracy':0.691,
+                  'external_correct':correct,'external_total':216,
+                  'external_BA':round(correct/216,6),
+                  'errors':len(wrong),'within_family_wrong':within,
+                  'within_family_wrong_share':round(within/len(wrong),6),
+                  'cross_family_wrong':len(wrong)-within,
+                  'top_offdiagonal':[{'true':a,'pred':b,'n':int(n)}
+                       for (a,b),n in conf.most_common(12)],
+                  'per_class':by_true,'labels':labels,'matrix':matrix,
+                  'n_per_class':12,'training_independence_proven':False,
+                  'equivalent_to_current_competition_LB':False,
+                  'raw_text_or_ids_exported':False,
+                  'new_inference':False,'new_training':False,'new_submission':False}
+          Path('ntl-champion-oleg216-confusion-safe.json').write_text(json.dumps(output,indent=2,sort_keys=True))
+          print('NTL_EXACT_CHAMPION_216_CONFUSION='+json.dumps(
+              {k:v for k,v in output.items() if k not in ('labels','matrix','per_class')},
+              sort_keys=True),flush=True)
+          PY
+      - name: Public leaderboard percentile score proxy (not medal certification)
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,subprocess,math
+          from pathlib import Path
+          c=subprocess.run(['kaggle','competitions','leaderboard','name-that-llm','--show','-v','-q'],
+             capture_output=True,text=True,timeout=90)
+          if c.returncode:
+              print('NTL_LEADERBOARD_PUBLIC_QUANTILES=NOT_AVAILABLE',flush=True)
+              raise SystemExit(0)
+          rows=list(csv.DictReader(io.StringIO(c.stdout.lstrip('\ufeff'))))
+          print('NTL_LB_COLUMN_NAMES='+json.dumps(list(rows[0]) if rows else []),flush=True)
+          if not rows:
+              print('NTL_LEADERBOARD_PUBLIC_QUANTILES=EMPTY',flush=True)
+              raise SystemExit(0)
+          score_col=next((k for k in rows[0] if k.lower() in ('score','publicscore')),None)
+          rank_col=next((k for k in rows[0] if k.lower() in ('rank','rankposition')),None)
+          if not (score_col and rank_col):
+              print('NTL_LEADERBOARD_PUBLIC_QUANTILES=UNKNOWN_COLUMNS',flush=True)
+              raise SystemExit(0)
+          records=[]
+          for row in rows:
+              try:
+                  records.append((int(float(row[rank_col])),float(row[score_col])))
+              except (ValueError,TypeError):continue
+          records.sort()
+          result={'public_ranked_rows_returned':len(records),
+                  'all_ranked_teams_not_proven':True,
+                  'current_approx_bronze_rank_top10pct':max(1,math.ceil(len(records)*.10)),
+                  'current_approx_silver_rank_top5pct':max(1,math.ceil(len(records)*.05)),
+                  'these_are_rank_proxies_not_final_private_medal_cutoffs':True,
+                  'source':'Kaggle authenticated public leaderboard current query'}
+          for key,at in (('bronze_proxy',result['current_approx_bronze_rank_top10pct']),
+                         ('silver_proxy',result['current_approx_silver_rank_top5pct'])):
+              eligible=[v for rank,v in records if rank<=at]
+              result[key+'_BA']=min(eligible) if eligible else None
+          Path('ntl-public-lb-quantile-safe.json').write_text(json.dumps(result,indent=2,sort_keys=True))
+          print('NTL_PUBLIC_LB_QUANTILE_PROXY='+json.dumps(result,sort_keys=True),flush=True)
+          PY
+      - name: Remove private data and publish aggregate-only diagnostics
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-oleg-old-champion /tmp/ntl-oleg-actual-public
+          echo 'NTL_OLeg_PREDICTION_IDS_EXPORTED=FALSE'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-frozen-champion-confusion-public-lb-safe-${{ github.run_id }}
+          path: |
+            ntl-champion-oleg216-confusion-safe.json
+            ntl-public-lb-quantile-safe.json
+          if-no-files-found: warn
+          retention-days: 14
