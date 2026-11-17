@@ -1,0 +1,109 @@
+name: NTL High-Score New Training Source Gate (CPU, No Fit)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-strong-score-strict-training-data-gate-20261117.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-strong-source-gate-nov17
+  cancel-in-progress: false
+jobs:
+  strict_public_source_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Download public Open Pool and exact source-side metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          mkdir -p /tmp/ntl-source-gate
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" \
+              -p /tmp/ntl-source-gate --unzip -q >/dev/null
+          done
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          import pandas as pd
+          import pyarrow.parquet as pq
+          from collections import Counter
+          root=Path('/tmp/ntl-source-gate')
+          src=pd.read_csv(root/'sources.csv').fillna('')
+          proto=pd.read_csv(root/'source_protocol.csv').fillna('')
+          labels=pd.read_csv(root/'per_model.csv').fillna('')
+          all_labels=set(labels.model.astype(str))
+          schema=pq.read_schema(root/'ntl_open_pool.parquet')
+          cols=schema.names
+          print('NTL_TRAIN_GATE_PUBLIC_FILE_SHA256='+hashlib.sha256((root/'ntl_open_pool.parquet').read_bytes()).hexdigest(),flush=True)
+          print('NTL_TRAIN_GATE_PUBLIC_POOL_SCHEMA='+json.dumps(cols),flush=True)
+          print('NTL_TRAIN_GATE_METADATA_ROW_COUNTS='+json.dumps({
+            'sources':len(src),'protocol':len(proto),'labels':len(labels),
+          }),flush=True)
+          best_source=next((c for c in ('source_dataset','source','dataset_source','source_id','dataset','origin') if c in cols),None)
+          model=next((c for c in ('model','label','model_name') if c in cols),None)
+          prompt=next((c for c in ('prompt_id','prompt_key','prompt_hash','prompt','instruction','user_prompt') if c in cols),None)
+          text_col=next((c for c in ('text','response','passage','output','generated_text') if c in cols),None)
+          if not (best_source and model and text_col):
+            print('NTL_TRAIN_GATE_OUTCOME=BLOCK_MISSING_ESSENTIAL_COLUMNS',flush=True)
+            raise SystemExit(0)
+          requested=list(dict.fromkeys([best_source,model,prompt,text_col]))
+          frame=pq.read_table(root/'ntl_open_pool.parquet',columns=[x for x in requested if x]).to_pandas()
+          source_names=frame[best_source].astype(str)
+          target=frame[model].astype(str)
+          meta=src.set_index('source_dataset')
+          protocol=proto.set_index('source_dataset')
+          source_supported=source_names.isin(meta.index)&source_names.isin(protocol.index)
+          verified=source_names.map(protocol['served_model_check']).fillna('').str.strip().str.lower().eq('yes')
+          licenses=source_names.map(meta['source_license']).fillna('').astype(str).str.lower()
+          licensed=licenses.str.contains('cc-by|attribution|apache|mit|open data',case=False,regex=True)
+          safe=source_supported&verified&licensed&target.isin(all_labels)&frame[text_col].notna()&frame[text_col].astype(str).str.len().ge(40)
+          accepted=frame.loc[safe,[best_source,model]].copy()
+          sources=sorted(accepted[best_source].astype(str).unique())
+          by_class=accepted[model].astype(str).value_counts()
+          source_hist=accepted.groupby(best_source)[model].nunique()
+          rows=accepted.groupby(best_source).size()
+          print('NTL_TRAIN_GATE_STRICT_TRUSTED_SOURCES='+json.dumps({
+            'total_raw_rows':len(frame),
+            'quality_filtered_rows':int(safe.sum()),
+            'quality_filtered_source_count':len(sources),
+            'labels_with_any_rows':len(by_class),
+            'missing_labels':sorted(all_labels-set(by_class.index)),
+            'min_rows_per_present_label':int(by_class.min()) if len(by_class) else 0,
+            'source_label_coverage_hist':{str(k):int(v) for k,v in Counter(source_hist.values).items()},
+            'prompt_field':prompt,
+            'source_column':best_source,
+            'text_column':text_col,
+            'all_prompt_values_nonnull':bool(prompt and frame.loc[safe,prompt].notna().all()),
+            'verified_rule':'served_model_check equals yes (publisher metadata), permissive CC/Apache license',
+            'exact_served_response_ids_independently_inspected':False,
+          },sort_keys=True),flush=True)
+          if not prompt:
+            print('NTL_TRAIN_GATE_OUTCOME=BLOCK_NO_ORIGINAL_PROMPT_IDENTIFIER',flush=True)
+            raise SystemExit(0)
+          if len(by_class)<18 or len(sources)<4:
+            print('NTL_TRAIN_GATE_OUTCOME=BLOCK_INSUFFICIENT_STRICT_LABEL_OR_SOURCE_COVERAGE',flush=True)
+            raise SystemExit(0)
+          # Precommitted source-level split, never use outcome metric to choose sources.
+          holdout=[s for s in sources if int(hashlib.sha256(('ntl-heldout-20261117|'+s).encode()).hexdigest(),16)%5==0]
+          tr=accepted.loc[~accepted[best_source].astype(str).isin(holdout)]
+          va=accepted.loc[accepted[best_source].astype(str).isin(holdout)]
+          print('NTL_TRAIN_GATE_SOURCE_SPLIT='+json.dumps({
+            'frozen_holdout_rule':'sha256(salt|source) mod 5 == 0',
+            'holdout_source_count':len(holdout),
+            'holdout_rows':len(va),
+            'train_rows':len(tr),
+            'holdout_label_support':int(va[model].nunique()) if len(va) else 0,
+            'train_label_support':int(tr[model].nunique()) if len(tr) else 0,
+            'holdout_labeled_classes':sorted(set(va[model])),
+            'train_labeled_classes':sorted(set(tr[model])),
+          },sort_keys=True),flush=True)
+          allowed=(tr[model].nunique()==18 and va[model].nunique()==18 and len(va)>=360)
+          print('NTL_TRAIN_GATE_OUTCOME='+('ELIGIBLE_FOR_NEXT_PROVENANCE_CHECK' if allowed else 'BLOCK_SOURCE_DISJOINT_18LABEL_TEST'),flush=True)
+          print('NTL_NO_TRAINING_NO_GPU_NO_KAGGLE_SUBMISSION=TRUE',flush=True)
+          PY
