@@ -113,3 +113,22 @@ jobs:
                   print('NTL_EXACT_FINAL_CODE='+json.dumps({'cell':idx,'line':line_no,'source':line[:220]},ensure_ascii=False),flush=True)
           print('NTL_LAST_WRITER_CPU_SOURCE_ONLY=PASS',flush=True)
           PY
+      - name: CPU sanity build exact Oleg216 post-V1 18-class diagnostic (no GPU)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          mkdir -p /tmp/ntl-v2-build-src /tmp/ntl-v2-old-baseline
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference \
+            -p /tmp/ntl-v2-build-src -m >/tmp/ntl-v2-build-src.log 2>&1
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 \
+            -p /tmp/ntl-v2-old-baseline -o >/tmp/ntl-v2-old-baseline.log 2>&1
+          find /tmp/ntl-v2-old-baseline -type f -name submission.parquet \
+            | tee /tmp/ntl-v2-previous-preds-files
+          test "$(wc -l < /tmp/ntl-v2-previous-preds-files)" -eq 1
+          baseline="$(cat /tmp/ntl-v2-previous-preds-files)"
+          python -m scripts.ntl_oleg18_logit_diagnostic_once_20261117 \
+            --source /tmp/ntl-v2-build-src --baseline "$baseline" \
+            --out /tmp/ntl-v2-diagnostic-output
+          test -e /tmp/ntl-v2-diagnostic-output/kernel-metadata.json
+          echo "NTL_FINAL18_DIAGNOSTIC_CPU_BUILD_SANITY=PASS"
