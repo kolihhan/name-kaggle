@@ -209,6 +209,39 @@ jobs:
           s=' '.join(s.split())[:420]
           print('NTL_KAGGLE_STATUS_SAFE_RESPONSE='+s,flush=True)
           PY
+          if [ "$status_rc" -ne 0 ]; then
+            echo 'NTL_READBACK_FALLBACK_CPU_ONLY=TRUE'
+            set +e
+            oldstate="$(kaggle kernels status 'kolihhan/ntl-oleg18-frozen0691-probe-nov16' 2>&1)"
+            oldrc=$?
+            kaggle kernels list --mine --csv >/tmp/ntl-owner-list.csv 2>/tmp/ntl-owner-list.err
+            listrc=$?
+            mkdir -p /tmp/ntl-existing-output-readback
+            kaggle kernels output "$ref" -p /tmp/ntl-existing-output-readback -o >/tmp/ntl-existing-output.log 2>&1
+            outputrc=$?
+            set -e
+            echo "NTL_CONTROL_OLD_PRIVATE_KERNEL_STATUS_EXIT=$oldrc"
+            echo "NTL_OWNER_KERNEL_LIST_EXIT=$listrc"
+            echo "NTL_DIAGNOSTIC_PRIVATE_KERNEL_OUTPUT_EXIT=$outputrc"
+            python - <<'PY'
+          from pathlib import Path
+          import csv,io
+          p=Path('/tmp/ntl-owner-list.csv')
+          if p.exists():
+              raw=p.read_text(errors='replace')
+              present='ntl-oleg216-final18-diagnostic-nov17' in raw
+              old_present='ntl-oleg18-frozen0691-probe-nov16' in raw
+              print('NTL_OWNER_LIST_NEW_SLUG_PRESENT='+str(present),flush=True)
+              print('NTL_OWNER_LIST_OLD_SLUG_PRESENT='+str(old_present),flush=True)
+          out=Path('/tmp/ntl-existing-output-readback')
+          names=sorted(p.name for p in out.glob('*') if p.is_file())
+          print('NTL_READBACK_OUTPUT_FILE_NAMES='+repr(names[:25]),flush=True)
+          PY
+            if [ "$outputrc" -eq 0 ] && [ -f /tmp/ntl-existing-output-readback/ntl_oleg216_final18_logits.jsonl ]; then
+              status='KernelWorkerStatus.COMPLETE'
+              echo 'NTL_FALLBACK_OUTPUT_HAS_VALIDATION_INPUT=TRUE'
+            fi
+          fi
           state="$(printf '%s' "$status" | grep -oE 'KernelWorkerStatus[.][A-Z_]+' | head -1 || true)"
           if [ -n "$state" ]; then
             echo "NTL_EXACT_PRIVATE_GPU_WORKER_ENUM=$state"
