@@ -123,3 +123,4 @@ jobs:
           },sort_keys=True),flush=True)
           print('NTL_OPENPOOL_PRIVATE_OR_COMPETITION_DATA_READ=FALSE;NO_GPU=TRUE;NO_TRAINING=TRUE',flush=True)
           PY
+# 2026-11-17: recheck latest changed Open Pool v7 source metadata; zero rows exported, no GPU/fitting/submission.
