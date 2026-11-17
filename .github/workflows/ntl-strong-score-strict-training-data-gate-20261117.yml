@@ -47,13 +47,16 @@ jobs:
           }),flush=True)
           best_source=next((c for c in ('source_dataset','source','dataset_source','source_id','dataset','origin') if c in cols),None)
           model=next((c for c in ('model','label','model_name') if c in cols),None)
-          prompt=next((c for c in ('prompt_id','prompt_key','prompt_hash','prompt','instruction','user_prompt') if c in cols),None)
+          prompt=next((c for c in ('prompt_group','prompt_id','prompt_key','prompt_hash','prompt_canon','prompt','instruction','user_prompt') if c in cols),None)
           text_col=next((c for c in ('text','response','passage','output','generated_text') if c in cols),None)
           if not (best_source and model and text_col):
             print('NTL_TRAIN_GATE_OUTCOME=BLOCK_MISSING_ESSENTIAL_COLUMNS',flush=True)
             raise SystemExit(0)
-          requested=list(dict.fromkeys([best_source,model,prompt,text_col]))
-          frame=pq.read_table(root/'ntl_open_pool.parquet',columns=[x for x in requested if x]).to_pandas()
+          extra=['gen_served_model','flag_near_train_prompt','flag_train_prompt_regen',
+                 'flag_kb_proxy','flag_kb_proxy_after_ruling','flag_gemini37_routing_risk',
+                 'max_cos_train','max_sim_train_prompt','prompt_evidence']
+          requested=list(dict.fromkeys([best_source,model,prompt,text_col]+extra))
+          frame=pq.read_table(root/'ntl_open_pool.parquet',columns=[x for x in requested if x and x in cols]).to_pandas()
           source_names=frame[best_source].astype(str)
           target=frame[model].astype(str)
           meta=src.set_index('source_dataset')
@@ -63,7 +66,24 @@ jobs:
           licenses=source_names.map(meta['source_license']).fillna('').astype(str).str.lower()
           licensed=licenses.str.contains('cc-by|attribution|apache|mit|open data',case=False,regex=True)
           safe=source_supported&verified&licensed&target.isin(all_labels)&frame[text_col].notna()&frame[text_col].astype(str).str.len().ge(40)
-          accepted=frame.loc[safe,[best_source,model]].copy()
+          for flag in ('flag_near_train_prompt','flag_train_prompt_regen',
+                       'flag_kb_proxy','flag_kb_proxy_after_ruling','flag_gemini37_routing_risk'):
+              if flag in frame.columns:
+                  safe &= ~(frame[flag].fillna(False).astype(str).str.lower().isin(('true','1','yes')))
+          if prompt:
+              safe &= frame[prompt].notna() & frame[prompt].astype(str).str.len().gt(2)
+          accepted=frame.loc[safe,[best_source,model,prompt]].copy()
+          same_served=(frame['gen_served_model'].fillna('').astype(str).str.strip().str.lower()
+                       ==target.str.strip().str.lower()) if 'gen_served_model' in frame else pd.Series(False,index=frame.index)
+          print('NTL_TRAIN_GATE_RESPONSE_ID_ATTESTATION='+json.dumps({
+              'eligible_exact_model_id_rows':int((safe&same_served).sum()),
+              'eligible_exact_model_id_class_count':int(frame.loc[safe&same_served,model].nunique()),
+              'eligible_exact_model_id_source_count':int(frame.loc[safe&same_served,best_source].nunique()),
+              'eligible_row_models_missing_served_id':int((safe & frame['gen_served_model'].isna()).sum()) if 'gen_served_model' in frame else int(safe.sum()),
+          },sort_keys=True),flush=True)
+          label_sources=accepted.groupby(model)[best_source].nunique().sort_values()
+          print('NTL_TRAIN_GATE_LABEL_SOURCE_SUPPORT='+json.dumps(
+              {str(k):int(v) for k,v in label_sources.items()},sort_keys=True),flush=True)
           sources=sorted(accepted[best_source].astype(str).unique())
           by_class=accepted[model].astype(str).value_counts()
           source_hist=accepted.groupby(best_source)[model].nunique()
@@ -93,11 +113,15 @@ jobs:
           holdout=[s for s in sources if int(hashlib.sha256(('ntl-heldout-20261117|'+s).encode()).hexdigest(),16)%5==0]
           tr=accepted.loc[~accepted[best_source].astype(str).isin(holdout)]
           va=accepted.loc[accepted[best_source].astype(str).isin(holdout)]
+          # Original prompt-group IDs can be shared across publishers.
+          prompt_overlap=set(tr[prompt].astype(str)) & set(va[prompt].astype(str))
+          tr=tr.loc[~tr[prompt].astype(str).isin(prompt_overlap)]
           print('NTL_TRAIN_GATE_SOURCE_SPLIT='+json.dumps({
             'frozen_holdout_rule':'sha256(salt|source) mod 5 == 0',
             'holdout_source_count':len(holdout),
             'holdout_rows':len(va),
-            'train_rows':len(tr),
+            'train_rows_after_cross_source_prompt_exclusion':len(tr),
+            'cross_source_prompt_groups_excluded':len(prompt_overlap),
             'holdout_label_support':int(va[model].nunique()) if len(va) else 0,
             'train_label_support':int(tr[model].nunique()) if len(tr) else 0,
             'holdout_labeled_classes':sorted(set(va[model])),
