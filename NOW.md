@@ -1,3 +1,9 @@
+## 2026-11-18 MYT — Official NTL quota independently verified; Public deadline mismatch
+
+**Authenticated quota correction (2026-11-17 16:30 UTC):** [Kaggle team-specific submission-limits Action #44126486779](https://github.com/kolihhan/name-kaggle/actions/runs/44126486779) confirms **maxDailySubmissions=5, Submissions today=0, Remaining today=5** for NTL; 21 lifetime team submissions. The account's daily allowance is thus verified, not inferred from defaults. **Deadline discrepancy:** Kaggle's [published overview](https://www.kaggle.com/competitions/name-that-llm/overview/description) states **2027-01-13 23:59 UTC**, but the authenticated competition listing API returned `deadline=2027-01-14T23:59:00.817Z`. Until reconciled, plan against the **earlier January 13 deadline**, never promise the extra 24 hours. This is a metadata disagreement, not a model measurement.
+
+---
+
 ## 2026-11-18 MYT — next NTL submission intent clarified: a NEW candidate; 0.691 is the control, not a replay
 
 - **Owner clarification supersedes any assistant-declared blanket `NO NEW NTL SUBMISSIONS`:** a genuine new Kaggle code submission this week is an intended outcome. Do **not** resubmit frozen 0.691 Lightning unchanged for validation, and do not burn an official slot merely to see whether the same package reruns. A future diagnostic-only PROBE must be disclosed as such and separately approved, not misrepresented as a stronger model.
