@@ -1,0 +1,104 @@
+name: NTL Real Frozen Dense vs Lexical Source18 CPU Once
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-frozen-dense-vs-char-source18-cpu-20261117.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-frozen-minilm-vs-char-source18-nov17
+  cancel-in-progress: false
+jobs:
+  frozen_representation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_source_robust_18_trainprep_20261117.py
+            scripts/ntl_source_shift_linear_control_20261117.py
+            scripts/ntl_frozen_encoder_vs_lexical_20261117.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: CPU-only frozen protocol and readout sanity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m py_compile scripts/ntl_source_robust_18_trainprep_20261117.py scripts/ntl_source_shift_linear_control_20261117.py scripts/ntl_frozen_encoder_vs_lexical_20261117.py
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do test ! -e "$f"; done
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('scripts/ntl_frozen_encoder_vs_lexical_20261117.py').read_text()
+          for x in ('EXPECTED_POOL_SHA','0.213704','MIN_GAIN = .03','AutoModel.from_pretrained',
+                    'MODEL = "sentence-transformers/all-MiniLM-L6-v2"',
+                    'same-row lexical baseline'):
+              if x not in s and x!='same-row lexical baseline': raise RuntimeError(x)
+          print('NTL_DENSE_VS_CHAR_PREDECLARED_CPU_CONTRACT=PASS',flush=True)
+          PY
+      - name: Install CPU readout and encoder (no paid compute)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check "torch==2.6.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q --disable-pip-version-check \
+            kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 \
+            numpy==2.3.4 scikit-learn==1.7.2 scipy==1.16.3 \
+            "transformers==4.57.1" "safetensors==0.6.2"
+          python - <<'PY'
+          import torch
+          assert not torch.cuda.is_available()
+          print('NTL_PRETRAINED_ENCODER_REAL_CPU_ONLY=TRUE',flush=True)
+          PY
+      - name: Materialize same 18-class prompt and source-disjoint public source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-public-dense-input
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" \
+              -p /tmp/ntl-public-dense-input --unzip -q >/dev/null
+          done
+          python -m scripts.ntl_source_robust_18_trainprep_20261117 \
+            --input /tmp/ntl-public-dense-input --out /tmp/ntl-dense-frozen
+          echo "NTL_FROZEN_DENSE_SOURCE18_INPUT_VERIFIED=TRUE"
+      - name: Compare actual pretrained dense representation to original frozen lexical same-row C0
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_frozen_encoder_vs_lexical_20261117 \
+            --data-dir /tmp/ntl-dense-frozen \
+            --out ./ntl-pretrained-dense-real-result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('ntl-pretrained-dense-real-result.json').read_text())
+          assert x['arms']['C0_char_svc']['BA']==0.213704
+          assert x['train_n']==5562 and x['valid_n']==2700
+          assert len(x['source_deltas'])==3
+          assert x['all_18_truth_classes'] and x['source_disjoint'] and x['prompt_disjoint']
+          assert not x['new_kaggle_submission']
+          print("NTL_REAL_FROZEN_ENCODER_DIAGNOSTIC_VERIFIED=TRUE",flush=True)
+          PY
+      - name: Scrub public raw texts and avoid private competition artifacts
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-public-dense-input /tmp/ntl-dense-frozen
+          echo "NTL_RAW_TEXT_RETAINED_IN_ACTION_ARTIFACTS=FALSE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-real-frozen-minilm-18source-result-${{ github.run_id }}
+          path: ntl-pretrained-dense-real-result.json
+          if-no-files-found: warn
+          retention-days: 14
