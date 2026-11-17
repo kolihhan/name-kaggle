@@ -1,4 +1,4 @@
-name: NTL original prompt panel exact model availability
+name: NTL original prompt panel live Kaggle model identity
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
@@ -7,50 +7,22 @@ permissions:
   contents: read
 jobs:
   source_admission:
-    if: "${{ github.event.head_commit.message == 'Check exact Kaggle Benchmark routes for fresh 18-model NTL panel' }}"
+    if: "${{ github.event.head_commit.message == 'Probe actual Kaggle Model Proxy returned models for NTL' }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 11
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Check all 18 exact model IDs against the authenticated benchmark catalog
-        shell: bash
+      - name: Request one fixed public probe per label and measure actual returned IDs
         run: |
           set -euo pipefail
-          test -n "${KAGGLE_API_TOKEN:-}"
+          test -n "$KAGGLE_API_TOKEN"
           python -m pip -q install --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          kaggle benchmarks tasks models >"${RUNNER_TEMP}/ntl-benchmark-models.txt"
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          import re
-
-          labels = {
-              "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra",
-              "gemini-3.1-pro-preview", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash",
-              "claude-fable-5", "claude-opus-4-6", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-5",
-              "qwen3.8-max", "glm-5.3", "glm-5.3-flash", "kimi-k3",
-          }
-          catalog = Path(os.environ["RUNNER_TEMP"], "ntl-benchmark-models.txt").read_text()
-          slugs = [line.split()[0] for line in catalog.splitlines()
-                   if line.strip() and re.fullmatch(r"(?:[a-z0-9_.-]+/)?[a-z0-9][a-z0-9_.@-]+", line.split()[0])]
-          if not slugs:
-              raise SystemExit("No parseable model catalog returned")
-          exact = {}
-          for slug in slugs:
-              label = slug.rsplit("/", 1)[-1].removesuffix("@default").removesuffix("-default")
-              if label == "gpt-5.5-2026-04-23":
-                  label = "gpt-5.5"
-              if label in labels:
-                  exact.setdefault(label, []).append(slug)
-          print("NTL_FRESH_PANEL_CATALOG=" + json.dumps({
-              "catalog_models": len(slugs), "listed_label_count": len(exact),
-              "listed_exact_slug_matches": exact, "unlisted": sorted(labels - exact.keys()),
-              "other_related_slugs": [slug for slug in slugs if any(word in slug for word in ("fable", "kimi", "glm", "qwen3.8", "3.7-flash")) and not any(slug in hits for hits in exact.values())],
-              "generation_requests": 0, "new_training": False, "official_submissions": 0,
-          }, sort_keys=True))
-          PY
+          python scripts/ntl_probe_kaggle_served_models.py
