@@ -59,7 +59,7 @@ def eval_oof(y,base,scores,labels):
              for tau,pred in candidates.items()}
         tau=max(TAUS,key=lambda t:(val[t],-t))
         choices.append(tau)
-        gains[test]+=(candidates[tau][test]==y[test])-(base[test]==y[test])
+        gains[test]+=(candidates[tau][test]==y[test]).astype(float)-(base[test]==y[test]).astype(float)
         counts[test]+=1
     if not (counts==5).all():raise ValueError('bad split')
     gains/=counts
