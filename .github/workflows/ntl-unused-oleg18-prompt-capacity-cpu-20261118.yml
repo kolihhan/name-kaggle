@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${KAGGLE_API_TOKEN:-}"
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 networkx==3.5
           mkdir -p /tmp/ntl-oleg-unused-cpu
           for f in external_short_wide.parquet external_cell_metadata.parquet; do
             kaggle datasets download -d olegzholobov/name-that-llm-response-corpus \
@@ -52,3 +52,4 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 # Repeat unchanged CPU source-capacity audit after JSON integer-key serialization fix; no new model run.
+# Exact flow feasibility after source-only greedy bound; still zero model inference.
