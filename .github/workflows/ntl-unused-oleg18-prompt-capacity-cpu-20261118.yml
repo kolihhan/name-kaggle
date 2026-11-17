@@ -51,3 +51,4 @@ jobs:
           path: ntl-unused-oleg18-prompt-capacity.json
           if-no-files-found: warn
           retention-days: 14
+# Repeat unchanged CPU source-capacity audit after JSON integer-key serialization fix; no new model run.
