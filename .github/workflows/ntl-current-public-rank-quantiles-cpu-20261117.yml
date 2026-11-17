@@ -1,0 +1,97 @@
+name: NTL Current Public Leaderboard Full Pagination Rank Proxies Readonly
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-current-public-rank-quantiles-cpu-20261117.yml]
+permissions: {contents: read}
+jobs:
+  public_rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read paginated Kaggle Public rows; report ranks only, no team names
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,math,re,json,subprocess
+          rows=[]
+          seen_tokens=set()
+          token=None
+          complete=False
+          for page in range(1,85):
+              argv=['kaggle','competitions','leaderboard','name-that-llm',
+                    '--show','--page-size','200','-v','-q']
+              if token:argv+=['--page-token',token]
+              r=subprocess.run(argv,text=True,capture_output=True,timeout=65)
+              if r.returncode:
+                  print('NTL_PUBLIC_LB_PAGINATION=HTTP_OR_CLI_ERROR_AT_PAGE_'+str(page),flush=True)
+                  break
+              lines=r.stdout.splitlines()
+              # Real Kaggle CLI prints Next Page Token = ... BEFORE the CSV header.
+              matches=[re.match(r'^\s*Next\s+Page\s+Token\s*[:=]\s*(\S+)\s*$',ln,re.I)
+                       for ln in lines]
+              upcoming=next((z.group(1) for z in matches if z),None)
+              data=[line for line in lines
+                    if not re.match(r'^\s*Next\s+Page\s+Token\s*[:=]',line,re.I)
+                    and line.strip()]
+              header_index=next((i for i,line in enumerate(data)
+                 if ('score' in line.lower() and 'rank' in line.lower() and ',' in line)),None)
+              if header_index is None:
+                  print('NTL_PUBLIC_LB_PAGINATION=NO_CSV_HEADER_AT_PAGE_'+str(page),flush=True)
+                  break
+              try:
+                  records=list(csv.DictReader(data[header_index:]))
+              except csv.Error:
+                  print('NTL_PUBLIC_LB_PAGINATION=INVALID_CSV_AT_PAGE_'+str(page),flush=True)
+                  break
+              if page==1:
+                  print('NTL_PUBLIC_LB_AUTHENTICATED_COLUMN_NAMES='+json.dumps(list(records[0]) if records else []),flush=True)
+              for rec in records:
+                  if not rec:continue
+                  rank_key=next((k for k in rec if k and k.lower() in ('rank','rankposition')),None)
+                  score_key=next((k for k in rec if k and k.lower() in ('score','publicscore')),None)
+                  if rank_key and score_key:
+                      try:rows.append((int(float(rec[rank_key])),float(rec[score_key])))
+                      except (TypeError,ValueError):pass
+              print('NTL_PUBLIC_LB_PAGE_SAFE='+json.dumps({'page':page,'ranked_rows':len(records),'total_seen':len(rows),'has_more':bool(upcoming)}),flush=True)
+              if not upcoming:
+                  complete=True
+                  break
+              if upcoming in seen_tokens:
+                  print('NTL_PUBLIC_LB_PAGINATION=REPEATED_CURSOR_STOP',flush=True)
+                  break
+              seen_tokens.add(upcoming)
+              token=upcoming
+          unique=dict(rows)
+          pairs=sorted(unique.items())
+          if not complete or not pairs or len(pairs)<100:
+              print('NTL_PUBLIC_LB_MEDAL_PROXY=NO_FULL_RELIABLE_RANKED_LIST',flush=True)
+              print('NTL_PUBLIC_LB_SAFE_ROWS_OBSERVED='+str(len(pairs)),flush=True)
+              raise SystemExit(0)
+          max_rank=max(r for r,_ in pairs)
+          n=len(pairs)
+          result={'team_rows_with_visible_scores':n,'max_observed_rank':max_rank,
+              'complete_pagination':True,'approx_gold_top10_plus_0_2pct_rank':min(n,10+int(.002*n)),
+              'approx_silver_top5pct_rank':math.ceil(.05*n),
+              'approx_bronze_top10pct_rank':math.ceil(.10*n),
+              'this_is_public_score_proxy_not_actual_award':True,
+              'medal_awarded_on_final_private_rank':True,
+              'hidden_private_distribution_unverified':True}
+          def public_score_near_rank(rank):
+              exact=[score for r,score in pairs if r==rank]
+              if exact:return exact[0]
+              after=[(r,score) for r,score in pairs if r>=rank]
+              return after[0][1] if after else pairs[-1][1]
+          for kind in ('gold','silver','bronze'):
+              key='approx_'+kind+'_' + ('top10_plus_0_2pct_rank' if kind=='gold'
+                    else 'top5pct_rank' if kind=='silver' else 'top10pct_rank')
+              result[kind+'_public_score_at_rank']=public_score_near_rank(result[key])
+          print('NTL_PUBLIC_LB_AUTHENTICATED_RANK_PROXIES='+json.dumps(result,sort_keys=True),flush=True)
+          PY
