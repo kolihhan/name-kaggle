@@ -1,3 +1,16 @@
+## Completed exact current 0.691 model error distribution (Oleg216, spent domain)
+
+[Read-only existing-predictions Action #44119966899](https://github.com/kolihhan/name-kaggle/actions/runs/44119966899) **COMPLETED/SUCCESS**. Parsed the exact old private `kolihhan/ntl-oleg18-frozen0691-probe-nov16` prediction parquet, matched every one of 216 IDs to SHA-pinned 18-label Oleg truth without new inference, required the historical **89/216 correct** digest, and exported only an aggregate 18×18 confusion metadata artifact.
+
+- Correct **89/216 = 0.412037**, errors **127**.
+- Within-provider wrong **64/127 = 50.39%**; cross-provider wrong **63/127 = 49.61%**.
+- Largest observed confusion: GPT-5.6 Sol → Luna **8**; GPT-5.6 Terra → Luna **7**; Gemini-3.8 Flash → Claude Opus 4.6 **7**; Claude Fable 5 → Opus 4.6 **7**. The last two are **cross-provider**.
+- Compared to the older LoRA24 Stage-2 **701/1223 = 57.32% within-provider OOF**, this is a different model and a different domain; the two fractions are **not a causal paired contrast**.
+- Hence a **Sibling Expert is not established as the dominant bottleneck of the current 0.691 candidate**. External Oleg has only 12 examples/class, and prefit overlap is unproven. Leave the hypothesis open without preemptively training or promoting a sibling intervention.
+- [Live leaderboard full-pagination attempt #44121067184](https://github.com/kolihhan/name-kaggle/actions/runs/44121067184) returned no parseable CSV header; **no rank-percentile/medal score is established**, and 0.700 is **not a medal cutoff**. The older [authenticated Top-20 snapshot](ntl-public-leaderboard-top20-20261112.md) is dated November 12 (leader 0.765; #20 0.727) and is not the present or final Private board.
+
+---
+
 # NTL validation-scale audit — 2026-11-17
 
 ## What the historic data do and do not establish
