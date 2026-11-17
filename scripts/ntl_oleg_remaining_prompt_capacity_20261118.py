@@ -50,7 +50,7 @@ def audit(root):
   usable=set()
   # Conservative sequential greedy whole-pool prompt-group exclusion,
   # deterministic selection independent of model predictions or labels' score.
-  max_available={18:None,30:None}
+  max_available={}
   for per_class in (12,18,30):
       local_taken=set()
       reached={}
