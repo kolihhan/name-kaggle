@@ -1,0 +1,53 @@
+name: NTL Unused 18-Class Source Prompts Capacity CPU (No Inference)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-unused-oleg18-prompt-capacity-cpu-20261118.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-unused-oleg18-prompt-capacity-20261118
+  cancel-in-progress: false
+jobs:
+  capacity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, filter: blob:none}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read existing public responses for prompt capacity only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          mkdir -p /tmp/ntl-oleg-unused-cpu
+          for f in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download -d olegzholobov/name-that-llm-response-corpus \
+              -f "$f" --unzip -q -p /tmp/ntl-oleg-unused-cpu >/dev/null
+          done
+          python -m scripts.ntl_oleg_remaining_prompt_capacity_20261118 \
+            --root /tmp/ntl-oleg-unused-cpu --out ./ntl-unused-oleg18-prompt-capacity.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('ntl-unused-oleg18-prompt-capacity.json').read_text())
+          assert r['used_old_cohort_rows']==216
+          assert r['model_count_with_eligible_responses']<=18
+          assert not r['source_disjoint_from_spent_Oleg']
+          assert not r['new_inference'] and not r['competition_submit']
+          print('NTL_UNUSED_PROMPT_AUDIT_AGGREGATE_ONLY=TRUE',flush=True)
+          PY
+      - name: Remove raw source responses
+        if: always()
+        run: rm -rf /tmp/ntl-oleg-unused-cpu
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-unused-oleg18-capacity-${{ github.run_id }}
+          path: ntl-unused-oleg18-prompt-capacity.json
+          if-no-files-found: warn
+          retention-days: 14
