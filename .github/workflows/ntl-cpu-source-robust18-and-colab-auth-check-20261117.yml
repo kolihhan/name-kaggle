@@ -1,0 +1,103 @@
+name: NTL New 18-Class Source-Disjoint CPU Train + Colab Auth Diagnosis
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-cpu-source-robust18-and-colab-auth-check-20261117.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-real-source18-cpu-trained-20261117
+  cancel-in-progress: false
+jobs:
+  source_shift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/ntl-colab-oauth-readonly.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_source_robust_18_trainprep_20261117.py
+            scripts/ntl_source_shift_linear_control_20261117.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Read-only Colab OAuth refresh diagnosis; never allocate GPU
+        shell: bash
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        run: |
+          set -euo pipefail
+          python -m pip install -q google-auth==2.43.0 requests==2.32.5
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          raw=os.environ.get('COLAB_ADC_JSON','')
+          p=Path(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+          if raw:
+              d=json.loads(raw)
+              p.write_text(raw);p.chmod(0o600)
+              try:
+                  import google.auth
+                  from google.auth.transport.requests import Request
+                  auth,_=google.auth.default(scopes=[
+                    'openid','https://www.googleapis.com/auth/cloud-platform',
+                    'https://www.googleapis.com/auth/colaboratory'])
+                  print('NTL_COLAB_ADCDISCOVERY='+type(auth).__name__,flush=True)
+                  auth.refresh(Request())
+                  print('NTL_COLAB_OAUTH_READONLY_REFRESH=PASS',flush=True)
+              except Exception as exc:
+                  print('NTL_COLAB_OAUTH_READONLY_REFRESH=FAIL:'+type(exc).__name__,flush=True)
+          else:
+              print('NTL_COLAB_OAUTH_READONLY_REFRESH=NO_CREDENTIAL',flush=True)
+          p.unlink(missing_ok=True)
+          PY
+      - name: Re-create frozen, public-only source and prompt-disjoint 18-class sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scikit-learn==1.7.2 scipy==1.16.3
+          python -m py_compile scripts/ntl_source_robust_18_trainprep_20261117.py scripts/ntl_source_shift_linear_control_20261117.py
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do test ! -e "$f"; done
+          mkdir -p /tmp/ntl-public-source
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" \
+              -p /tmp/ntl-public-source --unzip -q >/dev/null
+          done
+          python -m scripts.ntl_source_robust_18_trainprep_20261117 \
+            --input /tmp/ntl-public-source --out /tmp/ntl-strict-source-sample
+          echo 'NTL_FROZEN_PUBLIC_SOURCE18_DATA=READY'
+      - name: Fit two real CPU models; report macro-BA on unseen source datasets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_source_shift_linear_control_20261117 \
+            --data-dir /tmp/ntl-strict-source-sample \
+            --out ./ntl-cpu-source-shift-report.json
+          python - <<'PY'
+          import json
+          d=json.load(open('ntl-cpu-source-shift-report.json'))
+          assert d['model_trained_cpu'] and d['competition_submission'] is False
+          assert d['arms'][0]['n_label']==18 and d['arms'][1]['n_label']==18
+          assert d['arms'][0]['n_train']==d['arms'][1]['n_train']
+          assert d['arms'][0]['n_valid']==d['arms'][1]['n_valid']
+          print('NTL_REAL_CPU_PAIRED_TRAIN_VERIFIED=TRUE',flush=True)
+          PY
+      - name: Purge raw public text before artifact
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-public-source /tmp/ntl-strict-source-sample
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          echo 'NTL_RAW_DATA_NOT_EXPORTED=TRUE'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-source-shift-cpu-training-result-${{ github.run_id }}
+          path: ntl-cpu-source-shift-report.json
+          if-no-files-found: warn
+          retention-days: 14
