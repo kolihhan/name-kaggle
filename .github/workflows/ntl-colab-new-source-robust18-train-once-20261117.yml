@@ -1,0 +1,163 @@
+name: NTL New Source-Robust ModernBERT Real Colab Training (Once)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-colab-new-source-robust18-train-once-20261117.yml]
+permissions:
+  contents: read
+concurrency:
+  group: ntl-new-source-robust-modernbert18-train-20261117
+  cancel-in-progress: false
+jobs:
+  source_disjoint_pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      COLAB_SESSION: ntl-robust18-${{ github.run_id }}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/colab-ntl-robust18-${{ github.run_id }}.json
+    steps:
+      - name: Verify credentials and T4-only training permission (no resource allocation)
+        shell: bash
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python3 - <<'PY'
+          import json,os,sys
+          from pathlib import Path
+          value=os.environ.get('COLAB_ADC_JSON','')
+          if not value:
+              raise SystemExit('NO_COLAB_ADC_JSON; NO_GPU_REQUESTED')
+          d=json.loads(value)
+          if d.get('type')!='authorized_user' or not all(d.get(k) for k in ('client_id','client_secret','refresh_token')):
+              raise SystemExit('INVALID_COLAB_ADC; NO_GPU_REQUESTED')
+          p=Path(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+          p.write_text(value)
+          p.chmod(0o600)
+          print('NTL_COLAB_EXISTING_OWNER_OAUTH=AVAILABLE; NO_GPU_YET',flush=True)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_source_robust_18_trainprep_20261117.py
+            scripts/ntl_modernbert_source_adversarial_colab_20261117.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Freeze exact code and protect public GitHub from competition data
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f"
+          done
+          python -m py_compile scripts/ntl_source_robust_18_trainprep_20261117.py scripts/ntl_modernbert_source_adversarial_colab_20261117.py
+          python - <<'PY'
+          from pathlib import Path
+          prep=Path('scripts/ntl_source_robust_18_trainprep_20261117.py').read_text()
+          train=Path('scripts/ntl_modernbert_source_adversarial_colab_20261117.py').read_text()
+          for x in ('MAX_PER_LABEL_TRAIN = 360','HOLDOUT_SALT = "ntl-heldout-20261117"',
+                    'SOURCE_LOSS_WEIGHT','prompt_canon','gen_served_model'):
+            assert x in prep+train,x
+          for x in ('MAX_TRAIN_STEPS=250','BATCH=4','ACCUM=4','"ADVANCE_CANDIDATE_ONLY_NOT_OFFICIAL"',
+                    'REJECT_ADVERSARIAL_MECHANISM'):
+            assert x in train,x
+          print('NTL_FROZEN_C0_VS_C1_CONTRACT=PASS',flush=True)
+          PY
+          echo 'NTL_NO_KAGGLE_DEV_GPU_NO_PAID_API_NO_COMPETITION_DATA=TRUE'
+      - name: Materialize strict licensed, source and prompt-disjoint train/valid (CPU only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          mkdir -p /tmp/ntl-training-public
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" \
+              -p /tmp/ntl-training-public --unzip -q >/dev/null
+          done
+          python -m scripts.ntl_source_robust_18_trainprep_20261117 \
+            --input /tmp/ntl-training-public --out /tmp/ntl-prepared-18
+          echo 'NTL_SOURCE_DISJOINT_FULL18_PREP=PASS'
+      - name: Install official Google Colab CLI and verify executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check google-colab-cli==0.7.5
+          colab version
+          echo 'NTL_COLAB_CPU_PRECHECK_COMPLETED=TRUE'
+      - name: Allocate exactly one T4 and train both 18-class arms under same budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          colab --auth adc new -s "$COLAB_SESSION" --gpu T4
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/train.parquet /content/ntl-source-robust-data/train.parquet
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/valid.parquet /content/ntl-source-robust-data/valid.parquet
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/manifest.json /content/ntl-source-robust-data/manifest.json
+          colab --auth adc exec -s "$COLAB_SESSION" --timeout 3600 \
+            -f scripts/ntl_modernbert_source_adversarial_colab_20261117.py
+          colab --auth adc download -s "$COLAB_SESSION" \
+            /content/ntl-source-adversarial-nov17/report.json ./ntl-training-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('ntl-training-report.json')
+          r=json.loads(p.read_text())
+          assert r['scope']=='colab_t4_new_external_only_source_disjoint_modernbert'
+          assert r['new_training_authorized_ntl_only'] is True
+          assert r['real_model_training'] is True
+          assert r['official_competition_submission'] is False
+          assert r['candidate_delta_ba']==round(
+               r['arms'][1]['valid_balanced_accuracy']-r['arms'][0]['valid_balanced_accuracy'],6)
+          assert all(a['optimizer_steps']==250 for a in r['arms'])
+          print('NTL_AUTHENTIC_REAL_COLAB_TRAINED_PAIRED_BA='+json.dumps({
+            'C0':r['arms'][0]['valid_balanced_accuracy'],
+            'C1':r['arms'][1]['valid_balanced_accuracy'],
+            'delta':r['candidate_delta_ba'],
+            'rescues':r['rescues'],'regressions':r['regressions'],
+            'decision':r['decision'],
+          },sort_keys=True),flush=True)
+          PY
+          if python - <<'PY'
+          import json
+          d=json.load(open('ntl-training-report.json'))
+          raise SystemExit(0 if d['decision'].startswith('ADVANCE_') else 1)
+          PY
+          then
+            colab --auth adc download -s "$COLAB_SESSION" \
+              /content/ntl-source-adversarial-nov17/checkpoint.zip ./ntl-trained-checkpoint.zip
+            python - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('ntl-trained-checkpoint.zip') as f:
+              names=f.namelist()
+              assert any(x.endswith('.safetensors') for x in names)
+          print('NTL_CANDIDATE_CHECKPOINT_VALIDATED=TRUE',flush=True)
+          PY
+          else
+            echo 'NTL_EVIDENCE_GATE_FAILED_CHECKPOINT_NOT_PROMOTED=TRUE'
+          fi
+      - name: Release Colab GPU and remove OAuth credential
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if command -v colab >/dev/null 2>&1 && test -f "$GOOGLE_APPLICATION_CREDENTIALS"; then
+            colab --auth adc stop -s "$COLAB_SESSION" || true
+          fi
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          rm -rf /tmp/ntl-training-public /tmp/ntl-prepared-18
+          echo 'NTL_COLAB_RESOURCES_RELEASED=TRUE'
+      - name: Preserve only aggregate report and any prequalified model checkpoint, never source texts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-source-robust-modernbert18-real-train-${{ github.run_id }}
+          path: |
+            ntl-training-report.json
+            ntl-trained-checkpoint.zip
+          if-no-files-found: warn
+          retention-days: 14
