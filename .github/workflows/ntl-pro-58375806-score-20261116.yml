@@ -198,6 +198,12 @@ jobs:
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scipy==1.16.3 scikit-learn==1.7.2
           ref='kolihhan/ntl-oleg216-final18-diagnostic-nov17'
           status="$(kaggle kernels status "$ref" 2>&1 || true)"
+          state="$(printf '%s' "$status" | grep -oE 'KernelWorkerStatus[.][A-Z_]+' | head -1 || true)"
+          if [ -n "$state" ]; then
+            echo "NTL_EXACT_PRIVATE_GPU_WORKER_ENUM=$state"
+          else
+            echo "NTL_EXACT_PRIVATE_GPU_WORKER_ENUM=UNKNOWN_OR_CLI_ERROR"
+          fi
           if [[ "$status" == *KernelWorkerStatus.COMPLETE* ]]; then
             echo 'NTL_EXACT_PRIVATE_GPU_STATUS=COMPLETE'
           elif [[ "$status" == *KernelWorkerStatus.ERROR* || "$status" == *KernelWorkerStatus.FAILED* || "$status" == *KernelWorkerStatus.CANCELLED* ]]; then
