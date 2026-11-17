@@ -48,7 +48,7 @@ jobs:
             scripts/ntl_modernbert_source_adversarial_colab_20261117.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
+        with: {python-version: '3.12'}
       - name: Freeze exact code and protect public GitHub from competition data
         shell: bash
         run: |
@@ -95,9 +95,9 @@ jobs:
         run: |
           set -euo pipefail
           colab --auth adc new -s "$COLAB_SESSION" --gpu T4
-          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/train.parquet /content/ntl-source-robust-data/train.parquet
-          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/valid.parquet /content/ntl-source-robust-data/valid.parquet
-          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/manifest.json /content/ntl-source-robust-data/manifest.json
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/train.parquet /content/train.parquet
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/valid.parquet /content/valid.parquet
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-prepared-18/manifest.json /content/manifest.json
           colab --auth adc exec -s "$COLAB_SESSION" --timeout 3600 \
             -f scripts/ntl_modernbert_source_adversarial_colab_20261117.py
           colab --auth adc download -s "$COLAB_SESSION" \
