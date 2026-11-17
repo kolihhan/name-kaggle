@@ -34,7 +34,7 @@ jobs:
               except Exception as exc:
                   print('NTL_KAGGLE_META_'+meth+'_STATUS=FAIL_'+type(exc).__name__,flush=True)
                   continue
-              for x in list(rows)[:20]:
+              for x in list(getattr(rows,'competitions',[]) or [])[:20]:
                   d=x.to_dict() if hasattr(x,'to_dict') else vars(x)
                   if not isinstance(d,dict):continue
                   label=str(d.get('ref') or d.get('title') or '')
@@ -47,4 +47,34 @@ jobs:
                           vals[str(k)]=str(v)[:160]
                   print('NTL_KAGGLE_VERIFIED_CONTEST_META='+json.dumps(vals,sort_keys=True),flush=True)
           print('NTL_AUTHENTICATED_QUOTA_PROBE_MUTATIONS=ZERO',flush=True)
+          PY
+
+      - name: Direct authenticated team quota CLI for this competition
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,json,re
+          a=subprocess.run(['kaggle','competitions','submission-limits','name-that-llm'],
+                           capture_output=True,text=True,timeout=80)
+          print('NTL_TEAM_SUBMISSION_LIMITS_CLI_EXIT='+str(a.returncode),flush=True)
+          if a.returncode!=0:
+              print('NTL_TEAM_SUBMISSION_LIMITS=UNAVAILABLE',flush=True)
+              raise SystemExit(0)
+          src=a.stdout.strip()
+          # CLI prints only the team submission allowance; redact any team name and
+          # URLs in logs. Print numeric values with their exact field labels only.
+          entries={}
+          for line in src.splitlines():
+              match=re.match(r'^\s*([A-Za-z ]*(?:Submissions?|Remaining|Limit|Count|Today)[A-Za-z ]*)\s*[:=]\s*(\d+)\s*$',line,re.I)
+              if match:
+                  entries[match.group(1).strip()]=int(match.group(2))
+          print('NTL_TEAM_SUBMISSION_LIMITS_NUMERIC_FIELDS='+json.dumps(entries,sort_keys=True),flush=True)
+          if not entries:
+              # Keep low-risk sanitized table without names, IDs, or tokens.
+              safe=[]
+              for line in src.splitlines():
+                  if re.search(r'daily|remaining|submissions|used',line,re.I):
+                      safe.append(re.sub(r'\S+@\S+','[REDACTED]',line)[:150])
+              print('NTL_TEAM_SUBMISSION_LIMITS_SAFE_TEXT='+json.dumps(safe[:12]),flush=True)
           PY
