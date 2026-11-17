@@ -1,3 +1,10 @@
+## 2026-11-17 MYT — Independently sourced Fable 5 pairs, still zero admissible full-18 panels
+
+- The released GlobeBench answers contain **25 exact served Fable 5** and **62 exact served Opus 5** 40–250-word responses. **23** share the same item, renderer, sample index and request settings. **17 of 23** pairs begin with structured or fenced output in both arms. The Gemini 3.7 Flash, GLM 5.3, Kimi K3 and Qwen 3.8 Max releases lack separate returned IDs. **Zero qualifying 18-label groups**. [Reproducible source evidence](artifacts/research/ntl-globebench-name-coverage-20261117.md).
+- The live Vercel Gateway catalog has **18/18 exact-name route leads**. Free-credit access and exact returned versions are unverified, and the authenticated connector lists no accessible team. No calls or charges. Next obtain an authorized zero-cost exact-version access route for the locked original prompts, then compare the frozen likelihood candidate. Public best **0.691 #58375806**, new official submissions **0**. [Authenticated reference](https://github.com/kolihhan/name-kaggle/actions/runs/43743764085).
+
+---
+
 ## 2026-11-17 MYT — Live Kaggle proxy probe produced zero admissible passages
 
 - [Authenticated exact-label requests](https://github.com/kolihhan/name-kaggle/actions/runs/44028778166) used the same original short writing prompt for all 18 target routes. Seventeen returned HTTP 404. Gemini 3.6 Flash returned its own raw model ID and an 8-word completion.
