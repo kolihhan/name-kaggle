@@ -1,3 +1,12 @@
+## 2026-11-17 21:20 MYT — One-off Oleg216 final-18 GPU diagnostic not yet terminal; no admissible logits or AUROC
+
+- [Owner-approved single Kaggle private GPU push and followup GitHub Actions #44077987686](https://github.com/kolihhan/name-kaggle/actions/runs/44077987686) completed the Action, **not the model diagnostic**. Its logs show `NTL_PRO_OLeg18_GENUINE_PRIVATE_KERNEL_STATE=UNOBSERVED` after 90 status checks and `NTL_POSTV1_LOGITS_NOT_AVAILABLE_CHOOSE_B=TRUE`; this is **not** a measured AUROC, 216-row final-score dump, or valid local mechanism gain.
+- To distinguish a late or still-running kernel from an actual failed run, [authenticated CPU-only readback #44091611098](https://github.com/kolihhan/name-kaggle/actions/runs/44091611098) checked only `kolihhan/ntl-oleg216-final18-diagnostic-nov17`: `NTL_EXACT_PRIVATE_GPU_STATUS=NOT_TERMINAL` at 21:20 MYT. No additional GPU push, training or official submission. If the sole run ends in ERROR, timeout or incomplete/invalid logits, **stop NTL calibration lane and choose B**; do not retry the GPU run.
+- The offline CPU-only evaluator `scripts/ntl_oleg_offline_eval_20261117.py` passed synthetic 18-class sanity [Action #44084935388](https://github.com/kolihhan/name-kaggle/actions/runs/44084935388). Synthetic sanity is not an experiment outcome. It will accept only complete 216 x 18 **post-V1** final scores and the existing 216 baseline predictions, require first-five match and at least 99% total argmax match, then calculate confidence margin AUROC/ECE. Locked margin AUROC < 0.65 means stop and choose B. If >=0.65, one global-parameter decision candidate may be explored on this spent Oleg cohort, but Oleg is not independently predictive of Kaggle Private score.
+- **Official best still 0.691/#58375806**, no new NTL Kaggle submission and no verified uplift. The one-shot Kaggle resource budget is consumed once launched; no re-push/retry.
+
+---
+
 ## 2026-11-17 MYT — Independently sourced Fable 5 pairs, still zero admissible full-18 panels
 
 - The released GlobeBench answers contain **25 exact served Fable 5** and **62 exact served Opus 5** 40–250-word responses. **23** share the same item, renderer, sample index and request settings. **17 of 23** pairs begin with structured or fenced output in both arms. The Gemini 3.7 Flash, GLM 5.3, Kimi K3 and Qwen 3.8 Max releases lack separate returned IDs. **Zero qualifying 18-label groups**. [Reproducible source evidence](artifacts/research/ntl-globebench-name-coverage-20261117.md).
