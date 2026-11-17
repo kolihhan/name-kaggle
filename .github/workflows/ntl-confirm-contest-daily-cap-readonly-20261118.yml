@@ -1,0 +1,50 @@
+name: NTL Read Current Competition Daily Limit (No Submission)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-confirm-contest-daily-cap-readonly-20261118.yml]
+permissions: {contents: read}
+jobs:
+  daily_cap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read authenticated Kaggle competition metadata, zero submissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,csv,io
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi()
+          api.authenticate()
+          print('NTL_KAGGLE_METADATA_SUPPORTED_READ_METHODS='+json.dumps(
+              [z for z in dir(api) if z.startswith(('competition','competitions')) and ('list' in z or 'get' in z or 'view' in z or 'info' in z)]),flush=True)
+          for meth in ('competitions_list','competition_list'):
+              fn=getattr(api,meth,None)
+              if not callable(fn):continue
+              try:
+                  rows=fn(search='Name That LLM')
+              except Exception as exc:
+                  print('NTL_KAGGLE_META_'+meth+'_STATUS=FAIL_'+type(exc).__name__,flush=True)
+                  continue
+              for x in list(rows)[:20]:
+                  d=x.to_dict() if hasattr(x,'to_dict') else vars(x)
+                  if not isinstance(d,dict):continue
+                  label=str(d.get('ref') or d.get('title') or '')
+                  if 'name-that-llm' not in label.lower() and 'name that llm' not in label.lower():
+                      continue
+                  vals={}
+                  for k,v in d.items():
+                      if ('submission' in str(k).lower() and
+                          ('daily' in str(k).lower() or 'max' in str(k).lower())) or str(k).lower() in ('deadline','ref','id','title'):
+                          vals[str(k)]=str(v)[:160]
+                  print('NTL_KAGGLE_VERIFIED_CONTEST_META='+json.dumps(vals,sort_keys=True),flush=True)
+          print('NTL_AUTHENTICATED_QUOTA_PROBE_MUTATIONS=ZERO',flush=True)
+          PY
