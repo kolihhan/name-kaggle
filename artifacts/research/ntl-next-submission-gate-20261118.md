@@ -1,3 +1,13 @@
+## Delegated researcher gate + first executed outcome (2026-11-18 MYT)
+
+Owner explicitly delegated gate choice and said **GO**. Frozen first-trial gate in [GPT-triad preregistration](ntl-gpt-triad-probe-pre-registration-20261118.md) **before testing**: same-row 18-label Oleg BA Δ **≥+0.030**; stratified prompt-group bootstrap 95% lower bound **>0**; rescues > regressions; target-only changes; no hidden-test or Public-adaptive retuning. A pass on spent Oleg alone authorizes at most a clearly labeled exploratory `PROBE` check, not scientific promotion.
+
+**Executed actual CPU trial [Action #44128906627](https://github.com/kolihhan/name-kaggle/actions/runs/44128906627):** froze and replayed exact 0.691 incumbent Oleg216 predictions; separately fit one 3-class `gpt-5.6-luna/sol/terra` char-TFIDF LinearSVC on *official labeled train only*, with Oleg exact-text overlap gate and a fixed 0.20 three-class score gap. C0 89/216 **BA 0.412037**, C1 **BA 0.402778**, **Δ −0.009259**; only **4 of 216** predictions changed, **1 rescue, 3 regressions**; bootstrap 95% **[−0.027778, +0.009259]**. **Decision: NO_CANDIDATE_GATE_FAILED**. No official submission, no Kaggle GPU/paid service. The official Public incumbent stays **0.691**. A one-model triad fit was evaluated; its failure doesn't disprove all within-provider experts.
+
+Because this target trio was motivated by already-consumed Oleg confusion and Oleg is a 12/class domain-shifted source, do not reselect another sibling pair or tune the margin on the same 216 labels as if it were fresh test evidence. Find a genuinely different frozen model-serving channel, demonstrate current Lightning same-row comparison and independent calibration, or label any eventual one-slot probe exploratory before the run.
+
+---
+
 ## Verified quota and deadline discrepancy
 
 **Authenticated quota correction (2026-11-17 16:30 UTC):** [Kaggle team-specific submission-limits Action #44126486779](https://github.com/kolihhan/name-kaggle/actions/runs/44126486779) confirms **maxDailySubmissions=5, Submissions today=0, Remaining today=5** for NTL; 21 lifetime team submissions. The account's daily allowance is thus verified, not inferred from defaults. **Deadline discrepancy:** Kaggle's [published overview](https://www.kaggle.com/competitions/name-that-llm/overview/description) states **2027-01-13 23:59 UTC**, but the authenticated competition listing API returned `deadline=2027-01-14T23:59:00.817Z`. Until reconciled, plan against the **earlier January 13 deadline**, never promise the extra 24 hours. This is a metadata disagreement, not a model measurement.
