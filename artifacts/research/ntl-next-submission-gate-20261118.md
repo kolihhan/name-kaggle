@@ -1,3 +1,7 @@
+## Verified quota and deadline discrepancy
+
+**Authenticated quota correction (2026-11-17 16:30 UTC):** [Kaggle team-specific submission-limits Action #44126486779](https://github.com/kolihhan/name-kaggle/actions/runs/44126486779) confirms **maxDailySubmissions=5, Submissions today=0, Remaining today=5** for NTL; 21 lifetime team submissions. The account's daily allowance is thus verified, not inferred from defaults. **Deadline discrepancy:** Kaggle's [published overview](https://www.kaggle.com/competitions/name-that-llm/overview/description) states **2027-01-13 23:59 UTC**, but the authenticated competition listing API returned `deadline=2027-01-14T23:59:00.817Z`. Until reconciled, plan against the **earlier January 13 deadline**, never promise the extra 24 hours. This is a metadata disagreement, not a model measurement.
+
 # NTL: next submission is a new candidate, not a 0.691 rerun
 
 **Decision date:** 2026-11-18 MYT. Official incumbent: `#58375806, Public BA 0.691`. No new submission or experimental winner is established by this note.
