@@ -107,6 +107,16 @@ jobs:
                          if model_count(r)==18 and provenance.get(r['source_dataset'])=='yes']
           weakest=sorted([(r['model'],int(r['sources'])) for r in labels],
                          key=lambda t:t[1])[:7]
+          near_full=[{'source':r['source_dataset'],'labels':model_count(r),
+                      'served_id_check':provenance.get(r['source_dataset'],'unknown'),
+                      'license':str(r.get('source_license',''))[:70]}
+                     for r in sources if model_count(r)>=17]
+          per_label=[{'label':r['model'],'passages':int(r['passages']),
+                      'sources':int(r['sources'])} for r in labels]
+          print('NTL_OPENPOOL_STRONGEST_NEARFULL_SOURCES='+json.dumps(
+             near_full,sort_keys=True),flush=True)
+          print('NTL_OPENPOOL_ALL18_AGGREGATED_COUNTS='+json.dumps(
+             per_label,sort_keys=True),flush=True)
           count=Counter(provenance.values())
           print('NTL_OPENPOOL_SOURCE_INDEPENDENCE_AUDIT='+json.dumps({
              'sources':len(sources),
