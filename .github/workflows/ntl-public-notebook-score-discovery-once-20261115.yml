@@ -44,6 +44,6 @@ jobs:
           set -euo pipefail
           python -u -m scripts.ntl_apex702_official_once wait_finish_once
           echo 'NTL_OFFICIAL_PROGRESS_END_NO_DUPLICATE_SUBMIT=TRUE'
-# This is the one-time, explicit 2026-11-18 owner-authorized GPU exception.
+# Owner-authorized one GPU; first preflight failed before GPU due to metadata mismatch; diagnosing exact refs.
 # No retries, no new model training, no benchmark tuning, no paid external API.
 # Preserve the frozen code SHA and original public model/data mounts.
