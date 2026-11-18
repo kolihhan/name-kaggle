@@ -1,8 +1,8 @@
 """One official NTL score attempt using an attributed, pinned public 0.702 source.
 
-Use Kaggle Quick Save (--no-run) so ONLY official grading executes GPU.
-Fail closed if no-run versions cannot be submitted. Never start a private GPU
-preview; no retries/duplicate submission and no raw competition data in Git.
+Owner approved 2026-11-18 one private T4 production run after Quick Save code-submit
+HTTP400. One immutable source, exactly one private GPU version 2, then official
+code scoring if execution finishes. No retry or raw competition data in Git.
 This is a reproduction, NOT an original medal-level method.
 """
 from __future__ import annotations
@@ -130,8 +130,100 @@ def submit():
     else:
         print("NTL_APEX702_OFFICIAL_ID_ACCEPTED_LEDGER_DELAYED_NO_RETRY=TRUE",flush=True)
 
+def start_gpu_once():
+    """One explicitly owner-authorized private T4 production run; no training."""
+    quota()
+    if not (ROOT/"prepared.json").is_file():
+        raise RuntimeError("MISSING_FRESH_PINNED_SOURCE_PREPARE")
+    # Quick Save version 1 already exists. Verify it belongs to this pinned source.
+    previous=ROOT/"saved_v1"
+    previous.mkdir()
+    cli("kernels","pull",DEST,"-p",str(previous),"-m")
+    old=list(previous.glob("*.ipynb"))
+    if len(old)!=1:
+        raise RuntimeError("PRIVATE_SAVED_V1_NOT_FOUND")
+    oldnb=json.loads(old[0].read_text(encoding="utf-8"))
+    def code(nb):
+        return "\n".join("".join(c.get("source",[])) if isinstance(c.get("source"),list)
+            else str(c.get("source","")) for c in nb["cells"] if c.get("cell_type")=="code")
+    if sha(code(oldnb).encode())!=CODE_SHA or \
+            "Attributed inference-only reproduction" not in json.dumps(oldnb.get("cells",[])[:1]):
+        raise RuntimeError("PRIVATE_V1_SOURCE_MISMATCH")
+    oldmeta=json.loads((previous/"kernel-metadata.json").read_text())
+    freshmeta=json.loads((ROOT/"private"/"kernel-metadata.json").read_text())
+    for key in ("dataset_sources","model_sources","kernel_sources","competition_sources"):
+        if oldmeta.get(key)!=freshmeta.get(key):
+            raise RuntimeError("PRIVATE_V1_SOURCE_MOUNT_DRIFT:"+key)
+    old_status=cli("kernels","status",DEST,check=False)
+    status_text=(old_status.stdout+"\n"+old_status.stderr).upper()
+    if any(w in status_text for w in ("RUNNING","QUEUED","PENDING")):
+        raise RuntimeError("OWN_PRIVATE_KERNEL_ALREADY_ACTIVE")
+    if "COMPLETE" in status_text:
+        raise RuntimeError("OWN_PRIVATE_KERNEL_ALREADY_RAN; DO_NOT_PUSH_VERSION3")
+    # Do not overwrite a working version or silently move the original score.
+    help_text=cli("kernels","push","--help").stdout
+    if "--accelerator" not in help_text:
+        raise RuntimeError("OFFICIAL_KAGGLE_GPU_PUSH_FLAG_UNAVAILABLE")
+    quota()
+    pushed=cli("kernels","push","-p",str(ROOT/"private"),
+               "--accelerator","NvidiaTeslaT4","--timeout","32400",timeout=180)
+    output=(pushed.stdout+"\n"+pushed.stderr)
+    if not re.search(r"Kernel version 2 successfully pushed",output,re.I):
+        print("NTL_APEX702_PUSH_UNKNOWN_RESULT_NO_RETRY="+output[-850:],flush=True)
+        raise RuntimeError("KAGGLE_GPU_PUSH_NOT_VERIFIED_AS_EXACT_VERSION_2")
+    print("NTL_APEX702_ONE_AUTHORIZED_PRIVATE_GPU_VERSION2_LAUNCHED=TRUE",flush=True)
+    print("NTL_APEX702_PRIVATE_NOTEBOOK=https://www.kaggle.com/code/"+DEST,flush=True)
+    print("NTL_APEX702_REEXECUTION_ONLY_SOURCE_CODE_SHA="+CODE_SHA,flush=True)
+    print("NTL_APEX702_NO_TRAINING_NO_SOURCE_MODIFICATION=TRUE",flush=True)
+
+
+def finish_gpu_once():
+    """Read once: only score completed private version 2 with real output."""
+    quota()
+    status=cli("kernels","status",DEST,check=False)
+    state=(status.stdout+"\n"+status.stderr).upper()
+    if "KERNELWORKERSTATUS.COMPLETE" not in state:
+        if any(x in state for x in ("ERROR","FAILED","CANCELLED")):
+            raise RuntimeError("NTL_APEX702_PRIVATE_GPU_FAILED_DO_NOT_RETRY")
+        print("NTL_APEX702_PRIVATE_GPU_NOT_COMPLETE_YET="+state[-350:],flush=True)
+        return False
+    listings=cli("kernels","files",DEST,"--page-size","200","-v").stdout
+    if "submission.parquet" not in listings or "Next Page Token =" in listings:
+        raise RuntimeError("NTL_APEX702_COMPLETE_WITHOUT_SINGLE_OUTPUT_PAGE")
+    print("NTL_APEX702_PRIVATE_VERSION2_COMPLETE_WITH_SUBMISSION_PARQUET=TRUE",flush=True)
+    quota()
+    response=cli("competitions","submit","name-that-llm","-k",DEST,"-v","2",
+                 "-f","submission.parquet","-m",DESCRIPTION,timeout=180)
+    receipt=re.findall(r"Submission ref:\s*(\d+)",response.stdout+response.stderr,re.I)
+    if len(receipt)!=1:
+        print("NTL_APEX702_OFFICIAL_AMBIGUOUS_RESULT_NO_RETRY="+
+              (response.stdout+"\n"+response.stderr)[-700:],flush=True)
+        raise RuntimeError("OFFICIAL_ENTRY_ID_UNCONFIRMED_NO_RETRY")
+    print("NTL_APEX702_OFFICIAL_SUBMISSION_ID="+receipt[0],flush=True)
+    rows=list(csv.DictReader(io.StringIO(cli("competitions","submissions","name-that-llm","-v","-q").stdout.lstrip("\ufeff"))))
+    matched=[x for x in rows if x.get("ref")==receipt[0]]
+    if len(matched)==1:
+        print("NTL_APEX702_AUTHENTICATED_RECEIPT="+json.dumps({
+          k:matched[0].get(k) for k in ("ref","status","publicScore","description")
+        },sort_keys=True),flush=True)
+    return True
+
+
+def wait_finish_once(limit_minutes=310):
+    import time
+    deadline=time.monotonic()+limit_minutes*60
+    while True:
+        if finish_gpu_once():
+            return
+        if time.monotonic()+180 > deadline:
+            print("NTL_APEX702_GPU_STILL_RUNNING_AT_CI_WAIT_LIMIT=TRUE",flush=True)
+            print("NTL_APEX702_MANUAL_FINISH_REQUIRED_NO_RESTART=TRUE",flush=True)
+            return
+        time.sleep(180)
+
+
 if __name__=="__main__":
     import sys
-    if len(sys.argv)!=2 or sys.argv[1] not in {"quota","prepare","submit"}:
-        raise SystemExit("usage: python -m scripts.ntl_apex702_official_once quota|prepare|submit")
+    if len(sys.argv)!=2 or sys.argv[1] not in {"quota","prepare","submit","start_gpu_once","finish_gpu_once","wait_finish_once"}:
+        raise SystemExit("usage: python -m scripts.ntl_apex702_official_once quota|prepare|start_gpu_once|wait_finish_once")
     globals()[sys.argv[1]]()
