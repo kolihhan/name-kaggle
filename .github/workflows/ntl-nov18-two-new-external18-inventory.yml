@@ -1,0 +1,52 @@
+name: NTL November 18 Newly Found Public Corpus File Provenance Census
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-nov18-two-new-external18-inventory.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Inspect two previously unaudited recently updated datasets without raw downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,re,json,subprocess
+          refs=("liuyihuileo/ntl-external-training-candidates-18",
+                "keisukefujiwara/nlm-extra-gen")
+          output=[]
+          for ref in refs:
+              p=subprocess.run(["kaggle","datasets","files",ref,"--page-size","100","-v"],
+                  capture_output=True,text=True,timeout=80)
+              if p.returncode:
+                  output.append({"ref":ref,"status":"INVENTORY_FAILURE",
+                    "stderr":p.stderr[-220:]})
+                  continue
+              lines=p.stdout.splitlines()
+              idx=next((i for i,s in enumerate(lines)
+                 if s.lower().strip().startswith("name,") and "," in s),None)
+              if idx is None:
+                  output.append({"ref":ref,"status":"CSV_HEADER_NOT_FOUND",
+                    "first_lines":lines[:4]})
+                  continue
+              records=list(csv.DictReader(lines[idx:]))
+              files=[]
+              for r in records:
+                  name=r.get("name") or r.get("Name") or ""
+                  # Never download weights, model checkpoints, private prompts.
+                  files.append({"name":name[:120],
+                                "size":str(r.get("totalBytes") or r.get("size") or "")[:20]})
+              output.append({"ref":ref,"status":"FILES_ENUMERATED",
+                             "file_count":len(files),"files":files})
+          print("NTL_NEW_UNSEEN_SOURCE_FILE_CENSUS="+json.dumps(output,sort_keys=True),flush=True)
+          print("NTL_NO_RAW_RECORDS_NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE",flush=True)
+          PY
