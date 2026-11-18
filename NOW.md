@@ -1,3 +1,12 @@
+## 2026-11-18 19:12 MYT — NTL style transfer PASS, but already overlaps 0.691 winner; NO new official submit
+
+- [Actions #44292171841](https://github.com/kolihhan/name-kaggle/actions/runs/44292171841) SUCCESS. Frozen 8-source 5,562 train -> 3-source 2,700 validation / 18-class BA **0.213704 → 0.284074**, Δ **+0.070370** with prompt-bootstrap CI95 **[0.056176,0.084859]**; positive all 3 held-out sources; shuffled style control only +0.004815. Official historical GroupKFold 2,699 / 150 prompts **0.284109 → 0.358188**, Δ **+0.074079**; **existing** 155 style features + fixed weight 0.5, no new invented features, no GPU.
+- [Actions #44292862943](https://github.com/kolihhan/name-kaggle/actions/runs/44292862943) SUCCESS. Exact old scored 0.691 Notebook SHA `cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c`: already has `stylegram`, `stylometry_lgb`, punctuation and function word fingerprints. **NO justification for adding same weak style classifier to champion** without independent same-row paired test; no new NTL official score or submit. NTL Public remains **0.691 #58375806**; target >=0.72.
+- Gemma only authenticated **one** subsequent status check [Actions #44291717212](https://github.com/kolihhan/gemma-4-kaggle/actions/runs/44291717212): #58505571 PENDING, blank score; best **0.18 #58183466**. No new submit or GPU.
+- Main decision: style alone is not structural medal lever. Do not repeat old residual, hierarchy, source-weight or style probes. Next NTL investment must address strong-incumbent independent complementarity or identity-verified fresh external training data. See [BREAKTHROUGH_PLAN.md](BREAKTHROUGH_PLAN.md).
+
+---
+
 ## 2026-11-18 MYT — NTL scored Lightning 0.691 V2 training lineage pinned; genuine official-train OOF disallowed
 
 - **NEW actual CPU audit:** [#44221042287](https://github.com/kolihhan/name-kaggle/actions/runs/44221042287) SUCCESS, pulled the exact owned **version 2** notebook, verified historical 50-cell source SHA256 `cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c` (not a mutable author revision). 37 generated modules; 23 dataset + 6 model + 9 notebook mounts. No GPU, fitting, competition data download or official Kaggle submission.
