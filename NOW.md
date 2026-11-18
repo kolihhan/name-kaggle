@@ -1,22 +1,12 @@
 # NOW — Name That LLM
-Last reviewed: 2026-11-18 · Decision: STOP proxy experiment sprawl
+2026-11-18 21:46 MYT · Ponytail score-facing attempt, no false improvements
 
-## Actual goal
-**Official Kaggle Public Balanced Accuracy >= 0.720**, with an authenticated score receipt and reproducible, legal, offline <=9-hour submission. Do not substitute local validation or green CI.
+**Goal:** authenticated official Public BA >= 0.720. **Actual best 0.691**, Kaggle #58375806, reverified [read-only official #44316850857](https://github.com/kolihhan/name-kaggle/actions/runs/44316850857) 2026-11-18 13:45 UTC. No pending NTL submissions; authenticated quota then 5 available.
 
-## Facts
-- **Current best: 0.691**, official submission **#58375806**. No new NTL submission or confirmed score improvement from the November 18 experiments.
-- The 0.691 Lightning pipeline is an **attributed prefit public ensemble**, not an original model that can be honestly scored as 5-fold OOF on official training data. Its fitted artifacts already declare official-row exposures. It already contains **stylegram / stylometry**.
-- Style+char vs weak char-only model: source-held-out BA **0.2137 → 0.2841** (+0.0704); **not comparable to 0.691** and likely partly redundant with incumbent.
-- Prompt residual fails sparse-group gate; source-sensitive char pruning **0.2841 → 0.2737** (−0.0104). **Neither is a submission candidate.**
-- There is **no credible 0.72 challenger today**. Missing: a non-redundant strong full-stack candidate and credible same-row generalization evidence. Full-18 independent served-model provenance remains incomplete.
+**Real stronger full-stack candidate found:** public [Lightning Apex Style 0.702](https://www.kaggle.com/code/lightningv08/0-702-apex-style-15-glm-qwen3-8-27b-lora), 29 code cells, 26 datasets, 9 model mounts, 9 kernel mounts, internet off, full test and submission code. Source SHA256 `f9948b633b22bd5e63b8253e4d8027c073b44f57eb85bc60b775857e396b38c2`; exact executable code SHA256 `2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc`. No observed preview shortcut or direct optimizer/Gaussian fit. **0.702 is upstream Notebook title only; not own official score or proven fresh improvement.** Reproduction is credited to original author, not an original Kaggle medal algorithm.
 
-## Single next objective: ONE strong, score-facing challenger
-Stop optimizing char/style/residual proxy models. **Compare a substantively different, legally usable full 18-label inference/training architecture against the existing 0.691 pipeline**, not a new weight or prompt rule. Use available vetted public pretrained assets or owner-approved public-data training (Colab T4; CPU Actions only) while keeping all competition rules and model constraints intact. Require complete hidden-size-safe inference, SHA-pinned assets, offline <=9h runtime and clear mechanism. For any novel candidate with no genuinely independent strong paired cohort, be explicit about that uncertainty rather than fabricate champion OOF.
+**Execution:** owner private [Notebook version 1](https://www.kaggle.com/code/kolihhan/ntl-0702-apex-pinned-nov18) saved with `kaggle kernels push --no-run`, byte-pinned full inference code and credited source. [Actions #44316492717](https://github.com/kolihhan/name-kaggle/actions/runs/44316492717) confirms initial quota 5, no active NTL scorer, source hash matched, no dev GPU. **Official `competitions submit -k ... -v 1` failed HTTP 400** because the Quick Save kernel version was not accepted by the scoring API. Exact 400 reason not exposed. No official submission ID and no quota used, confirmed own best still 0.691. Do not repeat this no-run attempt or treat a private fork as a scored submission.
 
-**End point:** ONE authenticated, rules-compliant Kaggle submission when quota/7-day probe rule allows and candidate differs materially. Record exact Kaggle ID and real Public score. If no viable challenger, report BLOCKED — no more retrospective proxy experiments, YAML workflows, manifests, source surveys or score claims as substitutes.
+**Only live blocker:** To submit this computationally heavy public 0.702 full stack under the normal Kaggle flow requires a runnable owner Notebook version. Owner's current restriction forbids exploratory private Kaggle GPU previews; do not quietly override that boundary or force a fake preview. A single production private GPU run to establish a valid version must be specifically authorized (or Kaggle must offer a verified non-preview scoring path). Then preflight and submit once, save authentic submission ref/score, no leaderboard weight-tuning loop.
 
-## Keep history without working from a 341 KB status log
-- [Pre-Ponytail NOW.md (full historical record, read-only Git commit)](https://github.com/kolihhan/name-kaggle/blob/50dfd6fc53bb7cb68d3e0b3eec6ed9ea4085c633/NOW.md)
-- [Evidence, negative results and scientific gate](BREAKTHROUGH_PLAN.md)
-- [Competition rules and permissions](RULES.md) · [Evaluation policy](EVALUATION_POLICY.md)
+**STOP:** No new weak char/style/residual/source-mask experiments, status frameworks, experimental workflow creation, or fake champion OOF. See [historical log](https://github.com/kolihhan/name-kaggle/blob/50dfd6fc53bb7cb68d3e0b3eec6ed9ea4085c633/NOW.md) and [rules](RULES.md).
