@@ -20,41 +20,50 @@ jobs:
           test -n "${KAGGLE_API_TOKEN:-}"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import json,datetime
-          from kaggle.api.kaggle_api_extended import KaggleApi
-          api=KaggleApi();api.authenticate()
+          import csv,io,subprocess,json,re
           listings={}
           for term in ("name-that-llm","name that llm","ntl"):
-              try:
-                  results=api.datasets_list(search=term,sort_by="updated",page_size=100)
-                  a=getattr(results,"datasets",results if isinstance(results,list) else [])
-                  output=[]
-                  for obj in list(a)[:100]:
-                      d=obj.to_dict() if hasattr(obj,"to_dict") else vars(obj)
-                      if not isinstance(d,dict): continue
-                      rec={
-                          "ref":str(d.get("ref") or d.get("datasetRef") or "")[:150],
-                          "date":str(d.get("lastUpdated") or d.get("last_updated") or d.get("lastUpdate") or "")[:35],
-                          "license":str(d.get("licenseName") or d.get("license_name") or "")[:100],
-                          "bytes":str(d.get("totalBytes") or d.get("total_bytes") or "")[:24],
-                      }
-                      if rec["ref"]:output.append(rec)
-                  listings[term]=output
-              except Exception as exc:
-                  listings[term]=[{"diagnostic":"API_ERROR_"+type(exc).__name__}]
+              args=["kaggle","datasets","list","--search",term,"--sort-by","updated",
+                    "--page-size","100","-v"]
+              proc=subprocess.run(args,text=True,capture_output=True,timeout=80)
+              if proc.returncode:
+                  listings[term]={"status":"CLI_FAILED","exit":proc.returncode,
+                                  "reason":proc.stderr[-260:]}
+                  continue
+              lines=proc.stdout.splitlines()
+              idx=next((i for i,line in enumerate(lines)
+                  if line.strip().lower().startswith("ref,") and
+                     ("license" in line.lower() or "last" in line.lower())),None)
+              if idx is None:
+                  listings[term]={"status":"NO_CSV_HEADER","first":lines[:3]}
+                  continue
+              raw=list(csv.DictReader(lines[idx:]))
+              results=[]
+              for z in raw:
+                  ref=z.get("ref") or z.get("Ref")
+                  if not ref:continue
+                  results.append({
+                    "ref":str(ref)[:140],
+                    "updated":str(z.get("lastUpdated") or z.get("last_updated") or z.get("lastUpdatedDate") or "")[:36],
+                    "license":str(z.get("licenseName") or z.get("license") or "")[:85],
+                    "size":str(z.get("totalBytes") or z.get("totalSize") or "")[:24],
+                  })
+              listings[term]={"status":"OK","rows":results}
           distinct={}
-          for source,records in listings.items():
-              for rec in records:
+          for q,v in listings.items():
+              for rec in v.get("rows",[]):
                   if rec.get("ref"):distinct[rec["ref"]]=rec
-          ordered=sorted(distinct.values(),key=lambda d:d["date"],reverse=True)
-          out={
-              "source":"authenticated Kaggle public dataset list",
-              "searched_terms":list(listings),
-              "per_term_count":{k:len(v) for k,v in listings.items()},
-              "distinct_catalog_ref_count":len(distinct),
-              "new_and_recent":ordered[:65],
-              "catalog_not_served_id_attestation":True,
-              "new_training":False,"new_gpu":False,"new_submission":False,
-          }
-          print('NTL_KAGGLE_NOV18_FRESH_PUBLIC_SOURCE_CENSUS='+json.dumps(out,sort_keys=True),flush=True)
+          data=sorted(distinct.values(),key=lambda r:r["updated"],reverse=True)
+          print("NTL_KAGGLE_NOV18_FRESH_PUBLIC_SOURCE_CENSUS="+json.dumps({
+            "source":"authenticated Kaggle datasets list CSV",
+            "queries":{k:{"status":v.get("status"),
+                           "count":len(v.get("rows",[])),
+                           "reason":v.get("reason") if v.get("status")!="OK" else None,
+                           "header":v.get("first") if v.get("status")=="NO_CSV_HEADER" else None}
+                       for k,v in listings.items()},
+            "distinct_catalog_sources":len(distinct),
+            "recent_datasets":data[:65],
+            "model_identity_attested":False,
+            "no_gpu_no_training_no_submission":True,
+          },sort_keys=True),flush=True)
           PY
