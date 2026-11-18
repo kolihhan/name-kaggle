@@ -40,7 +40,7 @@ jobs:
           print('AUDIT_PULLED_SOURCE_SHA256='+pin)
           print('AUDIT_PULLED_METADATA_ID='+str(meta.get('id')))
           print('AUDIT_PULLED_CODE_CELLS='+str(len(cells)))
-          if pin!='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a02e0ee73558c':
+          if pin!='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c':
             print('AUDIT_SCORED_V2_SOURCE_PIN_NOT_REPRODUCED=TRUE')
             print('AUDIT_CANNOT_ATTRIBUTE_PULLED_NOTEBOOK_TO_SCORED_V2=TRUE')
             print('AUDIT_NO_MODEL_RUN_NO_TRAIN_NO_SUBMISSION=TRUE')
