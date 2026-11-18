@@ -58,3 +58,4 @@ jobs:
           print('NTL_SCAN_SCOPE=PUBLIC_METADATA_TWO_PAGES_ONLY',flush=True)
           print('NTL_GPU_USED=FALSE;TRAINING=FALSE;OFFICIAL_SUBMISSION=FALSE',flush=True)
           PY
+# Ponytail: one-time 2026-11-18 score-facing public candidate discovery using existing workflow; no new workflow.
