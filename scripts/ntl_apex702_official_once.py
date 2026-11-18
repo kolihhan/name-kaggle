@@ -152,7 +152,9 @@ def start_gpu_once():
     oldmeta=json.loads((previous/"kernel-metadata.json").read_text())
     freshmeta=json.loads((ROOT/"private"/"kernel-metadata.json").read_text())
     for key in ("dataset_sources","model_sources","kernel_sources","competition_sources"):
-        if oldmeta.get(key)!=freshmeta.get(key):
+        # Kaggle normalizes model/data mount order on pull; require exact
+        # same reference multiset and count, never silently accept changed assets.
+        if sorted(oldmeta.get(key) or []) != sorted(freshmeta.get(key) or []):
             left=oldmeta.get(key) or []
             right=freshmeta.get(key) or []
             print("NTL_APEX702_MOUNT_MISMATCH_DETAILS="+json.dumps({
