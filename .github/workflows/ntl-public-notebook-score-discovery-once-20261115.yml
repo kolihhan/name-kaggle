@@ -113,3 +113,19 @@ jobs:
               print('NTL_702_CANDIDATE_SOURCE='+json.dumps(out,sort_keys=True),flush=True)
           print('NTL_702_NO_COMPETITION_ROW_DOWNLOAD_NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE')
           PY
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/ntl_apex702_official_once.py
+      - name: One attributed 0.702 score-facing candidate; QUICK SAVE, NO dev GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_apex702_official_once.py
+          python -m scripts.ntl_apex702_official_once quota
+          python -m scripts.ntl_apex702_official_once prepare
+          python -m scripts.ntl_apex702_official_once submit
+          echo NTL_APEX702_NO_RUN_ONLY_OFFICIAL_SCORE_PATH_TERMINAL=TRUE
