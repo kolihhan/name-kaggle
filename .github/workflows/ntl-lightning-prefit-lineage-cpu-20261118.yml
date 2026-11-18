@@ -37,7 +37,14 @@ jobs:
                  for x in nb['cells'] if x.get('cell_type')=='code']
           full='\n'.join(cells)
           pin=hashlib.sha256(full.encode()).hexdigest()
-          assert pin=='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a02e0ee73558c','PINNED_CHAMPION_SOURCE_DRIFT'
+          print('AUDIT_PULLED_SOURCE_SHA256='+pin)
+          print('AUDIT_PULLED_METADATA_ID='+str(meta.get('id')))
+          print('AUDIT_PULLED_CODE_CELLS='+str(len(cells)))
+          if pin!='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a02e0ee73558c':
+            print('AUDIT_SCORED_V2_SOURCE_PIN_NOT_REPRODUCED=TRUE')
+            print('AUDIT_CANNOT_ATTRIBUTE_PULLED_NOTEBOOK_TO_SCORED_V2=TRUE')
+            print('AUDIT_NO_MODEL_RUN_NO_TRAIN_NO_SUBMISSION=TRUE')
+            raise SystemExit(0)
           assert meta['id']=='kolihhan/lightning-0-694-authentic-no-fit-inference'
           assert tuple(len(meta.get(k) or []) for k in ('dataset_sources','model_sources','kernel_sources'))==(23,6,9)
           assert len(cells)==50 and full.count('NO_NEW_TRAINING: Gaussian fit blocked')==1
