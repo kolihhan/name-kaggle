@@ -1,0 +1,60 @@
+name: NTL Fresh External Kaggle Source Census (No Inference)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-nov18-fresh-kaggle-source-census-readonly.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Enumerate new/updated public NTL corpora, publisher metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,datetime
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          listings={}
+          for term in ("name-that-llm","name that llm","ntl"):
+              try:
+                  results=api.datasets_list(search=term,sort_by="updated",page_size=100)
+                  a=getattr(results,"datasets",results if isinstance(results,list) else [])
+                  output=[]
+                  for obj in list(a)[:100]:
+                      d=obj.to_dict() if hasattr(obj,"to_dict") else vars(obj)
+                      if not isinstance(d,dict): continue
+                      rec={
+                          "ref":str(d.get("ref") or d.get("datasetRef") or "")[:150],
+                          "date":str(d.get("lastUpdated") or d.get("last_updated") or d.get("lastUpdate") or "")[:35],
+                          "license":str(d.get("licenseName") or d.get("license_name") or "")[:100],
+                          "bytes":str(d.get("totalBytes") or d.get("total_bytes") or "")[:24],
+                      }
+                      if rec["ref"]:output.append(rec)
+                  listings[term]=output
+              except Exception as exc:
+                  listings[term]=[{"diagnostic":"API_ERROR_"+type(exc).__name__}]
+          distinct={}
+          for source,records in listings.items():
+              for rec in records:
+                  if rec.get("ref"):distinct[rec["ref"]]=rec
+          ordered=sorted(distinct.values(),key=lambda d:d["date"],reverse=True)
+          out={
+              "source":"authenticated Kaggle public dataset list",
+              "searched_terms":list(listings),
+              "per_term_count":{k:len(v) for k,v in listings.items()},
+              "distinct_catalog_ref_count":len(distinct),
+              "new_and_recent":ordered[:65],
+              "catalog_not_served_id_attestation":True,
+              "new_training":False,"new_gpu":False,"new_submission":False,
+          }
+          print('NTL_KAGGLE_NOV18_FRESH_PUBLIC_SOURCE_CENSUS='+json.dumps(out,sort_keys=True),flush=True)
+          PY
