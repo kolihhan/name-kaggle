@@ -21,3 +21,12 @@
 - **Conditional Kaggle entry:** 3-line prereg: (i) exact added character-likelihood score, (ii) expected Public BA improvement as a hypothesis (not guarantee), (iii) predeclared decision rule. Verify daily quota; no repeated blend tweaking. Official submission ID required; no claim of >=2 SE 'breakthrough' absent confirmed paired evidence.
 
 [事实] Official submit of any new NTL candidate: **not yet performed**.
+
+## Phase D continuation — prompt-invariant residual candidate (2026-11-18)
+[事实] Published participant reports show one-to-one Hungarian assignment can improve official train prompt-held-out CV substantially yet reduce or flatten Public (e.g. [Noussair Mighri](https://www.kaggle.com/competitions/name-that-llm/discussion/751802), plus [independent write-up](https://github.com/satriadaffa/name-that-llm)). Official hidden passages have unequal per-model counts; train one-per-model grouping is not guaranteed in hidden test. Do **not** submit a hard one-per-prompt label quota.
+
+[判断] Next candidate is **prompt-invariant residual style, without matching**. Same folded char TF-IDF+SVD representation, but subtract group centroid before fitting a second classifier. Infer evaluation prompt groups using *unlabeled* text-only word TF-IDF / agglomerative cosine clusters (distance 0.90), not hidden prompt labels; report oracle-groups diagnostics separately from deployable blind clusters. The critical negative-control is sparse five texts per prompt, to model hidden unequal coverage. Fix one raw/residual blend weight=0.25, no sweeps, no Kaggle submission or GPU.
+
+[事实] Pre-registered implementation [scripts/ntl_prompt_residual_sparse_v1_20261118.py](scripts/ntl_prompt_residual_sparse_v1_20261118.py), commit a4c2d23. **GitHub Actions 44287492092 launched** by workflow commit 46cfb4c: [CPU evaluation](https://github.com/kolihhan/name-kaggle/actions/runs/44287492092). Run was in_progress at initial check. Artifact is `ntl-prompt-residual-v1.json`: raw BA; oracle residual BA (upper-bound diagnosis); blind-cluster residual BA and +0.25 blend BA; sparse k=5 blind blend BA, cluster ARI, paired prompt-bootstrap CI, rescues and regressions.
+
+**Stop/advance:** If blind clustering or sparse condition cannot beat raw with a meaningfully positive paired interval, stop on this mechanism regardless of oracle boost. If it does, its transfer to an honest strong-model member remains required; never extrapolate weak proxy BA to current 0.691 Public without independent evidence. No new NTL Kaggle submission ID.
