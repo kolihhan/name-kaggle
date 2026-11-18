@@ -1,0 +1,92 @@
+name: NTL New 18-Class Dataset Source and Served-ID Admission (CPU Only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-nov18-real-new18-provenance-admission-cpu.yml]
+permissions: {contents: read}
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read public source provenance files and two new raw cohort schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-fresh18 /tmp/ntl-fresh2
+          for f in README.md audit.json balanced_20k_audit.json counts_by_model.csv counts_by_source_model.csv sources_per_model.csv balanced_20k_articles.parquet; do
+            kaggle datasets download -d liuyihuileo/ntl-external-training-candidates-18 \
+              -f "$f" -p /tmp/ntl-fresh18 --unzip -o -q >/dev/null
+          done
+          kaggle datasets download -d keisukefujiwara/nlm-extra-gen \
+             -f own_gen.parquet -p /tmp/ntl-fresh2 --unzip -o -q >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          import pandas as pd
+          import pyarrow.parquet as pq
+          a=Path('/tmp/ntl-fresh18');b=Path('/tmp/ntl-fresh2')
+          report={'corpora':[],'new_model_training':False,'competition_submission':False,
+                  'private_or_paid_inference':False,
+                  'only_public_metadata_and_aggregates_exported':True}
+          for name,root in [
+            ('liuyihuileo/ntl-external-training-candidates-18',a),
+            ('keisukefujiwara/nlm-extra-gen',b)]:
+            rec={'source':name,'files':sorted(z.name for z in root.iterdir())}
+            for f in root.glob('*.parquet'):
+              table=pq.ParquetFile(f)
+              schema=table.schema_arrow
+              rec[f.name]={
+                'parquet_rows':table.metadata.num_rows,
+                'schema':schema.names,
+                'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),
+                'column_type_samples':{k:str(schema.field(k).type) for k in schema.names[:35]},
+              }
+              cols=schema.names
+              label=next((c for c in ('model','label','target_model','model_id','model_name') if c in cols),None)
+              source=next((c for c in ('source_dataset','source','dataset','data_source') if c in cols),None)
+              served=next((c for c in ('served_model','gen_served_model','returned_model','response_model',
+                                      'actual_model','returned_model_id') if c in cols),None)
+              prompt=next((c for c in ('prompt_group','prompt_id','prompt_hash','prompt','prompt_source') if c in cols),None)
+              picked=[c for c in (label,source,served,prompt) if c]
+              if picked:
+                d=pq.read_table(f,columns=list(dict.fromkeys(picked))).to_pandas()
+                agg={'label_field':label,'source_field':source,'served_field':served,'prompt_field':prompt}
+                if label:
+                  series=d[label].astype(str)
+                  agg['actual_distinct_labels']=int(series.nunique())
+                  agg['label_counts']={str(k):int(v) for k,v in series.value_counts().head(25).items()}
+                if source:
+                  agg['unique_source_count']=int(d[source].nunique())
+                  agg['top_sources']={str(k)[:75]:int(v) for k,v in d[source].astype(str).value_counts().head(15).items()}
+                if served and label:
+                  servedvalues=d[served].fillna('').astype(str).str.strip()
+                  targetvalues=d[label].fillna('').astype(str).str.strip()
+                  matched=servedvalues.str.casefold().eq(targetvalues.str.casefold()) & servedvalues.ne('')
+                  agg['publisher_served_id_populated']=int(servedvalues.ne('').sum())
+                  agg['publisher_served_id_matches_label_exactly']=int(matched.sum())
+                  agg['exact_match_label_support']=int(d.loc[matched,label].nunique())
+                  agg['source_corroboration_independently_verified']=False
+                if prompt:
+                  agg['distinct_prompt_values']=int(d[prompt].nunique())
+                rec[f.name]['census']=agg
+            if name.startswith('liuyihuileo'):
+              for f in ('audit.json','balanced_20k_audit.json'):
+                d=json.loads((a/f).read_text())
+                rec[f]=d if isinstance(d,dict) else {'non_object':True}
+              rec['readme_first6000']=(a/'README.md').read_text()[:6000]
+              for f in ('counts_by_model.csv','sources_per_model.csv'):
+                rec[f]=pd.read_csv(a/f).to_dict(orient='records')
+            report['corpora'].append(rec)
+          print('NTL_NOV18_REAL_NEW18_AGGREGATE_PROVENANCE='+json.dumps(report,sort_keys=True,default=str),flush=True)
+          print('NTL_NO_SOURCE_ROW_TEXT_EXPORT_OR_MODEL_INFERENCE=TRUE',flush=True)
+          PY
+      - name: Always scrub all downloaded public raw passages
+        if: always()
+        run: rm -rf /tmp/ntl-fresh18 /tmp/ntl-fresh2
