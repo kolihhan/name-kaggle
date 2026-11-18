@@ -169,7 +169,15 @@ def start_gpu_once():
     if any(w in status_text for w in ("RUNNING","QUEUED","PENDING")):
         raise RuntimeError("OWN_PRIVATE_KERNEL_ALREADY_ACTIVE")
     if "COMPLETE" in status_text:
-        raise RuntimeError("OWN_PRIVATE_KERNEL_ALREADY_RAN; DO_NOT_PUSH_VERSION3")
+        # Kaggle Quick Save --no-run reports COMPLETE too. Distinguish it
+        # from an actual executed version by requiring a successful empty
+        # output listing, plus the exact saved-v1 source verified above.
+        listed=cli("kernels","files",DEST,"--page-size","200","-v",check=False)
+        if listed.returncode!=0 or "submission.parquet" in listed.stdout or                 "Next Page Token =" in listed.stdout:
+            raise RuntimeError("EXISTING_COMPLETE_KERNEL_HAS_OUTPUT_OR_UNVERIFIABLE_FILES")
+        print("NTL_APEX702_SAVED_V1_COMPLETE_BUT_NO_OUTPUT_ACCEPTED="+
+              json.dumps({"files_stdout":listed.stdout[-220:],"status":status_text[-220:]}),
+              flush=True)
     # Do not overwrite a working version or silently move the original score.
     help_text=cli("kernels","push","--help").stdout
     if "--accelerator" not in help_text:
