@@ -1,0 +1,127 @@
+name: NTL blind author-conditioned character order CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-blind-char-order-cpu-20261118.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-blind-char-order-cpu-nov18
+  cancel-in-progress: false
+jobs:
+  char_order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /data/train.csv
+            /artifacts/phase1/folds.csv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only pinned dependencies
+        run: python -m pip install -q numpy==2.3.5 scipy==1.17.0 pandas==2.2.3 scikit-learn==1.8.0
+      - name: Frozen five-fold likelihood experiment with grouped paired CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p result
+          python -u - <<'PY'
+          # Preregistered Phase D candidate: author-conditioned char-order likelihood.
+          # Single change: same class NB/readout, char unigrams vs 1-3 grams.
+          # No official holdout/test predictions or Lightning pseudo-OOF.
+          import hashlib, json
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          from sklearn.feature_extraction.text import CountVectorizer
+          from sklearn.naive_bayes import MultinomialNB
+          from sklearn.metrics import balanced_accuracy_score
+
+          train_path=Path('data/train.csv')
+          fold_path=Path('artifacts/phase1/folds.csv')
+          fingerprints={
+              train_path:'40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707',
+              fold_path:'94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d',
+          }
+          for path, want in fingerprints.items():
+              assert hashlib.sha256(path.read_bytes()).hexdigest()==want, f'Input mismatch: {path}'
+          tr=pd.read_csv(train_path,dtype={'id':str,'prompt_id':str})
+          folds=pd.read_csv(fold_path,dtype={'id':str,'prompt_id':str})
+          df=tr.merge(folds,on=['id','prompt_id','model'],how='outer',validate='one_to_one',indicator=True)
+          assert len(df)==2699 and df['_merge'].eq('both').all()
+          assert df.prompt_id.nunique()==150 and df.model.nunique()==18
+          assert df.groupby('prompt_id').fold_id.nunique().eq(1).all()
+          df=df.sort_values('id').reset_index(drop=True)
+          labels, yy=np.unique(df.model.to_numpy(),return_inverse=True)
+          fold_ids=df.fold_id.to_numpy()
+          prompts=df.prompt_id.to_numpy()
+          pred={arm:np.full(len(df),-1,dtype=np.int16) for arm in ('unigram','ordered_1to3')}
+          for fold in range(5):
+              train=fold_ids!=fold
+              valid=~train
+              vectorizer=CountVectorizer(analyzer='char',lowercase=False,
+                  ngram_range=(1,3),min_df=2,max_features=60000)
+              X=vectorizer.fit_transform(df.loc[train,'text'])
+              Z=vectorizer.transform(df.loc[valid,'text'])
+              unary=np.fromiter((len(tok)==1 for tok in vectorizer.get_feature_names_out()),
+                               dtype=bool,count=X.shape[1])
+              assert unary.any() and (~unary).any()
+              for arm,mask in (('unigram',unary),('ordered_1to3',slice(None))):
+                  nb=MultinomialNB(alpha=1.0,fit_prior=False)
+                  nb.fit(X[:,mask],yy[train])
+                  pred[arm][valid]=nb.predict(Z[:,mask])
+              print('NTL_CHAR_ORDER_FOLD',fold,'valid',int(valid.sum()),flush=True)
+          assert all((x>=0).all() for x in pred.values())
+          ba={arm:float(balanced_accuracy_score(yy, yhat)) for arm,yhat in pred.items()}
+          before=pred['unigram']==yy
+          after=pred['ordered_1to3']==yy
+          # Resample prompts, NOT rows, maintaining paired comparison/class denominators.
+          unique_prompts, inverse=np.unique(prompts,return_inverse=True)
+          n_prompts=len(unique_prompts)
+          n_class=len(labels)
+          denom=np.zeros((n_prompts,n_class),dtype=np.int16)
+          diff=np.zeros_like(denom)
+          for row, (group, klass) in enumerate(zip(inverse, yy)):
+              denom[group,klass]+=1
+              diff[group,klass]+=int(after[row])-int(before[row])
+          rng=np.random.default_rng(20261118)
+          boot=[]
+          for _ in range(5000):
+              draws=rng.multinomial(n_prompts,np.full(n_prompts,1/n_prompts))
+              totals=draws@denom
+              boot.append(float(np.mean(np.divide(draws@diff,totals,
+                                    out=np.zeros(n_class,dtype=float),where=totals>0))))
+          ci=np.quantile(boot,[0.025,0.975]).tolist()
+          result={
+              'version':'phase-d-blind-author-char-order-20261118',
+              'folds':5,'rows':len(df),'held_out_prompts':n_prompts,'classes':n_class,
+              'model':'MultinomialNB(alpha=1.0, fit_prior=False)',
+              'feature_space':'fold-fitted char 1-3 grams min_df=2 max_features=60000',
+              'intervention':'include 2-3-gram feature columns; same fold-fitted vectorizer and NB',
+              'no_gpu':True,'official_submission':False,
+              'ba':ba,'delta':ba['ordered_1to3']-ba['unigram'],
+              'paired_prompt_bootstrap_ci95':ci,'bootstrap_replicates':5000,
+              'rescued':int((~before&after).sum()),'regressed':int((before&~after).sum()),
+              'official_train_hash':fingerprints[train_path],
+              'fold_manifest_hash':fingerprints[fold_path],
+              'caveat':'Weak CPU likelihood proxy. Does not establish gains over the 0.691 Public incumbent.'
+          }
+          Path('result/ntl-blind-char-order.json').write_text(json.dumps(result,indent=2))
+          print('NTL_BLIND_CHAR_ORDER_RESULT='+json.dumps(result,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-blind-char-order-aggregate
+          path: result/ntl-blind-char-order.json
+          if-no-files-found: warn
+          retention-days: 14
