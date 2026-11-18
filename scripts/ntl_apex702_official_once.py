@@ -153,6 +153,14 @@ def start_gpu_once():
     freshmeta=json.loads((ROOT/"private"/"kernel-metadata.json").read_text())
     for key in ("dataset_sources","model_sources","kernel_sources","competition_sources"):
         if oldmeta.get(key)!=freshmeta.get(key):
+            left=oldmeta.get(key) or []
+            right=freshmeta.get(key) or []
+            print("NTL_APEX702_MOUNT_MISMATCH_DETAILS="+json.dumps({
+                "field":key,"saved_count":len(left),"frozen_count":len(right),
+                "saved_only":sorted(set(left)-set(right)),
+                "frozen_only":sorted(set(right)-set(left)),
+                "reordering_only":set(left)==set(right)
+            },sort_keys=True),flush=True)
             raise RuntimeError("PRIVATE_V1_SOURCE_MOUNT_DRIFT:"+key)
     old_status=cli("kernels","status",DEST,check=False)
     status_text=(old_status.stdout+"\n"+old_status.stderr).upper()
