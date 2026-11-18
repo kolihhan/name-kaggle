@@ -1,0 +1,44 @@
+name: NTL Phase D prompt residual sparse transfer CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-prompt-residual-sparse-v1-20261118.yml
+      - scripts/ntl_prompt_residual_sparse_v1_20261118.py
+permissions: {contents: read}
+concurrency:
+  group: ntl-prompt-residual-sparse-v1-20261118
+  cancel-in-progress: false
+jobs:
+  grouped_oof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /data/train.csv
+            /artifacts/phase1/folds.csv
+            /scripts/ntl_prompt_residual_sparse_v1_20261118.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install pinned CPU dependencies
+        run: |
+          python -m pip install -q --disable-pip-version-check numpy==2.3.5 scipy==1.17.0 pandas==2.2.3 scikit-learn==1.8.0 threadpoolctl==3.6.0
+      - name: Five-fold unseen-prompt out-of-fold test; full and k5 sparse no Hungarian
+        run: |
+          python -m py_compile scripts/ntl_prompt_residual_sparse_v1_20261118.py
+          python -u scripts/ntl_prompt_residual_sparse_v1_20261118.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-phase-d-prompt-residual-sparse-aggregate
+          path: result/ntl-prompt-residual-v1.json
+          if-no-files-found: warn
+          retention-days: 14
