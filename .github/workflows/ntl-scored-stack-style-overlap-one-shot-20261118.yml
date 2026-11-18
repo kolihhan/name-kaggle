@@ -1,0 +1,72 @@
+name: NTL Scored 0.691 Style Feature Overlap One-Time CPU Inspection
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-scored-stack-style-overlap-one-shot-20261118.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read exactly scored own notebook; report only style feature mechanism signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-scored-overlap
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference/2 -p /tmp/ntl-scored-overlap -m >/dev/null
+          python - <<'PY'
+          import ast,hashlib,json,re
+          from pathlib import Path
+          root=Path('/tmp/ntl-scored-overlap')
+          files=list(root.glob('*.ipynb'))
+          if len(files)!=1:raise RuntimeError('NOT_EXACTLY_ONE_PINNED_NOTEBOOK')
+          notebook=json.loads(files[0].read_text())
+          codes=[''.join(x.get('source',[])) for x in notebook['cells'] if x.get('cell_type')=='code']
+          full='\n'.join(codes)
+          sha=hashlib.sha256(full.encode()).hexdigest()
+          if sha!='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c':
+              raise RuntimeError('SCORED_SOURCE_DRIFT')
+          modules={}
+          for code in codes:
+              if not code.startswith('%%writefile '):continue
+              first,_,body=code.partition('\n')
+              path=first.partition(' ')[2].strip()
+              modules[path.split('/')[-1]]=body
+          names=['features.py','core_math.py','core_readout.py','svc4_runtime.py',
+                 'ensemble.py','reference_helpers.py','native_fusion.py',
+                 'ntl660_readout.py','gauss.py']
+          tokens=('style','punct','function_word','whitespace','lexical','token',
+                  'char_','char_ngram','function','stopword','sentence','tfidf')
+          result={'pinned_source_sha256':sha,'scored_modules':len(modules),
+                  'training_or_inference_performed':False,'modules':{}}
+          for name in names:
+              body=modules.get(name)
+              if body is None:
+                  result['modules'][name]={'found':False}
+                  continue
+              tree=ast.parse(body)
+              functions=[node.name for node in ast.walk(tree)
+                         if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))]
+              lower=body.lower()
+              matching=[]
+              for line in body.splitlines():
+                  if re.search(r'style|punct|function_word|whitespace|lexical|stopword|sentence',line,re.I):
+                      trimmed=line.strip()
+                      if trimmed and len(matching)<25:matching.append(trimmed[:180])
+              result['modules'][name]={
+                 'found':True,'code_lines':len(body.splitlines()),
+                 'functions':functions[:40],
+                 'token_counts':{t:len(re.findall(re.escape(t),lower)) for t in tokens},
+                 'matching_source_lines':matching
+              }
+          print('NTL_SCORED_STACK_STYLE_OVERLAP='+json.dumps(result,sort_keys=True),flush=True)
+          print('NTL_NO_GPU_NO_FIT_NO_SUBMISSION_NO_PRIVATE_DATA=TRUE')
+          PY
+          rm -rf /tmp/ntl-scored-overlap
