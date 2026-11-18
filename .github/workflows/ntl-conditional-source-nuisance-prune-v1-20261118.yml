@@ -1,0 +1,58 @@
+name: NTL Conditional Source-Nuisance Pruning vs Random Null CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-conditional-source-nuisance-prune-v1-20261118.yml
+permissions: {contents: read}
+concurrency: {group: ntl-source-nuisance-prune-v1-20261118, cancel-in-progress: false}
+jobs:
+  source_generalization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/ntl_source_robust_18_trainprep_20261117.py
+            /scripts/ntl_source_shift_linear_control_20261117.py
+            /scripts/ntl_prompt_residual_sparse_v1_20261118.py
+            /scripts/ntl_source_nuisance_prune_v1_20261118.py
+            /scripts/run_style_baseline.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: CPU science and authorized public dataset client
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.5 scipy==1.17.0 pandas==2.3.3 scikit-learn==1.8.0 threadpoolctl==3.6.0 pyarrow==22.0.0
+      - name: Frozen 18-model external split with actual publisher holdout
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-nuisance-source
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/ntl-nuisance-source --unzip -q
+          done
+          python -m scripts.ntl_source_robust_18_trainprep_20261117 --input /tmp/ntl-nuisance-source --out /tmp/ntl-nuisance-frozen
+      - name: Fit one fixed feature-mask contrast and matched random-mask null; output aggregates
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_source_nuisance_prune_v1_20261118.py
+          python -u -m scripts.ntl_source_nuisance_prune_v1_20261118 --data-dir /tmp/ntl-nuisance-frozen
+      - name: Scrub all source texts and temporary training data
+        if: always()
+        run: |
+          rm -rf /tmp/ntl-nuisance-source /tmp/ntl-nuisance-frozen
+          echo NTL_NO_RAW_EXTERNAL_TEXT_EXPORT=TRUE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-source-nuisance-prune-aggregate
+          path: result/ntl-source-nuisance-prune-v1.json
+          if-no-files-found: warn
+          retention-days: 30
