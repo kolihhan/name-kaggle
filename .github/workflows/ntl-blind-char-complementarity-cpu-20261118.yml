@@ -1,0 +1,139 @@
+name: NTL blind char-likelihood complementarity CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-blind-char-complementarity-cpu-20261118.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-blind-char-complementarity-20261118
+  cancel-in-progress: false
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /data/train.csv
+            /artifacts/phase1/folds.csv
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install pinned CPU dependencies
+        run: python -m pip install -q numpy==2.3.5 scipy==1.17.0 pandas==2.2.3 scikit-learn==1.8.0
+      - name: Frozen five-fold discriminative vs char-likelihood and three prespecified blends
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p result
+          python -u - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          from sklearn.feature_extraction.text import CountVectorizer,TfidfVectorizer
+          from sklearn.naive_bayes import MultinomialNB
+          from sklearn.linear_model import LogisticRegression
+          from sklearn.metrics import balanced_accuracy_score
+          paths={
+            'data/train.csv':'40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707',
+            'artifacts/phase1/folds.csv':'94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d',
+          }
+          assert all(hashlib.sha256(Path(p).read_bytes()).hexdigest()==h for p,h in paths.items())
+          data=pd.read_csv('data/train.csv',dtype={'id':str,'prompt_id':str})
+          folds=pd.read_csv('artifacts/phase1/folds.csv',dtype={'id':str,'prompt_id':str})
+          d=data.merge(folds,on=['id','prompt_id','model'],how='outer',
+                       validate='one_to_one',indicator=True).sort_values('id').reset_index(drop=True)
+          assert len(d)==2699 and d['_merge'].eq('both').all()
+          assert d.prompt_id.nunique()==150 and d.groupby('prompt_id').fold_id.nunique().eq(1).all()
+          classes,y=np.unique(d.model,return_inverse=True)
+          assert len(classes)==18
+          scores={a:np.full((len(d),len(classes)),np.nan) for a in ('linear','char_likelihood')}
+          labels=np.asarray(d.fold_id)
+          for fold in range(5):
+              train=labels!=fold
+              test=~train
+              train_text=d.text[train]
+              test_text=d.text[test]
+              cv=CountVectorizer(analyzer='char',lowercase=False,ngram_range=(1,3),
+                                 min_df=2,max_features=60000)
+              cx=cv.fit_transform(train_text)
+              cz=cv.transform(test_text)
+              nb=MultinomialNB(alpha=1.0,fit_prior=False)
+              nb.fit(cx,y[train])
+              scores['char_likelihood'][test]=nb.predict_log_proba(cz)
+              tfidf=TfidfVectorizer(analyzer='char',lowercase=False,ngram_range=(2,5),
+                                    min_df=2,max_features=50000,sublinear_tf=True,norm='l2')
+              lx=tfidf.fit_transform(train_text)
+              lz=tfidf.transform(test_text)
+              lr=LogisticRegression(C=3.0,max_iter=500,solver='lbfgs',tol=1e-4)
+              lr.fit(lx,y[train])
+              scores['linear'][test]=lr.predict_log_proba(lz)
+              print('NTL_COMPLEMENT_FOLD',fold,int(test.sum()),flush=True)
+          assert all(np.isfinite(s).all() for s in scores.values())
+          predictions={k:np.argmax(v,axis=1) for k,v in scores.items()}
+          # Reproduce prior released char-likelihood result on exactly the same folds.
+          previous=0.29189162316679096
+          assert abs(balanced_accuracy_score(y,predictions['char_likelihood'])-previous)<1e-12
+          def normalize_rows(x):
+              centered=x-x.mean(axis=1,keepdims=True)
+              return centered/np.maximum(centered.std(axis=1,keepdims=True),1e-6)
+          linear=normalize_rows(scores['linear'])
+          char=normalize_rows(scores['char_likelihood'])
+          for weight in (0.25,0.50,0.75):
+              key=f'blend_char_{weight:.2f}'
+              predictions[key]=np.argmax((1-weight)*linear+weight*char,axis=1)
+          ba={k:float(balanced_accuracy_score(y,v)) for k,v in predictions.items()}
+          base=predictions['linear']==y
+          pids,inverse=np.unique(d.prompt_id.to_numpy(),return_inverse=True)
+          N=len(pids)
+          G=len(classes)
+          counts=np.zeros((N,G),dtype=np.int16)
+          differences={k:np.zeros((N,G),dtype=np.int16) for k in predictions if k!='linear'}
+          for row,(i,cl) in enumerate(zip(inverse,y)):
+              counts[i,cl]+=1
+              for key in differences:
+                  differences[key][i,cl]+=int(predictions[key][row]==cl)-int(base[row])
+          rng=np.random.default_rng(20261118)
+          bootstrap=rng.multinomial(N,np.full(N,1/N),size=5000)
+          denominators=bootstrap@counts
+          results={}
+          for key,delta in differences.items():
+              dist=np.mean(np.divide(bootstrap@delta,denominators,
+                                   out=np.zeros_like(denominators,dtype=float),
+                                   where=denominators>0),axis=1)
+              yhat=predictions[key]==y
+              results[key]={
+                  'ba':ba[key],
+                  'delta_vs_linear':ba[key]-ba['linear'],
+                  'prompt_paired_ci95':np.quantile(dist,[0.025,0.975]).tolist(),
+                  'rescued':int((~base&yhat).sum()),
+                  'regressed':int((base&~yhat).sum()),
+              }
+          result={
+              'version':'phase-d-blind-char-complementarity-v1',
+              'folds':5,'prompts':150,'rows':2699,'classes':18,
+              'linear':'fold-local TFIDF char 2-5 min_df2 max_features50000, LogisticRegression C3',
+              'char':'fold-local char-count 1-3 min_df2 max_features60000, MultinomialNB alpha1',
+              'linear_ba':ba['linear'],'comparisons':results,
+              'pre_registered_blend_weights_char':[0.25,0.5,0.75],
+              'selection_note':'Do not claim 0.72 or Lightning complementarity from these weak CPU OOF models',
+              'new_gpu':False,'official_submission':False,'bootstrap_replicates':5000
+          }
+          Path('result/ntl-char-complementarity.json').write_text(json.dumps(result,indent=2))
+          print('NTL_CHAR_COMPLEMENTARITY_RESULT='+json.dumps(result,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-blind-char-complementarity
+          path: result/ntl-char-complementarity.json
+          if-no-files-found: warn
+          retention-days: 14
