@@ -1,3 +1,12 @@
+## 2026-11-18 MYT — NTL scored Lightning 0.691 V2 training lineage pinned; genuine official-train OOF disallowed
+
+- **NEW actual CPU audit:** [#44221042287](https://github.com/kolihhan/name-kaggle/actions/runs/44221042287) SUCCESS, pulled the exact owned **version 2** notebook, verified historical 50-cell source SHA256 `cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a9a02e0ee73558c` (not a mutable author revision). 37 generated modules; 23 dataset + 6 model + 9 notebook mounts. No GPU, fitting, competition data download or official Kaggle submission.
+- **Decisive fitted-asset exposure evidence in the exact 0.691 source:** `assert complete["rows_seen"] == {"external": 119899, "official": 5398}`. These are a specific upstream artifact's declared **training row exposures, not unique documents**; cannot assert all checkpoints saw each of 2,699 rows, nor imply rules violation. No verifiable fold-specific exclusions or whole-pipeline retrained OOF lineage were supplied.
+- **Research decision:** stop proposing Lightning pseudo-OOF on official 2,699 rows; the 0.958 historical train accuracy is **in-sample**. The grouped Phase7/15 OOF cannot be directly ranked against a Lightning fake OOF. Authentic frozen incumbent Public **0.691/#58375806** unchanged. Need full checkpoint-level fold-exclusion manifests OR a proven independent same-row all-18 cohort before paired model promotion; currently neither exists.
+- Stop new Oleg/external mechanism experiments; no new models or submissions. **Gemma low-investment b**, no development GPU. Full [pinned provenance audit](artifacts/research/ntl-lightning-0691-prefit-lineage-pin-audit-20261118.md).
+
+---
+
 ## 2026-11-18 09:12 MYT — NTL ruler calibrated, exact leakage hypothesis rejected, Public transfer still uncalibrated
 
 - **Actual original-data audit, not a new model:** [Action #44213134245](https://github.com/kolihhan/name-kaggle/actions/runs/44213134245) SUCCESS: historical official 2,699 responses / **150 prompt groups**, permanent 5-fold GroupKFold = 30 validation prompts/fold; **zero cross-fold official prompt-ID overlap**, zero exact train-validation response hash overlap, zero normalized exact-response overlap between Phase15's 26,025 external fit rows and any official validation response, zero literal string prompt-ID/key collision. This rules out **literal** fold/duplicate leakage, not external prefit/semantically repeated prompts/source shift.
