@@ -1,0 +1,41 @@
+name: NTL Phase D strong residual falsifier CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-prompt-residual-strong-falsifier-20261118.yml
+permissions: {contents: read}
+concurrency: {group: ntl-prompt-residual-strong-falsifier-20261118, cancel-in-progress: false}
+jobs:
+  strong_oof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /data/train.csv
+            /artifacts/phase1/folds.csv
+            /scripts/ntl_prompt_residual_sparse_v1_20261118.py
+            /scripts/ntl_prompt_residual_strong_falsifier_20261118.py
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Pin CPU science dependencies
+        run: python -m pip install -q --disable-pip-version-check numpy==2.3.5 scipy==1.17.0 pandas==2.2.3 scikit-learn==1.8.0 threadpoolctl==3.6.0
+      - name: Strong baseline replication, blind residual, k5 sparse, five random partition controls
+        run: |
+          python -m py_compile scripts/ntl_prompt_residual_strong_falsifier_20261118.py
+          python -u -m scripts.ntl_prompt_residual_strong_falsifier_20261118
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-strong-residual-falsifier
+          path: result/ntl-prompt-falsifier-strong-v1.json
+          if-no-files-found: warn
+          retention-days: 30
