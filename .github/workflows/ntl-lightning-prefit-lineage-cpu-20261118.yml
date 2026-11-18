@@ -24,7 +24,7 @@ jobs:
           : "${KAGGLE_API_TOKEN:?required}"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           mkdir -p /tmp/ntl-lightning-lineage
-          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference -p /tmp/ntl-lightning-lineage -m >/tmp/ntl-lightning-lineage-pull.log 2>&1
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference/2 -p /tmp/ntl-lightning-lineage -m >/tmp/ntl-lightning-lineage-pull.log 2>&1
           python - <<'PY'
           import ast,hashlib,json,re
           from pathlib import Path
