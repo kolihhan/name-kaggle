@@ -1,3 +1,11 @@
+## 2026-11-18 19:34 MYT — NTL source-shortcut causal falsifier FAILED; stop weak-proxy optimization
+
+- New **completed** experiment [Actions #44295597803](https://github.com/kolihhan/name-kaggle/actions/runs/44295597803): fixed 8-source train 5,562 / 3-source validation 2,700, 18-class BA baseline (char+155-style) **0.284074**. Mask top 5% class-conditional source-varying char TF-IDF = **0.273704**, **Δ−0.010370**, prompt-bootstrap CI95 **[−0.022034,+0.000776]**, 97 rescues / 125 regressions. Same-count random feature masking **0.288889 / Δ+0.004815**. Only 1 of 3 held-out sources improved. **PRE-REGISTERED GATE FAIL.**
+- Experimental code SHA commit `6462f26`, workflow commit `cfd7fdb`; [research decision](BREAKTHROUGH_PLAN.md) commit `d010671`. No new base model, GPU or Kaggle submission. This is a reused, source-identity-imperfect holdout, not pristine confirmation or Public improvement.
+- **Stop** source-sensitive-char-pruning percentage tuning. Strong existing 0.691 pretrained ensemble already has style and more complex inference stages; no valid fold-retrained strong OOF. Next true advancement requires licensed original-served-ID cohort with 18-class/prompt/source separation and a same-row champion pairing, or an orthogonal trainable representation on approved compute — not more proxy tuning. Best official NTL **0.691 #58375806**; Gemma best last verified **0.18** and #58505571 last checked **PENDING** (no repeated polling).
+
+---
+
 ## 2026-11-18 19:12 MYT — NTL style transfer PASS, but already overlaps 0.691 winner; NO new official submit
 
 - [Actions #44292171841](https://github.com/kolihhan/name-kaggle/actions/runs/44292171841) SUCCESS. Frozen 8-source 5,562 train -> 3-source 2,700 validation / 18-class BA **0.213704 → 0.284074**, Δ **+0.070370** with prompt-bootstrap CI95 **[0.056176,0.084859]**; positive all 3 held-out sources; shuffled style control only +0.004815. Official historical GroupKFold 2,699 / 150 prompts **0.284109 → 0.358188**, Δ **+0.074079**; **existing** 155 style features + fixed weight 0.5, no new invented features, no GPU.
