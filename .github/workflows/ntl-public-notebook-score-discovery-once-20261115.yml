@@ -1,131 +1,49 @@
-name: "NTL bounded public notebook score discovery CPU only"
+name: NTL Apex702 one authorized GPU production run and official scoring
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-public-notebook-score-discovery-once-20261115.yml]
 permissions: {contents: read}
+concurrency:
+  group: ntl-apex702-one-authorized-private-gpu-20261118
+  cancel-in-progress: false
 jobs:
-  public_source_recon:
+  launch_wait_score:
+    if: "${{ github.event.head_commit.message == 'GO_NTL_APEX702_ONE_AUTHORIZED_PRIVATE_GPU_20261118' }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 340
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
-      - name: Inspect two pages of public code only; no competition train/test
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$KAGGLE_API_TOKEN"
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
-          mkdir -p /tmp/ntl-public-only
-          for page in 1 2; do
-            kaggle kernels list --competition name-that-llm --sort-by scoreDescending \
-              --page-size 30 --page "$page" --csv >"/tmp/ntl-public-only/page$page.csv"
-          done
-          python - <<'PY'
-          import csv,json
-          from pathlib import Path
-          hits=[]; schemas=[]
-          for page in (1,2):
-              with (Path('/tmp/ntl-public-only')/f'page{page}.csv').open(newline='',encoding='utf-8') as f:
-                  reader=csv.DictReader(f)
-                  fieldnames=reader.fieldnames or []
-                  schemas.append(fieldnames)
-                  for entry in reader:
-                      lower={str(k).strip().lower():v for k,v in entry.items() if k}
-                      ref=lower.get('ref') or lower.get('kernelref') or lower.get('kernel_ref') or ''
-                      score=lower.get('score') or lower.get('currentversionpublicscore') or ''
-                      try: value=float(score)
-                      except (TypeError,ValueError): continue
-                      if value>0.683 and ref and '/' in ref:
-                          hits.append({'ref':ref,'score':round(value,5)})
-          print('NTL_PUBLIC_NOTEBOOK_SCORE_HEADERS='+json.dumps(schemas),flush=True)
-          # Kaggle API omits numerical public score for active competitions.
-          # Preserve original scoreDescending rank, never convert rank to score.
-          ranked=[]
-          for page in (1,2):
-              with (Path('/tmp/ntl-public-only')/f'page{page}.csv').open(newline='',encoding='utf-8') as f:
-                  for entry in csv.DictReader(f):
-                      ref=entry.get('ref',''); title=entry.get('title','')
-                      if ref and '/' in ref:
-                          ranked.append({'ref':ref,'title':title[:160]})
-          print('NTL_PUBLIC_NOTEBOOK_SCORE_RANKED_TOP20='+json.dumps(ranked[:20],ensure_ascii=False),flush=True)
-          print('NTL_PUBLIC_SCORE_VALUES_EXPOSED_BY_API=FALSE',flush=True)
-          print('NTL_PUBLIC_STRONGER_NOTEBOOKS='+json.dumps(hits[:25],sort_keys=True),flush=True)
-          print('NTL_PUBLIC_STRONGER_FOUND='+str(len(hits)),flush=True)
-          print('NTL_SCAN_SCOPE=PUBLIC_METADATA_TWO_PAGES_ONLY',flush=True)
-          print('NTL_GPU_USED=FALSE;TRAINING=FALSE;OFFICIAL_SUBMISSION=FALSE',flush=True)
-          PY
-# Ponytail: one-time 2026-11-18 score-facing public candidate discovery using existing workflow; no new workflow.
-
-      - name: Inspect exact 0.702 public candidate source/assets, no GPU or fitting
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib,json,pathlib,re,subprocess,tempfile
-          refs=(
-            'lightningv08/0-702-apex-style-15-glm-qwen3-8-27b-lora',
-            'lightningv08/0-702-soft-typography-glm-qwen3-8-27b-lora',
-            'lightningv08/0-694-glm-5-3-likelihood-qwen3-8-27b-lora',
-          )
-          for ref in refs:
-              root=pathlib.Path(tempfile.mkdtemp(prefix='ntl-702-source-'))
-              q=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(root),'-m'],
-                  capture_output=True,text=True,timeout=90)
-              out={'ref':ref,'pull_ok':q.returncode==0}
-              if q.returncode==0:
-                  m=json.loads((root/'kernel-metadata.json').read_text())
-                  notebooks=list(root.glob('*.ipynb'))
-                  out.update({
-                    'public':m.get('is_private') is False,
-                    'internet_disabled':m.get('enable_internet') is False,
-                    'gpu_enabled':m.get('enable_gpu'),
-                    'competition_sources':m.get('competition_sources'),
-                    'code_file':m.get('code_file'),
-                    'dataset_sources':m.get('dataset_sources'),
-                    'kernel_sources':m.get('kernel_sources'),
-                    'model_sources':m.get('model_sources'),
-                    'nb_count':len(notebooks)
-                  })
-                  if len(notebooks)==1:
-                      nb=json.loads(notebooks[0].read_text(encoding='utf-8'))
-                      chunks=[''.join(c.get('source',[])) if isinstance(c.get('source'),list)
-                              else str(c.get('source','')) for c in nb['cells']
-                              if c.get('cell_type')=='code']
-                      code='\n'.join(chunks)
-                      out.update({
-                        'source_sha256':hashlib.sha256(notebooks[0].read_bytes()).hexdigest(),
-                        'code_sha256':hashlib.sha256(code.encode()).hexdigest(),
-                        'code_cells':len(chunks),
-                        'writefile_modules':sum(z.startswith('%%writefile ') for z in chunks),
-                        'gaussian_fit_calls':len(re.findall(r'gauss\.fit\s*\(',code)),
-                        'atlas_training_guards':len(re.findall(r'if training:',code)),
-                        'explicit_optimizer_steps':len(re.findall(r'\.backward\s*\(|optimizer\.step\s*\(',code)),
-                        'preview_known_rows':len(re.findall(r'emit_known_preview\s*\(',code)),
-                        'preview_switches':len(re.findall(r'preview\s*=\s*',code)),
-                        'full_test_read':bool('test.csv' in code),
-                        'submission_parquet':bool('submission.parquet' in code),
-                        'license_lines_present':bool(re.search(r'(?i)apache|license',code)),
-                      })
-              print('NTL_702_CANDIDATE_SOURCE='+json.dumps(out,sort_keys=True),flush=True)
-          print('NTL_702_NO_COMPETITION_ROW_DOWNLOAD_NO_TRAINING_NO_GPU_NO_SUBMISSION=TRUE')
-          PY
-
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /scripts/ntl_apex702_official_once.py
-      - name: One attributed 0.702 score-facing candidate; QUICK SAVE, NO dev GPU
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Preflight existing 0.702 public source, account quota and single GPU authorization
         shell: bash
         run: |
           set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python -m py_compile scripts/ntl_apex702_official_once.py
           python -m scripts.ntl_apex702_official_once quota
           python -m scripts.ntl_apex702_official_once prepare
-          python -m scripts.ntl_apex702_official_once submit
-          echo NTL_APEX702_NO_RUN_ONLY_OFFICIAL_SCORE_PATH_TERMINAL=TRUE
+      - name: LAUNCH exactly one source-hash-pinned private T4 production run (v2 only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_apex702_official_once start_gpu_once
+          echo 'NTL_PRIVATE_GPU_LAUNCH_OPERATOR_TERMINAL=TRUE'
+      - name: Observe completion and submit v2 once if genuine submission.parquet exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u -m scripts.ntl_apex702_official_once wait_finish_once
+          echo 'NTL_OFFICIAL_PROGRESS_END_NO_DUPLICATE_SUBMIT=TRUE'
+# This is the one-time, explicit 2026-11-18 owner-authorized GPU exception.
+# No retries, no new model training, no benchmark tuning, no paid external API.
+# Preserve the frozen code SHA and original public model/data mounts.
