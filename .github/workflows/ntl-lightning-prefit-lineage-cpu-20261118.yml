@@ -1,0 +1,87 @@
+name: NTL Lightning 0.691 frozen prefit lineage static audit (CPU only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-lightning-prefit-lineage-cpu-20261118.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-lightning-prefit-lineage-audit-20261118
+  cancel-in-progress: false
+jobs:
+  lineage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read pinned owned notebook and report non-sensitive fitted-asset provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?required}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-lightning-lineage
+          kaggle kernels pull kolihhan/lightning-0-694-authentic-no-fit-inference -p /tmp/ntl-lightning-lineage -m >/tmp/ntl-lightning-lineage-pull.log 2>&1
+          python - <<'PY'
+          import ast,hashlib,json,re
+          from pathlib import Path
+          p=Path('/tmp/ntl-lightning-lineage')
+          meta=json.loads((p/'kernel-metadata.json').read_text())
+          files=list(p.glob('*.ipynb'))
+          assert len(files)==1,'one owned pinned notebook required'
+          nb=json.loads(files[0].read_text())
+          cells=[''.join(x.get('source',[])) if isinstance(x.get('source'),list) else str(x.get('source',''))
+                 for x in nb['cells'] if x.get('cell_type')=='code']
+          full='\n'.join(cells)
+          pin=hashlib.sha256(full.encode()).hexdigest()
+          assert pin=='cae1074e9cea0b3c5f03e221b93e622858c4cbd8183309ba0a02e0ee73558c','PINNED_CHAMPION_SOURCE_DRIFT'
+          assert meta['id']=='kolihhan/lightning-0-694-authentic-no-fit-inference'
+          assert tuple(len(meta.get(k) or []) for k in ('dataset_sources','model_sources','kernel_sources'))==(23,6,9)
+          assert len(cells)==50 and full.count('NO_NEW_TRAINING: Gaussian fit blocked')==1
+          assert full.count('NO_NEW_TRAINING: Atlas training blocked')==1 and 'gauss.fit(' not in full
+          print('AUDIT_PINNED_0691_CODE_SHA256='+pin)
+          for key in ('dataset_sources','model_sources','kernel_sources'):
+            print('AUDIT_'+key.upper()+'='+json.dumps(sorted(map(str,meta[key])),sort_keys=True))
+          print('AUDIT_NO_FIT_GUARDS_PRESENT=TRUE')
+          # Structured source-string diagnostics, not model-evaluation experiments.
+          flags=['trained_artifact_contract','rows_seen','official','train.csv','GroupKFold','StratifiedGroupKFold','fold','prefit','joblib.load','pickle.load','torch.load','load_state_dict','fit_transform','fit(']
+          counts={s:len(re.findall(re.escape(s),full,re.I)) for s in flags}
+          print('AUDIT_SOURCE_MARKER_COUNTS='+json.dumps(counts,sort_keys=True))
+          modules=[]
+          for code in cells:
+            if not code.startswith('%%writefile '):continue
+            header,_,body=code.partition('\n')
+            path=header.split(' ',1)[1].strip()
+            try: tree=ast.parse(body,filename=path)
+            except Exception as e: raise RuntimeError('module_ast_failure:'+path) from e
+            loads=[];fitcalls=[]
+            for n in ast.walk(tree):
+              if isinstance(n,ast.Call):
+                f=n.func
+                fn=f.attr if isinstance(f,ast.Attribute) else (f.id if isinstance(f,ast.Name) else '?')
+                if fn in ('load','from_pretrained','load_state_dict','load_model','read_pickle','read_parquet'):
+                  loads.append(fn)
+                if fn in ('fit','fit_transform','partial_fit','train','backward','step'):
+                  fitcalls.append(fn)
+            entry={'module':path.rsplit('/',1)[-1],
+                   'official_train_marker':bool(re.search(r'train\\.csv|official.*train|train.*official',body,re.I)),
+                   'fold_marker':bool(re.search(r'GroupKFold|fold_id|oof|n_splits',body,re.I)),
+                   'load_calls':sorted(set(loads)),'fit_calls_static':sorted(set(fitcalls))}
+            modules.append(entry)
+          print('AUDIT_MODULE_COUNT='+str(len(modules)))
+          print('AUDIT_MODULE_INVENTORY='+json.dumps(modules,sort_keys=True))
+          # Report only metadata declaration fields, never raw competition data/passages.
+          snippets=[]
+          for code in cells:
+            for line in code.splitlines():
+              s=line.strip()
+              if any(x in s.lower() for x in ('rows_seen','trained_artifact_contract','source-test-conditioned','fixed-no-test-redo')):
+                if len(s)>500:s=s[:500]+'[TRUNCATED]'
+                snippets.append(s)
+          print('AUDIT_PROVENANCE_DECLARATION_LINES='+json.dumps(snippets[:35]))
+          print('AUDIT_LINEAGE_CONCLUSION=NO_FOLD_SPECIFIC_PREFIT_EXCLUSION_ATTESTED_BY_THIS_STATIC_SOURCE_AUDIT')
+          print('AUDIT_TRAINING=FALSE;GPU=FALSE;OFFICIAL_SUBMISSION=FALSE;COMPETITION_DATA_DOWNLOADED=FALSE')
+          PY
