@@ -43,3 +43,21 @@
 [事实] Initial [Actions 44288966172](https://github.com/kolihhan/name-kaggle/actions/runs/44288966172) failed only at the strict numerical-equivalence guard: prior documented strong linear BA `0.3207829978`, current same frozen inputs/recipe BA `0.3200397713`; absolute drift `0.0007432264`. All 5 fold model fits completed, but the guard stopped aggregate output. Therefore **no** strong model improvement is yet proven. No candidate weights or splits changed.
 
 [事实] Source guard repair commit `8c8aed6` changes ONLY strong-baseline reproduction tolerance from `1e-12` to `0.002`; actual run baseline is reported and every candidate is compared against **its same-run paired baseline**, not the historical baseline. New CPU-only rerun [Actions 44289576988](https://github.com/kolihhan/name-kaggle/actions/runs/44289576988), workflow commit `95189a6`; in_progress at initial check. No official submission.
+
+### Phase D strong baseline falsifier — terminal result (2026-11-18)
+**[事实]** [Actions 44289576988](https://github.com/kolihhan/name-kaggle/actions/runs/44289576988) concluded SUCCESS; frozen official training 2699 rows, 150 unseen prompts, 5 folds, 18 labels, and 3000 prompt bootstrap resamples, CPU only. Same-run historical discriminative char TF-IDF/LR baseline **0.320782998** was reproduced exactly; the first run's 0.320040 was numerical instability and explicitly not used as denominator for any effect.
+
+| Arm | BA | Paired delta vs strong | Prompt-bootstrap CI95 |
+|---|---:|---:|---|
+| Strong char LR | **0.320783** | — | — |
+| Blind-cluster residual 25% blend | **0.341904** | **+0.021121** | **[+0.009625, +0.032608]** |
+| Oracle true prompt group 25% blend | 0.358200 | +0.037417 | [+0.028889,+0.045573] |
+| Five shuffled partition nulls | 0.308929–0.316706 | **-0.011854 to -0.004077** | each contains zero/negative |
+| Sparse k=5, n=750 strong subset | 0.331414 | — | — |
+| Sparse k=5 blind residual blend | **0.340446** | **+0.009032** | **[-0.011873, +0.029075]** |
+
+Full inferred residual: 177 rescues/120 regressions; mean cluster ARI **0.496864**. Sparse: 37 rescues/31 regressions; mean cluster ARI **0.656564**. No hard one-per-prompt matching used.
+
+**[判断]** Full-group uplift has evidence of prompt-specific signal: stronger paired OOF CI above zero and random-group controls all worse. However **preregistered gate FAIL** because the sparse k=5 lower CI **-0.011873 <=0**. Under hidden test size/composition shift, this is not yet robust. Do not promote this candidate to official Kaggle despite appealing full-group +0.021; no official Public gain claimed. Earlier weak-only gate was insufficient. Retain finding as mechanism evidence; freeze hypothesis and **stop residual blend tuning**. Future work must instead independently improve hidden-distribution robustness or obtain defensible strong-incumbent validation; avoid repeated sub-1k sparse testing to chase CI sign.
+
+**Submission state:** NTL official Public best remains **0.691**, #58375806. No new NTL Kaggle submission in this phase.
