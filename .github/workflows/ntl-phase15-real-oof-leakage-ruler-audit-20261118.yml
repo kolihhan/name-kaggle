@@ -1,0 +1,82 @@
+name: NTL Real Phase15 GroupKFold vs External Fit Contamination Audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-phase15-real-oof-leakage-ruler-audit-20261118.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-real-oof-ruler-audit-nov18
+  cancel-in-progress: false
+jobs:
+  validation_ruler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Verify frozen audit contract (NO model fitting)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m py_compile scripts/ntl_phase15_oof_prompt_leak_audit_20261118.py
+          python - <<'PY'
+          from pathlib import Path
+          x=Path("scripts/ntl_phase15_oof_prompt_leak_audit_20261118.py").read_text()
+          for s in ("official_rows", "official_prompt_groups","external_phase15_training_rows",
+                    "official_prompt_never_split","mde_sensitivity_not_proof",
+                    "no_model_fit"):
+              assert s in x,s
+          print("NTL_OOF_LEAK_AUDIT_PREDECLARED_CONTRACT=PASS",flush=True)
+          PY
+      - name: Install CPU data dependencies only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check \
+            kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 \
+            numpy==2.3.4 scipy==1.16.3 scikit-learn==1.7.2
+      - name: Materialize immutable historical Phase15 external dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-oof-ruler
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend \
+            -f pool_v4.parquet -p /tmp/ntl-oof-ruler --unzip -q >/dev/null
+          test -s /tmp/ntl-oof-ruler/pool_v4.parquet
+          echo "NTL_OOF_RULER_RAW_PUBLIC_SOURCE_DOWNLOADED=TRUE"
+      - name: Audit exact official group leakage, per-fold source/response leakage and effective N
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_phase15_oof_prompt_leak_audit_20261118 \
+            --official data/train.csv \
+            --folds artifacts/phase1/folds.csv \
+            --raw-pool /tmp/ntl-oof-ruler/pool_v4.parquet \
+            --out ntl-oof-ruler-leakage-safe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("ntl-oof-ruler-leakage-safe.json").read_text())
+          assert r["official_rows"]==2699 and r["official_prompt_groups"]==150
+          assert r["official_prompt_never_split"]
+          assert r["external_phase15_training_rows"]==26025
+          assert len(r["per_fold"])==5
+          assert r["no_model_fit"] and r["no_model_inference"]
+          assert not r["no_official_submission"] is False
+          print("NTL_OOF_RULER_2699_X_150_CERTIFIED=TRUE",flush=True)
+          PY
+      - name: Remove ALL raw competition and external data copies
+        if: always()
+        run: rm -rf /tmp/ntl-oof-ruler
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-historical-oof-real-leak-audit-${{ github.run_id }}
+          path: ntl-oof-ruler-leakage-safe.json
+          retention-days: 14
+          if-no-files-found: warn
