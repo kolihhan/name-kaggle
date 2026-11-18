@@ -1,0 +1,65 @@
+name: NTL True Phase7 vs Phase15 Historical Paired Prompt-Cluster Bootstrap
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-historical-150prompt-paired-oof-ruler-cpu-20261118.yml]
+permissions: {contents: read, actions: read}
+concurrency:
+  group: ntl-historical-oof-cluster-true-pair-nov18
+  cancel-in-progress: false
+jobs:
+  paired150:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Obtain exactly original historical OOF output artifacts (not newly trained predictions)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-phase7-original /tmp/ntl-phase15-original
+          gh run download 41195328534 -R kolihhan/name-kaggle \
+            -n phase7-gated-specialist -D /tmp/ntl-phase7-original
+          gh run download 41270900644 -R kolihhan/name-kaggle \
+            -n phase15-terms-clean-frozen-shot -D /tmp/ntl-phase15-original
+          find /tmp/ntl-phase7-original -name gated_specialist_oof.csv -type f | grep -q .
+          find /tmp/ntl-phase15-original -name oof.csv -type f | grep -q .
+          echo 'NTL_HISTORICAL_OLD_OOF_BOTH_SOURCES_PRESENT=TRUE'
+      - name: CPU-only paired 8000-bootstrap on the exact same 150 prompt clusters
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check pandas==2.3.3 numpy==2.3.4
+          mapfile -t oof7 < <(find /tmp/ntl-phase7-original -name gated_specialist_oof.csv -type f)
+          mapfile -t oof15 < <(find /tmp/ntl-phase15-original -name oof.csv -type f)
+          test "${#oof7[@]}" -eq 1
+          test "${#oof15[@]}" -eq 1
+          python -m scripts.ntl_historical_phase7_phase15_paired_group_bootstrap_20261118 \
+            --train data/train.csv --folds artifacts/phase1/folds.csv \
+            --phase7 "${oof7[0]}" --phase15 "${oof15[0]}" \
+            --out ntl-historic-150cluster-paired-safe.json
+          python - <<'PY'
+          import json
+          x=json.load(open('ntl-historic-150cluster-paired-safe.json'))
+          assert x['sample_rows']==2699 and x['distinct_prompt_clusters']==150
+          assert x['C0_phase7_OOF_BA']==0.370052 and x['C1_phase15_OOF_BA']==0.405322
+          assert x['historical_OOF_delta']==0.03527
+          assert x['new_competition_submission'] is False
+          print("NTL_HISTORICAL_PAIRED_OOF_NOT_SUBMISSION=TRUE")
+          PY
+      - name: Remove historical raw competition data artifacts
+        if: always()
+        run: rm -rf /tmp/ntl-phase7-original /tmp/ntl-phase15-original
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-historic-oof-paired-150groups-${{ github.run_id }}
+          path: ntl-historic-150cluster-paired-safe.json
+          if-no-files-found: warn
+          retention-days: 14
