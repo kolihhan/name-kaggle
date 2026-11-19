@@ -1,3 +1,16 @@
+## 2026-11-19 11:33 MYT — Five-class GPT source candidate found; no score-facing promotion
+
+**Actual official NTL best remains 0.702**, Kaggle #58514818, target >=0.720 (gap +0.018). **No training, Kaggle GPU, or new official submission this round.**
+
+- Exact Nov17 OpenPool trainer version SHA `5a3dc82288328abedf49b7dd5e866e5c69eb922f9d6008e6fd78cf5153c12332` vs latest SHA `7b1e500ad6512caecc64f6e512d1189a6813448386ee2476398683f6a1ddf492`. Same **8,338** strictly source/license/protocol/length/risk-filtered exact-id-matching rows across **13/18** labels, and **zero qualified** for `gpt-5.5`, `gpt-5.6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-6-astra`. Latest raw 231,036-row OpenPool has 17/18 unfiltered exact labels, **not training-eligible 17/18**. [Authenticated CPU metadata proof #44451612939](https://github.com/kolihhan/name-kaggle/actions/runs/44451612939). New dataset version **not admitted to training**.
+- Found new externally published [Kaggle Benchmarks free proxy dataset](https://www.kaggle.com/zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations), CC BY 4.0 per author, file SHA `a8f61b647b5f2b2f99b73f083b7358445d93c3ebbff8607b44423850e9fb5583`. Read-only [source coverage #44451906235](https://github.com/kolihhan/name-kaggle/actions/runs/44451906235): 834 rows incl **430 across all missing GPT labels** (gpt5.5 81 / Luna 79 / Sol 73 / Terra 64 / Astra 133).
+- [Strict 5-class format/provider metadata audit #44452104227](https://github.com/kolihhan/name-kaggle/actions/runs/44452104227): 363 GPT examples after daily-run, reasoning-low/temperature1, 40–250 words, one paragraph, normal stop filter: **68 / 64 / 58 / 53 / 120** by label; **145 prompt IDs** from only one prompt bank. This external source is **not listed in current OpenPool's 66 sources**, so source inclusion there is unproven. However the bank might overlap existing prefit prompts; needs disjointness test. **Model IDs are request-side Kaggle proxy slugs, not independently recorded returned backend IDs**; author-reported labels only. Do not call 363 independently validated true identities, nor complete 18-class transfer evidence.
+- Existing Nov17 ModernBERT adversarial Colab [Action #44116912517](https://github.com/kolihhan/name-kaggle/actions/runs/44116912517) trained real C0/C1 under fixed 250-step source-disjoint contract: **BA 0.214444 → 0.054444, Δ−0.160000**, 82 rescues / 514 regressions; mechanism **REJECTED**. Do not rerun.
+
+**Research decision:** H_data_gap (OpenAI sibling training has no qualified served-ID examples in existing pooled data) supported as intake bottleneck, not proven root cause of 0.702 errors. Free 363-row GPT resource is a **diagnostic candidate only**, not a standalone replacement for a 0.702 strong 18-class ensemble. Prefer verifying bank/identity independence and a same-row scored-strong control rather than running a weak 5-class proxy, training with unapproved provenance, or another Kaggle submission. No new program pipeline or Model/GPU expenses.
+
+---
+
 ## 2026-11-19 — Strong-stack comparison: NO NEW PROMOTION
 
 - **Official Kaggle champion 0.702 #58514818** (+0.011 vs old .691). Target >=0.720; gap +0.018. No GPU, no official submission in this round.
