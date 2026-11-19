@@ -1,62 +1,58 @@
-name: NTL 0.702 strong-ensemble alternatives structural diff CPU one-shot
+name: NTL inspect 3 genuinely different 0.702 aggregator mechanisms
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  compare:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 9
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Compare published source and mounted expert families to 0.702 champion
+      - name: Parse only public helper module signatures and model consumption, no raw passages
         shell: bash
         run: |
           set -euo pipefail
           test -n "${KAGGLE_API_TOKEN:-}"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import hashlib,json,subprocess,tempfile,re
+          import ast,hashlib,json,re,subprocess,tempfile
           from pathlib import Path
-          refs=[
-            'kolihhan/ntl-0702-apex-pinned-nov18',
-            'lightningv08/0-702-soft-typography-glm-qwen3-8-27b-lora',
-            'areebbb/0-702-read-the-fingerprints',
-            'alexchilton/name-that-llm-0-702-all-public-what-failed',
-            'ozertuu/residual-sibling-gating-apex-better',
-            'tensura911/name-that-llm-apex-sota-v83',
-          ]
-          data=[]
+          refs={
+            'tensura911/name-that-llm-apex-sota-v83':['comp_stack.py','gsq_stage.py','infer.py','native_q8.py'],
+            'areebbb/0-702-read-the-fingerprints':['spec_worker.py','apex_postprocess.py'],
+            'ozertuu/residual-sibling-gating-apex-better':['pngy_residual.py','infer.py','pipe.py'],
+          }
+          out=[]
           with tempfile.TemporaryDirectory() as root:
-            for i,ref in enumerate(refs):
-              dest=Path(root)/str(i);dest.mkdir()
-              x=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=90)
-              if x.returncode:
-                data.append({'ref':ref,'pulled':False,'error_type':'KAGGLE_SOURCE_PULL_UNAVAILABLE'})
-                continue
-              m=json.loads((dest/'kernel-metadata.json').read_text())
-              path=dest/m['code_file']
-              nb=json.loads(path.read_text()) if path.suffix=='.ipynb' else None
-              cells=[''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code'] if nb else [path.read_text()]
-              mods={}; code='\n'.join(cells)
-              for c in cells:
-                if c.startswith('%%writefile '):
-                  name=c.splitlines()[0].split()[-1].split('/')[-1]
-                  if name.endswith('.py'):mods[name]=hashlib.sha256(c.encode()).hexdigest()
-              data.append({'ref':ref,'pulled':True,'public':not m.get('is_private'),'code_sha':hashlib.sha256(code.encode()).hexdigest(),'cells':len(cells),'modules':mods,'data':set(m.get('dataset_sources') or []),'models':set(m.get('model_sources') or []),'kernels':set(m.get('kernel_sources') or []),
-                'stage_keywords':{k:len(re.findall(pattern,code,re.I)) for k,pattern in {'likelihood':'logprob|likelihood','fitting':'\.fit\(|train\(|Trainer\(','prompt':'prompt.?group|clustering|center|hungarian','sibling':'sibling|gating|router','stylo':'stylegram|stylometry|typography','latent':'hidden.?state|embedding|token.?attention'}.items()}})
-          base=data[0]
-          if not base.get('pulled'):raise RuntimeError('SCORED_0702_ORIGIN_NOT_PULLABLE')
-          summary=[]
-          for x in data[1:]:
-            if not x.get('pulled'):
-              summary.append(x);continue
-            b=base
-            bm=set(b['modules']);xm=set(x['modules'])
-            summary.append({'ref':x['ref'],'public':x['public'],'code_sha':x['code_sha'],'code_cells':x['cells'],'changed_shared_modules':sorted(z for z in bm&xm if b['modules'][z]!=x['modules'][z]),'unchanged_modules':sum(b['modules'][z]==x['modules'][z] for z in bm&xm),'added_modules':sorted(xm-bm),'removed_modules':sorted(bm-xm),'new_model_mounts':sorted(x['models']-b['models']),'new_data_mounts':sorted(x['data']-b['data']),'new_kernel_mounts':sorted(x['kernels']-b['kernels']),'stage_keyword_COUNTS_NOT_EVIDENCE':x['stage_keywords']})
-          print('NTL_CHAMPION0702_STRUCTURAL_COMPARISON='+json.dumps({'base':base['ref'],'base_module_count':len(base['modules']),'base_model_mounts':len(base['models']),'base_data_mounts':len(base['data']),'alternatives':summary,'no_inference':True,'no_GPU':True,'no_submit':True},sort_keys=True),flush=True)
+            for idx,(ref,target) in enumerate(refs.items()):
+              dest=Path(root)/str(idx);dest.mkdir()
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=90)
+              if p.returncode:
+                out.append({'ref':ref,'pull_ok':False});continue
+              meta=json.loads((dest/'kernel-metadata.json').read_text())
+              nb=json.loads((dest/meta['code_file']).read_text())
+              code=[''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
+              modules={}
+              for cell in code:
+                if not cell.startswith('%%writefile '):continue
+                name=cell.splitlines()[0].split()[-1].split('/')[-1]
+                if name in target:
+                  raw='\n'.join(cell.splitlines()[1:])
+                  try: tree=ast.parse(raw)
+                  except SyntaxError:modules[name]={'parse':'unavailable'};continue
+                  defs=[n.name for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+                  calls=[n.func.id if isinstance(n.func,ast.Name) else n.func.attr for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,(ast.Name,ast.Attribute))]
+                  module_names=sorted(set(calls))
+                  module_name_hits=[x for x in module_names if any(w in x.lower() for w in ('score','logit','predict','softmax','sibling','likelihood','rank','blend','route','cluster','spectral','fit','train','torch','load','transform'))]
+                  modules[name]={'sha256':hashlib.sha256(raw.encode()).hexdigest(),'functions':defs[:35],'interesting_calls':module_name_hits[:65],'line_count':len(raw.splitlines()),'model_ref_tokens':sorted(set(re.findall(r'(?:gemini|claude|gpt|qwen|glm|kimi)[a-zA-Z0-9_.-]{2,25}',raw,re.I)))[:20],
+                     'has_pretrained_load':bool(re.search(r'load|from_pretrained|torch\.load|joblib',raw)),
+                     'has_supervised_fit':bool(re.search(r'\.fit\(|backward\(|optimizer\.step',raw)),
+                     'has_candidate_postprocess':bool(re.search(r'blend|rerank|prior|gating|threshold|temperature|weight',raw,re.I))}
+              out.append({'ref':ref,'modules':modules,'full_18_label_model_assets':len(meta.get('model_sources') or []),'no_source_or_weights_logged':True})
+          print('NTL_ORTHOGONAL_STRONG_CANDIDATE_MODULES='+json.dumps(out,sort_keys=True),flush=True)
           PY
