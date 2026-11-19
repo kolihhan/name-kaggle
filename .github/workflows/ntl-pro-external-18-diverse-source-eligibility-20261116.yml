@@ -1,84 +1,127 @@
-name: NTL free Kaggle Benchmarks proxy GPT gap source metadata audit
+name: NTL frozen GPT proxy 363 prompt collision and served-ID audit CPU
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-external-18-diverse-source-eligibility-20261116.yml]
 permissions: {contents: read}
 jobs:
-  evidence:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 17
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - name: Read only public free-proxy provenance labels and metadata
+      - name: Verify paired GPT prompts and collision with open pool, without exporting response text
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3
-          mkdir -p /tmp/ntl-free-gpt-proxy
-          kaggle datasets download -d zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations -f ntl_proxy_generations.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
-          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f sources.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
-          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f source_protocol.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scikit-learn==1.7.2
+          mkdir -p /tmp/ntl-gpt-exact-overlap
+          kaggle datasets download -d zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations -f ntl_proxy_generations.csv -p /tmp/ntl-gpt-exact-overlap --unzip -q
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f ntl_open_pool.parquet -p /tmp/ntl-gpt-exact-overlap --unzip -q
           python - <<'PY'
-          import hashlib,json
+          import collections,hashlib,json,re
           from pathlib import Path
+          import numpy as np
           import pandas as pd
-          p=Path('/tmp/ntl-free-gpt-proxy/ntl_proxy_generations.csv')
-          names=list(pd.read_csv(p,nrows=0).columns)
-          # Never materialize or print generated passages or source prompt text.
-          unsafe={'text','response','content','prompt','raw_response','raw_request','body','completion','output','prompt_text','response_text'}
-          cols=[x for x in names if x.lower() not in unsafe]
-          frame=pd.read_csv(p,usecols=cols).fillna('')
-          def counts(k):
-              if k not in frame:return {}
-              return {str(a):int(v) for a,v in frame[k].astype(str).value_counts().head(35).items()}
-          target={'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra'}
-          label_cols=[x for x in cols if any(y in x.lower() for y in ('model','slug','label','provider'))]
-          split={k:counts(k) for k in label_cols}
-          candidates={}
-          for k in label_cols:
-              c=frame[k].astype(str).str.strip().str.lower()
-              candidates[k]={name:int(c.eq(name).sum()) for name in sorted(target)}
-          frozen_name='zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations'
-          src=pd.read_csv('/tmp/ntl-free-gpt-proxy/sources.csv').fillna('')
-          protocol=pd.read_csv('/tmp/ntl-free-gpt-proxy/source_protocol.csv').fillna('')
-          overlap_src=src.loc[src.source_dataset.astype(str).eq(frozen_name)]
-          overlap_protocol=protocol.loc[protocol.source_dataset.astype(str).eq(frozen_name)]
-          tg=frame.loc[frame.model.astype(str).isin(target)].copy()
-          length=pd.to_numeric(tg.n_words,errors='coerce')
-          # report concrete run and quality filters, without training.
-          para=tg.single_paragraph.astype(str).str.lower().isin(['true','1','yes'])
-          finish=tg.finish_reason.astype(str).str.lower().isin(['stop','end_turn','eos'])
-          quality=tg.run.eq('daily') & length.between(40,250) & para & finish
-          qual=tg.loc[quality]
-          per={m:int(qual.model.eq(m).sum()) for m in sorted(target)}
-          print('NTL_FREE_GPT_PROXY_ADMISSION_GATES='+json.dumps({
-              'source':frozen_name,'source_already_listed_in_current_openpool':not overlap_src.empty,
-              'openpool_source_metadata':overlap_src.to_dict(orient='records'),
-              'openpool_protocol_metadata':overlap_protocol.to_dict(orient='records'),
-              'gpt_rows_raw':len(tg),'gpt_rows_standard_daily_quality':len(qual),
-              'gpt_standard_per_class':per,
-              'gpt_standard_unique_prompt_ids':int(qual.prompt_id.astype(str).nunique()),
-              'gpt_standard_unique_banks':int(qual.bank.astype(str).nunique()),
-              'gpt_standard_setting_counts':{str(k):int(v) for k,v in qual.setting.astype(str).value_counts().items()},
-              'raw_finish_reason_counts':{str(k):int(v) for k,v in tg.finish_reason.astype(str).value_counts().items()},
-              'source_training_exposure_not_proven_by_mounts':True,
-              'requested_proxy_slug_not_returned_server_id':True,
-              'no_raw_passage_logging_no_training_no_gpu_no_submission':True
-          },sort_keys=True),flush=True)
-          print('NTL_FREE_GPT_BENCHMARKS_PROXY_META='+json.dumps({
-              'source':'zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations',
-              'source_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
-              'n_rows':len(frame),'csv_columns':names,
-              'model_label_counts':split,'target_exact_label_matches':candidates,
-              'protocol_runs':counts('run'),
-              'published_license_cc_by4_not_independently_audited':True,
-              'free_proxy_model_slug_not_original_served_api_reply':True,
-              'new_source_heldout_contamination_not_audited':True,
-              'no_passages_logged_no_training_no_GPU_no_submission':True
+          root=Path('/tmp/ntl-gpt-exact-overlap')
+          proxy=root/'ntl_proxy_generations.csv'
+          pool=root/'ntl_open_pool.parquet'
+          p_hash=hashlib.file_digest(proxy.open('rb'),'sha256').hexdigest()
+          x_hash=hashlib.file_digest(pool.open('rb'),'sha256').hexdigest()
+          assert p_hash=='a8f61b647b5f2b2f99b73f083b7358445d93c3ebbff8607b44423850e9fb5583', 'PROXY_SOURCE_HASH_CHANGED'
+          assert x_hash=='7b1e500ad6512caecc64f6e512d1189a6813448386ee2476398683f6a1ddf492','OPENPOOL_SOURCE_HASH_CHANGED'
+          frame=pd.read_csv(proxy).fillna('')
+          labels=('gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra')
+          q=frame[frame.model.isin(labels)].copy()
+          length=pd.to_numeric(q.n_words,errors='coerce')
+          quality=(q.run.eq('daily')&length.between(40,250)&q.single_paragraph.astype(str).str.lower().isin(('1','true','yes'))&q.finish_reason.eq('stop'))
+          q=q[quality].copy()
+          assert len(q)==363, 'QUALIFIED_SAMPLE_COUNT_DRIFT'
+          groups=q.groupby('prompt_id').model.agg(lambda x:len(set(x)))
+          dist={str(i):int((groups==i).sum()) for i in range(1,6)}
+          complete_ids=set(groups[groups==5].index)
+          complete_rows=q.prompt_id.isin(complete_ids)
+          per_model_complete={lab:int((q.model.eq(lab)&complete_rows).sum()) for lab in labels}
+          duplicate_pairs=int(q.duplicated(['prompt_id','model']).sum())
+          # Do not print raw requests, prompts or responses.
+          def unpack_req(v):
+              try: return json.loads(v)
+              except (TypeError,ValueError): return None
+          parsed=[unpack_req(v) for v in q.request]
+          key_hist=collections.Counter()
+          model_field_hist=collections.Counter()
+          def user_text(obj):
+              if isinstance(obj,str):return obj
+              if isinstance(obj,list):
+                  for item in reversed(obj):
+                      if isinstance(item,dict) and item.get('role')=='user':
+                          z=user_text(item.get('content'))
+                          if z:return z
+                  return None
+              if not isinstance(obj,dict):return None
+              for key in ('messages','input','prompt','prompt_text'):
+                  if key in obj:
+                      z=user_text(obj[key])
+                      if z:return z
+              if obj.get('role')=='user' and 'content' in obj:return user_text(obj['content'])
+              return None
+          request_prompts=[]
+          for ob in parsed:
+              if isinstance(ob,dict):
+                  key_hist.update(ob.keys())
+                  for key in ('model','response_model','served_model','returned_model','model_id'):
+                      if key in ob and str(ob[key]).strip(): model_field_hist[key]+=1
+              request_prompts.append(user_text(ob))
+          def norm(v):
+              return re.sub(r'\s+',' ',str(v).casefold()).strip()
+          def sha(v):
+              return hashlib.sha256(norm(v).encode('utf8')).digest()
+          pool_df=pd.read_parquet(pool,columns=['text','prompt_canon','prompt_group'])
+          base_t={sha(v) for v in pool_df.text.dropna() if norm(v)}
+          base_p={sha(v) for v in pool_df.prompt_canon.dropna() if norm(v)}
+          base_g={str(v) for v in pool_df.prompt_group.dropna()}
+          exact_text=int(sum(sha(v) in base_t for v in q.text))
+          exact_prompt=int(sum(sha(v) in base_p for v in request_prompts if v and norm(v)))
+          request_prompt_extracted=int(sum(bool(v and norm(v)) for v in request_prompts))
+          promptid_match=int(sum(str(v) in base_g for v in q.prompt_id))
+          # Conservative near-duplicate test (char 5gram cosine, not semantic similarity).
+          from sklearn.feature_extraction.text import HashingVectorizer
+          hasher=HashingVectorizer(analyzer='char',ngram_range=(5,5),n_features=2**17,
+              norm='l2',alternate_sign=False,dtype=np.float32)
+          corpus=hasher.transform(pool_df.text.fillna('').astype(str).tolist())
+          query=hasher.transform(q.text.fillna('').astype(str).tolist())
+          maxima=[]
+          for start in range(0,query.shape[0],12):
+              sims=(corpus @ query[start:start+12].T).tocsc()
+              for j in range(sims.shape[1]):
+                  seg=sims.data[sims.indptr[j]:sims.indptr[j+1]]
+                  maxima.append(float(seg.max()) if len(seg) else 0.0)
+          print('NTL_GPT_PROXY_PAIRED_OVERLAP='+json.dumps({
+              'proxy_sha256':p_hash,'openpool_sha256':x_hash,
+              'qualified_gpt_rows':len(q),
+              'distinct_prompt_id_count':int(groups.size),
+              'prompt_id_class_coverage_histogram':dist,
+              'complete_5_label_prompt_groups':len(complete_ids),
+              'complete_5_label_rows':int(complete_rows.sum()),
+              'per_class_complete_prompt_rows':per_model_complete,
+              'duplicate_prompt_model_pairs':duplicate_pairs,
+              'request_json_parseable_rows':sum(ob is not None for ob in parsed),
+              'request_top_level_key_counts':dict(key_hist.most_common(14)),
+              'request_identity_field_occurrences':dict(model_field_hist),
+              'request_user_prompt_extracted':request_prompt_extracted,
+              'same_opaque_prompt_id_as_openpool_rows':promptid_match,
+              'normalized_generated_response_exact_openpool_rows':exact_text,
+              'normalized_request_prompt_exact_openpool_rows':exact_prompt,
+              'response_char5_cosine_ge_0_80_openpool_rows':int(sum(x>=.80 for x in maxima)),
+              'response_char5_cosine_ge_0_90_openpool_rows':int(sum(x>=.90 for x in maxima)),
+              'max_response_similarity_p50':round(float(np.median(maxima)),4),
+              'max_response_similarity_p95':round(float(np.percentile(maxima,95)),4),
+              'no_train_no_gpu_no_submission':True,
+              'identity_not_authenticated_by_actual_provider_response':True,
+              'request_and_text_not_logged':True
           },sort_keys=True),flush=True)
           PY
-          rm -rf /tmp/ntl-free-gpt-proxy
