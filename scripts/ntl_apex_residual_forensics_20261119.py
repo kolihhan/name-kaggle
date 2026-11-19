@@ -56,10 +56,10 @@ def load_apex_module(notebook_file: Path):
         spec.loader.exec_module(module)
     if not all(hasattr(module, name) for name in ("Residual", "features", "refine")):
         raise RuntimeError("INCOMPLETE_APEX_MODULE")
-    import inspect
+    # Source is already pinned by the complete champion notebook hash.
+    # Avoid inspect.getsource after the temporary module directory is removed.
     print("NTL_APEX_EXACT_REFINER_CODE=" + json.dumps({
-        "refine":inspect.getsource(module.refine),
-        "residual_class":inspect.getsource(module.Residual)[:6500],
+        "pinned_pngy_residual_source":source[:11500],
     },ensure_ascii=False,sort_keys=True),flush=True)
     return module, hashlib.sha256(source.encode()).hexdigest()
 
