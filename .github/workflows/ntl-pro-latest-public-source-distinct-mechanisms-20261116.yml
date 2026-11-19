@@ -1,66 +1,86 @@
-name: NTL Apex702 actual selective stage execution and decision trace CPU read-only
+name: NTL scored Apex702 parse actual terminal stage stdout and decision CPU only
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  trace:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 9
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Determine actual scored V2 paths, margins, selected-row counts, and Apex output status
+      - name: Decode authentic scored notebook stdout and actual final postprocess call, never run it
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import csv,io,hashlib,json,subprocess,re,tempfile
+          import json,subprocess,hashlib,re,tempfile
           from pathlib import Path
           ref='kolihhan/ntl-0702-apex-pinned-nov18'
-          def ck(*args,timeout=80):
-              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
-          with tempfile.TemporaryDirectory(prefix='ntl-0702-code-') as root:
+          def ck(*args):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=90)
+          with tempfile.TemporaryDirectory() as root:
               p=ck('kernels','pull',ref,'-p',root,'-m')
-              if p.returncode:raise RuntimeError('CANNOT_PULL_PINNED_CHAMPION')
-              paths=list(Path(root).glob('*.ipynb'))
-              if len(paths)!=1:raise RuntimeError('NOTEBOOK_COUNT_INVALID')
-              nb=json.loads(paths[0].read_text())
-              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
-              full='\n'.join(cells)
-              if hashlib.sha256(full.encode()).hexdigest()!='2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc':
-                  raise RuntimeError('SCORED_CODE_DRIFT')
-              # Executable top-level launch cells; no passages and no test rows printed.
-              operational=[]
-              for ic,c in enumerate(cells):
-                  if c.startswith('%%writefile '):continue
-                  lines=c.splitlines()
-                  hits=[]
-                  for il,line in enumerate(lines):
-                      if re.search(r'!\s*python|subprocess\.|os\.system|runpy|%run|exec\s*\(|subprocess\.run|Popen|apex_postprocess|v1_stage|atlas_margin|save_final_logits|post-glm|--max-cover|--max-changed|--strength|--corrected|S10|FINAL_LOGITS|isfile|TIME|time.time|deadline|OUT',line,re.I):
-                          hits.append({'line':il+1,'code':line.strip()[:235]})
-                  if hits:
-                      operational.append({'cell':ic,'nlines':len(lines),'callsite_lines':hits[:58]})
-              log=ck('kernels','logs',ref,timeout=80)
-              if log.returncode:raise RuntimeError('CANNOT_FETCH_SCORED_KERNEL_LOGS')
-              raw=log.stdout+log.stderr
-              selected=[]
-              for line in raw.splitlines():
-                  if re.search(r'APEX|V1\s|GLM.*(?:stage|row|select|cover)|ATLAS|GSQ|candidate|fallback|margin|blended|final.*(?:save|write|model)|final.*logits|score.*rows|native.*fold|submission',line,re.I):
-                      # No row text. Filter any line that appears to include a generated passage.
-                      if len(line)>350 or re.search(r'(^|[,{])\s*text\s*[:=]|^text[:=]|prompt\s*[:=]',line,re.I):continue
-                      selected.append(line.strip()[:240])
-              print('NTL_APEX702_SELECTIVE_TRACE='+json.dumps({
-                  'actual_source_sha256':'2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc',
-                  'executed_callsite_lines':operational,
-                  'scored_kernel_logs_bytes':len(raw),
-                  'stage_evidence_lines_count':len(selected),
-                  'stage_evidence_lines_tail':selected[-95:],
-                  'no_private_row_text_logged':True,
-                  'no_inference_training_gpu_or_submission':True
+              if p.returncode:raise RuntimeError('NOTEBOOK_PULL_FAILURE')
+              n=json.loads(next(Path(root).glob('*.ipynb')).read_text())
+              cs=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in n['cells'] if c.get('cell_type')=='code']
+              joined='\n'.join(cs)
+              if hashlib.sha256(joined.encode()).hexdigest()!='2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc':raise RuntimeError('CODE_SHA_DRIFT')
+              p=ck('kernels','logs',ref)
+              if p.returncode:raise RuntimeError('CANNOT_ACCESS_SCORED_LOG')
+              raw=p.stdout+p.stderr
+              records=[]
+              parse_mode='none'
+              try:
+                  items=json.loads(raw.lstrip('\ufeff'))
+                  if isinstance(items,list):
+                      records=items;parse_mode='json_array'
+                  elif isinstance(items,dict):
+                      records=items.get('logs',[]) or items.get('data',[]) or [];parse_mode='json_object'
+              except (ValueError,TypeError):
+                  # Preserve data string objects; may be NDJSON-style with comma prefixes.
+                  for line in raw.splitlines():
+                      line=line.strip().lstrip(',').strip()
+                      if not line.startswith('{'):continue
+                      try:
+                          obj=json.loads(line)
+                          if isinstance(obj,dict):records.append(obj)
+                      except ValueError:pass
+                  parse_mode='json_line_objects'
+              decoded=[]
+              for rec in records:
+                  if not isinstance(rec,dict):continue
+                  val=rec.get('data') or rec.get('message') or ''
+                  if isinstance(val,str):decoded.extend(val.splitlines())
+              key_pat=re.compile(r'v1|glm|apex|stage|selected|blend|candidate|GSQ|native|atlas|total\s+[0-9]|changed|postproc|logits|rows|fallback|error|finish|time[s]?|margin',re.I)
+              whitelist=[]
+              for line in decoded:
+                  if not key_pat.search(line):continue
+                  if len(line)>340 or re.search(r'(^|[,{])\s*(?:text|prompt)\s*[:=]',line,re.I):continue
+                  # Allowed low-risk stage lifecycle facts only.
+                  whitelist.append(line.strip()[:260])
+              stage_counts={key:int(sum(bool(re.search(pat,line,re.I)) for line in whitelist)) for key,pat in {
+                  'apex':r'apex','v1':r'\bv1\b','glm':r'glm','native':r'native','atlas':r'atlas',
+                  'selected':r'selected|scoring\s+\d+|coverage|cover\s+\d+',
+                  'changed':r'changed|correction|override','skip':r'skip|fallback',
+                  'error':r'error|exception|traceback'}.items()}
+              last=[(ic,c) for ic,c in enumerate(cs) if 'apply_postprocessing(' in c and not c.startswith('%%writefile')]
+              final_call=[{'cell':ic,'source':c.splitlines()} for ic,c in last]
+              vv=[(ic,c) for ic,c in enumerate(cs) if 'v1_stage.py' in c and not c.startswith('%%writefile')]
+              print('NTL_0702_ACTUAL_SELECTIVE_SCORER='+json.dumps({
+                  'raw_log_prefix':raw[:160],
+                  'parsed_records':len(records),'parse_mode':parse_mode,
+                  'decoded_text_lines':len(decoded),
+                  'stage_matching_lines':len(whitelist),
+                  'stage_counts':stage_counts,
+                  'stage_lines_tail':whitelist[-90:],
+                  'full_apex_call':final_call,
+                  'v1_stage_calls':[{'cell':ic,'source':c.splitlines()} for ic,c in vv],
+                  'no_training_no_GPU_no_submission':True
               },sort_keys=True),flush=True)
           PY
