@@ -1,83 +1,80 @@
-name: NTL top-ranked novel expert mount discovery CPU only
+name: NTL Gemma4 12B novel expert active-path and cost proof CPU
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  source_novelty:
+  source:
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 9
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Scan ranked published notebooks for novel model mounts; no inference
+      - name: Inspect 0.702 vs Gemma4 v17a/v18a executable dataflow, no GPU
         shell: bash
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import csv,hashlib,io,json,subprocess,tempfile
+          import json,re,hashlib,subprocess,tempfile
           from pathlib import Path
-          base_ref="kolihhan/ntl-0702-apex-pinned-nov18"
-          def call(args,timeout=70):
-              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
-          def get_src(ref,root):
-              root.mkdir(parents=True,exist_ok=True)
-              x=call(['kernels','pull',ref,'-p',str(root),'-m'],timeout=90)
-              if x.returncode:return None
-              mpath=root/'kernel-metadata.json'
-              if not mpath.exists():return None
-              try:
-                  metadata=json.loads(mpath.read_text())
-                  fp=root/metadata['code_file']
-                  code=fp.read_text(errors='replace')
-                  if fp.suffix=='.ipynb':
-                      nb=json.loads(code)
-                      code='\n'.join(''.join(c.get('source',[])) if isinstance(c.get('source',[]),list)
-                              else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code')
-                  return metadata,code
-              except (KeyError,ValueError,OSError):return None
+          refs=['kolihhan/ntl-0702-apex-pinned-nov18',
+            'kirderf/name-that-llm-v17a','kirderf/name-that-llm-v17e',
+            'kirderf/name-that-llm-v18a']
+          findings=[]
           with tempfile.TemporaryDirectory() as tmp:
-              base=get_src(base_ref,Path(tmp)/'base')
-              if base is None:raise RuntimeError('VERIFIED_CHAMPION_CANNOT_BE_READ')
-              base_meta,_=base
-              old={k:set(base_meta.get(k) or []) for k in ('model_sources','dataset_sources','kernel_sources')}
-              ranked=[]
-              for page in (1,2):
-                  p=call(['kernels','list','--competition','name-that-llm','--sort-by','scoreDescending','--page-size','50','--page',str(page),'--csv'])
-                  if p.returncode:raise RuntimeError('KAGGLE_PUBLIC_RANKED_LIST_FAILED')
-                  ranked.extend(list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff')))))
-              visited=set();out=[];errors=0;scanned=0
-              for rank,row in enumerate(ranked[:100],start=1):
-                  ref=(row.get('ref') or '').strip()
-                  if not ref or ref in visited or '/' not in ref:continue
-                  visited.add(ref)
-                  if ref.startswith('kolihhan/'):continue
-                  got=get_src(ref,Path(tmp)/str(rank))
-                  if got is None:errors+=1;continue
-                  m,code=got;scanned+=1
-                  if 'submission.parquet' not in code:continue
-                  novel={k:sorted(set(m.get(k) or [])-old[k]) for k in old}
-                  if novel['model_sources']:
-                      out.append({'rank_in_public_notebook_sort_not_actual_score':rank,
-                        'ref':ref,'title':(row.get('title') or '')[:120],
-                        'new_model_sources':novel['model_sources'][:16],
-                        'new_dataset_sources':novel['dataset_sources'][:14],
-                        'new_kernel_sources':novel['kernel_sources'][:12],
-                        'model_count':len(m.get('model_sources') or []),
-                        'dataset_count':len(m.get('dataset_sources') or []),
-                        'inference_code_sha256':hashlib.sha256(code.encode()).hexdigest(),
-                        'public':m.get('is_private') is False,
-                        'true_scored_ba_unknown':True,'code_has_expected_output':True})
-              print('NTL_RANKED_NEW_EXPERT_CANDIDATES='+json.dumps({
-                'searched_rank_slots':min(100,len(ranked)),'public_code_pulled':scanned,
-                'unpullable':errors,'with_new_model_mounts':len(out),
-                'novel_model_mount_candidates':out[:18],
-                'champion_existing_models':sorted(old['model_sources']),
-                'no_GPU':True,'no_training':True,'no_competition_data_accessed':True,
-                'no_submission':True,'NOT_official_kaggle_scores':True},sort_keys=True),flush=True)
+            for idx,ref in enumerate(refs):
+              dest=Path(tmp)/str(idx);dest.mkdir()
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=80)
+              if p.returncode:findings.append({'ref':ref,'available':False});continue
+              meta=json.loads((dest/'kernel-metadata.json').read_text())
+              filepath=dest/meta['code_file']
+              nb=json.loads(filepath.read_text()) if filepath.suffix=='.ipynb' else None
+              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code'] if nb else [filepath.read_text()]
+              modules={};queries=[]
+              for j,code in enumerate(cells):
+                name=code.splitlines()[0].split()[-1].split('/')[-1] if code.startswith('%%writefile ') else 'cell_'+str(j)
+                if code.startswith('%%writefile ') and name.endswith('.py'):
+                  modules[name]=hashlib.sha256(code.encode()).hexdigest()
+                linehits=[]
+                for line in code.splitlines():
+                  if re.search(r'gemma|Gemma4|gemma.?4',line,re.I):
+                      # Return source snippets ONLY for explicit model usage, never competition data.
+                      linehits.append(line.strip()[:160])
+                if linehits:
+                  queries.append({'module_or_cell':name,'hits':len(linehits),'sample_lines':linehits[:12]})
+              full='\n'.join(cells)
+              findings.append({
+                'ref':ref,'available':True,
+                'code_sha256':hashlib.sha256(full.encode()).hexdigest(),
+                'code_cells':len(cells),'modules':modules,
+                'gemma_mentions':sum(q['hits'] for q in queries),
+                'gemma_code_contexts':queries[:15],
+                'public':meta.get('is_private') is False,
+                'gpu_enabled':meta.get('enable_gpu'),
+                'internet_enabled':meta.get('enable_internet'),
+                'new_gemma_mount':any('gemma-4-12b-it' in s.lower() for s in meta.get('model_sources') or []),
+                'test_input_read':'test.csv' in full,
+                'submission_output':'submission.parquet' in full,
+                'optimizer_steps':len(re.findall(r'optimizer\.step\s*\(|\.backward\s*\(',full)),
+                'genuine_fit_markers':len(re.findall(r'\.fit\s*\(',full)),
+                'training_entrypoints':len(re.findall(r'--train-final|SFTTrainer|model\.train\(\)',full)),
+                'pinned_score_is_not_own_result':True
+              })
+          base=findings[0]
+          base_mod=base.get('modules') or {}
+          for f in findings[1:]:
+            if f.get('modules'):
+              mine=f['modules']
+              f['added_modules_vs_0702']=sorted(set(mine)-set(base_mod))
+              f['changed_common_modules_vs_0702']=sorted(k for k in mine.keys()&base_mod.keys() if mine[k]!=base_mod[k])
+              f['unchanged_modules_vs_0702']=sum(mine[k]==base_mod[k] for k in mine.keys()&base_mod.keys())
+          for f in findings:f.pop('modules',None)
+          print('NTL_GEMMA4_NEW_EXPERT_ACTIVE_PATH='+json.dumps({
+            'results':findings,'no_inference_no_gpu_no_training_no_submission':True,
+            'asset_attachment_not_quality_evidence':True},sort_keys=True),flush=True)
           PY
