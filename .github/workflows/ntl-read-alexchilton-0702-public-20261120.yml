@@ -51,7 +51,7 @@ jobs:
               if patterns.search(t):
                   compact=re.sub(r'\s+',' ',t).strip()
                   compact=re.sub(r'(?i)(?:api[_-]?key|token|password)\s*[=:]\s*\S+','<redacted>',compact)
-                  print('NTL_PUBLIC_AUTHOR_MARKDOWN_EXCERPT_'+str(shown)+'='+json.dumps(compact[:1500],ensure_ascii=False),flush=True)
+                  print('NTL_PUBLIC_AUTHOR_MARKDOWN_EXCERPT_'+str(shown)+'='+json.dumps(compact[:11000],ensure_ascii=False),flush=True)
                   shown+=1
               if shown>=22: break
           print('NTL_PUBLIC_NOTEBOOK_READ_ONLY_NO_COMPETITION_DATA_NO_SUBMISSION=PASS',flush=True)
