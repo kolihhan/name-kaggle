@@ -1,81 +1,75 @@
-name: NTL independent GPT served-ID source access and eligibility CPU one-off
+name: NTL Apex702 scored ensemble selective rerank feasibility, source and output only
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  check:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 13
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
-      - name: Test renewed public Kaggle source access; count original served GPT IDs only if freely downloadable
+        with:
+          python-version: '3.11'
+      - name: Inspect exact scored source and Kaggle output inventory, no training, inference, test downloads, or submission
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
-          mkdir -p /tmp/ntl-new-verified-served
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import json,subprocess,csv,io,zipfile,os
+          import csv,io,hashlib,json,subprocess,re,tempfile
           from pathlib import Path
-          ref='maniceet/name-that-llm-openrouter-openai-generations'
-          out=Path('/tmp/ntl-new-verified-served')
-          def kaggle(*args):
-              return subprocess.run(['kaggle',*args],text=True,capture_output=True,timeout=130)
-          listing=kaggle('datasets','list','-s','name that llm openrouter openai','-v','--page-size','100')
-          discovered=list(csv.DictReader(io.StringIO(listing.stdout.lstrip('\ufeff')))) if listing.returncode==0 else []
-          titles=[(x.get('ref'),x.get('title','')[:80]) for x in discovered if 'maniceet' in str(x.get('ref',''))]
-          files=kaggle('datasets','files',ref,'-v','--page-size','100')
-          print('NTL_MANICEET_PUBLIC_ACCESS_PREFLIGHT='+json.dumps({
-            'listed':titles,'dataset_list_call_ok':listing.returncode==0,
-            'files_call_ok':files.returncode==0,
-            'file_metadata':list(csv.DictReader(io.StringIO(files.stdout.lstrip('\ufeff'))))[:15] if files.returncode==0 else [],
-            'files_failure_suffix':files.stderr[-180:] if files.returncode else '',
-            'no_mirror_or_auth_bypass':True},sort_keys=True),flush=True)
-          if files.returncode!=0:
-              print('NTL_MANICEET_SOURCE_ACCESS=NOT_AVAILABLE_STOP; NO_TRAINING',flush=True)
-              raise SystemExit(0)
-          archive=kaggle('datasets','download',ref,'-p',str(out),'-q')
-          if archive.returncode:
-              print('NTL_MANICEET_SOURCE_DOWNLOAD_FAILED_NO_BYPASS='+json.dumps({'error_suffix':archive.stderr[-180:]}),flush=True)
-              raise SystemExit(0)
-          zips=list(out.glob('*.zip'))
-          if len(zips)!=1:raise RuntimeError('UNEXPECTED_ARCHIVE_COUNT')
-          import pandas as pd
-          summary=[]
-          with zipfile.ZipFile(zips[0]) as f:
-              for name in f.namelist():
-                  if not name.endswith(('.csv','.parquet')):continue
-                  if f.getinfo(name).file_size>85_000_000:continue
-                  if name.endswith('.csv'):
-                      fields=list(pd.read_csv(f.open(name),nrows=0).columns)
-                      selection=[x for x in fields if x.lower() in ('model','served_model','api_route','provider','source_tag','prompt_id','prompt_exact','record_id')]
-                      if 'model' not in selection or 'served_model' not in selection:continue
-                      df=pd.read_csv(f.open(name),usecols=selection,dtype=str).fillna('')
-                  else:
-                      import io,pyarrow.parquet as pq,pyarrow as pa
-                      meta=pq.ParquetFile(io.BytesIO(f.read(name)))
-                      selection=[x for x in meta.schema.names if x.lower() in ('model','served_model','api_route','provider','source_tag','prompt_id','prompt_exact','record_id')]
-                      if 'model' not in selection or 'served_model' not in selection:continue
-                      df=meta.read(columns=selection).to_pandas().fillna('')
-                  targets=['gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra']
-                  counts={}
-                  for target in targets:
-                      p=df[df.model.astype(str).str.lower().eq(target)]
-                      actual=p.served_model.astype(str).str.lower().str.strip()
-                      counts[target]={'raw_rows':len(p),
-                        'nonempty_server_model_id':int(actual.ne('').sum()),
-                        'server_model_exact_label':int(actual.eq(target).sum()),
-                        'source_tag_counts':p.source_tag.astype(str).value_counts().to_dict() if 'source_tag' in p else {}}
-                  summary.append({'file_basename':Path(name).name,'source_sha_not_logged':True,'rows_total':len(df),
-                    'gpt_served_id_evidence':counts,'has_prompt_exact':'prompt_exact' in df,
-                    'available_fields':selection})
-          print('NTL_MANICEET_GPT_ACTUAL_SERVED_PROVENANCE='+json.dumps({
-              'dataset':ref,'files_inspected':summary,'no_raw_passages_logged':True,
-              'no_inference_or_training':True,'no_GPU_or_submission':True,
-              'not_yet_compared_against_prefit_sources':True},sort_keys=True),flush=True)
+          ref='kolihhan/ntl-0702-apex-pinned-nov18'
+          required_hash='2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc'
+          def ck(*args,timeout=70):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          with tempfile.TemporaryDirectory(prefix='ntl-0702-source-') as root:
+              dest=Path(root)
+              p=ck('kernels','pull',ref,'-p',str(dest),'-m',timeout=90)
+              if p.returncode:raise RuntimeError('CANNOT_PULL_PINNED_CHAMPION:'+p.stderr[-200:])
+              meta=json.loads((dest/'kernel-metadata.json').read_text())
+              nb=json.loads((dest/meta['code_file']).read_text())
+              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list)
+                  else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
+              code='\n'.join(cells)
+              if hashlib.sha256(code.encode()).hexdigest()!=required_hash:
+                  raise RuntimeError('CHAMPION_SOURCE_MISMATCH_STOP')
+              files=ck('kernels','files',ref,'-v','--page-size','200',timeout=70)
+              if files.returncode:raise RuntimeError('CANNOT_READ_SCORED_KERNEL_OUTPUTS')
+              rows=list(csv.DictReader(io.StringIO(files.stdout.lstrip('\ufeff'))))
+              inventory=[{'filename':r.get('name'), 'size':r.get('size')} for r in rows]
+              # Differentiate reproducible final artifacts from ephemeral /kaggle/temp scratch.
+              scoreish=[r for r in inventory if re.search(r'logit|score|prob|predict|blend|decision|apex|raw|submission|npz|npy|parquet',r['filename'] or '',re.I)]
+              stage_info=[]
+              for ic,c in enumerate(cells):
+                  rows2=c.splitlines()
+                  write=rows2[0].strip() if rows2 and rows2[0].startswith('%%writefile') else None
+                  kws={k:len(re.findall(v,c,re.I)) for k,v in {
+                      'apex':r'\bapex\b', 'fallback':r'fallback|skip|pass.through',
+                      'margin':r'\bmargin\b|entropy|confidence|disagree',
+                      'selective':r'gate|select|rerank|top.2|topk',
+                      'save_arrays':r'np.save|np.savez|to_parquet|to_csv',
+                      'load_arrays':r'np.load|read_parquet|read_csv',
+                      'temp_scratch':r'/kaggle/temp/',
+                      'work_saved':r'/kaggle/working/',
+                      'supervised_fit':r'\.fit\('
+                  }.items()}
+                  if not any(kws[k] for k in ('apex','margin','selective','save_arrays','temp_scratch')):continue
+                  io_lines=[]
+                  for i,line in enumerate(rows2):
+                      if re.search(r'np.save|np.load|to_parquet|to_csv|savez|final_logits|apex|blend|score|margin|entropy|threshold|POSTPROCESS',line,re.I):
+                          io_lines.append({'line':i+1,'code':line.strip()[:175]})
+                  stage_info.append({'cell':ic,'writefile':write,'lines':len(rows2),'keywords':kws,'io_lines':io_lines[:42]})
+              print('NTL_0702_SELECTIVE_SOURCE_INVENTORY='+json.dumps({
+                'official_submission_ID':58514818,'scored_code_sha256':required_hash,
+                'kernel_output_files':inventory,
+                'score_like_final_files':scoreish,
+                'output_listing_truncated':bool('Next Page Token =' in files.stdout),
+                'stage_source':stage_info,
+                'no_downloaded_test_or_official_train':True,
+                'no_training_no_inference_no_GPU_no_Kaggle_submission':True
+              },sort_keys=True),flush=True)
           PY
