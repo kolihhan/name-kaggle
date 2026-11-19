@@ -1,20 +1,19 @@
-name: NTL Apex702 scored ensemble selective rerank feasibility, source and output only
+name: NTL Apex702 actual selective stage execution and decision trace CPU read-only
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  inspect:
+  trace:
     runs-on: ubuntu-latest
-    timeout-minutes: 13
+    timeout-minutes: 10
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Inspect exact scored source and Kaggle output inventory, no training, inference, test downloads, or submission
+        with: {python-version: "3.11"}
+      - name: Determine actual scored V2 paths, margins, selected-row counts, and Apex output status
         shell: bash
         run: |
           set -euo pipefail
@@ -23,53 +22,45 @@ jobs:
           import csv,io,hashlib,json,subprocess,re,tempfile
           from pathlib import Path
           ref='kolihhan/ntl-0702-apex-pinned-nov18'
-          required_hash='2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc'
-          def ck(*args,timeout=70):
+          def ck(*args,timeout=80):
               return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
-          with tempfile.TemporaryDirectory(prefix='ntl-0702-source-') as root:
-              dest=Path(root)
-              p=ck('kernels','pull',ref,'-p',str(dest),'-m',timeout=90)
-              if p.returncode:raise RuntimeError('CANNOT_PULL_PINNED_CHAMPION:'+p.stderr[-200:])
-              meta=json.loads((dest/'kernel-metadata.json').read_text())
-              nb=json.loads((dest/meta['code_file']).read_text())
-              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list)
-                  else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
-              code='\n'.join(cells)
-              if hashlib.sha256(code.encode()).hexdigest()!=required_hash:
-                  raise RuntimeError('CHAMPION_SOURCE_MISMATCH_STOP')
-              files=ck('kernels','files',ref,'-v','--page-size','200',timeout=70)
-              if files.returncode:raise RuntimeError('CANNOT_READ_SCORED_KERNEL_OUTPUTS')
-              rows=list(csv.DictReader(io.StringIO(files.stdout.lstrip('\ufeff'))))
-              inventory=[{'filename':r.get('name'), 'size':r.get('size')} for r in rows]
-              # Differentiate reproducible final artifacts from ephemeral /kaggle/temp scratch.
-              scoreish=[r for r in inventory if re.search(r'logit|score|prob|predict|blend|decision|apex|raw|submission|npz|npy|parquet',r['filename'] or '',re.I)]
-              stage_info=[]
+          with tempfile.TemporaryDirectory(prefix='ntl-0702-code-') as root:
+              p=ck('kernels','pull',ref,'-p',root,'-m')
+              if p.returncode:raise RuntimeError('CANNOT_PULL_PINNED_CHAMPION')
+              paths=list(Path(root).glob('*.ipynb'))
+              if len(paths)!=1:raise RuntimeError('NOTEBOOK_COUNT_INVALID')
+              nb=json.loads(paths[0].read_text())
+              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
+              full='\n'.join(cells)
+              if hashlib.sha256(full.encode()).hexdigest()!='2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc':
+                  raise RuntimeError('SCORED_CODE_DRIFT')
+              # Executable top-level launch cells; no passages and no test rows printed.
+              operational=[]
               for ic,c in enumerate(cells):
-                  rows2=c.splitlines()
-                  write=rows2[0].strip() if rows2 and rows2[0].startswith('%%writefile') else None
-                  kws={k:len(re.findall(v,c,re.I)) for k,v in {
-                      'apex':r'\bapex\b', 'fallback':r'fallback|skip|pass.through',
-                      'margin':r'\bmargin\b|entropy|confidence|disagree',
-                      'selective':r'gate|select|rerank|top.2|topk',
-                      'save_arrays':r'np.save|np.savez|to_parquet|to_csv',
-                      'load_arrays':r'np.load|read_parquet|read_csv',
-                      'temp_scratch':r'/kaggle/temp/',
-                      'work_saved':r'/kaggle/working/',
-                      'supervised_fit':r'\.fit\('
-                  }.items()}
-                  if not any(kws[k] for k in ('apex','margin','selective','save_arrays','temp_scratch')):continue
-                  io_lines=[]
-                  for i,line in enumerate(rows2):
-                      if re.search(r'np.save|np.load|to_parquet|to_csv|savez|final_logits|apex|blend|score|margin|entropy|threshold|POSTPROCESS',line,re.I):
-                          io_lines.append({'line':i+1,'code':line.strip()[:175]})
-                  stage_info.append({'cell':ic,'writefile':write,'lines':len(rows2),'keywords':kws,'io_lines':io_lines[:42]})
-              print('NTL_0702_SELECTIVE_SOURCE_INVENTORY='+json.dumps({
-                'official_submission_ID':58514818,'scored_code_sha256':required_hash,
-                'kernel_output_files':inventory,
-                'score_like_final_files':scoreish,
-                'output_listing_truncated':bool('Next Page Token =' in files.stdout),
-                'stage_source':stage_info,
-                'no_downloaded_test_or_official_train':True,
-                'no_training_no_inference_no_GPU_no_Kaggle_submission':True
+                  if c.startswith('%%writefile '):continue
+                  lines=c.splitlines()
+                  hits=[]
+                  for il,line in enumerate(lines):
+                      if re.search(r'!\s*python|subprocess\.|os\.system|runpy|%run|exec\s*\(|subprocess\.run|Popen|apex_postprocess|v1_stage|atlas_margin|save_final_logits|post-glm|--max-cover|--max-changed|--strength|--corrected|S10|FINAL_LOGITS|isfile|TIME|time.time|deadline|OUT',line,re.I):
+                          hits.append({'line':il+1,'code':line.strip()[:235]})
+                  if hits:
+                      operational.append({'cell':ic,'nlines':len(lines),'callsite_lines':hits[:58]})
+              log=ck('kernels','logs',ref,timeout=80)
+              if log.returncode:raise RuntimeError('CANNOT_FETCH_SCORED_KERNEL_LOGS')
+              raw=log.stdout+log.stderr
+              selected=[]
+              for line in raw.splitlines():
+                  if re.search(r'APEX|V1\s|GLM.*(?:stage|row|select|cover)|ATLAS|GSQ|candidate|fallback|margin|blended|final.*(?:save|write|model)|final.*logits|score.*rows|native.*fold|submission',line,re.I):
+                      # No row text. Filter any line that appears to include a generated passage.
+                      if len(line)>350 or re.search(r'(^|[,{])\s*text\s*[:=]|^text[:=]|prompt\s*[:=]',line,re.I):continue
+                      selected.append(line.strip()[:240])
+              print('NTL_APEX702_SELECTIVE_TRACE='+json.dumps({
+                  'actual_source_sha256':'2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc',
+                  'executed_callsite_lines':operational,
+                  'scored_kernel_logs_bytes':len(raw),
+                  'stage_evidence_lines_count':len(selected),
+                  'stage_evidence_lines_tail':selected[-95:],
+                  'no_private_row_text_logged':True,
+                  'no_inference_training_gpu_or_submission':True
               },sort_keys=True),flush=True)
           PY
