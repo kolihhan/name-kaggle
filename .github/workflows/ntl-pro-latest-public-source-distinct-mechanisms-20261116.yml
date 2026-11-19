@@ -1,88 +1,61 @@
-name: NTL PRO live public alternatives static source and mechanism census
+name: NTL 0.702 strong-ensemble alternatives structural diff CPU one-shot
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  census:
+  compare:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
-    env:
-      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    timeout-minutes: 12
+    env: {KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}}
     steps:
       - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
-      - name: Read published notebook code only; do not execute or export passages
+        with: {python-version: "3.11"}
+      - name: Compare published source and mounted expert families to 0.702 champion
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$KAGGLE_API_TOKEN"
-          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import subprocess,hashlib,json,re,tempfile
+          import hashlib,json,subprocess,tempfile,re
           from pathlib import Path
           refs=[
-             'ozertuu/residual-sibling-gating-apex-better',
-             'sanpier/0-693-real-glm-5-3-glm-5-3-flash-likelihood',
-             'tensura911/name-that-llm-apex-sota-v79',
-             'lbjyang/ntl-700-v3-share40-cover20-instrumented',
-             'kolihhan/lightning-0-694-authentic-no-fit-inference']
-          findings=[]
+            'kolihhan/ntl-0702-apex-pinned-nov18',
+            'lightningv08/0-702-soft-typography-glm-qwen3-8-27b-lora',
+            'areebbb/0-702-read-the-fingerprints',
+            'alexchilton/name-that-llm-0-702-all-public-what-failed',
+            'ozertuu/residual-sibling-gating-apex-better',
+            'tensura911/name-that-llm-apex-sota-v83',
+          ]
+          data=[]
           with tempfile.TemporaryDirectory() as root:
-            for idx,ref in enumerate(refs):
-              dst=Path(root)/str(idx)
-              dst.mkdir()
-              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dst),'-m'],
-                   capture_output=True,text=True,timeout=180)
-              if p.returncode:
-                  findings.append({'kernel':ref,'source_pulled':False,
-                    'error_type':'source_pull_failed','exit':p.returncode})
-                  continue
-              md_path=dst/'kernel-metadata.json'
-              if not md_path.exists():
-                  findings.append({'kernel':ref,'source_pulled':False,
-                    'error_type':'no_kernel_metadata'})
-                  continue
-              meta=json.loads(md_path.read_text())
-              code_path=dst/meta['code_file']
-              if not code_path.is_file():raise SystemExit('STOP_NOTEBOOK_CODE_MISSING')
-              raw=code_path.read_text(errors='replace')
-              if code_path.suffix=='.ipynb':
-                nb=json.loads(raw)
-                cells=[''.join(c.get('source',[]))
-                    for c in nb.get('cells',[]) if c.get('cell_type')=='code']
-              else:
-                cells=[raw]
-              code='\n'.join(cells)
-              patterns={
-                'prompt_group':r'prompt.?group|prompt.?centering|group.?decode|cluster|Hungarian|Sinkhorn',
-                'real_glm_likelihood':r'glm.{0,14}likelihood|token.?logprob|glm.?5.3',
-                'sibling_stage':r'sibling|family.?head|family.?gate|cross.?family',
-                'extra_fitted_models':r'\.fit\(|train\(|Trainer\(|SFTTrainer|lora',
-                'hidden_label_lookup':r'ground.?truth|reference.?patch|test.?labels'
-              }
-              counts={k:len(re.findall(rx,code,re.IGNORECASE)) for k,rx in patterns.items()}
-              fields={
-                'kernel':ref,'source_pulled':True,
-                'title':meta.get('title'), 'is_private':meta.get('is_private'),
-                'language':meta.get('language'),
-                'code_cells':len(cells),
-                'code_sha256':hashlib.sha256(raw.encode()).hexdigest(),
-                'dataset_mounts':len(meta.get('dataset_sources') or []),
-                'model_mounts':len(meta.get('model_sources') or []),
-                'kernel_mounts':len(meta.get('kernel_sources') or []),
-                'mechanism_keyword_counts_not_quality':counts,
-                'has_submission_parquet':('submission.parquet' in code),
-                'source_contains_score_claim_not_own_verified_score':bool(
-                     re.search(r'0[.]7[0-9]{2}',code)),
-              }
-              findings.append(fields)
-          print('NTL_PRO_PUBLIC_ALTERNATIVE_STATIC_MECHANISMS='+json.dumps({
-             'results':findings,
-             'no_code_execution_or_model_training':True,
-             'no_gpu_or_new_official_submission':True,
-             'no_source_content_or_private_data_uploaded_to_repo':True,
-             'title_score_not_authentic_own_official_score':True
-          },sort_keys=True),flush=True)
+            for i,ref in enumerate(refs):
+              dest=Path(root)/str(i);dest.mkdir()
+              x=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=90)
+              if x.returncode:
+                data.append({'ref':ref,'pulled':False,'error_type':'KAGGLE_SOURCE_PULL_UNAVAILABLE'})
+                continue
+              m=json.loads((dest/'kernel-metadata.json').read_text())
+              path=dest/m['code_file']
+              nb=json.loads(path.read_text()) if path.suffix=='.ipynb' else None
+              cells=[''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code'] if nb else [path.read_text()]
+              mods={}; code='\n'.join(cells)
+              for c in cells:
+                if c.startswith('%%writefile '):
+                  name=c.splitlines()[0].split()[-1].split('/')[-1]
+                  if name.endswith('.py'):mods[name]=hashlib.sha256(c.encode()).hexdigest()
+              data.append({'ref':ref,'pulled':True,'public':not m.get('is_private'),'code_sha':hashlib.sha256(code.encode()).hexdigest(),'cells':len(cells),'modules':mods,'data':set(m.get('dataset_sources') or []),'models':set(m.get('model_sources') or []),'kernels':set(m.get('kernel_sources') or []),
+                'stage_keywords':{k:len(re.findall(pattern,code,re.I)) for k,pattern in {'likelihood':'logprob|likelihood','fitting':'\.fit\(|train\(|Trainer\(','prompt':'prompt.?group|clustering|center|hungarian','sibling':'sibling|gating|router','stylo':'stylegram|stylometry|typography','latent':'hidden.?state|embedding|token.?attention'}.items()}})
+          base=data[0]
+          if not base.get('pulled'):raise RuntimeError('SCORED_0702_ORIGIN_NOT_PULLABLE')
+          summary=[]
+          for x in data[1:]:
+            if not x.get('pulled'):
+              summary.append(x);continue
+            b=base
+            bm=set(b['modules']);xm=set(x['modules'])
+            summary.append({'ref':x['ref'],'public':x['public'],'code_sha':x['code_sha'],'code_cells':x['cells'],'changed_shared_modules':sorted(z for z in bm&xm if b['modules'][z]!=x['modules'][z]),'unchanged_modules':sum(b['modules'][z]==x['modules'][z] for z in bm&xm),'added_modules':sorted(xm-bm),'removed_modules':sorted(bm-xm),'new_model_mounts':sorted(x['models']-b['models']),'new_data_mounts':sorted(x['data']-b['data']),'new_kernel_mounts':sorted(x['kernels']-b['kernels']),'stage_keyword_COUNTS_NOT_EVIDENCE':x['stage_keywords']})
+          print('NTL_CHAMPION0702_STRUCTURAL_COMPARISON='+json.dumps({'base':base['ref'],'base_module_count':len(base['modules']),'base_model_mounts':len(base['models']),'base_data_mounts':len(base['data']),'alternatives':summary,'no_inference':True,'no_GPU':True,'no_submit':True},sort_keys=True),flush=True)
           PY
