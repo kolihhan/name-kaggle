@@ -2,7 +2,9 @@ name: NTL Apex exact Residual vs frozen 0.691 Oleg216 forensic (CPU only)
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-apex-forensics-20261119.yml]
+    paths:
+      - .github/workflows/ntl-apex-forensics-20261119.yml
+      - scripts/ntl_apex_residual_forensics_20261119.py
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
