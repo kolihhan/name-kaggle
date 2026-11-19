@@ -1,3 +1,16 @@
+## 2026-11-19 owner clarification — separate research permission from promotion evidence
+
+**Do not block NTL research, training, mechanistic CPU/GPU work or a hypothesis-driven one-shot submission solely because a previously unseen 18-class same-row evaluation panel is absent.** That instruction was incorrectly imposed by a previous assistant, and is superseded for new prospective work by the actual 2026-11-17 owner-authorized local sanity-only candidate gate and NTL training exception recorded below. This correction does not rewrite already completed experiments or their frozen stop rules.
+
+- **Research START:** use the existing official TRAIN 2,699 / 150 prompts for fresh, strictly prompt-group-disjoint mechanism diagnostics, or lawfully admissible external corpora with honest source attribution. Reused examples are DEV evidence, not independent generalization. Model-class changes and authorized NTL training are permitted; don't declare "no GPU/training" as a blanket research policy. Colab GPU training from admissible external data was authorized; new Kaggle exploratory development GPU remains restricted separately.
+- **Research DECIDE:** require a clear hypothesis vs competing explanation, a strong frozen control in the *same* evaluation domain whenever technically available, measurable rescues/regressions, runtime, and declared kill condition. Low-sample tests can falsify a mechanism without certifying 18-way hidden BA. No invented 0.702 OOF and no repeated spent-fold tuning.
+- **Candidate SCORE:** after frozen source/one-variable contract, 18-legal-label output, 9h runtime feasibility, verified current Kaggle quota, no active scorer, provenance and source rights, a defensible one-shot official candidate may be attempted under the owner-approved 2026-11-17 sanity-only gate. Independent clean 18-label validation remains valuable for confidence/claims but **is not an absolute prerequisite to a tightly bounded one-shot scoring bet**. Respect the existing seven-day exploratory-PROBE cadence and no Public-LB hyperparameter loop.
+- **Promotion / MEDAL CLAIM:** score superiority requires an authenticated COMPLETE official Kaggle receipt; generalization explanation needs appropriate independent source/prompt evidence. Green CI or historically reused OOF never substitutes for this.
+
+**Execution priority:** stop re-running 18-label dataset hunts and typography exposure counts as ends in themselves. Operate on the exact scored 0.702 architecture, pick a *mechanism with a realistic direct impact on its final decisions* (or a substantially different model class), and run the smallest authorized discriminating experiment. Do not open another low-power TF-IDF/formatting specialist purely to create an experiment count.
+
+---
+
 # RULES — Name That LLM (checked 2026-11-16)
 Source precedence: current Kaggle [overview](https://www.kaggle.com/competitions/name-that-llm/overview/description), [data](https://www.kaggle.com/competitions/name-that-llm/data), [rules](https://www.kaggle.com/competitions/name-that-llm/rules) > third-party summaries. Frozen `EVALUATION_POLICY.md` still governs scientific selection. This file is a compliance inventory, NOT confirmation of personal eligibility or any submission authorization.
 
