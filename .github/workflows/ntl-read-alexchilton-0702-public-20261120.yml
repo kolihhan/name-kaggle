@@ -1,0 +1,59 @@
+name: NTL public alexchilton 0.702 notebook read-only audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-read-alexchilton-0702-public-20261120.yml]
+permissions: {contents: read}
+jobs:
+  read_public_notebook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Fetch publicly released notebook without scoring or GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5
+          mkdir -p /tmp/ntl-public-notebook
+          kaggle kernels pull alexchilton/name-that-llm-0-702-all-public-what-failed \
+            -p /tmp/ntl-public-notebook --metadata >/tmp/ntl-pull-output.txt 2>&1 || {
+              echo NTL_PUBLIC_NOTEBOOK_FETCH_FAILED
+              tail -n 12 /tmp/ntl-pull-output.txt | sed 's/[A-Za-z0-9_-]\{80,\}/<redacted>/g'
+              exit 1
+            }
+          python - <<'PY'
+          from pathlib import Path
+          import json,re
+          root=Path('/tmp/ntl-public-notebook')
+          print('NTL_PUBLIC_NOTEBOOK_PUBLIC_FILE_TYPES='+json.dumps(
+            sorted({p.suffix for p in root.rglob('*') if p.is_file()})),flush=True)
+          notebooks=list(root.rglob('*.ipynb'))
+          if not notebooks:
+              raise RuntimeError('PUBLIC_NOTEBOOK_NOT_A_NOTEBOOK_OR_NOT_RETURNED')
+          nb=json.loads(notebooks[0].read_text())
+          cells=nb['cells']
+          md=[(''.join(x.get('source',[])) if isinstance(x.get('source'),list) else x.get('source',''))
+              for x in cells if x.get('cell_type')=='markdown']
+          print('NTL_PUBLIC_NOTEBOOK_MD_CELLS='+str(len(md)),flush=True)
+          print('NTL_PUBLIC_NOTEBOOK_CODE_CELLS='+str(len(cells)-len(md)),flush=True)
+          headings=[]
+          for t in md:
+              headings.extend(line.strip()[:150] for line in t.splitlines() if line.lstrip().startswith('#'))
+          print('NTL_PUBLIC_NOTEBOOK_HEADINGS='+json.dumps(headings[:90]),flush=True)
+          patterns=re.compile('(?i)what we tried|did not work|didn.t work|fail|external|public|approach|blend|training|data|score')
+          shown=0
+          for t in md:
+              if patterns.search(t):
+                  compact=re.sub(r'\s+',' ',t).strip()
+                  compact=re.sub(r'(?i)(?:api[_-]?key|token|password)\s*[=:]\s*\S+','<redacted>',compact)
+                  print('NTL_PUBLIC_AUTHOR_MARKDOWN_EXCERPT_'+str(shown)+'='+json.dumps(compact[:1500],ensure_ascii=False),flush=True)
+                  shown+=1
+              if shown>=22: break
+          print('NTL_PUBLIC_NOTEBOOK_READ_ONLY_NO_COMPETITION_DATA_NO_SUBMISSION=PASS',flush=True)
+          PY
+          rm -rf /tmp/ntl-public-notebook /tmp/ntl-pull-output.txt
