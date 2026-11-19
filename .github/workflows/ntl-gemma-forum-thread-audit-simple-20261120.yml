@@ -1,0 +1,27 @@
+name: NTL Gemma read 31 public discussions via official Kaggle CLI
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gemma-forum-thread-audit-simple-20261120.yml]
+permissions: {contents: read}
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_gemma_public_threads_readonly_20261120.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Fetch Kaggle public forum threads and comments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python scripts/ntl_gemma_public_threads_readonly_20261120.py
