@@ -1,0 +1,89 @@
+name: Kaggle Gemma4 NTL selected Code source and methodology audit
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gemma-deep-code-audit-20261120.yml]
+permissions: {contents: read}
+jobs:
+  read_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 27
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Pull selected public notebooks, classify source not notebook titles
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          cat >/tmp/audit_slugs.txt <<'EOF'
+flexonafft/gemma-4-budget-aware-coding-agent-lean-context
+dheerajpiduru/gemma-4-e4b-what-moved-the-score-and-what-didn-t
+victorzhong0110/gemma4-pack-lb-0-22-40-tool-calls
+mobassir/why-your-leaderboard-can-t-see-a-3-point-gain
+pablodiegoo/gemma-4-developer-agent-paper-starter-notebook
+mozune4002/gemma4-s02-anytime-patch-31b
+asteriospanoras/0-704-which-llms-look-alike-error-map-and-ideas
+mzishran/name-that-llm-how-the-ensemble-predicts
+ik786786/name-that-llm-telling-sibling-models-apart
+dhananjayk2609/name-that-llm-style-fingerprints-llm-ensemble
+angelojun2k/name-that-llm-grandmaster-champion
+vishalverma28/name-that-llm-sota-hungarian-apex
+          EOF
+          while read -r slug; do
+            test -n "$slug" || continue
+            echo "NOTEBOOK_BEGIN=$slug"
+            rm -rf /tmp/audit-kernel
+            mkdir -p /tmp/audit-kernel
+            if ! timeout 65 kaggle kernels pull "$slug" -p /tmp/audit-kernel --metadata >/tmp/pull-log.txt 2>&1; then
+              echo "NOTEBOOK_UNAVAILABLE=$slug";tail -n 3 /tmp/pull-log.txt|cut -c1-180
+              continue
+            fi
+            python - "$slug" <<'PY'
+          import sys,json,re
+          from pathlib import Path
+          slug=sys.argv[1]
+          fs=list(Path('/tmp/audit-kernel').glob('*.ipynb'))
+          if not fs:
+              print('NOTEBOOK_NOT_IPYNB',slug)
+              sys.exit(0)
+          j=json.loads(fs[0].read_text())
+          cells=j.get('cells',[])
+          md=[];code=[]
+          for c in cells:
+              s=c.get('source','')
+              if isinstance(s,list):s=''.join(s)
+              if c.get('cell_type')=='markdown':md.append(s)
+              elif c.get('cell_type')=='code':code.append(s)
+          print('NOTEBOOK_COUNTS',slug,'md',len(md),'code',len(code),flush=True)
+          for i,s in enumerate(md):
+              if i>=7:break
+              clean=re.sub(r'\s+',' ',s).strip()
+              print('NOTEBOOK_MD',slug,i,json.dumps(clean[:1600],ensure_ascii=False),flush=True)
+          raw='\n'.join(code)
+          flags={k:bool(re.search(v,raw,re.I)) for k,v in {
+             'colab_training':'(peft|lora|Trainer|SFTTrainer|prepare_model_for_kbit_training)',
+             'python_tools':'(run_command|apply_patch|edit_file|tool_calls|swegemma)',
+             'model_weights':'(from_pretrained|load_model|vllm|Qwen|gemma)',
+             'budget':'(max_time|deadline|budget|tool_call|time_limit)',
+             'likelihood':'(logprob|log_prob|llama.cpp|perplexity|likelihood)',
+             'clustering':'(hungarian|linear_sum_assignment|prompt.cluster|sinkhorn)',
+             'specialists':'(sibling|family|stylometry|stylegram|fable)',
+             'csv_leak_risk':'(train.csv|test.csv)'
+          }.items()}
+          print('NOTEBOOK_CODE_FLAGS',slug,json.dumps(flags,sort_keys=True),flush=True)
+          # codes discussed without revealing giant code; only structural statements
+          for kw in ['score','0.','fail','runtime','budget','confidence','tool call','model']:
+              snippets=[]
+              for s in md:
+                  for ln in s.splitlines():
+                      if kw in ln.lower() and len(ln.strip())>16:
+                          snippets.append(re.sub(r'\s+',' ',ln).strip()[:240])
+              if snippets:print('NOTEBOOK_EVIDENCE',slug,kw,json.dumps(snippets[:6],ensure_ascii=False),flush=True)
+          PY
+            echo "NOTEBOOK_END=$slug"
+          done </tmp/audit_slugs.txt
+          echo KAGGLE_SELECTED_NOTEBOOKS_CONTENT_AUDIT=COMPLETE
