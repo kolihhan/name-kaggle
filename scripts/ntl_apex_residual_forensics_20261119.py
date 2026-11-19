@@ -61,7 +61,10 @@ def load_apex_module(notebook_file: Path):
     print("NTL_APEX_EXACT_REFINER_CODE=" + json.dumps({
         "pinned_pngy_residual_source":source[:11500],
     },ensure_ascii=False,sort_keys=True),flush=True)
-    return module, hashlib.sha256(source.encode()).hexdigest()
+    apex_cells = [c for c in cells if c.startswith("%%writefile apex_postprocess.py\n")]
+    if len(apex_cells) != 1:
+        raise ValueError("EXPECTED_ONE_PINNED_APEX_POSTPROCESS_SOURCE")
+    return module, hashlib.sha256(source.encode()).hexdigest(), apex_cells[0].split("\n", 1)[1]
 
 
 def load_frozen_data(train_path, external_dir, baseline_path):
@@ -160,10 +163,101 @@ def bootstrap(y, a, b):
     return np.quantile(estimated, [.025, .975]).round(6).tolist()
 
 
+def rule_structural_contradictions(query, truth, old_pred, apex_source):
+    """Potential correct-label penalization by exact final Apex fixed rules.
+
+    A trigger is *not* an observed prediction flip: the true 0.702 pre-Apex
+    probability vector is missing, and the real stage uses post-refine labels.
+    """
+    required = (
+        "allowed={'claude-opus-4-6','claude-opus-5','glm-5.3','glm-5.3-flash'}",
+        "(' — ',np.array([x not in allowed for x in labels]))",
+        "('’',np.array([x.startswith(('claude-','glm-')) for x in labels]))",
+        "('—',np.array([x.startswith('gemini-') for x in labels]))",
+        "probs[i,forbidden]*=penalty",
+        "out[i]=labels[probs[i].argmax()]",
+    )
+    if any(part not in apex_source for part in required):
+        raise ValueError("SCORING_SOURCE_TYPOGRAPHY_RULE_DRIFT")
+    allowed = {"claude-opus-4-6","claude-opus-5","glm-5.3","glm-5.3-flash"}
+    cases = [
+        ("spaced_emdash", " — ", lambda lab: lab not in allowed),
+        ("right_single_quote", "’", lambda lab: lab.startswith(("claude-","glm-"))),
+        ("any_emdash", "—", lambda lab: lab.startswith("gemini-")),
+    ]
+    texts = query.text.fillna("").astype(str).to_numpy()
+    y = np.asarray(truth, dtype=str)
+    b = np.asarray(old_pred, dtype=str)
+    n = len(texts)
+    union_true = np.zeros(n,dtype=bool)
+    union_base = np.zeros(n,dtype=bool)
+    details = {}
+    for name,marker,forbidden in cases:
+        present = np.array([marker in v for v in texts],dtype=bool)
+        truth_at_risk = present & np.array([forbidden(v) for v in y],dtype=bool)
+        base_at_risk = present & np.array([forbidden(v) for v in b],dtype=bool)
+        union_true |= truth_at_risk
+        union_base |= base_at_risk
+        details[name] = {
+            "marker_rows":int(present.sum()),
+            "true_label_forbidden_if_proposed":int(truth_at_risk.sum()),
+            "frozen_correct_and_true_forbidden":int((truth_at_risk & (b==y)).sum()),
+            "frozen_original_label_forbidden_if_proposed":int(base_at_risk.sum()),
+            "false_negative_by_true_family":{
+                fam:int((truth_at_risk & (np.array([family(v) for v in y])==fam)).sum())
+                for fam in sorted({family(z) for z in LABELS})
+            }
+        }
+    return {
+        "source_verified_fixed_typography_rules":True,
+        "penalty_if_triggered":0.15,
+        "rules":details,
+        "union_true_label_forbidden":int(union_true.sum()),
+        "union_frozen_correct_and_true_label_forbidden":int((union_true&(b==y)).sum()),
+        "union_frozen_prediction_rule_trigger":int(union_base.sum()),
+        "union_true_by_label":{
+            lab:int((union_true & (y==lab)).sum()) for lab in LABELS
+        },
+        "row_count":n,
+        "no_actual_apex_flips_measured":True,
+        "not_from_current_0702_logits":True,
+    }
+
+
+def refine_family_mass_invariant(module):
+    """Exactly tests the actual pinned refine mathematical invariant."""
+    from scipy.special import logsumexp
+    rng = np.random.default_rng(20261119)
+    z = rng.normal(0,2,size=(32,len(LABELS)))
+    style = rng.uniform(.05,2,size=z.shape)
+    f = module.family_columns(list(LABELS))
+    after = module.refine(z.copy(),style.copy(),f,strength=.10)
+    if after.shape != z.shape or not np.isfinite(after).all():
+        raise ValueError("APEX_REFINE_INVALID_SHAPE_OR_NUMBERS")
+    errors = [float(np.abs(logsumexp(z[:,cols],axis=1)-
+                            logsumexp(after[:,cols],axis=1)).max())
+              for cols in f if len(cols)>1]
+    grouping = {int(col) for cols in f for col in cols}
+    singles = sorted(set(range(len(LABELS)))-grouping)
+    singleton_diff = float(np.abs(z[:,singles]-after[:,singles]).max()) if singles else 0.
+    if max(errors,default=0)>1e-10 or singleton_diff>1e-12:
+        raise AssertionError("EXACT_APEX_REFINE_FAMILY_MASS_PRESERVATION_FAILED")
+    return {
+        "tested_rows":32,"families":len(errors),
+        "max_log_family_mass_change":float(max(errors,default=0)),
+        "max_other_class_score_change":singleton_diff,
+        "family_mass_preserved":True,
+        "cross_family_movement_not_created_by_style_refine_itself":True,
+        "synthetic_not_accuracy_evidence":True
+    }
+
+
 def run(args):
-    module, residual_source_sha = load_apex_module(args.pinned_notebook)
+    module, residual_source_sha, apex_source = load_apex_module(args.pinned_notebook)
     train, query, y, b = load_frozen_data(args.train, args.external, args.reference)
     residual, fit_info, evidence_info = residual_evidence(module, train, query)
+    typography = rule_structural_contradictions(query, y, b, apex_source)
+    mass_invariant = refine_family_mass_invariant(module)
     # All policies below are label-only proxies because real 0.702 pre-Apex
     # per-class logits were not saved. Never misname as actual Apex output.
     base_family = np.array([family(x) for x in b])
@@ -197,6 +291,8 @@ def run(args):
         "labels":len(LABELS), "one_prompt_group_per_row":True,
         "residual_estimators":fit_info,
         "evidence_metadata":evidence_info,
+        "actual_apex_refine_invariant":mass_invariant,
+        "typography_source_contradictions":typography,
         "predictions":metrics, "comparison":delta,
         "no_Kaggle_GPU_or_submission":True,
         "no_new_external_data_search":True,
@@ -223,6 +319,8 @@ def main():
         "metrics":result["predictions"],
         "residual_estimators":result["residual_estimators"],
         "evidence_metadata":result["evidence_metadata"],
+        "actual_apex_refine_invariant":result["actual_apex_refine_invariant"],
+        "typography_source_contradictions":result["typography_source_contradictions"],
         "deltas":result["comparison"],
         "actual_0_702_Apex_scores":"UNAVAILABLE",
     },sort_keys=True),flush=True)
