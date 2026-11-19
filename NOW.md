@@ -1,3 +1,26 @@
+# NTL — 2026-11-19 selective-inference source-path conclusion
+
+**Official best remains Public BA 0.702 (#58514818); target 0.720. No new model training, GPU work or Kaggle submission.**
+
+## Scored champion source and saved output verified
+- [Exact source/output audit Action #44478355029](https://github.com/kolihhan/name-kaggle/actions/runs/44478355029) SUCCESS: matches full code SHA256 `2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc`. The owned `kolihhan/ntl-0702-apex-pinned-nov18` kernel has only final `submission.parquet` and Python/temporary smoke files in its **listed top-level output**; **no accessible per-row 18-way logits/sibling expert outputs in that listing**. `infer.py` writes `/kaggle/temp/final-logits.npz`, while V1 saves `/kaggle/working/v1/post-glm.npz` (a nested path; listing alone cannot establish whether its bytes were retained).
+- [Actual decision-source audit #44479302323](https://github.com/kolihhan/name-kaggle/actions/runs/44479302323) and [final-call trace #44478809220](https://github.com/kolihhan/name-kaggle/actions/runs/44478809220): the frozen code **already contains selection mechanisms**: ATLAS probability-margin option, GSQ agreement veto, GLM V1 ranking by combined selected-class mass with max cover **15%** (and <=90,000 estimated token rows), plus final APEX. Re-implementing bare confidence gating is redundant. The actual `--atlas_margin` setting in launch must be respected; having an option isn't proof it was active on hidden rerun.
+- **Important correction to earlier 'inference-only' shorthand:** `apex_postprocess.py` line 97 executes `Residual(labels).fit(train.text, train.model)` in the full scoring path. Thus the reproduced upstream system **does fit an official-train supervised residual head during notebook execution**. It adds no owner-developed model weights, but it is **not literally a no-supervised-fitting pipeline**.
+- Final APEX call (full branch) uses `strength=0.1, corrected=False, penalty=0.15`. `apply_arrays` computes a residual-driven new prediction for all rows, then **keeps the incumbent prediction for originally predicted GLM-5.3 / GLM-5.3-Flash** (unless later typography rules change it) and **replaces non-GLM predictions unconditionally** with APEX's preferred label. It also applies a reciprocal near-duplicate prompt-pair probability adjustment and fixed typography exclusions.
+- `Kaggle kernels logs` of the private executable source show setup/V1 smoke/last module write, but do **not** contain full hidden-scorer before/after row decisions or a reliable complete hidden row count. Do not claim actual 0.702 hidden Apex change rates from this private run or confuse a private Notebook preview with the separately authenticated scored reexecution.
+
+## Structural optimization target (NO launch yet)
+
+**Apex override calibration, not another external corpus or standalone weak classifier.** Existing strong base+V1 scores and the final APEX residual could be **compared on identical labeled rows** under a truly held-out prompt- and source-disjoint protocol; only then define a simple no-new-model selective veto for overrides that are unsupported by base-family probability. Pin/retain:
+- C0: exact scored 0.702 output and `pre-Apex` 18-way logits;
+- C1: current unconditional APEX on non-GLM + GLM keep + typography;
+- C2 (one candidate, not an optimization sweep): identical APEX but **disallow a cross-family override when the underlying pre-Apex logits prefer the original model family over the proposed family**; a class-independent, parameter-free test, preserving GLM handling and all other stages. This may preserve strong predictions or prevent justified corrections: **effect entirely unknown**.
+- Gating requirement: actual side-by-side pre/post logits and truth on admissible same-row, prompt-disjoint, model-served-verified data, and a feasible 9h runtime. The present official hidden output doesn't expose its truth or reusable logits; older official folds are spent and upstream residual fit makes same-train counterfactuals in-sample. **No assertion C2 beats 0.702; no new GPU or submission without a justified prospective test.**
+
+**Research decision:** Stop extra data searches, SVD/hard-negative weak-head training and more status-only workflows. One decisive next model-level action is a production-accurate **Apex-only selective veto ablation with genuine paired data**, not a whole new agent architecture.
+
+---
+
 # NOW — NTL 2026-11-19 (latest completed experiment)
 
 **Official Kaggle Public best remains 0.702**, submission #58514818. Target >=0.720 (gap +0.018). No new Kaggle submission, GPU or independent full-18 transfer result.
