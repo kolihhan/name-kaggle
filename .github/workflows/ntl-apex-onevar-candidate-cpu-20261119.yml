@@ -26,7 +26,7 @@ jobs:
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python -m py_compile scripts/ntl_apex_typography_off_onevar_cpu_20261119.py
           mkdir -p /tmp/ntl-0702-upstream-public
-          kaggle kernels pull lightningv08/0-702-apex-style-15-glm-qwen3-8-27b-lora -p /tmp/ntl-0702-upstream-public -m >/dev/null
+          kaggle kernels pull kolihhan/ntl-0702-apex-pinned-nov18 -p /tmp/ntl-0702-upstream-public -m >/dev/null
           python -m scripts.ntl_apex_typography_off_onevar_cpu_20261119 \
             --source /tmp/ntl-0702-upstream-public \
             --dest /tmp/ntl-0702-candidate
