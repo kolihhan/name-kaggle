@@ -1,80 +1,57 @@
-name: NTL Gemma4 12B novel expert active-path and cost proof CPU
+name: NTL exact Gemma cousin-stage source path no GPU
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  source:
+  trace:
     runs-on: ubuntu-latest
     timeout-minutes: 9
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
-        with: {python-version: "3.11"}
-      - name: Inspect 0.702 vs Gemma4 v17a/v18a executable dataflow, no GPU
+        with: {python-version: '3.11'}
+      - name: Audit Gemma source cell's actual execution and baseline compatibility
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import json,re,hashlib,subprocess,tempfile
+          import ast,json,re,subprocess,tempfile
           from pathlib import Path
-          refs=['kolihhan/ntl-0702-apex-pinned-nov18',
-            'kirderf/name-that-llm-v17a','kirderf/name-that-llm-v17e',
-            'kirderf/name-that-llm-v18a']
-          findings=[]
-          with tempfile.TemporaryDirectory() as tmp:
-            for idx,ref in enumerate(refs):
-              dest=Path(tmp)/str(idx);dest.mkdir()
-              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=80)
-              if p.returncode:findings.append({'ref':ref,'available':False});continue
-              meta=json.loads((dest/'kernel-metadata.json').read_text())
-              filepath=dest/meta['code_file']
-              nb=json.loads(filepath.read_text()) if filepath.suffix=='.ipynb' else None
-              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code'] if nb else [filepath.read_text()]
-              modules={};queries=[]
-              for j,code in enumerate(cells):
-                name=code.splitlines()[0].split()[-1].split('/')[-1] if code.startswith('%%writefile ') else 'cell_'+str(j)
-                if code.startswith('%%writefile ') and name.endswith('.py'):
-                  modules[name]=hashlib.sha256(code.encode()).hexdigest()
-                linehits=[]
-                for line in code.splitlines():
-                  if re.search(r'gemma|Gemma4|gemma.?4',line,re.I):
-                      # Return source snippets ONLY for explicit model usage, never competition data.
-                      linehits.append(line.strip()[:160])
-                if linehits:
-                  queries.append({'module_or_cell':name,'hits':len(linehits),'sample_lines':linehits[:12]})
-              full='\n'.join(cells)
-              findings.append({
-                'ref':ref,'available':True,
-                'code_sha256':hashlib.sha256(full.encode()).hexdigest(),
-                'code_cells':len(cells),'modules':modules,
-                'gemma_mentions':sum(q['hits'] for q in queries),
-                'gemma_code_contexts':queries[:15],
-                'public':meta.get('is_private') is False,
-                'gpu_enabled':meta.get('enable_gpu'),
-                'internet_enabled':meta.get('enable_internet'),
-                'new_gemma_mount':any('gemma-4-12b-it' in s.lower() for s in meta.get('model_sources') or []),
-                'test_input_read':'test.csv' in full,
-                'submission_output':'submission.parquet' in full,
-                'optimizer_steps':len(re.findall(r'optimizer\.step\s*\(|\.backward\s*\(',full)),
-                'genuine_fit_markers':len(re.findall(r'\.fit\s*\(',full)),
-                'training_entrypoints':len(re.findall(r'--train-final|SFTTrainer|model\.train\(\)',full)),
-                'pinned_score_is_not_own_result':True
-              })
-          base=findings[0]
-          base_mod=base.get('modules') or {}
-          for f in findings[1:]:
-            if f.get('modules'):
-              mine=f['modules']
-              f['added_modules_vs_0702']=sorted(set(mine)-set(base_mod))
-              f['changed_common_modules_vs_0702']=sorted(k for k in mine.keys()&base_mod.keys() if mine[k]!=base_mod[k])
-              f['unchanged_modules_vs_0702']=sum(mine[k]==base_mod[k] for k in mine.keys()&base_mod.keys())
-          for f in findings:f.pop('modules',None)
-          print('NTL_GEMMA4_NEW_EXPERT_ACTIVE_PATH='+json.dumps({
-            'results':findings,'no_inference_no_gpu_no_training_no_submission':True,
-            'asset_attachment_not_quality_evidence':True},sort_keys=True),flush=True)
+          refs=['kolihhan/ntl-0702-apex-pinned-nov18','kirderf/name-that-llm-v18a']
+          result=[]
+          with tempfile.TemporaryDirectory() as root:
+              for idx,ref in enumerate(refs):
+                  dest=Path(root)/str(idx);dest.mkdir()
+                  p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=80)
+                  if p.returncode:raise RuntimeError('MISSING_NOTEBOOK:'+ref)
+                  meta=json.loads((dest/'kernel-metadata.json').read_text())
+                  nb=json.loads((dest/meta['code_file']).read_text())
+                  cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
+                  traces=[]
+                  for ic,source in enumerate(cells):
+                      lines=source.splitlines()
+                      stage=[j for j,line in enumerate(lines) if '_cdirs' in line or 'COUSIN stage' in line or 'cousin_score.py' in line]
+                      if not stage:continue
+                      indexes=set()
+                      for j in stage:
+                          for k in range(max(0,j-9),min(len(lines),j+22)):indexes.add(k)
+                      keep=sorted(indexes)
+                      # Public code context, truncated to useful lines only.
+                      traces.append({'code_cell_index':ic,'line_count':len(lines),
+                         'cousin_anchor_count':len(stage),
+                         'line_context':[(j+1,lines[j].strip()[:145]) for j in keep[:95]],
+                         'launch_process_mentions':len(re.findall(r'subprocess|Popen|os\.system|!python|runpy',source))})
+                  x=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=30)
+                  files=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','50'],capture_output=True,text=True,timeout=30)
+                  result.append({'ref':ref,'kernel_status':(x.stdout+x.stderr)[-200:],
+                     'files_first_10_lines':files.stdout.splitlines()[:10],
+                     'cousin_execution_code_context':traces,
+                     'license_metadata':meta.get('license'),
+                     'metadata_gpu':meta.get('enable_gpu'),
+                     'metadata_internet':meta.get('enable_internet')})
+          print('NTL_GEMMA_COUSIN_EXECUTION_GATE='+json.dumps(result,sort_keys=True),flush=True)
           PY
