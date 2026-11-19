@@ -1,0 +1,134 @@
+name: NTL F1 real Qwen3 1.7B frozen decoder Colab T4 once
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-f1-real-colab-t4-once-20261119.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-f1-real-decoder-colab-t4-one-shot-20261119, cancel-in-progress: false}
+jobs:
+  exact_one_t4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 155
+    env:
+      COLAB_SESSION: ntl-f1-decoder-${{ github.run_id }}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/ntl-f1-colab-${{ github.run_id }}.json
+      COLAB_CLI_ENABLE_UPDATE_CHECK: "false"
+    steps:
+      - name: Verify owner existing Colab ADC OAuth without exposing tokens
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          raw=os.environ.get('COLAB_ADC_JSON','')
+          if not raw:raise RuntimeError('COLAB_ADC_JSON_NOT_SET_NO_GPU_ALLOCATED')
+          data=json.loads(raw)
+          if (data.get('type')!='authorized_user' or
+            any(not data.get(k) for k in ('client_id','client_secret','refresh_token'))):
+            raise RuntimeError('INVALID_GOOGLE_OAUTH_ADC_NO_GPU_ALLOCATED')
+          p=Path(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+          p.write_text(raw,encoding='utf-8')
+          p.chmod(0o600)
+          print('NTL_F1_OWNER_COLAB_ADC=JSON_PRESENT_NO_SECRET_PRINTED',flush=True)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            data/train.csv
+            artifacts/phase1/folds.csv
+            scripts/ntl_decoder_probe_extract_colab_20261119.py
+            scripts/ntl_decoder_probe_eval_cpu_20261119.py
+            scripts/ntl_f1_colab_t4_remote_execute_20261119.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Check exact immutable data, scorer and GPU runner before allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_decoder_probe_extract_colab_20261119.py scripts/ntl_decoder_probe_eval_cpu_20261119.py scripts/ntl_f1_colab_t4_remote_execute_20261119.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          expected={'data/train.csv':'40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707',
+             'artifacts/phase1/folds.csv':'94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d'}
+          for f,hashvalue in expected.items():
+              if hashlib.sha256(Path(f).read_bytes()).hexdigest()!=hashvalue:
+                  raise RuntimeError('OFFICIAL_DATA_DRIFT_ABORT_BEFORE_GPU')
+          print('NTL_F1_PROSPECTIVE_2699_TRAIN_AND_150_PROMPT_FOLDS_PINNED=TRUE',flush=True)
+          PY
+      - name: Verify OAuth refresh (no session created)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check google-auth==2.43.0 requests==2.32.5
+          python - <<'PY'
+          import google.auth
+          from google.auth.transport.requests import Request
+          c,_=google.auth.default(scopes=['openid','https://www.googleapis.com/auth/cloud-platform',
+                  'https://www.googleapis.com/auth/colaboratory'])
+          try:
+              c.refresh(Request())
+          except Exception as exc:
+              print('NTL_F1_COLAB_AUTH_REFRESH=FAIL_'+type(exc).__name__,flush=True)
+              raise
+          if not c.valid:raise RuntimeError('INVALID_OAUTH_REFRESH_NO_GPU')
+          print('NTL_F1_COLAB_AUTH_REFRESH=PASS',flush=True)
+          PY
+      - name: Install working Colab CLI used for original NTL T4 training
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check google-colab-cli==0.7.5
+          colab version
+      - name: Allocate single owner T4, extract real pretrained 1.7B features and evaluate C0/C1/C2
+        shell: bash
+        run: |
+          set -euo pipefail
+          colab --auth adc new -s "$COLAB_SESSION" --gpu T4
+          colab --auth adc upload -s "$COLAB_SESSION" data/train.csv /content/ntl_f1_train.csv
+          colab --auth adc upload -s "$COLAB_SESSION" artifacts/phase1/folds.csv /content/ntl_f1_folds.csv
+          colab --auth adc upload -s "$COLAB_SESSION" scripts/ntl_decoder_probe_extract_colab_20261119.py /content/ntl_decoder_probe_extract_colab_20261119.py
+          colab --auth adc upload -s "$COLAB_SESSION" scripts/ntl_decoder_probe_eval_cpu_20261119.py /content/ntl_decoder_probe_eval_cpu_20261119.py
+          colab --auth adc exec -s "$COLAB_SESSION" --timeout 7200 -f scripts/ntl_f1_colab_t4_remote_execute_20261119.py
+          colab --auth adc download -s "$COLAB_SESSION" /content/ntl_f1_decoder_aggregate_result.json ./ntl-f1-real-decoder-aggregates.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('ntl-f1-real-decoder-aggregates.json').read_text())
+          assert r['experiment']=='ntl-decoder-fourlayer-prompt-pca8-v1-20261119'
+          assert r['rows']==2699 and r['prompts']==150 and r['classes']==18
+          assert len(r['results'])==3
+          assert abs(r['results']['C0_char_lr']['ba']-.291509)<1e-6
+          assert r['no_champion_paired_score'] and not r['new_independent_holdout']
+          print('NTL_F1_AUTHENTIC_REAL_GPU_EXPERIMENT='+json.dumps({
+            'C0':r['results']['C0_char_lr']['ba'],
+            'C1':r['results']['C1_decoder_lr']['ba'],
+            'C2':r['results']['C2_decoder_prompt_pca8']['ba'],
+            'comparisons':r['comparisons'],'decision':r['decision'],
+            'not_a_kaggle_submission':True},sort_keys=True),flush=True)
+          PY
+      - name: Stop T4 and securely remove OAuth credentials and source data
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if command -v colab >/dev/null 2>&1 && test -s "$GOOGLE_APPLICATION_CREDENTIALS"; then
+            colab --auth adc stop -s "$COLAB_SESSION" || true
+          fi
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          rm -f data/train.csv artifacts/phase1/folds.csv
+          echo 'NTL_F1_COLAB_RELEASE_ATTEMPT_AND_LOCAL_AUTH_ERASE=TRUE'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-f1-real-decoder-aggregate-only-${{ github.run_id }}
+          path: ntl-f1-real-decoder-aggregates.json
+          if-no-files-found: warn
+          retention-days: 14
