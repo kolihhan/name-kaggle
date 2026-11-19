@@ -1,3 +1,11 @@
+# NTL — 2026-11-19: full retained-output recovery definitively negative (CPU)
+
+**Official champion remains Public BA 0.702 (#58514818).** [Read-only Kaggle output retrieval + original Apex smoke, terminal SUCCESS #44511538578](https://github.com/kolihhan/name-kaggle/actions/runs/44511538578) recovered **23** scored-kernel output files (including **5 nested**), inspected array files without printing rows or labels, and found **zero NPZ/NPY stage arrays**. Specifically, no retained `final-logits.npz` and no `post-glm.npz`. The historical final18 diagnostic kernel is inaccessible through authenticated API. **No comparable real Apex-stage logits or new BA, no GPU/inference/official submission.**
+
+**Decision:** Do **not** retry output listings, pseudo-logit ablations, weight sweeps or no-typography submissions on synthetic evidence. The source-faithful paired evaluator is ready; it can only score an admissible, new, 18-class labeled same-row cohort with genuine pre-Apex logits and post-GLM labels from a separately justified execution. This is an actual exhausted recovery path, not a promise of score gain.
+
+---
+
 # NOW — NTL 2026-11-19: source-faithful Apex Typography ON/OFF executed (CPU)
 
 **Official Public best: 0.702 (#58514818); no new official score, GPU or Kaggle submission.**
