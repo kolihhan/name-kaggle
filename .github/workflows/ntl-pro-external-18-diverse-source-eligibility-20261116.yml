@@ -20,6 +20,9 @@ jobs:
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pyarrow==22.0.0 pandas==2.3.3
           mkdir -p /tmp/ntl-label-provenance
           kaggle datasets download -d crtproduction/name-that-llm-open-pool -f ntl_open_pool.parquet -p /tmp/ntl-label-provenance --unzip -q
+          for f in sources.csv source_protocol.csv; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/ntl-label-provenance --unzip -q
+          done
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
@@ -49,6 +52,42 @@ jobs:
               nonempty=rows.gen_served_model.fillna('').astype(str).str.strip().ne('')
               near[lab]={'rows_total':len(rows),'served_nonempty':int(nonempty.sum()),
                 'top5_sources':{str(k):int(v) for k,v in src.head(5).items()}}
+          # Matched rules from the Nov17 frozen trainer, except text content
+          # and prompt collision are deliberately NOT inspected here.
+          risk=['flag_near_train_prompt','flag_train_prompt_regen',
+                'flag_kb_proxy','flag_kb_proxy_after_ruling',
+                'flag_gemini37_routing_risk']
+          extra=pd.read_parquet(p,columns=['n_words','prompt_group',*risk])
+          src=pd.read_csv('/tmp/ntl-label-provenance/sources.csv').fillna('')
+          pr=pd.read_csv('/tmp/ntl-label-provenance/source_protocol.csv').fillna('')
+          s=frame.source_dataset.astype(str)
+          protocol=pr.drop_duplicates('source_dataset').set_index('source_dataset')
+          lic=src.drop_duplicates('source_dataset').set_index('source_dataset')
+          safe=s.isin(protocol.index)&s.isin(lic.index)
+          safe &= s.map(protocol.served_model_check).fillna('').astype(str).str.strip().str.lower().eq('yes')
+          safe &= s.map(lic.source_license).fillna('').astype(str).str.contains('cc-by|attribution|apache|mit|open data',case=False,regex=True)
+          safe &= extra.n_words.between(40,250,inclusive='both')
+          safe &= extra.prompt_group.notna()&extra.prompt_group.astype(str).str.len().gt(2)
+          for risk_col in risk:
+              safe &= ~extra[risk_col].fillna(False).astype(str).str.lower().isin(('true','1','yes'))
+          eligible_exact=safe&exact
+          eligible_per={lab:int((model.eq(lab.lower())&eligible_exact).sum()) for lab in labels}
+          filtered_sources={}
+          for lab in labels:
+              z=s[(model.eq(lab.lower())&eligible_exact)]
+              filtered_sources[lab]={'n':int(len(z)),'n_source':int(z.nunique())}
+          print('NTL_OPENPOOL_QUALITY_FILTERED_SERVED_ID='+json.dumps({
+              'raw_version_sha256':h,'n_filtered_qualified_exact':int(eligible_exact.sum()),
+              'per_class_qualified_exact':eligible_per,
+              'classes_with_any_qualified_exact':sum(n>0 for n in eligible_per.values()),
+              'classes_with_20_or_more':sum(n>=20 for n in eligible_per.values()),
+              'zero_qualified_classes':sorted(k for k,v in eligible_per.items() if not v),
+              'qualified_class_sources':filtered_sources,
+              'declared_source_count':len(src),'declared_protocol_count':len(pr),
+              'no_original_served_api_identity_verification':True,
+              'no_text_license_independent_verification':True,
+              'no_training_no_gpu_no_submission':True
+          },sort_keys=True),flush=True)
           print('NTL_OPENPOOL_EXACT_SERVED_ID_COVERAGE='+json.dumps({
               'rows_total':len(frame),'classes':len(labels),'classes_with_exact':sum(v>0 for v in per.values()),
               'classes_missing_exact':missing,'per_class_exact':per,
