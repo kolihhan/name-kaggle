@@ -1,39 +1,79 @@
-name: NTL Gemma4 public candidate five kernel completion census CPU
+name: NTL Gemma missing head and 0.702 scored stage logs read-only
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  status:
+  gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 12
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Verify five Gemma 12B notebooks' public latest execution outcomes, no running
+      - name: Check missing required Gemma head and own champion skipped-stage counts
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import json,subprocess,csv,io
-          refs=['kirderf/name-that-llm-v17a','kirderf/name-that-llm-v17c','kirderf/name-that-llm-v17d','kirderf/name-that-llm-v17e','kirderf/name-that-llm-v18a']
-          result=[]
-          for ref in refs:
-            p=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=35)
-            q=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','200'],capture_output=True,text=True,timeout=35)
-            rows=list(csv.DictReader(io.StringIO(q.stdout.lstrip('\ufeff')))) if q.returncode==0 else []
-            names=[r.get('name','') for r in rows]
-            result.append({'ref':ref,'status':(p.stdout+p.stderr).strip()[-180:],
-              'status_success':p.returncode==0,
-              'files_list_success':q.returncode==0,
-              'visible_output_count':len(names),
-              'submission_parquet_visible':'submission.parquet' in names,
-              'cousin_result_visible':any('cousin' in name.lower() and (name.endswith('.csv') or name.endswith('.npz')) for name in names),
-              'all_output_files_incomplete':bool('Next Page Token =' in q.stdout),
-              'not_evidence_of_hidden_full_run':True})
-          print('NTL_GEMMA4_PUBLIC_FIVE_TERMINAL='+json.dumps(result,sort_keys=True),flush=True)
+          import collections,csv,io,json,re,subprocess,tempfile
+          from pathlib import Path
+          def call(*args,timeout=50):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp);source=root/'source';source.mkdir()
+              p=call('kernels','pull','kirderf/name-that-llm-v18a','-p',str(source),'-m',timeout=85)
+              if p.returncode:raise RuntimeError('GEMMA_PUBLIC_NOTEBOOK_NOT_ACCESSIBLE')
+              meta=json.loads((source/'kernel-metadata.json').read_text())
+              candidates=[]
+              stats=collections.Counter()
+              for kind,key in [('dataset','dataset_sources'),('kernel','kernel_sources')]:
+                  for ref in meta.get(key) or []:
+                      if not ref:stats['empty_mount']+=1;continue
+                      stats[kind+'_attempt']+=1
+                      args=['datasets','files',ref,'--page-size','200','-v'] if kind=='dataset' else ['kernels','files',ref,'--page-size','200','-v']
+                      x=call(*args,timeout=45)
+                      if x.returncode:stats[kind+'_unreadable']+=1;continue
+                      if 'Next Page Token =' in x.stdout:stats[kind+'_pagination_unresolved']+=1
+                      # CSV names only; do not download any data or model weight.
+                      rows=list(csv.DictReader(io.StringIO(x.stdout.lstrip('\ufeff'))))
+                      hit=[v.get('name','') for v in rows if 'cousin_head.json' in v.get('name','').lower()]
+                      for name in hit:candidates.append({'kind':kind,'ref':ref,'filename':name})
+              print('NTL_GEMMA4_REQUIRED_HEAD_MOUNT_CENSUS='+json.dumps({
+                  'public_v18a_status':'CANCEL_ACKNOWLEDGED',
+                  'required_filename':'cousin_head.json',
+                  'search_attempts':dict(stats),
+                  'visible_head_mounts':candidates,
+                  'not_proof_of_training_identity':True,'no_file_bytes_downloaded':True},sort_keys=True),flush=True)
+          owner='kolihhan/ntl-0702-apex-pinned-nov18'
+          helpresult=call('kernels','logs','--help',timeout=20)
+          if helpresult.returncode:
+              print('NTL_0702_KERNEL_LOGS_CLI_UNSUPPORTED=TRUE',flush=True)
+          else:
+              log=call('kernels','logs',owner,timeout=80)
+              raw=log.stdout+log.stderr
+              patterns={
+                 'failure_or_error':r'traceback|runtimeerror|failed|error:|exception',
+                 'skipped_stage':r'\bskipp?ed\b|\bdisabled\b|\bfallback\b',
+                 'out_of_memory':r'out of memory|cuda oom|cublas error',
+                 'complete_submission':r'submission.parquet|wrote.*submission',
+                 'apex_stage':r'apex',
+                 'glm_stage':r'glm',
+                 'qwen_stage':r'qwen',
+                 'native_stage':r'native',
+                 'atlas_stage':r'atlas',
+                 'l24_stage':r'\bl24\b',
+                 'partial_rows':r'\b(?:3|4000)\b.*\brows\b',
+              }
+              counts={k:len(re.findall(p,raw,re.I)) for k,p in patterns.items()}
+              print('NTL_0702_CHAMPION_KAGGLE_RUN_LOGS='+json.dumps({
+                  'success':log.returncode==0,
+                  'log_bytes':len(raw),
+                  'pattern_counts_not_specific_errors':counts,
+                  'no_log_raw_lines_printed':True,'one_scored_version_only':True,
+                  'no_model_training_gpu_submission':True
+              },sort_keys=True),flush=True)
           PY
