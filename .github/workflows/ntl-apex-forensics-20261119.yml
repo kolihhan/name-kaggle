@@ -1,0 +1,84 @@
+name: NTL Apex exact Residual vs frozen 0.691 Oleg216 forensic (CPU only)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-apex-forensics-20261119.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      PYTHONHASHSEED: '20261119'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /data/train.csv
+            /scripts/ntl_apex_residual_forensics_20261119.py
+            /scripts/ntl_oleg18_frozen_selector_20261116.py
+            /scripts/ntl_pro_hierarchical_family_vs_flat_20261116.py
+            /artifacts/research/apex-forensics-20261119/PREREG.md
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify frozen test contract and install pinned CPU dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s data/train.csv
+          test -s artifacts/research/apex-forensics-20261119/PREREG.md
+          python -m py_compile scripts/ntl_apex_residual_forensics_20261119.py
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4 scipy==1.16.3 scikit-learn==1.7.2
+      - name: Fetch pinned existing 0.702 source and historical 0.691 matched predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/ntl-apex-frozen-code /tmp/ntl-apex-old-216 /tmp/ntl-apex-oleg-source
+          kaggle kernels pull kolihhan/ntl-0702-apex-pinned-nov18 -p /tmp/ntl-apex-frozen-code -m >/dev/null
+          kaggle kernels output kolihhan/ntl-oleg18-frozen0691-probe-nov16 -p /tmp/ntl-apex-old-216 -o >/dev/null
+          for f in external_short_wide.parquet external_cell_metadata.parquet; do
+            kaggle datasets download -d olegzholobov/name-that-llm-response-corpus -f "$f" -p /tmp/ntl-apex-oleg-source --unzip -o -q >/dev/null
+          done
+          python - <<'PY'
+          from pathlib import Path
+          books=list(Path('/tmp/ntl-apex-frozen-code').rglob('*.ipynb'))
+          predictions=list(Path('/tmp/ntl-apex-old-216').rglob('submission.parquet'))
+          assert len(books)==len(predictions)==1, 'SOURCE_OR_FROZEN_REFERENCE_NOT_UNIQUE'
+          print("NTL_APEX_INPUT_ASSETS_SINGLE_AND_PRESENT=TRUE",flush=True)
+          PY
+      - name: Run preregistered exact stage evidence on frozen labeled 216 (proxy interventions explicitly marked)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BOOK="$(find /tmp/ntl-apex-frozen-code -name '*.ipynb' -type f)"
+          REF="$(find /tmp/ntl-apex-old-216 -name submission.parquet -type f)"
+          python -u -m scripts.ntl_apex_residual_forensics_20261119 --pinned-notebook "$BOOK" \
+            --external /tmp/ntl-apex-oleg-source --reference "$REF" \
+            --output /tmp/ntl-apex-residual-216-aggregates.json
+          python - <<'PY'
+          import json
+          p='/tmp/ntl-apex-residual-216-aggregates.json'
+          x=json.load(open(p))
+          assert x['diagnostic_rows']==216 and x['labels']==18
+          assert x['predictions']['B_frozen_0691']['correct']==89
+          assert x['candidate_not_promotable_from_this_test']
+          assert x['actual_0702_Apex_scores'].startswith('UNAVAILABLE')
+          assert x['no_Kaggle_GPU_or_submission']
+          print("NTL_APEX_FORENSIC_FROZEN_SCOPE_VALID=TRUE",flush=True)
+          PY
+      - name: Save aggregate report only (no text, IDs, score vectors or label rows)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-apex-residual-216-aggregate-${{ github.run_id }}
+          path: /tmp/ntl-apex-residual-216-aggregates.json
+          if-no-files-found: error
+          retention-days: 14
