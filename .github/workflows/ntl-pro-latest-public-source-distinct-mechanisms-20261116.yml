@@ -1,57 +1,39 @@
-name: NTL exact Gemma cousin-stage source path no GPU
+name: NTL Gemma4 public candidate five kernel completion census CPU
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  trace:
+  status:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 7
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
-      - name: Audit Gemma source cell's actual execution and baseline compatibility
+        with: {python-version: "3.11"}
+      - name: Verify five Gemma 12B notebooks' public latest execution outcomes, no running
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import ast,json,re,subprocess,tempfile
-          from pathlib import Path
-          refs=['kolihhan/ntl-0702-apex-pinned-nov18','kirderf/name-that-llm-v18a']
+          import json,subprocess,csv,io
+          refs=['kirderf/name-that-llm-v17a','kirderf/name-that-llm-v17c','kirderf/name-that-llm-v17d','kirderf/name-that-llm-v17e','kirderf/name-that-llm-v18a']
           result=[]
-          with tempfile.TemporaryDirectory() as root:
-              for idx,ref in enumerate(refs):
-                  dest=Path(root)/str(idx);dest.mkdir()
-                  p=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(dest),'-m'],capture_output=True,text=True,timeout=80)
-                  if p.returncode:raise RuntimeError('MISSING_NOTEBOOK:'+ref)
-                  meta=json.loads((dest/'kernel-metadata.json').read_text())
-                  nb=json.loads((dest/meta['code_file']).read_text())
-                  cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
-                  traces=[]
-                  for ic,source in enumerate(cells):
-                      lines=source.splitlines()
-                      stage=[j for j,line in enumerate(lines) if '_cdirs' in line or 'COUSIN stage' in line or 'cousin_score.py' in line]
-                      if not stage:continue
-                      indexes=set()
-                      for j in stage:
-                          for k in range(max(0,j-9),min(len(lines),j+22)):indexes.add(k)
-                      keep=sorted(indexes)
-                      # Public code context, truncated to useful lines only.
-                      traces.append({'code_cell_index':ic,'line_count':len(lines),
-                         'cousin_anchor_count':len(stage),
-                         'line_context':[(j+1,lines[j].strip()[:145]) for j in keep[:95]],
-                         'launch_process_mentions':len(re.findall(r'subprocess|Popen|os\.system|!python|runpy',source))})
-                  x=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=30)
-                  files=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','50'],capture_output=True,text=True,timeout=30)
-                  result.append({'ref':ref,'kernel_status':(x.stdout+x.stderr)[-200:],
-                     'files_first_10_lines':files.stdout.splitlines()[:10],
-                     'cousin_execution_code_context':traces,
-                     'license_metadata':meta.get('license'),
-                     'metadata_gpu':meta.get('enable_gpu'),
-                     'metadata_internet':meta.get('enable_internet')})
-          print('NTL_GEMMA_COUSIN_EXECUTION_GATE='+json.dumps(result,sort_keys=True),flush=True)
+          for ref in refs:
+            p=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=35)
+            q=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','200'],capture_output=True,text=True,timeout=35)
+            rows=list(csv.DictReader(io.StringIO(q.stdout.lstrip('\ufeff')))) if q.returncode==0 else []
+            names=[r.get('name','') for r in rows]
+            result.append({'ref':ref,'status':(p.stdout+p.stderr).strip()[-180:],
+              'status_success':p.returncode==0,
+              'files_list_success':q.returncode==0,
+              'visible_output_count':len(names),
+              'submission_parquet_visible':'submission.parquet' in names,
+              'cousin_result_visible':any('cousin' in name.lower() and (name.endswith('.csv') or name.endswith('.npz')) for name in names),
+              'all_output_files_incomplete':bool('Next Page Token =' in q.stdout),
+              'not_evidence_of_hidden_full_run':True})
+          print('NTL_GEMMA4_PUBLIC_FIVE_TERMINAL='+json.dumps(result,sort_keys=True),flush=True)
           PY
