@@ -1,0 +1,31 @@
+name: Kaggle current code metadata survey Gemma4 and NTL read only
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gemma-public-kaggle-code-survey-20261120.yml]
+permissions: {contents: read}
+jobs:
+  browse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Retrieve public code listings, no notebook execution, no data download
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          kaggle kernels list --help | head -n 65
+          for competition in gemma-4-developer-agent name-that-llm; do
+            for page in 1 2 3; do
+              echo "KAGGLE_CODE_LIST_START competition=$competition page=$page"
+              kaggle kernels list --competition "$competition" --page "$page" --page-size 20 \
+                | head -n 23 || true
+              echo "KAGGLE_CODE_LIST_END competition=$competition page=$page"
+            done
+          done
+          echo KAGGLE_PUBLIC_READONLY_CODE_LIST_SURVEY_COMPLETE=TRUE
