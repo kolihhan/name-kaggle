@@ -1,16 +1,20 @@
-name: NTL Apex typography paired-logits source check CPU
+name: NTL Apex typography original vs disabled source-faithful smoke CPU
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-apex-typography-paired-20261119.yml]
+    paths:
+      - .github/workflows/ntl-apex-typography-paired-20261119.yml
+      - scripts/ntl_apex_typography_paired_20261119.py
 permissions: {contents: read}
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - name: Inspect historical final18 diagnostic outputs without executing inference
@@ -40,3 +44,15 @@ jobs:
               })
           print('NTL_APEX_PAIRED_OLD_REAL_LOGIT_ACCESS='+json.dumps(info,sort_keys=True),flush=True)
           PY
+      - name: Verify exact scored Apex function and deterministic typography ON/OFF smoke, not accuracy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check numpy==2.3.4 pandas==2.3.3 scipy==1.16.3 scikit-learn==1.7.2
+          python -m py_compile scripts/ntl_apex_typography_paired_20261119.py
+          mkdir -p /tmp/ntl-0702-audit-src
+          kaggle kernels pull kolihhan/ntl-0702-apex-pinned-nov18 -p /tmp/ntl-0702-audit-src -m >/dev/null
+          NB="$(find /tmp/ntl-0702-audit-src -maxdepth 1 -name '*.ipynb' -type f)"
+          test -n "$NB"
+          python -u -m scripts.ntl_apex_typography_paired_20261119 --notebook "$NB" --mode smoke
+          echo NTL_APEX_NO_GPU_NO_MODEL_SCORING_NO_OFFICIAL_SUBMISSION=TRUE
