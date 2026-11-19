@@ -1,0 +1,27 @@
+name: NTL Gemma paginate six pages of Kaggle forums and notebooks
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gemma-sixpage-census-20261120.yml]
+permissions: {contents: read}
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_gemma_forum_code_paginate_20261120.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Browse all first 6 recent pages without writing or scoring
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python scripts/ntl_gemma_forum_code_paginate_20261120.py
