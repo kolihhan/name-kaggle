@@ -20,18 +20,18 @@ jobs:
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           cat >/tmp/audit_slugs.txt <<'EOF'
-flexonafft/gemma-4-budget-aware-coding-agent-lean-context
-dheerajpiduru/gemma-4-e4b-what-moved-the-score-and-what-didn-t
-victorzhong0110/gemma4-pack-lb-0-22-40-tool-calls
-mobassir/why-your-leaderboard-can-t-see-a-3-point-gain
-pablodiegoo/gemma-4-developer-agent-paper-starter-notebook
-mozune4002/gemma4-s02-anytime-patch-31b
-asteriospanoras/0-704-which-llms-look-alike-error-map-and-ideas
-mzishran/name-that-llm-how-the-ensemble-predicts
-ik786786/name-that-llm-telling-sibling-models-apart
-dhananjayk2609/name-that-llm-style-fingerprints-llm-ensemble
-angelojun2k/name-that-llm-grandmaster-champion
-vishalverma28/name-that-llm-sota-hungarian-apex
+          flexonafft/gemma-4-budget-aware-coding-agent-lean-context
+          dheerajpiduru/gemma-4-e4b-what-moved-the-score-and-what-didn-t
+          victorzhong0110/gemma4-pack-lb-0-22-40-tool-calls
+          mobassir/why-your-leaderboard-can-t-see-a-3-point-gain
+          pablodiegoo/gemma-4-developer-agent-paper-starter-notebook
+          mozune4002/gemma4-s02-anytime-patch-31b
+          asteriospanoras/0-704-which-llms-look-alike-error-map-and-ideas
+          mzishran/name-that-llm-how-the-ensemble-predicts
+          ik786786/name-that-llm-telling-sibling-models-apart
+          dhananjayk2609/name-that-llm-style-fingerprints-llm-ensemble
+          angelojun2k/name-that-llm-grandmaster-champion
+          vishalverma28/name-that-llm-sota-hungarian-apex
           EOF
           while read -r slug; do
             test -n "$slug" || continue
