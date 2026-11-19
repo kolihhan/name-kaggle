@@ -1,0 +1,40 @@
+name: NTL Apex typography paired-logits source check CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-apex-typography-paired-20261119.yml]
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect historical final18 diagnostic outputs without executing inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess, csv, io, json
+          refs=['kolihhan/ntl-oleg216-final18-diagnostic-nov17',
+                'kolihhan/ntl-oleg18-frozen0691-probe-nov16',
+                'kolihhan/ntl-0702-apex-pinned-nov18']
+          info=[]
+          for ref in refs:
+              s=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=30)
+              files=subprocess.run(['kaggle','kernels','files',ref,'-v','--page-size','200'],capture_output=True,text=True,timeout=35)
+              rows=list(csv.DictReader(io.StringIO(files.stdout.lstrip('\ufeff')))) if files.returncode==0 else []
+              names=[x.get('name','') for x in rows]
+              info.append({'ref':ref,'status':(s.stdout+s.stderr).strip()[-220:],
+                'files_accessible':files.returncode==0,
+                'all_names':names[:65],
+                'has_final18_logits':any('ntl_oleg216_final18_logits' in n for n in names),
+                'has_final18_receipt':any('ntl_oleg216_final18_receipt' in n for n in names),
+                'has_post_glm_npz':any(n.endswith('post-glm.npz') for n in names),
+                'truncated':bool('Next Page Token =' in files.stdout),
+                'no_Kaggle_GPU_or_scoring':True
+              })
+          print('NTL_APEX_PAIRED_OLD_REAL_LOGIT_ACCESS='+json.dumps(info,sort_keys=True),flush=True)
+          PY
