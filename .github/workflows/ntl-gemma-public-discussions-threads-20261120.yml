@@ -1,0 +1,76 @@
+name: Kaggle Gemma4 NTL recent discussion full-thread evidence sampling
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gemma-public-discussions-threads-20261120.yml]
+permissions: {contents: read}
+jobs:
+  read_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Fetch selected topics (including user-cited thread) with comments and contradictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          cat >/tmp/selected_threads.tsv <<'EOF'
+gemma-4-developer-agent 760126
+gemma-4-developer-agent 760309
+gemma-4-developer-agent 759514
+gemma-4-developer-agent 760201
+gemma-4-developer-agent 760014
+gemma-4-developer-agent 751596
+gemma-4-developer-agent 746250
+gemma-4-developer-agent 750974
+gemma-4-developer-agent 747168
+gemma-4-developer-agent 750713
+gemma-4-developer-agent 749191
+gemma-4-developer-agent 753973
+gemma-4-developer-agent 748323
+gemma-4-developer-agent 747519
+gemma-4-developer-agent 751487
+gemma-4-developer-agent 750350
+name-that-llm 759187
+name-that-llm 749447
+name-that-llm 750462
+name-that-llm 753177
+name-that-llm 751802
+name-that-llm 752766
+name-that-llm 753779
+name-that-llm 760286
+name-that-llm 760276
+name-that-llm 752197
+name-that-llm 757199
+name-that-llm 751722
+name-that-llm 759103
+name-that-llm 755314
+name-that-llm 754860
+          EOF
+          while read -r competition topic; do
+            echo "THREAD_BEGIN $competition $topic"
+            if timeout 28 kaggle competitions topics show "$competition/$topic" > /tmp/selected_thread.txt 2>/tmp/topic_err.txt; then
+              python - "$competition" "$topic" <<'PY'
+          import sys,re
+          from pathlib import Path
+          comp,tid=sys.argv[1:3]
+          t=Path('/tmp/selected_thread.txt').read_text(errors='replace')
+          t=re.sub(r'(?i)(?:api[_-]?key|token|password)\s*[=:]\s*\S+','<redacted>',t)
+          print('THREAD_EXTRACT',comp,tid,'chars',len(t),flush=True)
+          # Read the opening and some comments as public claims; no personal private info
+          for i,ln in enumerate(t.splitlines()[:90]):
+              if len(ln.strip()) and i<76:
+                  print('DISCUSSION_LINE',comp,tid,i,ln[:215],flush=True)
+          PY
+            else
+              echo "THREAD_PULL_FAILED $competition $topic"
+              head -n 3 /tmp/topic_err.txt|cut -c1-180
+            fi
+            echo "THREAD_END $competition $topic"
+          done </tmp/selected_threads.tsv
+          echo KAGGLE_PUBLIC_DISCUSSIONS_THREAD_AUDIT=COMPLETE
