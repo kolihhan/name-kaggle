@@ -1,0 +1,72 @@
+name: NTL F1 exact frozen decoder probe evaluator and real char control CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-f1-decoder-probe-cpu-control-20261119.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-f1-decoder-probe-cpu-control-once, cancel-in-progress: false}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_decoder_probe_eval_cpu_20261119.py
+            scripts/ntl_decoder_probe_extract_colab_20261119.py
+            data/train.csv
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Check no new model training GPU or raw competition outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check \
+            numpy==2.2.6 pandas==2.2.3 scipy==1.15.3 scikit-learn==1.6.1
+          python -m pip install -q --disable-pip-version-check \
+            torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu
+          python -m py_compile scripts/ntl_decoder_probe_eval_cpu_20261119.py scripts/ntl_decoder_probe_extract_colab_20261119.py
+          python -m scripts.ntl_decoder_probe_eval_cpu_20261119 --self-test
+          python -m scripts.ntl_decoder_probe_extract_colab_20261119 --self-test
+          python - <<'PY'
+          import torch
+          assert not torch.cuda.is_available()
+          print('NTL_F1_CONTROL_NO_GPU_NO_TRAINED_DECODER=TRUE',flush=True)
+          PY
+      - name: Run actual frozen 2699-row original five-fold class-balanced lexical C0
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_decoder_probe_eval_cpu_20261119 \
+            --train data/train.csv --folds artifacts/phase1/folds.csv \
+            --real-control-only --out /tmp/ntl-f1-lexical-aggregate-only.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/ntl-f1-lexical-aggregate-only.json').read_text())
+          assert r['classes']==18 and r['prompts']==150 and r['rows']==2699
+          assert r['decision']=='ACTUAL_LEXICAL_CONTROL_ONLY_NO_DECODER_RESULT'
+          assert r['no_champion_paired_score'] and not r['new_independent_holdout']
+          print('NTL_F1_REAL_CHAR_BASELINE_ONLY_NO_MODEL_GAIN_CLAIM=TRUE',flush=True)
+          PY
+      - name: Retain only aggregated result never official rows or features
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/ntl-f1-lexical-aggregate-only.json ./ntl-f1-control-only-aggregates.json
+          rm -f /tmp/ntl-f1-lexical-aggregate-only.json
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ntl-f1-actual-lexical-control-aggregates-only
+          path: ntl-f1-control-only-aggregates.json
+          retention-days: 14
