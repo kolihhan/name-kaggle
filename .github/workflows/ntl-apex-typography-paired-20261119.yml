@@ -56,3 +56,47 @@ jobs:
           test -n "$NB"
           python -u -m scripts.ntl_apex_typography_paired_20261119 --notebook "$NB" --mode smoke
           echo NTL_APEX_NO_GPU_NO_MODEL_SCORING_NO_OFFICIAL_SUBMISSION=TRUE
+
+      - name: Recover any retained nested scored-stage arrays (read-only CPU)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-scored-output-census
+          if kaggle kernels output kolihhan/ntl-0702-apex-pinned-nov18 -p /tmp/ntl-scored-output-census -o >/dev/null 2>&1; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          import numpy as np
+          root=Path('/tmp/ntl-scored-output-census')
+          paths=[p for p in root.rglob('*') if p.is_file()]
+          staged=[]
+          for p in paths:
+              rel=p.relative_to(root).as_posix()
+              if p.suffix.lower() not in ('.npz','.npy'):
+                  continue
+              item={'relative_name':rel, 'file_bytes':p.stat().st_size}
+              try:
+                  obj=np.load(p,allow_pickle=False,mmap_mode='r')
+                  if isinstance(obj,np.lib.npyio.NpzFile):
+                      item['arrays']=[{'key':k,'shape':list(obj[k].shape),'dtype':str(obj[k].dtype)} for k in obj.files]
+                      obj.close()
+                  else:
+                      item['shape']=list(obj.shape)
+                      item['dtype']=str(obj.dtype)
+              except Exception as exc:
+                  item['read_error_type']=type(exc).__name__
+              staged.append(item)
+          print('NTL_0702_RETAINED_STAGE_CENSUS='+json.dumps({
+              'output_file_count':len(paths),
+              'nested_file_count':sum('/' in p.relative_to(root).as_posix() for p in paths),
+              'stage_array_count':len(staged),
+              'stage_arrays':staged[:25],
+              'has_final_logits':any('final-logits' in item['relative_name'] for item in staged),
+              'has_post_glm':any('post-glm' in item['relative_name'] for item in staged),
+              'NO_RAW_ROWS_OR_PREDICTIONS_LOGGED':True,
+              'NO_GPU_NO_NEW_SUBMISSION':True},sort_keys=True),flush=True)
+          PY
+          else
+            echo NTL_0702_RETAINED_OUTPUT=UNAVAILABLE_NO_RETRY_NO_GPU
+          fi
+          rm -rf /tmp/ntl-scored-output-census
