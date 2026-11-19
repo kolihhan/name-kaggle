@@ -1,3 +1,13 @@
+## 2026-11-19 — Strong-stack comparison: NO NEW PROMOTION
+
+- **Official Kaggle champion 0.702 #58514818** (+0.011 vs old .691). Target >=0.720; gap +0.018. No GPU, no official submission in this round.
+- [Actions #44448660771](https://github.com/kolihhan/name-kaggle/actions/runs/44448660771): exact source and model-asset comparison of 5 public alternatives to our scored Apex 0.702. All use identical 9 model, 26 dataset and 9 upstream Notebook mounts. Soft Typography and Alexchilton differ in only 1 of 20 shared helper modules; **reject as redundant**.
+- Areebbb adds spec_worker.py, Ozertuu adds a 95-line sibling residual head, Tensura replaces several inference/stage modules and adds 934-line comp_stack.py. [Actions #44448962381](https://github.com/kolihhan/name-kaggle/actions/runs/44448962381) confirmed signatures: each has fit-related pathways but static presence does NOT prove executed training. No validated same-row evidence they outperform 0.702, and their existing model/data inputs do not add independent author-generation information.
+- **Hypotheses:** H_A new attribution information vs H_B reaggregation/supervised re-fit of the same prefit experts. Available evidence favors H_B as source-level explanation, **not a scored effectiveness test**. No new qualified strong-stack candidate. Preserve champion. Do not spend Kaggle on same-source mixture variants.
+- **Single live requirement before next GPU:** distinct, legal, original-served-ID-backed data/pretrained expert or clean same-row comparison to 0.702 with an independent mechanism. Do not return to used weak proxy cohorts.
+
+---
+
 # NOW — Name That LLM
 2026-11-19 10:46 MYT · AUTHENTICATED NEW CHAMPION
 
