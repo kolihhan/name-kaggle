@@ -1,0 +1,44 @@
+name: Kaggle Gemma4 NTL discussions recent and top systematic inventory
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-gemma-discussions-deep-inventory-20261120.yml]
+permissions: {contents: read}
+jobs:
+  read_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Fetch competition recent and popular forum thread lists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/forums
+          for comp in gemma-4-developer-agent name-that-llm; do
+            for sort in recent top; do
+              echo "KAGGLE_DISCUSSION_INVENTORY_START $comp $sort"
+              kaggle competitions topics list "$comp" -s "$sort" --page-size 100 -v >"/tmp/forums/$comp-$sort.csv" || {
+                echo "TOPICS_FAILED $comp $sort"
+                exit 1
+              }
+              python - "$comp" "$sort" "/tmp/forums/$comp-$sort.csv" <<'PY'
+          import sys,csv,collections
+          comp,sort,path=sys.argv[1:]
+          with open(path,newline='',encoding='utf-8-sig') as f:
+              rows=list(csv.DictReader(f))
+          print('TOPIC_INVENTORY_META',comp,sort,'rows',len(rows),'headers',list(rows[0]) if rows else [],flush=True)
+          for i,x in enumerate(rows):
+              if i<80 or sort=='top' and i<40:
+                  pairs=[str(x.get(k,''))[:110] for k in x]
+                  print('TOPIC_ENTRY',comp,sort,i,repr('|'.join(pairs)),flush=True)
+          PY
+              echo "KAGGLE_DISCUSSION_INVENTORY_END $comp $sort"
+            done
+          done
+          echo KAGGLE_DISCUSSIONS_INVENTORY_NO_SUBMISSION=PASS
