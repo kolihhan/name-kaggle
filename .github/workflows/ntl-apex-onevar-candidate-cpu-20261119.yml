@@ -1,0 +1,34 @@
+name: NTL exact champion one-variable Apex CPU candidate check
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-apex-onevar-candidate-cpu-20261119.yml
+permissions: {contents: read}
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+        # The official data are already in the public repo history; do not print,
+        # reupload or commit any competition data.
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Exact pinned public champion source one-line patch, CPU-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -m py_compile scripts/ntl_apex_typography_off_onevar_cpu_20261119.py
+          mkdir -p /tmp/ntl-0702-upstream-public
+          kaggle kernels pull lightningv08/0-702-apex-style-15-glm-qwen3-8-27b-lora -p /tmp/ntl-0702-upstream-public -m >/dev/null
+          python -m scripts.ntl_apex_typography_off_onevar_cpu_20261119 \
+            --source /tmp/ntl-0702-upstream-public \
+            --dest /tmp/ntl-0702-candidate
+          echo NTL_APEX_CANDIDATE_CPU_ONLY_NO_KAGGLE_GPU_NO_OFFICIAL_SUBMISSION=TRUE
+          rm -rf /tmp/ntl-0702-upstream-public /tmp/ntl-0702-candidate
