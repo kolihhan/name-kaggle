@@ -1,98 +1,55 @@
-name: NTL five missing actual-served-model IDs source audit (metadata only)
+name: NTL free Kaggle Benchmarks proxy GPT gap source metadata audit
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-external-18-diverse-source-eligibility-20261116.yml]
 permissions: {contents: read}
 jobs:
-  metadata:
+  evidence:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - name: Count externally asserted served-model IDs per class without reading or logging passages
+      - name: Read only public free-proxy provenance labels and metadata
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pyarrow==22.0.0 pandas==2.3.3
-          mkdir -p /tmp/ntl-label-provenance
-          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f ntl_open_pool.parquet -p /tmp/ntl-label-provenance --unzip -q
-          for f in sources.csv source_protocol.csv; do
-            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/ntl-label-provenance --unzip -q
-          done
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3
+          mkdir -p /tmp/ntl-free-gpt-proxy
+          kaggle datasets download -d zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations -f ntl_proxy_generations.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
           import pandas as pd
-          p=Path('/tmp/ntl-label-provenance/ntl_open_pool.parquet')
-          h=hashlib.file_digest(p.open('rb'),'sha256').hexdigest()
-          frozen='5a3dc82288328abedf49b7dd5e866e5c69eb922f9d6008e6fd78cf5153c12332'
-          print('NTL_OPENPOOL_METADATA_VERSION='+json.dumps({
-              'sha256_now':h,'sha256_training_nov17':frozen,
-              'same_version':h==frozen,'unapproved_new_version_do_not_train':h!=frozen
+          p=Path('/tmp/ntl-free-gpt-proxy/ntl_proxy_generations.csv')
+          names=list(pd.read_csv(p,nrows=0).columns)
+          # Never materialize or print generated passages or source prompt text.
+          unsafe={'text','response','content','prompt','raw_response','raw_request','body','completion','output','prompt_text','response_text'}
+          cols=[x for x in names if x.lower() not in unsafe]
+          frame=pd.read_csv(p,usecols=cols).fillna('')
+          def counts(k):
+              if k not in frame:return {}
+              return {str(a):int(v) for a,v in frame[k].astype(str).value_counts().head(35).items()}
+          target={'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra'}
+          label_cols=[x for x in cols if any(y in x.lower() for y in ('model','slug','label','provider'))]
+          split={k:counts(k) for k in label_cols}
+          candidates={}
+          for k in label_cols:
+              c=frame[k].astype(str).str.strip().str.lower()
+              candidates[k]={name:int(c.eq(name).sum()) for name in sorted(target)}
+          print('NTL_FREE_GPT_BENCHMARKS_PROXY_META='+json.dumps({
+              'source':'zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations',
+              'source_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+              'n_rows':len(frame),'csv_columns':names,
+              'model_label_counts':split,'target_exact_label_matches':candidates,
+              'protocol_runs':counts('run'),
+              'published_license_cc_by4_not_independently_audited':True,
+              'free_proxy_model_slug_not_original_served_api_reply':True,
+              'new_source_heldout_contamination_not_audited':True,
+              'no_passages_logged_no_training_no_GPU_no_submission':True
           },sort_keys=True),flush=True)
-          # Metadata-only read is permitted to diagnose version drift.
-          # New bytes are never admitted for supervised training or scored claims.
-          frame=pd.read_parquet(p,columns=['model','gen_served_model','source_dataset'])
-          labels=sorted(frame.model.dropna().astype(str).unique())
-          if len(labels)!=18:raise RuntimeError('NOT_18_CLASS_OPEN_POOL')
-          model=frame.model.fillna('').astype(str).str.strip().str.lower()
-          served=frame.gen_served_model.fillna('').astype(str).str.strip().str.lower()
-          exact=(served==model)&served.ne('')
-          per={m:int((model.eq(m.lower())&exact).sum()) for m in labels}
-          missing=sorted(k for k,v in per.items() if not v)
-          # Keep only aggregate metadata: source counts and label names, no text.
-          near={}
-          for lab in missing:
-              rows=frame[model.eq(lab.lower())]
-              src=rows.source_dataset.fillna('').value_counts()
-              nonempty=rows.gen_served_model.fillna('').astype(str).str.strip().ne('')
-              near[lab]={'rows_total':len(rows),'served_nonempty':int(nonempty.sum()),
-                'top5_sources':{str(k):int(v) for k,v in src.head(5).items()}}
-          # Matched rules from the Nov17 frozen trainer, except text content
-          # and prompt collision are deliberately NOT inspected here.
-          risk=['flag_near_train_prompt','flag_train_prompt_regen',
-                'flag_kb_proxy','flag_kb_proxy_after_ruling',
-                'flag_gemini37_routing_risk']
-          extra=pd.read_parquet(p,columns=['n_words','prompt_group',*risk])
-          src=pd.read_csv('/tmp/ntl-label-provenance/sources.csv').fillna('')
-          pr=pd.read_csv('/tmp/ntl-label-provenance/source_protocol.csv').fillna('')
-          s=frame.source_dataset.astype(str)
-          protocol=pr.drop_duplicates('source_dataset').set_index('source_dataset')
-          lic=src.drop_duplicates('source_dataset').set_index('source_dataset')
-          safe=s.isin(protocol.index)&s.isin(lic.index)
-          safe &= s.map(protocol.served_model_check).fillna('').astype(str).str.strip().str.lower().eq('yes')
-          safe &= s.map(lic.source_license).fillna('').astype(str).str.contains('cc-by|attribution|apache|mit|open data',case=False,regex=True)
-          safe &= extra.n_words.between(40,250,inclusive='both')
-          safe &= extra.prompt_group.notna()&extra.prompt_group.astype(str).str.len().gt(2)
-          for risk_col in risk:
-              safe &= ~extra[risk_col].fillna(False).astype(str).str.lower().isin(('true','1','yes'))
-          eligible_exact=safe&exact
-          eligible_per={lab:int((model.eq(lab.lower())&eligible_exact).sum()) for lab in labels}
-          filtered_sources={}
-          for lab in labels:
-              z=s[(model.eq(lab.lower())&eligible_exact)]
-              filtered_sources[lab]={'n':int(len(z)),'n_source':int(z.nunique())}
-          print('NTL_OPENPOOL_QUALITY_FILTERED_SERVED_ID='+json.dumps({
-              'raw_version_sha256':h,'n_filtered_qualified_exact':int(eligible_exact.sum()),
-              'per_class_qualified_exact':eligible_per,
-              'classes_with_any_qualified_exact':sum(n>0 for n in eligible_per.values()),
-              'classes_with_20_or_more':sum(n>=20 for n in eligible_per.values()),
-              'zero_qualified_classes':sorted(k for k,v in eligible_per.items() if not v),
-              'qualified_class_sources':filtered_sources,
-              'declared_source_count':len(src),'declared_protocol_count':len(pr),
-              'no_original_served_api_identity_verification':True,
-              'no_text_license_independent_verification':True,
-              'no_training_no_gpu_no_submission':True
-          },sort_keys=True),flush=True)
-          print('NTL_OPENPOOL_EXACT_SERVED_ID_COVERAGE='+json.dumps({
-              'rows_total':len(frame),'classes':len(labels),'classes_with_exact':sum(v>0 for v in per.values()),
-              'classes_missing_exact':missing,'per_class_exact':per,
-              'missing_class_source_metadata':near,
-              'source_label_claim_not_independent_identity_verification':True,
-              'no_competition_data_or_text_read':True,'no_training_no_gpu_no_submission':True},sort_keys=True),flush=True)
           PY
-          rm -rf /tmp/ntl-label-provenance
+          rm -rf /tmp/ntl-free-gpt-proxy
