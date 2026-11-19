@@ -18,7 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
-          python -m pip install -q --disable-pip-version-check kaggle==2.2.5
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           mkdir -p /tmp/ntl-public-notebook
           kaggle kernels pull alexchilton/name-that-llm-0-702-all-public-what-failed \
             -p /tmp/ntl-public-notebook --metadata >/tmp/ntl-pull-output.txt 2>&1 || {
