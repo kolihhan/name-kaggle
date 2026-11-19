@@ -1,0 +1,69 @@
+name: NTL Claude Round1 F2 data structural falsifier CPU
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-claude-f2-structural-audit-cpu-20261119.yml]
+permissions: {contents: read}
+jobs:
+  aggregated_schema_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify only exact per-prompt per-label counts and hidden-test schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,hashlib,json,collections,pathlib
+          train=pathlib.Path("data/train.csv")
+          test=pathlib.Path("data/test.csv")
+          expected="40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
+          if not train.is_file() or not test.is_file():
+              raise RuntimeError("SOURCE_FILES_NOT_PRESENT_REFUSE_GUESS")
+          sha=hashlib.sha256(train.read_bytes()).hexdigest()
+          if sha!=expected:
+              raise RuntimeError("TRAIN_SNAPSHOT_DRIFT")
+          with train.open(encoding="utf-8-sig",newline="") as f:
+              reader=csv.DictReader(f)
+              th=reader.fieldnames
+              assert {"id","prompt_id","model","text"}<=set(th)
+              groups=collections.defaultdict(collections.Counter)
+              labels=set()
+              n=0
+              for row in reader:
+                  n+=1
+                  groups[row["prompt_id"]][row["model"]]+=1
+                  labels.add(row["model"])
+          matrix=collections.Counter()
+          all_labels=set(labels)
+          for p,counts in groups.items():
+              matrix[len(counts)]+=1
+          dup=sum(max(0,count-1) for counts in groups.values() for count in counts.values())
+          missing=sum(len(all_labels-set(c)) for c in groups.values())
+          singles=sum(int(sum(c.values())==len(all_labels) and len(c)==len(all_labels)) for c in groups.values())
+          with test.open(encoding="utf-8-sig",newline="") as f:
+              reader=csv.DictReader(f)
+              test_columns=reader.fieldnames
+              test_n=sum(1 for _ in reader)
+          print("NTL_F2_AUTHENTICATED_LOCAL_SCHEMA_CENSUS="+json.dumps({
+              "train_sha256":sha,
+              "train_rows":n,"train_prompt_count":len(groups),"train_label_count":len(labels),
+              "prompt_rows_min":min(sum(c.values()) for c in groups.values()),
+              "prompt_rows_max":max(sum(c.values()) for c in groups.values()),
+              "prompts_by_distinct_label_count":dict(sorted(matrix.items())),
+              "complete_one_per_class_prompts":singles,
+              "duplicate_prompt_label_pairs":dup,
+              "missing_prompt_label_pairs":missing,
+              "test_rows":test_n,
+              "test_columns":test_columns,
+              "test_has_prompt_id":"prompt_id" in test_columns,
+              "expected_complete_18_per_prompt":n==len(groups)*len(labels)-1 and dup==0 and missing==1,
+              "training_and_test_model_logit_matrices_not_used":True,
+              "no_text_ids_labels_or_individual_predictions_logged":True,
+              "no_GPU_no_training_no_official_submission":True
+          },sort_keys=True),flush=True)
+          PY
