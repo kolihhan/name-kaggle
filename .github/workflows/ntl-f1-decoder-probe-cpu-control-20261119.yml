@@ -21,6 +21,7 @@ jobs:
           sparse-checkout: |
             scripts/ntl_decoder_probe_eval_cpu_20261119.py
             scripts/ntl_decoder_probe_extract_colab_20261119.py
+            scripts/ntl_f1_qwen3_model_compat_cpu_20261119.py
             data/train.csv
             artifacts/phase1/folds.csv
           sparse-checkout-cone-mode: false
@@ -34,7 +35,9 @@ jobs:
             numpy==2.2.6 pandas==2.2.3 scipy==1.15.3 scikit-learn==1.6.1
           python -m pip install -q --disable-pip-version-check \
             torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu
-          python -m py_compile scripts/ntl_decoder_probe_eval_cpu_20261119.py scripts/ntl_decoder_probe_extract_colab_20261119.py
+          python -m pip install -q --disable-pip-version-check transformers==4.57.1 safetensors==0.6.2
+          python -m py_compile scripts/ntl_decoder_probe_eval_cpu_20261119.py scripts/ntl_decoder_probe_extract_colab_20261119.py scripts/ntl_f1_qwen3_model_compat_cpu_20261119.py
+          python -m scripts.ntl_f1_qwen3_model_compat_cpu_20261119
           python -m scripts.ntl_decoder_probe_eval_cpu_20261119 --self-test
           python -m scripts.ntl_decoder_probe_extract_colab_20261119 --self-test
           python - <<'PY'
