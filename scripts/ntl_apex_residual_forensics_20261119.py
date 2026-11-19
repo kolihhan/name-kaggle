@@ -56,6 +56,11 @@ def load_apex_module(notebook_file: Path):
         spec.loader.exec_module(module)
     if not all(hasattr(module, name) for name in ("Residual", "features", "refine")):
         raise RuntimeError("INCOMPLETE_APEX_MODULE")
+    import inspect
+    print("NTL_APEX_EXACT_REFINER_CODE=" + json.dumps({
+        "refine":inspect.getsource(module.refine),
+        "residual_class":inspect.getsource(module.Residual)[:6500],
+    },ensure_ascii=False,sort_keys=True),flush=True)
     return module, hashlib.sha256(source.encode()).hexdigest()
 
 
@@ -216,6 +221,8 @@ def main():
         "scope":result["truth_scope"],
         "source_SHA":result["source_sha256"],
         "metrics":result["predictions"],
+        "residual_estimators":result["residual_estimators"],
+        "evidence_metadata":result["evidence_metadata"],
         "deltas":result["comparison"],
         "actual_0_702_Apex_scores":"UNAVAILABLE",
     },sort_keys=True),flush=True)
