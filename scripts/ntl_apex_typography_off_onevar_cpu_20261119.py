@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 import re
 
-SOURCE="lightningv08/0-702-apex-style-15-glm-qwen3-8-27b-lora"
-SOURCE_FILE_SHA="f9948b633b22bd5e63b8253e4d8027c073b44f57eb85bc60b775857e396b38c2"
+SOURCE="kolihhan/ntl-0702-apex-pinned-nov18"
+SOURCE_FILE_SHA=None  # owned scored notebook is code-hash pinned instead of original upstream file-hash pinned
 SCORED_CODE_SHA="2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc"
 DEST="kolihhan/ntl-0702-typo-off-onevar-20261119"
 PATTERN=r"\bpenalty\s*=\s*0\.15\b"
@@ -32,14 +32,15 @@ def prepare(source_dir:Path,dest_dir:Path):
     books=list(source_dir.glob("*.ipynb"))
     if not metadata.is_file() or len(books)!=1:
         raise ValueError("MISSING_EXACT_PUBLIC_NOTEBOOK_OR_METADATA")
-    if sha(books[0].read_bytes())!=SOURCE_FILE_SHA:
-        raise ValueError("PUBLIC_SOURCE_FILE_SHA_DRIFT")
+    # Source notebook is the owner-scored reproduction with an extra attribution
+    # Markdown cell. Only exact Kaggle-scored executable code sha is sufficient.
+    actual_file_sha=sha(books[0].read_bytes())
     nb=json.loads(books[0].read_text())
     meta=json.loads(metadata.read_text())
     original=code_cells(nb)
     if len(original)!=29 or sha("\n".join(original).encode())!=SCORED_CODE_SHA:
         raise ValueError("PUBLIC_SCORED_EXECUTABLE_SOURCE_DRIFT")
-    if (meta.get("id")!=SOURCE or meta.get("is_private") is not False
+    if (meta.get("id")!=SOURCE or meta.get("is_private") is not True
         or meta.get("enable_internet") is not False
         or meta.get("enable_gpu") is not True
         or meta.get("competition_sources")!=["name-that-llm"]
@@ -91,6 +92,7 @@ def prepare(source_dir:Path,dest_dir:Path):
         raise RuntimeError("KAGGLE_SERIALIZATION_DRIFT")
     return {"candidate":DEST,"source":SOURCE,
         "original_code_sha256":SCORED_CODE_SHA,
+        "owned_scored_notebook_file_sha256":actual_file_sha,
         "candidate_code_sha256":sha("\n".join(updated).encode()),
         "changed_cell_index":index,"changed_call_line":line,
         "executable_cells_changed":1,
