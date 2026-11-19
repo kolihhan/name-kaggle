@@ -20,6 +20,8 @@ jobs:
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3
           mkdir -p /tmp/ntl-free-gpt-proxy
           kaggle datasets download -d zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations -f ntl_proxy_generations.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f sources.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f source_protocol.csv -p /tmp/ntl-free-gpt-proxy --unzip -q
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
@@ -40,6 +42,33 @@ jobs:
           for k in label_cols:
               c=frame[k].astype(str).str.strip().str.lower()
               candidates[k]={name:int(c.eq(name).sum()) for name in sorted(target)}
+          frozen_name='zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations'
+          src=pd.read_csv('/tmp/ntl-free-gpt-proxy/sources.csv').fillna('')
+          protocol=pd.read_csv('/tmp/ntl-free-gpt-proxy/source_protocol.csv').fillna('')
+          overlap_src=src.loc[src.source_dataset.astype(str).eq(frozen_name)]
+          overlap_protocol=protocol.loc[protocol.source_dataset.astype(str).eq(frozen_name)]
+          tg=frame.loc[frame.model.astype(str).isin(target)].copy()
+          length=pd.to_numeric(tg.n_words,errors='coerce')
+          # report concrete run and quality filters, without training.
+          para=tg.single_paragraph.astype(str).str.lower().isin(['true','1','yes'])
+          finish=tg.finish_reason.astype(str).str.lower().isin(['stop','end_turn','eos'])
+          quality=tg.run.eq('daily') & length.between(40,250) & para & finish
+          qual=tg.loc[quality]
+          per={m:int(qual.model.eq(m).sum()) for m in sorted(target)}
+          print('NTL_FREE_GPT_PROXY_ADMISSION_GATES='+json.dumps({
+              'source':frozen_name,'source_already_listed_in_current_openpool':not overlap_src.empty,
+              'openpool_source_metadata':overlap_src.to_dict(orient='records'),
+              'openpool_protocol_metadata':overlap_protocol.to_dict(orient='records'),
+              'gpt_rows_raw':len(tg),'gpt_rows_standard_daily_quality':len(qual),
+              'gpt_standard_per_class':per,
+              'gpt_standard_unique_prompt_ids':int(qual.prompt_id.astype(str).nunique()),
+              'gpt_standard_unique_banks':int(qual.bank.astype(str).nunique()),
+              'gpt_standard_setting_counts':{str(k):int(v) for k,v in qual.setting.astype(str).value_counts().items()},
+              'raw_finish_reason_counts':{str(k):int(v) for k,v in tg.finish_reason.astype(str).value_counts().items()},
+              'source_training_exposure_not_proven_by_mounts':True,
+              'requested_proxy_slug_not_returned_server_id':True,
+              'no_raw_passage_logging_no_training_no_gpu_no_submission':True
+          },sort_keys=True),flush=True)
           print('NTL_FREE_GPT_BENCHMARKS_PROXY_META='+json.dumps({
               'source':'zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations',
               'source_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
