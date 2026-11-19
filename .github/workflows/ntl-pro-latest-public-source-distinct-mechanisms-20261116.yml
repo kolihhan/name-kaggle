@@ -1,64 +1,91 @@
-name: NTL public forensic EDA source comparison read-only
+name: NTL EDA empirical figures and 0.702 source independence audit read-only
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  source_review:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 7
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Read and summarize public EDA notebook source, not its datasets or model runs
+      - name: Inspect saved EDA outputs and executable cell overlap, without running any of them
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import json,re,subprocess,tempfile,hashlib
+          import json,re,hashlib,subprocess,tempfile,collections
           from pathlib import Path
-          ref='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
-          with tempfile.TemporaryDirectory() as td:
-            p=subprocess.run(['kaggle','kernels','pull',ref,'-p',td,'-m'],capture_output=True,text=True,timeout=100)
-            if p.returncode:
-                print('NTL_FORENSIC_SOURCE_FETCH_FAIL='+json.dumps({'ref':ref,'exit':p.returncode,'error':p.stderr[-650:],'notebook_unavailable':True}),flush=True)
-                raise SystemExit(0)
-            meta=json.loads((Path(td)/'kernel-metadata.json').read_text())
-            src=Path(td)/meta['code_file']
-            if src.suffix!='.ipynb':
-                print('NTL_FORENSIC_NON_NOTEBOOK='+json.dumps({'file':src.name,'size':src.stat().st_size}),flush=True)
-                raise SystemExit(0)
-            nb=json.loads(src.read_text())
-            counts={'markdown':0,'code':0}
-            snapshots=[]
-            for idx,cell in enumerate(nb.get('cells',[])):
-                typ=cell.get('cell_type')
-                if typ not in counts:continue
-                counts[typ]+=1
-                data=cell.get('source',[])
-                text=''.join(data) if isinstance(data,list) else str(data)
-                if typ=='markdown':
-                    cleaned=re.sub(r'!\[[^\]]*\]\([^)]+\)','[image]',text)
-                    cleaned=re.sub(r'<[^>]{1,150}>',' ',cleaned)
-                    snapshots.append({'i':idx,'type':'markdown','len':len(text),'body':cleaned[:1200]})
-                else:
-                    findings=[]
-                    for line in text.splitlines():
-                        if re.search(r'(?i)(groupby|pivot|corr\(|pvalue|mannwhitney|ttest|chi2|permutation|cross_val|GroupKFold|balanced_accuracy|train_test_split|confusion|word|token|punct|n.gram|styl|family|length|watermark|prompt|question|semantic|feature|cluster|entropy|similarity|analog|topic|bracket|function|freq|lexic|bootstrap|regression|vectorizer|skew|label)',line):
-                            findings.append(line.strip()[:175])
-                    snapshots.append({'i':idx,'type':'code','len':len(text),'first_code_line':text.splitlines()[0][:155] if text.splitlines() else '','interesting_lines':findings[:22]})
-            print('NTL_FORENSIC_NOTEBOOK_CENSUS='+json.dumps({
-                'ref':ref,'title':meta.get('title'),'is_private':meta.get('is_private'),
-                'license':meta.get('license'),'cells':len(nb.get('cells',[])),
-                'source_sha256':hashlib.sha256(src.read_bytes()).hexdigest(),
-                'cell_type_counts':counts,'total_markdown_chars':sum(x['len'] for x in snapshots if x['type']=='markdown'),
-                'total_code_chars':sum(x['len'] for x in snapshots if x['type']=='code'),
-                'no_official_data_fetched':True,'no_execution_training_gpu_or_submission':True
-            },sort_keys=True),flush=True)
-            for item in snapshots:
-                print('NTL_FORENSIC_CELL='+json.dumps(item,ensure_ascii=False,sort_keys=True),flush=True)
+          refs=['evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie',
+                'kolihhan/ntl-0702-apex-pinned-nov18',
+                'lightningv08/0-702-soft-typography-glm-qwen3-8-27b-lora']
+          allcode={}
+          out=[]
+          with tempfile.TemporaryDirectory() as root:
+              for i,ref in enumerate(refs):
+                  path=Path(root)/str(i);path.mkdir()
+                  pull=subprocess.run(['kaggle','kernels','pull',ref,'-p',str(path),'-m'],
+                     capture_output=True,text=True,timeout=100)
+                  if pull.returncode:
+                      out.append({'ref':ref,'pull':False,'error':pull.stderr[-220:]})
+                      continue
+                  m=json.loads((path/'kernel-metadata.json').read_text())
+                  nb=json.loads((path/m['code_file']).read_text())
+                  cells=[c for c in nb['cells'] if c.get('cell_type')=='code']
+                  code=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in cells]
+                  allcode[ref]=code
+                  payload={'ref':ref,'pull':True,'code_cells':len(code),'notebook_source_size':(path/m['code_file']).stat().st_size,
+                    'nb_code_sha256':hashlib.sha256('\n'.join(code).encode()).hexdigest(),
+                    'outputs_attached_per_cell':[len(c.get('outputs',[])) for c in cells[:7]],
+                    'total_outputs':sum(len(c.get('outputs',[])) for c in cells)}
+                  if i==0:
+                      for j,c in enumerate(nb['cells']):
+                          if c.get('cell_type')=='code' and j<=12:
+                              summaries=[]
+                              for output in c.get('outputs',[]):
+                                  if output.get('output_type')=='stream':
+                                      v=output.get('text','')
+                                      v=''.join(v) if isinstance(v,list) else str(v)
+                                      if len(v)<650 and not re.search('text\\s*:|prompt\\s*:',v,re.I):
+                                          summaries.append(v)
+                              payload.setdefault('EDA_STDOUT',[]).append({'cell_index':j,'stdout':summaries[:8],
+                                  'output_types':collections.Counter(o.get('output_type','?') for o in c.get('outputs',[]))})
+                      # markdown: author conclusion around validation and score
+                      for j in (11,13,56):
+                          txt=nb['cells'][j].get('source',[])
+                          txt=''.join(txt) if isinstance(txt,list) else str(txt)
+                          payload.setdefault('ORIGINAL_CONCLUSION_EXCERPTS',[]).append({'cell':j,'excerpt':txt[:5000]})
+                  out.append(payload)
+              if all(ref in allcode for ref in refs):
+                  eda,owned,soft=(allcode[ref] for ref in refs)
+                  E=set(hashlib.sha256(s.encode()).hexdigest() for s in eda)
+                  O=set(hashlib.sha256(s.encode()).hexdigest() for s in owned)
+                  S=set(hashlib.sha256(s.encode()).hexdigest() for s in soft)
+                  soft_mod={x.splitlines()[0].strip().split('/')[-1]:
+                    hashlib.sha256(x.encode()).hexdigest()
+                    for x in soft if x.startswith('%%writefile ')}
+                  own_mod={x.splitlines()[0].strip().split('/')[-1]:
+                    hashlib.sha256(x.encode()).hexdigest()
+                    for x in owned if x.startswith('%%writefile ')}
+                  eda_mod={x.splitlines()[0].strip().split('/')[-1]:
+                    hashlib.sha256(x.encode()).hexdigest()
+                    for x in eda if x.startswith('%%writefile ')}
+                  overlap={'eda_code_cells_shared_exact_with_owned':len(E&O),
+                      'eda_code_cells_shared_exact_with_upstream_soft':len(E&S),
+                      'owned_code_cells_shared_exact_with_upstream_soft':len(O&S),
+                      'eda_module_count':len(eda_mod),
+                      'module_file_exact_match_owned':sum(eda_mod[k]==own_mod[k] for k in eda_mod.keys() & own_mod.keys()),
+                      'module_file_exact_match_upstream_soft':sum(eda_mod[k]==soft_mod[k] for k in eda_mod.keys() & soft_mod.keys()),
+                      'shared_module_names_owned':len(eda_mod.keys()&own_mod.keys()),
+                      'shared_module_names_soft':len(eda_mod.keys()&soft_mod.keys()),
+                      'new_mods_eda_vs_our_scored':sorted(set(eda_mod)-set(own_mod)),
+                      'new_mods_eda_vs_soft':sorted(set(eda_mod)-set(soft_mod)),
+                  }
+                  print('NTL_FORENSIC_REPRODUCTION_OVERLAP='+json.dumps(overlap,sort_keys=True),flush=True)
+              for x in out:print('NTL_FORENSIC_EVIDENCE='+json.dumps(x,ensure_ascii=False,sort_keys=True),flush=True)
           PY
