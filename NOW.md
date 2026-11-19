@@ -1,3 +1,13 @@
+# NOW — NTL 2026-11-19: source-faithful Apex Typography ON/OFF executed (CPU)
+
+**Official Public best: 0.702 (#58514818); no new official score, GPU or Kaggle submission.**
+
+- [Executed original-Apex exact-code smoke #44487815258](https://github.com/kolihhan/name-kaggle/actions/runs/44487815258), [production-accurate paired evaluator](scripts/ntl_apex_typography_paired_20261119.py), [complete bounded report](artifacts/research/apex-typography-20261119/PAIRED_READINESS.md). Original `penalty=0.15` vs absent `penalty=1.0` can flip a synthetic 0.60 Kimi vs 0.35 GLM prediction when text contains `" — "`; no flip when Kimi 0.97 vs GLM 0.02. **Synthetic scores, no real accuracy claim.**
+- [Authenticated scored-output inventory #44487147476](https://github.com/kolihhan/name-kaggle/actions/runs/44487147476): available 0.702 and older 0.691 outputs **do not include authentic row-level 18-class pre-Apex logits**, and planned diagnostic final18 kernel was inaccessible. Therefore **NO honest same-row 0.702 original-vs-no-typography rescue/regression result can be computed now**. 23/216 historical true-label typography contradictions from [prior forensic audit](artifacts/research/apex-typography-20261119/RESULT.md) are exposures, not real flipped errors.
+- Next single scientific gate: recover a genuine, provenance-verified same-row `FINAL_LOGITS` snapshot and `current post-GLM` labels **on a valid labeled cohort**, then run the pinned `--mode paired` evaluator. **Do not spend exploratory GPU or submit a no-typography fork from synthetic effects alone.** No external-source search, no weak reranker.
+
+---
+
 # NOW — NTL (2026-11-19, Apex forensics completed)
 
 **Authenticated Kaggle Public BA remains 0.702 (#58514818)**, not 0.720; no new official submission, Kaggle GPU or model-quality gain. **Primary science decision: stop the cross-family Apex veto idea; examine true typography-induced flips only with real pre/post stage logits.**
