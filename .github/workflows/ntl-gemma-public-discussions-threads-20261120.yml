@@ -20,37 +20,37 @@ jobs:
           test -n "$KAGGLE_API_TOKEN"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           cat >/tmp/selected_threads.tsv <<'EOF'
-gemma-4-developer-agent 760126
-gemma-4-developer-agent 760309
-gemma-4-developer-agent 759514
-gemma-4-developer-agent 760201
-gemma-4-developer-agent 760014
-gemma-4-developer-agent 751596
-gemma-4-developer-agent 746250
-gemma-4-developer-agent 750974
-gemma-4-developer-agent 747168
-gemma-4-developer-agent 750713
-gemma-4-developer-agent 749191
-gemma-4-developer-agent 753973
-gemma-4-developer-agent 748323
-gemma-4-developer-agent 747519
-gemma-4-developer-agent 751487
-gemma-4-developer-agent 750350
-name-that-llm 759187
-name-that-llm 749447
-name-that-llm 750462
-name-that-llm 753177
-name-that-llm 751802
-name-that-llm 752766
-name-that-llm 753779
-name-that-llm 760286
-name-that-llm 760276
-name-that-llm 752197
-name-that-llm 757199
-name-that-llm 751722
-name-that-llm 759103
-name-that-llm 755314
-name-that-llm 754860
+          gemma-4-developer-agent 760126
+          gemma-4-developer-agent 760309
+          gemma-4-developer-agent 759514
+          gemma-4-developer-agent 760201
+          gemma-4-developer-agent 760014
+          gemma-4-developer-agent 751596
+          gemma-4-developer-agent 746250
+          gemma-4-developer-agent 750974
+          gemma-4-developer-agent 747168
+          gemma-4-developer-agent 750713
+          gemma-4-developer-agent 749191
+          gemma-4-developer-agent 753973
+          gemma-4-developer-agent 748323
+          gemma-4-developer-agent 747519
+          gemma-4-developer-agent 751487
+          gemma-4-developer-agent 750350
+          name-that-llm 759187
+          name-that-llm 749447
+          name-that-llm 750462
+          name-that-llm 753177
+          name-that-llm 751802
+          name-that-llm 752766
+          name-that-llm 753779
+          name-that-llm 760286
+          name-that-llm 760276
+          name-that-llm 752197
+          name-that-llm 757199
+          name-that-llm 751722
+          name-that-llm 759103
+          name-that-llm 755314
+          name-that-llm 754860
           EOF
           while read -r competition topic; do
             echo "THREAD_BEGIN $competition $topic"
