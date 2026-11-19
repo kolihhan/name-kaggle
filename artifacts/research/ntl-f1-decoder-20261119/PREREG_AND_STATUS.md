@@ -34,7 +34,7 @@ This test is NOT a comparison against the third-party 0.702 champion's unavailab
 - [Real Qwen3Model tiny random-weight API + repeated actual C0 #44541786043](https://github.com/kolihhan/name-kaggle/actions/runs/44541786043): **SUCCESS**, 4-layer output shape [2,512] for tiny 8-layer model. **This tests the architecture API with random weights, not pretrained generator attribution quality.** Masked-pool and fold-local PCA tests PASS. Reproduced C0=0.291509.
 - GPU extractor: `scripts/ntl_decoder_probe_extract_colab_20261119.py`.
 - Paired evaluation: `scripts/ntl_decoder_probe_eval_cpu_20261119.py`.
-- One-click Colab: [`notebooks/ntl_f1_frozen_qwen3_decoder_probe_colab_20261119.ipynb`](../../notebooks/ntl_f1_frozen_qwen3_decoder_probe_colab_20261119.ipynb).
+- One-click Colab: [`notebooks/ntl_f1_frozen_qwen3_decoder_probe_colab_20261119.ipynb`](../../../notebooks/ntl_f1_frozen_qwen3_decoder_probe_colab_20261119.ipynb).
 
 ## Actual pending scientific result
 
