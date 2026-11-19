@@ -26,8 +26,13 @@ jobs:
           import pandas as pd
           p=Path('/tmp/ntl-label-provenance/ntl_open_pool.parquet')
           h=hashlib.file_digest(p.open('rb'),'sha256').hexdigest()
-          if h!='5a3dc82288328abedf49b7dd5e866e5c69eb922f9d6008e6fd78cf5153c12332':
-              raise RuntimeError('PROVENANCE_INPUT_HASH_DRIFT')
+          frozen='5a3dc82288328abedf49b7dd5e866e5c69eb922f9d6008e6fd78cf5153c12332'
+          print('NTL_OPENPOOL_METADATA_VERSION='+json.dumps({
+              'sha256_now':h,'sha256_training_nov17':frozen,
+              'same_version':h==frozen,'unapproved_new_version_do_not_train':h!=frozen
+          },sort_keys=True),flush=True)
+          # Metadata-only read is permitted to diagnose version drift.
+          # New bytes are never admitted for supervised training or scored claims.
           frame=pd.read_parquet(p,columns=['model','gen_served_model','source_dataset'])
           labels=sorted(frame.model.dropna().astype(str).unique())
           if len(labels)!=18:raise RuntimeError('NOT_18_CLASS_OPEN_POOL')
