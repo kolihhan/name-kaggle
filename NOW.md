@@ -1,3 +1,15 @@
+# NTL F1 decoder-probe execution — 2026-11-19 22:xx MYT
+
+**REAL verified research result:** [fixed five-fold 2,699-row C0 lexical control #44541223988](https://github.com/kolihhan/name-kaggle/actions/runs/44541223988) **SUCCESS**, macro 18-class grouped OOF BA **0.291509**, 150 prompt groups, folds 540/540/540/540/539. [repeat + actual tiny Qwen3Model architecture interface #44541786043](https://github.com/kolihhan/name-kaggle/actions/runs/44541786043) also **SUCCESS**, same exact C0 BA; verified 4-layer hidden-state `AutoModel` API, masked pooling, and train-only scaler/PCA self tests. The tiny model has **random weights**, is CPU only, and is **not a real frozen-pretrained attribution experiment**.
+
+**End-to-end experiment engineering committed:** `scripts/ntl_decoder_probe_extract_colab_20261119.py` (Qwen3-1.7B-Base Apache 2.0 revision SHA `658b6ee46470b73f3e0e04e57fc9fb7031fd7daa`, fp16 T4 512 tokens, 4 hidden layers, private NPZ only), `scripts/ntl_decoder_probe_eval_cpu_20261119.py` (C0 lexical, C1 decoder, C2 decoder + fold-training PCA8; paired prompt-bootstrap and 18 per-class recalls), [single-run Colab notebook](notebooks/ntl_f1_frozen_qwen3_decoder_probe_colab_20261119.ipynb) and [fixed prospective rules/score boundaries](artifacts/research/ntl-f1-decoder-20261119/PREREG_AND_STATUS.md).
+
+**Crucial missing result:** No remote Colab T4 connector is available to this session. **Actual pretrained Qwen3-1.7B inference has NOT RUN, so C1, C2, per-class deltas and any new Public BA are UNKNOWN.** Do not call decoder toolchain correctness a competitive gain or pretend to have used T4. Official best remains **0.702 #58514818**; preserve unchanged. Owner may open the committed Colab notebook, select T4 and Run all to complete C1/C2 with an aggregate-only JSON; no hidden test, score submission, paid APIs or new source data.
+
+**Decision:** continue hypothesis-driven F1; no new perfect external 18-label holdout required to start, but separate DEV mechanism evidence from unseen generalization. Avoid another Apex/postprocessing loop or repeated seed/split sweeps.
+
+---
+
 # NTL — 2026-11-19: first newly unblocked candidate passes genuine CPU diff gate
 
 **Actual execution:** [GitHub Actions #44530471825](https://github.com/kolihhan/name-kaggle/actions/runs/44530471825) **SUCCESS**, after original public Lightning slug returned HTTP 404 in the first source pull. Recovered from the authenticated owner-scored private 0.702 reproduction, which retained the *exact* original executable SHA256 `2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc` over 29 code cells. Source notebook SHA `1a5f41518bb2a346bc86319497c4a93b2438639bb7cb9d6e9faa983d432e0630`. CPU builder made **exactly one executable cell change**, final Apex caller `penalty=0.15 → 1.0`; candidate executable code SHA `9fed26f2d4c0163a121982e0d1ab38ce29f7a70a3ced211d1bf3163898571f33`. Mounts and model unchanged. Builder: [`scripts/ntl_apex_typography_off_onevar_cpu_20261119.py`](scripts/ntl_apex_typography_off_onevar_cpu_20261119.py). **No development GPU, no Kaggle candidate uploaded or competition submitted, and no new score.**
