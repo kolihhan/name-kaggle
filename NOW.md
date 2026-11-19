@@ -1,3 +1,16 @@
+# NOW — NTL 2026-11-19 (latest completed experiment)
+
+**Official Kaggle Public best remains 0.702**, submission #58514818. Target >=0.720 (gap +0.018). No new Kaggle submission, GPU or independent full-18 transfer result.
+
+## Executed, NOT merely planned: hierarchy+hard-negative five-fold mechanism trial
+
+- [Preregistration](artifacts/research/hier-hardneg-20261119/PREREG.md), [complete scientific result](artifacts/research/hier-hardneg-20261119/RESULT.md), [terminal 5-fold GitHub Action #44477189113](https://github.com/kolihhan/name-kaggle/actions/runs/44477189113) SUCCESS; 15 matched CPU fits, 2699 official TRAIN rows, 150 disjoint prompt groups, 18 classes, no external data.
+- Reused grouped-OOF **Flat C0 = 0.278914**, **hierarchy-only CH = 0.275963**, **hierarchy+hard-negative C1 = 0.273741**. Primary C1−CH **−0.002222 BA** (95% prompt-cluster CI **[−0.006667,+0.002227]**), **18 rescues/24 regressions**, cross-family error 918→921, within-family 1036→1039.
+- **REJECT C1 v0** (predeclared ≥+.03, positive CI, cross-family preservation and within-family rescue requirements all failed). The experiment uses cheap char-TFIDF+SVD256 + trainable 128d MLP; it does not falsify every hierarchical/contrastive approach nor measure any 0.702 incumbent OOF. No future C1 weight/temp/seed sweep on spent folds.
+- **Research pivot, not a new promise to score:** investigate real current 0.702 strong-ensemble *selective inference / disagreement* and whether exact per-stage scores can be read without new model passes. No new dataset search, no weak standalone classifier. Preserve champion until authentic Kaggle verification.
+
+---
+
 # NOW — NTL — 2026-11-19 (Kuala Lumpur)
 
 **Actual official Public BA remains 0.702**, #58514818, improvement +0.011 from previous #58375806 (0.691). Target >=0.720; remaining +0.018. No new official submission or development GPU today.
