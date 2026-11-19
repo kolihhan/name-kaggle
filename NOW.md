@@ -1,3 +1,14 @@
+# NOW — NTL (2026-11-19, Apex forensics completed)
+
+**Authenticated Kaggle Public BA remains 0.702 (#58514818)**, not 0.720; no new official submission, Kaggle GPU or model-quality gain. **Primary science decision: stop the cross-family Apex veto idea; examine true typography-induced flips only with real pre/post stage logits.**
+
+- [Apex typography experiment result](artifacts/research/apex-typography-20261119/RESULT.md) and [terminal CPU Action #44485246316](https://github.com/kolihhan/name-kaggle/actions/runs/44485246316): imported exact 0.702 `pngy_residual.py` after full-code hash verification; `refine` **preserves the four family probability masses** (max numeric discrepancy 8.88e-16) and leaves other classes' scores unchanged.
+- The original Apex typography rules potentially penalize the **true class in 23/216** historical 18-label Oleg rows; **5/216** also had a correct previous frozen 0.691 hard prediction. `" — "` alone accounts for 21 such true-label contradictions. **No actual 0.702 prediction flips measured**: the real Apex is a 0.15 SOFT penalty only when a disallowed proposed label occurs; current 0.702 stage logits/truth missing.
+- **Correction to earlier quick-and-dirty residual pseudo-ablation:** Standalone `argmax(evidence)` is **invalid** because Kimi and Qwen retain default 1.0 evidence while the fitted residual has only four multi-label family heads. Do **not** cite prior `R=12/216`, `P0=13/216`, `P1=87/216` as actual Apex model performance or use them for algorithm selection.
+- **Next needed real evidence:** actual same-row 0.702 `pre_typography` versus `post_typography` predictions with proper logits and reliable truth, preserving the exact strong base/Apex family-score context. Do not submit an unverified no-typography patch, rerun a forbidden exploratory Kaggle GPU, or mine more external corpora. The older Oleg216 is spent, source-constrained, and cannot establish hidden BA improvements.
+
+---
+
 # NTL — 2026-11-19 selective-inference source-path conclusion
 
 **Official best remains Public BA 0.702 (#58514818); target 0.720. No new model training, GPU work or Kaggle submission.**
