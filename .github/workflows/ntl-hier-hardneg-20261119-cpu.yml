@@ -1,0 +1,86 @@
+name: NTL 18-way Hierarchical Hard-Negative 5-fold CPU diagnostic
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-hier-hardneg-20261119-cpu.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  controlled_fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+      PYTHONHASHSEED: "20261119"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /data/train.csv
+            /artifacts/phase1/folds.csv
+            /scripts/ntl_hier_hardneg_20261119.py
+            /scripts/blind_prompt_contrast.py
+            /scripts/audit_lora24_sibling_holdout.py
+            /artifacts/research/hier-hardneg-20261119/PREREG.md
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify frozen source file membership and predeclared protocol
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s data/train.csv
+          test -s artifacts/phase1/folds.csv
+          test -s artifacts/research/hier-hardneg-20261119/PREREG.md
+          python -m py_compile scripts/ntl_hier_hardneg_20261119.py
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          frozen={
+            "data/train.csv":"40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707",
+            "artifacts/phase1/folds.csv":"94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d",
+          }
+          for filename,digest in frozen.items():
+              actual=hashlib.sha256(Path(filename).read_bytes()).hexdigest()
+              if actual!=digest:raise RuntimeError("STOP_FROZEN_DATA_DRIFT:"+filename)
+          print("NTL_HIER_HARDNEG_DATA_FINGERPRINT_PASS=TRUE",flush=True)
+          PY
+      - name: Install pinned CPU scientific dependencies
+        shell: bash
+        run: |
+          python -m pip install -q --disable-pip-version-check numpy==2.3.5 scipy==1.17.0 pandas==2.2.3 scikit-learn==1.8.0 threadpoolctl==3.6.0
+          python -m pip install -q --disable-pip-version-check torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+          python - <<'PY'
+          import torch
+          assert not torch.cuda.is_available(), "CPU-only contract"
+          print("NTL_HIER_HARDNEG_TORCH_CPU="+torch.__version__,flush=True)
+          PY
+      - name: Fit fixed C0 flat, CH hierarchy, C1 hard-negative, five locked prompt folds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u -m scripts.ntl_hier_hardneg_20261119 --output /tmp/ntl-hier-hardneg-summary.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/ntl-hier-hardneg-summary.json'))
+          assert d['rows']==2699 and d['prompts']==150 and d['classes']==18
+          assert set(d['BA'])=={'flat','hier','hardneg'}
+          assert len(d['by_fold'])==5 and len(d['by_true_class'])==18
+          assert d['promotion_allowed'] is False
+          assert d['fixed_training']['no_gpu'] is True
+          assert d['fixed_training']['no_external_data'] is True
+          print("NTL_HIER_HARDNEG_SCIENTIFIC_OUTPUT_CONTRACT_PASS=TRUE",flush=True)
+          PY
+      - name: Publish aggregate-only full result
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-hier-hardneg-aggregate-${{ github.run_id }}
+          path: /tmp/ntl-hier-hardneg-summary.json
+          if-no-files-found: error
+          retention-days: 14
