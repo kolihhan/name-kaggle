@@ -1,49 +1,64 @@
-name: NTL 0.702 Apex and V1 actual decision logic CPU source audit
+name: NTL public forensic EDA source comparison read-only
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
     paths: [.github/workflows/ntl-pro-latest-public-source-distinct-mechanisms-20261116.yml]
 permissions: {contents: read}
 jobs:
-  audit:
+  source_review:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 6
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
     steps:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - name: Examine exact scored Apex/V1/ATLAS decision code, no inference
+      - name: Read and summarize public EDA notebook source, not its datasets or model runs
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           python - <<'PY'
-          import hashlib,json,subprocess,tempfile
+          import json,re,subprocess,tempfile,hashlib
           from pathlib import Path
-          with tempfile.TemporaryDirectory() as root:
-              p=subprocess.run(['kaggle','kernels','pull','kolihhan/ntl-0702-apex-pinned-nov18','-p',root,'-m'],capture_output=True,text=True,timeout=80)
-              if p.returncode:raise RuntimeError('CANNOT_PULL_0702')
-              nb=json.loads(next(Path(root).glob('*.ipynb')).read_text())
-              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source','')) for c in nb['cells'] if c.get('cell_type')=='code']
-              code='\n'.join(cells)
-              assert hashlib.sha256(code.encode()).hexdigest()=='2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc'
-              scopes={}
-              for ic in (15,23,27):
-                  c=cells[ic]
-                  lines=c.splitlines()
-                  if ic==15:
-                      selected=lines[480:616]
-                  elif ic==23:
-                      selected=lines[82:]
-                  else:
-                      selected=lines
-                  scopes[str(ic)]={'name':lines[0].strip()[:80],
-                                  'selected_code':[(i+(480 if ic==15 else 82 if ic==23 else 0)+1,line.strip()[:205])
-                                      for i,line in enumerate(selected)]}
-              print('NTL_APEX702_DIRECT_DECISION_SOURCE='+json.dumps({
-                  'scored_source_sha256':'2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc',
-                  'actual_inference_modules':scopes,
-                  'source_only_no_predictions_no_training_no_gpu_no_submission':True
-              },sort_keys=True),flush=True)
+          ref='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+          with tempfile.TemporaryDirectory() as td:
+            p=subprocess.run(['kaggle','kernels','pull',ref,'-p',td,'-m'],capture_output=True,text=True,timeout=100)
+            if p.returncode:
+                print('NTL_FORENSIC_SOURCE_FETCH_FAIL='+json.dumps({'ref':ref,'exit':p.returncode,'error':p.stderr[-650:],'notebook_unavailable':True}),flush=True)
+                raise SystemExit(0)
+            meta=json.loads((Path(td)/'kernel-metadata.json').read_text())
+            src=Path(td)/meta['code_file']
+            if src.suffix!='.ipynb':
+                print('NTL_FORENSIC_NON_NOTEBOOK='+json.dumps({'file':src.name,'size':src.stat().st_size}),flush=True)
+                raise SystemExit(0)
+            nb=json.loads(src.read_text())
+            counts={'markdown':0,'code':0}
+            snapshots=[]
+            for idx,cell in enumerate(nb.get('cells',[])):
+                typ=cell.get('cell_type')
+                if typ not in counts:continue
+                counts[typ]+=1
+                data=cell.get('source',[])
+                text=''.join(data) if isinstance(data,list) else str(data)
+                if typ=='markdown':
+                    cleaned=re.sub(r'!\[[^\]]*\]\([^)]+\)','[image]',text)
+                    cleaned=re.sub(r'<[^>]{1,150}>',' ',cleaned)
+                    snapshots.append({'i':idx,'type':'markdown','len':len(text),'body':cleaned[:1200]})
+                else:
+                    findings=[]
+                    for line in text.splitlines():
+                        if re.search(r'(?i)(groupby|pivot|corr\(|pvalue|mannwhitney|ttest|chi2|permutation|cross_val|GroupKFold|balanced_accuracy|train_test_split|confusion|word|token|punct|n.gram|styl|family|length|watermark|prompt|question|semantic|feature|cluster|entropy|similarity|analog|topic|bracket|function|freq|lexic|bootstrap|regression|vectorizer|skew|label)',line):
+                            findings.append(line.strip()[:175])
+                    snapshots.append({'i':idx,'type':'code','len':len(text),'first_code_line':text.splitlines()[0][:155] if text.splitlines() else '','interesting_lines':findings[:22]})
+            print('NTL_FORENSIC_NOTEBOOK_CENSUS='+json.dumps({
+                'ref':ref,'title':meta.get('title'),'is_private':meta.get('is_private'),
+                'license':meta.get('license'),'cells':len(nb.get('cells',[])),
+                'source_sha256':hashlib.sha256(src.read_bytes()).hexdigest(),
+                'cell_type_counts':counts,'total_markdown_chars':sum(x['len'] for x in snapshots if x['type']=='markdown'),
+                'total_code_chars':sum(x['len'] for x in snapshots if x['type']=='code'),
+                'no_official_data_fetched':True,'no_execution_training_gpu_or_submission':True
+            },sort_keys=True),flush=True)
+            for item in snapshots:
+                print('NTL_FORENSIC_CELL='+json.dumps(item,ensure_ascii=False,sort_keys=True),flush=True)
           PY
