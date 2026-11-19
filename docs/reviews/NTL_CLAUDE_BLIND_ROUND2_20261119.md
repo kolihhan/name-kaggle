@@ -1,5 +1,12 @@
 # Claude Independent Blind Review — Round 2 (only AFTER Round 1 answer is frozen)
 
+## New independent Round 2 evidence — read BEFORE choosing F2 again
+
+[Read this narrow, independently audited F2 falsification addendum](NTL_CLAUDE_ROUND2_F2_FALSIFICATION_ADDENDUM_20261119.md). The owner's aggregate-only SHA-pinned census verified that the training Cartesian product is real, but Kaggle hidden test has no supplied `prompt_id`; and a separate Kaggle participant publicly reported **Hungarian per-prompt OOF 0.374→0.481, but Public 0.353→0.350**. You MUST compare that direct real-world counterexample with your Round 1 F2 recommendation and probabilities, not ignore it or represent it as proof all group inference fails. State whether F2 remains top priority on *any* materially distinct mechanism, or decisively pivot to another option. Commit to an actual one-experiment execution track.
+
+---
+
+
 You have already written your Round 1 independent diagnosis and ranked methods. **Do not retroactively rewrite that answer.** You may change your mind now, but provide explicit before/after rationale and identify which repository facts actually moved your posterior.
 
 ## Primary sources to inspect, not blindly obey
