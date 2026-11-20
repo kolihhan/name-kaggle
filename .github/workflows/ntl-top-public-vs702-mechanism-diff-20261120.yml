@@ -1,0 +1,63 @@
+name: NTL scored 0.702 versus top public 0.704 source mechanism diff
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-top-public-vs702-mechanism-diff-20261120.yml]
+permissions: {contents: read}
+jobs:
+  code_diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_top_public_kernels_vs_owner702_source_diff_20261120.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Pull 0.702 account-scored and three top public notebook sources (NO inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/top-pull/owner /tmp/top-pull/lightning704 /tmp/top-pull/areeb704 /tmp/top-pull/kiro
+          kaggle kernels pull kolihhan/ntl-0702-apex-pinned-nov18 -p /tmp/top-pull/owner --metadata >/dev/null
+          for item in "lightning704 lightningv08/0-704-glm-fable-routing-qwen3-8-27b-lora" "areeb704 areebbb/0-704-fingerprint-sibling-specialis-reproduces" "kiro lumibee/ntl-kiro-v44-apex-grandmaster"; do
+            set -- $item
+            if timeout 80 kaggle kernels pull "$2" -p "/tmp/top-pull/$1" --metadata >/tmp/pullmsg 2>&1; then
+              echo "NTL_TOP_SOURCE_PULLED=$1:$2"
+            else
+              echo "NTL_TOP_SOURCE_NOT_ACCESSIBLE=$1:$2"
+              cat /tmp/pullmsg | tail -n 3 | cut -c1-300
+            fi
+          done
+          python - <<'PY'
+          import pathlib,hashlib,json
+          root=pathlib.Path('/tmp/top-pull')
+          files={}
+          for dir in root.iterdir():
+              fs=list(dir.glob('*.ipynb'))
+              if len(fs)!=1:
+                  print('NTL_TOP_SOURCE_MISSING='+dir.name,flush=True)
+                  continue
+              blob=fs[0].read_bytes()
+              j=json.loads(blob)
+              cells=[(''.join(c['source']) if isinstance(c.get('source'),list) else str(c.get('source',''))) for c in j.get('cells',[]) if c.get('cell_type')=='code']
+              code='\n'.join(cells)
+              print('NTL_TOP_SOURCE_PIN='+json.dumps({'slug':dir.name,'notebook_sha':hashlib.sha256(blob).hexdigest(),
+                    'code_sha':hashlib.sha256(code.encode()).hexdigest(),'code_cells':len(cells)}),flush=True)
+              files[dir.name]=fs[0]
+          assert 'owner' in files
+          assert hashlib.sha256('\n'.join((''.join(c['source']) if isinstance(c.get('source'),list) else str(c.get('source',''))) for c in json.loads(files['owner'].read_bytes()).get('cells',[]) if c.get('cell_type')=='code').encode()).hexdigest() == '2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc'
+          subprocess=None
+          import subprocess
+          if len(files)<2:raise RuntimeError('NO_COMPARATOR_SOURCE_DOWNLOADED')
+          p=subprocess.run(['python','scripts/ntl_top_public_kernels_vs_owner702_source_diff_20261120.py',str(files['owner']),*(str(files[k]) for k in sorted(files) if k!='owner')],check=True)
+          PY
+      - name: Delete notebook source copies
+        if: always()
+        run: rm -rf /tmp/top-pull
