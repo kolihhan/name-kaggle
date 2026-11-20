@@ -1,3 +1,5 @@
+> **2026-11-20 CORRECTION AFTER SOURCE-DIFF AUDIT:** Describing this fixed-prediction k=2 resampling as a *refutation* of the proposed sparse-prompt re-inference method overstated its information. For fixed row-independent predictions, sampling within prompt groups keeps the expected BA difference approximately unchanged (finite-sample ratio effects aside) and increases estimator variance. The observed fraction selecting Phase7 reflects variance around an already-known Phase15-positive OOF delta, not measured validity of k=2. Neither Phase7 nor Phase15 actually contains group-dependent test inference. [Full phase diff](../phase7-phase15-source-diff-20261120/RESULT.md). No new rerun necessary.
+
 # 2026-11-20 — NTL sparse-prompt k=2: real retrospective paired experiment
 
 ## Verified scientific result
