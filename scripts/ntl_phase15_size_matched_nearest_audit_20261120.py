@@ -29,6 +29,7 @@ EXPECTED_EXT = 26025
 
 def quantiles(values):
     a = np.asarray(values, dtype=np.float32)
+    if not len(a): return None
     return {str(q): round(float(np.quantile(a, q)), 6) for q in (0.1, 0.5, 0.9, 0.99)}
 
 def summarize(rows):
