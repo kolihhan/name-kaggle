@@ -1,0 +1,157 @@
+name: NTL Phase15 Source Matching vs Near Neighbor Audit 20261120
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-phase15-near-neighbor-and-pool-source-once-20261120.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-nearest-source-one-shot-20261120, cancel-in-progress: false}
+jobs:
+  open_pool_inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify current Kaggle Open Pool publication and per-class source counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pyarrow==22.0.0 pandas==2.3.3 numpy==2.3.4
+          echo "NTL_OPEN_POOL_KAGGLE_FILES_BEGIN"
+          kaggle datasets files crtproduction/name-that-llm-open-pool | head -n 32
+          echo "NTL_OPEN_POOL_KAGGLE_FILES_END"
+          mkdir -p /tmp/current-open-pool
+          kaggle datasets metadata crtproduction/name-that-llm-open-pool -p /tmp/current-open-pool -q >/dev/null || echo "NTL_OPEN_POOL_METADATA_COMMAND_NOT_AVAILABLE"
+          kaggle datasets download -d crtproduction/name-that-llm-open-pool -f ntl_open_pool.parquet -p /tmp/current-open-pool --unzip -q >/dev/null
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          import pyarrow.parquet as pq
+          p=Path("/tmp/current-open-pool/ntl_open_pool.parquet")
+          assert p.is_file() and p.stat().st_size>1000000
+          f=pq.ParquetFile(p)
+          cols=f.schema_arrow.names
+          names=[x for x in ["model","label","model_name","source_dataset","source","match_weight","license","license_id","prompt_id","prompt_key"] if x in cols]
+          d=pq.read_table(p,columns=names).to_pandas()
+          out={
+              "dataset":"crtproduction/name-that-llm-open-pool",
+              "current_parquet_rows":f.metadata.num_rows,
+              "current_file_bytes":p.stat().st_size,
+              "selected_field_names":names,
+              "schema_field_names":cols[:55],
+              "sha256":hashlib.file_digest(p.open("rb"),"sha256").hexdigest()
+          }
+          for k in ("model","label","model_name"):
+              if k in d:
+                  out["model_label_field"]=k
+                  out["model_label_count"]=int(d[k].nunique())
+                  out["model_label_rows"]={str(a):int(b) for a,b in d[k].value_counts().sort_index().items()}
+                  break
+          for k in ("source_dataset","source"):
+              if k in d:
+                  out["source_field"]=k
+                  out["distinct_source_values"]=int(d[k].nunique())
+                  break
+          if "match_weight" in d:
+              out["match_weight_nonnull"]=int(d["match_weight"].notna().sum())
+          for k in ("license","license_id"):
+              if k in d:
+                  out["reported_license_values"]={str(a):int(b) for a,b in d[k].astype(str).value_counts().head(10).items()}
+                  break
+          for meta in Path("/tmp/current-open-pool").glob("*.json"):
+              try:
+                  x=json.loads(meta.read_text())
+                  out["kaggle_publisher_metadata_license"]=x.get("licenses",x.get("license"))
+              except Exception:pass
+          print("NTL_OPEN_POOL_CURRENT_VERIFIED="+json.dumps(out,sort_keys=True),flush=True)
+          Path("ntl-open-pool-current-metadata-aggregate.json").write_text(json.dumps(out,indent=2,sort_keys=True)+"\n")
+          PY
+      - name: Erase downloaded current public parquet
+        if: always()
+        run: rm -rf /tmp/current-open-pool
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-open-pool-metadata-only-${{ github.run_id }}
+          path: ntl-open-pool-current-metadata-aggregate.json
+          if-no-files-found: warn
+          retention-days: 10
+  phase15_size_matched_neighbor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Pin CPU dependencies
+        run: |
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 scipy==1.16.3 scikit-learn==1.7.2 pyarrow==22.0.0
+          python -m py_compile scripts/ntl_phase15_size_matched_nearest_audit_20261120.py
+      - name: Download immutable Phase15 source snapshot (not new open pool)
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/p15-neighbor
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/p15-neighbor --unzip -q >/dev/null
+      - name: Measure word TFIDF nearest similarity with 30 same-size null samples
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_phase15_size_matched_nearest_audit_20261120 \
+            --train data/train.csv --folds artifacts/phase1/folds.csv \
+            --pool /tmp/p15-neighbor/pool_v4.parquet \
+            --out ntl-phase15-neighbor-aggregate.json
+      - name: Erase downloaded external snapshot
+        if: always()
+        run: rm -rf /tmp/p15-neighbor
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-phase15-neighbor-aggregate-${{ github.run_id }}
+          path: ntl-phase15-neighbor-aggregate.json
+          if-no-files-found: warn
+          retention-days: 10
+  phase15_external_only_fourview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Pin CPU dependencies
+        run: |
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 scipy==1.16.3 scikit-learn==1.7.2 pyarrow==22.0.0
+          python -m py_compile scripts/ntl_phase15_source_only_vs_official_4view_20261120.py
+      - name: Download immutable Phase15 source
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/p15-external
+          kaggle datasets download -d nishantdahal/ntl-handwriting-blend -f pool_v4.parquet -p /tmp/p15-external --unzip -q >/dev/null
+      - name: External-only 11-class transfer and official-only 18-class OOF with same classifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 python -m scripts.ntl_phase15_source_only_vs_official_4view_20261120 \
+            --train data/train.csv --folds artifacts/phase1/folds.csv \
+            --pool /tmp/p15-external/pool_v4.parquet \
+            --out ntl-phase15-source-ablations-aggregate.json
+      - name: Erase downloaded external snapshot
+        if: always()
+        run: rm -rf /tmp/p15-external
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-phase15-source-only-aggregate-${{ github.run_id }}
+          path: ntl-phase15-source-ablations-aggregate.json
+          if-no-files-found: warn
+          retention-days: 10
