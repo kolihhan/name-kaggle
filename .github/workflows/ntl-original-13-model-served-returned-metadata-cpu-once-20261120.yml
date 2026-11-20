@@ -1,0 +1,45 @@
+name: NTL original producer 13-model per-row generator identity metadata CPU once
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-original-13-model-served-returned-metadata-cpu-once-20261120.yml]
+permissions: {contents: read}
+jobs:
+  generator_route_metadata_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ntl_original_generation_route_verify_cpu_20261120.py
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Pin CPU dependencies and run synthetic parser smoke
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          python -m py_compile scripts/ntl_original_generation_route_verify_cpu_20261120.py
+          python -m scripts.ntl_original_generation_route_verify_cpu_20261120 --self-test
+      - name: Download only original publisher dataset parquet into ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-original-generated-upstream
+          kaggle datasets download -d lxdlxdlxd/ntl-synth-generations-v1 -f generations.parquet \
+            -p /tmp/ntl-original-generated-upstream --unzip -q >/dev/null
+          test -s /tmp/ntl-original-generated-upstream/generations.parquet
+      - name: Read only model identities, generator settings, and original prompt-count metadata
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_original_generation_route_verify_cpu_20261120 \
+            --parquet /tmp/ntl-original-generated-upstream/generations.parquet
+          echo NTL_NO_GENERATED_TEXT_READ_NO_NEW_TRAINING_OR_SUBMISSION=TRUE
+      - name: Erase original dataset in public CI
+        if: always()
+        run: rm -rf /tmp/ntl-original-generated-upstream
