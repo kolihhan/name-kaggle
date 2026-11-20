@@ -1,0 +1,62 @@
+name: NTL dominant public dataset metadata structure read-only v2
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-4270-source-metadata-structure-v2-once-20261120.yml]
+permissions: {contents: read}
+jobs:
+  verify_public_source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Inspect original public producer metadata generated file structure ONLY
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-4270-upstream
+          python - <<'PY'
+          import subprocess,json
+          from pathlib import Path
+          d="lxdlxdlxd/ntl-synth-generations-v1"
+          root=Path("/tmp/ntl-4270-upstream")
+          p=subprocess.run(["kaggle","datasets","metadata","-d",d,"-p",str(root)],
+                           capture_output=True,text=True,timeout=90)
+          safe={"metadata_cli_exit":p.returncode,
+                "metadata_file_names":[x.name for x in root.iterdir() if x.is_file()],
+                "metadata_json_files":[],
+                "original_dataset_license_and_generator_rights_verified":False}
+          for file in root.glob("*.json"):
+              try:obj=json.loads(file.read_text())
+              except Exception:
+                  safe["metadata_json_files"].append({"filename":file.name,"parseable":False})
+                  continue
+              if isinstance(obj,dict):
+                  view={"filename":file.name,"keys":sorted(obj.keys())}
+                  for k in ("title","subtitle","id","slug","ownerSlug","license","licenses","description"):
+                      if k in obj:
+                          val=obj[k]
+                          if k=="description":
+                              view["description_chars"]=len(str(val))
+                              view["description_mentions_original_generator_route"]=bool(
+                                  any(z in str(val).lower() for z in ("openrouter","vertex","provider","served","api","route")))
+                          elif k in ("license","licenses"):
+                              view[k]=str(val)[:140]
+                          else:view[k]=str(val)[:100]
+                  safe["metadata_json_files"].append(view)
+          # Public source file names but not example text or prompts.
+          p2=subprocess.run(["kaggle","datasets","files","-d",d],capture_output=True,text=True,timeout=90)
+          safe["files_cli_exit"]=p2.returncode
+          safe["public_file_names_from_cli"]=[
+              line.strip().split()[0][:85] for line in p2.stdout.splitlines()[2:30]
+              if line.strip()][:25]
+          safe["no_example_download_no_training_no_gpu_no_submit"]=True
+          print("NTL_4270_PUBLIC_UPSTREAM_METADATA_STRUCTURE="+json.dumps(safe,sort_keys=True))
+          PY
+      - name: Erase metadata
+        if: always()
+        run: rm -rf /tmp/ntl-4270-upstream
