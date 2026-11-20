@@ -1,0 +1,103 @@
+name: NTL primary 4270 source generator code and README audit one-shot
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-primary-4270-generator-source-audit-20261120.yml]
+permissions: {contents: read}
+jobs:
+  source_provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Download only README and generator code from original public source, NOT example passages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-original-code
+          kaggle datasets metadata -d lxdlxdlxd/ntl-synth-generations-v1 -p /tmp/ntl-original-code >/dev/null
+          for path in README.md code/code/generate.py code/code/providers.py code/code/prompts.py; do
+            kaggle datasets download -d lxdlxdlxd/ntl-synth-generations-v1 -f "$path" -p /tmp/ntl-original-code --unzip -q >/dev/null || {
+               echo "ORIGINAL_SOURCE_CODE_FILE_FETCH_UNAVAILABLE";exit 1;
+            }
+          done
+      - name: Inspect generation route and license evidence using local code only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast,json,re,hashlib
+          from pathlib import Path
+          root=Path("/tmp/ntl-original-code")
+          report={"upstream":"lxdlxdlxd/ntl-synth-generations-v1",
+                  "downloaded_only_readme_and_code":True,
+                  "no_generated_example_download":True,
+                  "generator_claim_not_independently_routed_API_observation":True}
+          meta=json.loads((root/"dataset-metadata.json").read_text())
+          info=meta.get("info",{})
+          report["metadata_info_keys"]=sorted(info.keys())
+          for k in ("title","subtitle","description","licenses","keywords","id","slug"):
+              if k in info:
+                  val=info[k]
+                  if k=="description":
+                      report["metadata_description_characters"]=len(str(val))
+                      report["metadata_description_generation_terms"]={
+                          x: x in str(val).lower() for x in ("api","route","generate","license","model","provider")
+                      }
+                  else:report["meta_"+k]=str(val)[:200]
+          paths=list(root.rglob("*.py"))
+          code_report={}
+          for p in paths:
+              if p.name not in ("generate.py","providers.py","prompts.py"):continue
+              content=p.read_text(errors="replace")
+              checks={
+                 "openai":r"openai|api\.openai\.com",
+                 "openrouter":r"openrouter",
+                 "anthropic":r"anthropic|claude",
+                 "google_gemini":r"google|gemini|vertex",
+                 "zai_glm":r"zai|glm-",
+                 "kimi_moonshot":r"kimi|moonshot",
+                 "huggingface":r"huggingface|transformers",
+                 "response_model_identity":r"response\.model|response\.get\(\s*['\"]model['\"]|served_model",
+                 "fallback_routing":r"fallback|retry_provider|router",
+                 "declared_model_labels":r"model_names|model_aliases|model_ids|MODEL_MAP",
+                 "provider_choice":r"provider|endpoint|base_url",
+                 "api_key_expected":r"api_key|api.token|authorization",
+              }
+              code_report[p.name]={
+                 "sha256":hashlib.sha256(content.encode()).hexdigest(),
+                 "lines":len(content.splitlines()),
+                 "syntax_parseable":True,
+                 "features":{k:bool(re.search(v,content,re.I)) for k,v in checks.items()}
+              }
+              try:
+                  parsed=ast.parse(content)
+                  code_report[p.name]["top_level_definitions"]=[
+                      n.name for n in parsed.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))][:28]
+              except SyntaxError:code_report[p.name]["syntax_parseable"]=False
+          report["generator_code"]=code_report
+          readmes=list(root.rglob("README.md"))
+          report["readme_found"]=bool(readmes)
+          if readmes:
+              lines=readmes[0].read_text(errors="replace").splitlines()
+              report["readme_lines"]=len(lines)
+              report["readme_sha256"]=hashlib.sha256("\n".join(lines).encode()).hexdigest()
+              report["readme_section_titles"]=[line[:110] for line in lines if line.lstrip().startswith("#")][:30]
+              # Public human-authored README lines, bounded and skip any apparent keys/tokens.
+              matched=[line.strip() for line in lines
+                  if re.search(r"license|attribution|api|provider|generation|serv(?:ed|ing)|fallback|model route|reproducib|output rights|prompt",line,re.I)
+                  and not re.search(r"secret|bearer|[A-Za-z0-9_-]{40,}",line,re.I)]
+              report["readme_provenance_short_quotes"]=[s[:160] for s in matched[:12]]
+          report["original_API_outputs_cryptographically_verified"]=False
+          report["training_allowed_after_this_audit"]=False
+          report["no_gpu_no_training_no_submission"]=True
+          print("NTL_4270_ORIGINAL_GENERATOR_EVIDENCE="+json.dumps(report,sort_keys=True))
+          PY
+      - name: Clean up original public docs and code
+        if: always()
+        run: rm -rf /tmp/ntl-original-code
