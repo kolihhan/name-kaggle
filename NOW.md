@@ -1,3 +1,9 @@
+# 2026-11-20 17:28 MYT — Host-match proxy source-locked CPU audit completed
+
+**Actual experiment [GHA #44710955318](https://github.com/kolihhan/name-kaggle/actions/runs/44710955318): SUCCESS.** Exact 231,036-row Open Pool SHA pinned; reconstructed 8,347-row external train/1,800 held-source valid. Matched high-weight 2,095 vs equal-N random 2,095 **with identical (source,label) counts**; match_weight median 1.8301 vs 0.8722. Publisher-source eta² 0.013801. **25% high-weight subset fails strict 18-label sufficiency:** 11 labels <100 rows, 7 labels <2 training sources. No model BA, GPU, or Kaggle submit. See [full result](artifacts/research/ntl-hostmatch-source-locked-20261120/RESULT.md). **NEXT research hypothesis:** preserve full 8,347-row 18-label cohort, compare uniform vs within-source/label match-weighted exposures on same capable trainable model only after original rights/serving-route checks; no blind 1.7B PC-CL rerun. Official incumbent 0.702 unchanged.
+
+---
+
 # 2026-11-20 15:53 MYT — Actual first PC-CL QLoRA complete; matched CPU source learnability falsifier
 
 **DECISION: REJECT frozen 160-step PC-CL v0; PIVOT from loss tweaking to training sufficiency/source transfer.** [Full real result and follow-up](artifacts/research/ntl-pccl-20261120/RESULT.md). Authentic owner Colab T4 Qwen3-1.7B 4-bit r8 **same training batches and budget**: CE **0.078889**, CE+2×2 prompt-controlled InfoNCE **0.071667**, Δ **−0.007222**, 95% paired cluster CI **[−0.018839,+0.004112]**, rescues **62**, regressions **75**, 18 labels/1,800 external source-disjoint validation. [GHA #44683814370](https://github.com/kolihhan/name-kaggle/actions/runs/44683814370) **SUCCESS; real GPU weights optimized, Colab released; no official Kaggle scoring.** 160 steps × 4 = 640 presentations, only 13 classes present in real prompt rectangles; 12/120 rectangles cross training sources. Controls weak and under-exposed: do NOT claim this disproves Contrastive Learning generally.
