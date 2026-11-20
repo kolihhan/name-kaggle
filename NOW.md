@@ -1,3 +1,11 @@
+# 2026-11-20 12:25 MYT — live Kaggle ranking target corrected
+
+**Official authenticated Public leaderboard [Actions #44674191096](https://github.com/kolihhan/name-kaggle/actions/runs/44674191096) SUCCESS:** top 1 **0.776**, top 10 cutoff **0.761**, top20 cutoff **0.751**. Owner frozen **#58514818 COMPLETE 0.702**, **gap to current top10 = 0.059 BA**. 23 account submissions returned, 0 pending. This API returns 20 teams, **owner exact rank unknown**. Do NOT tell owner 0.702 is already near top10; earlier 0.692 top10 anecdote is stale. [Full authenticated decision memo](artifacts/research/ntl-live-lb-submission-priority-20261120/RESULT.md).
+
+**Diagnostic submissions decision:** Phase14 0.4178 OOF includes publisher/provider-terms-excluded external Gemini/GLM/Kimi; do not Kaggle-submit without original-source rights review. Official-only Phase15-recipe 0.374857 true grouped OOF (historical CPU) remains **Public UNKNOWN**, but Phase7 Public 0.369 uses different architecture and cannot predict its hidden score. Two ~0.36–.42 SVM submissions do not address owner's gap to 0.761, and one-shot score noise means they would be weak causal evidence. **No NTL submission made**. Strong 0.702 ensemble still lacks fold-lineage-clean full OOF, so do not claim cheap existing-model complementarity from old 347-row/Phase15 data.
+
+---
+
 # 2026-11-20 11:35 MYT — Phase15 near-leak and Open Pool source-risks: real CPU outcomes
 
 **New completed independent source checks:** [Full read-only/CPU report](artifacts/research/ntl-phase15-neighbor-pool-provenance-20261120/RESULT.md), and source [GHA #44667515988](https://github.com/kolihhan/name-kaggle/actions/runs/44667515988), near [GHA #44667893709](https://github.com/kolihhan/name-kaggle/actions/runs/44667893709), weak7 [GHA #44668450000](https://github.com/kolihhan/name-kaggle/actions/runs/44668450000). The first combined workflow overall failure was **only a missing-label empty-quantile reporting bug** in its near-neighbor job, patched and successfully re-executed once; source-only CPU and live Open Pool inventory jobs succeeded without reruns.
