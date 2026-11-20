@@ -1,0 +1,21 @@
+name: NTL contextual word-choice provenance CPU gate
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - scripts/ntl_context_wordchoice_gate_20261121.py
+      - .github/workflows/ntl-wordchoice-gate.yml
+  workflow_dispatch:
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Exact committed file self-test, including leakage fixtures
+        run: python scripts/ntl_context_wordchoice_gate_20261121.py
