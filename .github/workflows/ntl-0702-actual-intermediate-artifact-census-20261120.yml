@@ -1,0 +1,28 @@
+name: NTL 0702 full champion intermediate logits reuse census Nov20
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-0702-actual-intermediate-artifact-census-20261120.yml]
+permissions: {contents: read}
+jobs:
+  read_output:
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Read actual 0702 and 0704 output-file manifest without GPU/inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          for slug in kolihhan/ntl-0702-apex-pinned-nov18 lightningv08/0-704-glm-fable-routing-qwen3-8-27b-lora; do
+            echo "NTL_CHAMPION_FILES_BEGIN=$slug"
+            kaggle kernels status "$slug" | tail -n 5
+            kaggle kernels files "$slug" --page-size 200 -v | head -n 65
+            echo "NTL_CHAMPION_FILES_END=$slug"
+          done
+          echo NTL_CHAMPION_INTERMEDIATE_FILE_REUSE_CHECK_COMPLETE=TRUE
