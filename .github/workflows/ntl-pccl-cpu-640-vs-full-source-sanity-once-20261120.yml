@@ -1,0 +1,58 @@
+name: NTL PCCL one-shot real CPU SVM learnability 640 vs 8347 20261120
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pccl-cpu-640-vs-full-source-sanity-once-20261120.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-pccl-posthoc-svm-20261120, cancel-in-progress: false}
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ntl_pccl_18source_prepare_20261120.py
+            scripts/ntl_pccl_source_holdout_svm_sanity_20261120.py
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Pin CPU libraries and check pure Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 scipy==1.16.3 scikit-learn==1.7.2 pyarrow==22.0.0
+          python -m py_compile scripts/ntl_pccl_18source_prepare_20261120.py scripts/ntl_pccl_source_holdout_svm_sanity_20261120.py
+      - name: Materialize same source pool sha and exact 2x2 pilot cohort
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-pccl-reference-input
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/ntl-pccl-reference-input --unzip -q >/dev/null
+          done
+          python -m scripts.ntl_pccl_18source_prepare_20261120 --input /tmp/ntl-pccl-reference-input --output /tmp/ntl-pccl-reference-frozen
+      - name: One real post-hoc source-generalization test on fixed 640 and all 8347 (NO parameter tuning)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_pccl_source_holdout_svm_sanity_20261120 \
+            --input /tmp/ntl-pccl-reference-frozen --out ntl-pccl-svm-640-vs8347-aggregate.json
+      - name: Delete downloaded pool/text/private corpus
+        if: always()
+        run: rm -rf /tmp/ntl-pccl-reference-input /tmp/ntl-pccl-reference-frozen
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-pccl-cpu-same640-vs-full8347-${{ github.run_id }}
+          path: ntl-pccl-svm-640-vs8347-aggregate.json
+          if-no-files-found: warn
+          retention-days: 10
