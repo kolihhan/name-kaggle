@@ -20,7 +20,7 @@ jobs:
           test -n "${KAGGLE_API_TOKEN:-}"
           python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
           mkdir -p /tmp/ntl-public-lb
-          kaggle competitions leaderboard name-that-llm -d -p /tmp/ntl-public-lb -q
+          kaggle competitions leaderboard name-that-llm --show --csv > /tmp/ntl-public-lb/top.csv
           kaggle competitions submissions name-that-llm -v > /tmp/ntl-current-subs.csv
           python - <<'PY'
           import csv,glob,json,os
@@ -29,7 +29,9 @@ jobs:
           if not paths:raise RuntimeError('OFFICIAL_LEADERBOARD_CSV_MISSING')
           p=Path(paths[0])
           with p.open(encoding='utf-8-sig',newline='') as f: rows=list(csv.DictReader(f))
-          if len(rows)<10:raise RuntimeError('LEADERBOARD_TOO_SHORT')
+          if len(rows)<10:
+              print('NTL_LEADERBOARD_FAILED_CSV_HEAD='+repr(p.read_text()[:700]),flush=True)
+              raise RuntimeError('LEADERBOARD_TOO_SHORT')
           print('NTL_OFFICIAL_LB_CSV_COLUMNS='+repr(list(rows[0])),flush=True)
           cols=list(rows[0])
           score=next((c for c in cols if c.lower() in ('score','publicscore')),None)
@@ -43,7 +45,7 @@ jobs:
           target=.702
           near=[x for x in result if abs(x[1]-target)<.001]
           print('NTL_LIVE_LB_SCORE_ONLY='+json.dumps({
-             'number_of_teams':len(result),
+             'number_of_returned_rank_rows':len(result),
              'top10_scores':[round(x[1],5) for x in result[:10]],
              'top10_threshold':round(result[9][1],5),
              'median_of_top20':round(result[19][1],5) if len(result)>=20 else None,
