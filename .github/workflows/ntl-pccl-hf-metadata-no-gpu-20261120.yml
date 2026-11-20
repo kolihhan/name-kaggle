@@ -30,4 +30,13 @@ jobs:
              'card_to_dict_license':(card.to_dict().get('license') if card is not None else None),
              'top_level_license_tags':[s for s in (info.tags or []) if str(s).startswith('license:')]}
           print('NTL_PCCL_HF_PINNED_METADATA='+json.dumps(r,sort_keys=True),flush=True)
+          from huggingface_hub import hf_hub_download
+          from pathlib import Path
+          p=Path(hf_hub_download(model,'README.md',revision=revision))
+          s=p.read_text(encoding='utf-8')
+          lines=[line.strip() for line in s.splitlines() if 'licens' in line.lower() or 'apache' in line.lower()]
+          print('NTL_PCCL_PINNED_README_LICENSE_EVIDENCE='+json.dumps({
+            'readme_bytes':len(s.encode()),'license_lines':lines[:9],
+            'readme_sha256':__import__('hashlib').sha256(s.encode()).hexdigest(),
+          },sort_keys=True),flush=True)
           PY
