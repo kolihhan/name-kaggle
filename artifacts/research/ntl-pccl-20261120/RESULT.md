@@ -42,6 +42,30 @@ Crucial per-label BA shifts (all labels have 100 validation examples):
 
 These limitations were present in preregistration or deterministic batch schedule, not discovered after selecting a better loss weight. **No weight/temperature/seed tuning** is authorized based on these results.
 
+## 2026-11-20 15:53 MYT follow-up — **ACTUAL post-hoc CPU reference, no new QLoRA**
+
+[GitHub Actions #44698095061](https://github.com/kolihhan/name-kaggle/actions/runs/44698095061) **completed SUCCESS** (artifact `ntl-pccl-cpu-same640-vs-full8347-44698095061`). Existing fixed [reference script](../../../scripts/ntl_pccl_source_holdout_svm_sanity_20261120.py) was run once, with no hyperparameter search, external new data, GPU, or Kaggle submission. Original SHA-pinned external pool was rematerialized ephemerally and its `train.parquet`, `valid.parquet` and `batches.json` were **fingerprint-checked** before training. All raw texts and data copies deleted from the public Action work area.
+
+| True evaluated model | Training exposures | Distinct texts if available | Source-disjoint 18-label BA | Correct of 1,800 |
+|---|---:|---:|---:|---:|
+| Qwen3-1.7B CE QLoRA (previous matched T4) | 640 | ≤640 | 0.078889 | 142 |
+| Qwen3-1.7B CE+PC-CL QLoRA (previous matched T4) | same 640 | same | 0.071667 | 129 |
+| **TF-IDF char+word LinearSVC on exactly same batch presentations** | **640** | **532** | **0.122778** | **221** |
+| **Same frozen TF-IDF+LinearSVC on complete allowed train** | **8,347** | — | **0.216111** | **389** |
+
+This is a reference comparison, **not a causal attribution of the 0.137 BA gap to training steps**: moving from QLoRA to SVM changes representation, training method, and optimization; moving SVM640→SVM8347 changes sample coverage. It cannot isolate the effect of more QLoRA steps or confirm that source shift is the only bottleneck. Nevertheless **the data are not inherently random-label/wholly unlearnable**: even a simple supervised method extracts transferable source-disjoint signal. On the **same very limited 640 samples** the SVM already beats the 160-step QLoRA CE, so QLoRA baseline is **undertrained/under-exposed or otherwise ineffective in this pilot regime**.
+
+Source-specific SVM full train macro Recall among available labels: `alperen5252525/ntl-vertex-gemini-proxy-gpt-generations` **0.318979** (4 classes); `arxitekton/ntl-claude-gen-v1` **0.205209** (16 classes); `kenandemirci/ntl-glm-gemini-generations` **0.178836** (5 classes). These are NOT full 18-label BA per-source and have unequal class supports. Contrast with SVM640 0.136583 / 0.133915 / 0.218254 on the same respective sources. Only three published validation sources exist, so none certifies the actual competition host.
+
+### Updated model-class decision (required research-doctrine pivot)
+
+1. **Keep PC-CL v0 rejected**: actual paired 160-step C1−C0 was **−0.007222**, CI crosses zero. No loss-weight, temperature or seed sweep on this spent heldout.
+2. **Retire the incorrect inference that any contrastive method is disproved**: the CE control is ~0.079 BA, only 640 presentations/532 unique texts, with 13 contrastive-eligible labels and 10% cross-source matched pairs. Under these conditions the pilot is a training-regime falsification, not a capacity-limit measurement.
+3. **Global bottleneck remains unresolved**: inefficient/imbalanced QLoRA exposure, source/served-model mismatch, and weak 18-way identity signal could coexist. SVM full transfer 0.216111 suggests real but limited source-distinct learnability. The old 0.702 Public champion remains on entirely different hidden data; its complementarity with this experiment is UNKNOWN.
+4. **Next hypothesis when a materially new test budget is justified:** one **CE-only, fully class-covered** 1.7B QLoRA reference with fixed longer balanced training and an unseen *new source* evaluation, compared to the **0.216111 SVM full-data reference** for basic training sufficiency; only revisit prompt-controlled contrastive if CE can itself learn competitive signal. This is a *prospective possible new study*, NOT an authorized immediately repeated run or frozen numeric improvement. Do not count 0.216 against 0.702 as paired evidence.
+5. Per the user's **two-informative-tests/pivot agreement**, stop the current PC-CL v0 lane after **the actual CE vs CE+PC-CL paired GPU test and this CPU SVM exposure check**; reconsider data/representation rather than issuing another V1/V2 training tweak on the same split.
+
+
 ## Recommendation after the real negative
 
 - Per predeclared rule `C1−C0 ≤0`: **REJECT PC-CL v0** on this cohort. Do not run Qwen3-8B PC-CL, add a shuffled third training arm, or submit to Kaggle on this evidence.
