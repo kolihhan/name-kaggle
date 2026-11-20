@@ -279,9 +279,28 @@ def main():
     if not all(p.is_file() for p in (TRAIN,VALID,BATCHES,MANIFEST)):
         raise RuntimeError("MISSING_OWNER_PRIVATE_REMOTE_DATA")
     infonce_selftest()
-    info=HfApi().model_info(BASE,revision=REVISION)
-    if info.sha!=REVISION or getattr(info.card_data,"license",None)!="apache-2.0":
-        raise RuntimeError("PINNED_APACHE_BACKBONE_NOT_VERIFIED")
+    api=HfApi()
+    info=api.model_info(BASE,revision=REVISION,files_metadata=True)
+    head=api.model_info(BASE,files_metadata=True)
+    def safetensors_hashes(item):
+        return {s.rfilename:getattr(s.lfs,"sha256",None)
+                for s in (item.siblings or [])
+                if s.rfilename.endswith(".safetensors") and s.lfs is not None}
+    old_blobs=safetensors_hashes(info)
+    head_blobs=safetensors_hashes(head)
+    # The original 658b6ee revision has no parsed card license metadata,
+    # but the current official Apache-2.0 model card explicitly licenses the
+    # IDENTICAL weight blob. SHA-check across revisions, never silently update
+    # model parameters or trust an arbitrary unlicensed revision.
+    if (info.sha!=REVISION
+        or getattr(head.card_data,"license",None)!="apache-2.0"
+        or not old_blobs or old_blobs!=head_blobs
+        or old_blobs.get("model.safetensors")!="6df85b39330e5a425ee36253d0f894e4387e4f0a15b9c53cb467d668e6b3a841"):
+        raise RuntimeError("PINNED_APACHE_BACKBONE_WEIGHT_EQUIVALENCE_FAILED")
+    print("NTL_PCCL_REVISION_PINNED_LICENSE_EQUIVALENCE_VERIFIED="+json.dumps({
+        "old_sha":REVISION,"current_card_license":"apache-2.0",
+        "exact_safetensors_sha":old_blobs["model.safetensors"]
+    },sort_keys=True),flush=True)
     man,train,valid,plan=load()
     labels=man["labels"]
     tokenizer=AutoTokenizer.from_pretrained(BASE,revision=REVISION,
