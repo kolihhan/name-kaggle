@@ -1,0 +1,49 @@
+name: NTL PC-CL original eight sources and rights inventory CPU once
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pccl-original-sources-rights-cpu-once-20261120.yml]
+permissions: {contents: read}
+jobs:
+  source_manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ntl_pccl_18source_prepare_20261120.py
+            scripts/ntl_pcc_lawful_source_manifest_20261120.py
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Syntax-check and install CPU-only pinned dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0
+          python -m py_compile scripts/ntl_pcc_lawful_source_manifest_20261120.py
+      - name: Download frozen original public open-pool snapshot
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-pccl-rights
+          for file in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$file" -p /tmp/ntl-pccl-rights --unzip -q >/dev/null
+          done
+      - name: Identify source publishers, observed label support and reported license only
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_pcc_lawful_source_manifest_20261120 --root /tmp/ntl-pccl-rights --out ntl-original-source-safe.json
+      - name: Securely remove raw published example files
+        if: always()
+        run: rm -rf /tmp/ntl-pccl-rights
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-pccl-original-sources-safe-${{ github.run_id }}
+          path: ntl-original-source-safe.json
+          if-no-files-found: warn
+          retention-days: 10
