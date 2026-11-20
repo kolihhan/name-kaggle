@@ -6,7 +6,7 @@
 >
 > **Research branch:** `research/attribution-bottleneck-review-20261106`
 >
-> **Latest observer handoff:** [`docs/observer/2026-11-21-independent-review.md`](docs/observer/2026-11-21-independent-review.md)
+> **Latest observer handoff:** [`docs/observer/2026-11-21-ntl-0702-champion-audit-addendum.md`](docs/observer/2026-11-21-ntl-0702-champion-audit-addendum.md) (read together with the [original 2026-11-21 review](docs/observer/2026-11-21-independent-review.md)).
 >
 > **True objective:** increase official 18-class Kaggle Public/Private Balanced Accuracy toward **0.76+**; benchmark all changes against the *current verified strongest ensemble*, not a convenient weak pipeline.
 
