@@ -33,7 +33,7 @@ jobs:
           usable=raw_lb.splitlines()
           starts=[i for i,line in enumerate(usable) if ',' in line and 'score' in line.lower() and ('team' in line.lower() or 'rank' in line.lower())]
           if not starts:raise RuntimeError('LEADERBOARD_CSV_HEADER_NOT_DISCOVERED')
-          rows=list(csv.DictReader(io.StringIO('\\n'.join(usable[starts[0]:]))))
+          rows=list(csv.DictReader(io.StringIO(chr(10).join(usable[starts[0]:]))))
           if len(rows)<10:
               print('NTL_LEADERBOARD_FAILED_CSV_HEAD='+repr(p.read_text()[:700]),flush=True)
               raise RuntimeError('LEADERBOARD_TOO_SHORT')
