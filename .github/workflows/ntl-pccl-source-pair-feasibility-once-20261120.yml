@@ -1,0 +1,69 @@
+name: NTL PCCL real 18-class prompt-rectangle feasibility ONLY Nov20
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pccl-source-pair-feasibility-once-20261120.yml]
+permissions: {contents: read}
+jobs:
+  cpu_preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ntl_pccl_18source_prepare_20261120.py
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Verify rectangular batch logic without external data
+        run: |
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0
+          python -m scripts.ntl_pccl_18source_prepare_20261120 --self-test
+      - name: Download current Kaggle Open Pool SHA-pinned dataset (CPU ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/prompt-contrast-input
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/prompt-contrast-input --unzip -q >/dev/null
+          done
+      - name: Check two-prompt two-model rectangles and disjoint full18 holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_pccl_18source_prepare_20261120 --input /tmp/prompt-contrast-input --output /tmp/ntl-pccl-prepared
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/ntl-pccl-prepared/manifest.json').read_text())
+          assert r['source_disjoint'] and r['prompt_content_disjoint'] and r['external_only']
+          assert r['batch_info']['rectangle_eligible_label_count']>=12
+          assert r['steps_each_arm']==160
+          safe={'prepared_train_rows':r['train_rows'],'prepared_valid_rows':r['valid_rows'],
+                'per_label_valid':r['valid_label_counts'],
+                'batch_info':r['batch_info'],
+                'source_hash':r['source_pool_sha256'],
+                'train_file_sha':r['train_sha256'],
+                'valid_file_sha':r['valid_sha256'],
+                'schedule_sha':r['batches_sha256'],
+                'train_source_count':len(r['train_sources']),
+                'valid_source_count':len(r['valid_sources']),
+                'pass':True}
+          Path('ntl-pccl-feasibility-aggregate.json').write_text(json.dumps(safe,sort_keys=True,indent=2))
+          print('NTL_PCCL_FROZEN_RISK_CONTROL=PASS',flush=True)
+          PY
+      - name: Immediately erase downloaded public texts and private training parquet
+        if: always()
+        run: rm -rf /tmp/prompt-contrast-input /tmp/ntl-pccl-prepared
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-pccl-feasibility-aggregate-${{ github.run_id }}
+          path: ntl-pccl-feasibility-aggregate.json
+          retention-days: 10
+          if-no-files-found: warn
