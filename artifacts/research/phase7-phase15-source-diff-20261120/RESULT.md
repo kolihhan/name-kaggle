@@ -65,6 +65,20 @@ Per-class source: [Phase 7 pinned aggregate](../../artifacts/phase7/gated_specia
 
 Phase14→15 **does** hold architecture fixed and drop only provider-terms-blocked external classes: OOF goes **0.417810→0.405322** (−0.012488). No authenticated Phase14 Public receipt exists in the cited records; do not use this contrast to explain Phase15's Public gap.
 
+## Stronger existing quasi-controlled contrast: Phase14→Phase15 external-data exclusion
+
+**More informative than the Phase7→15 broad diff.** Original recorded Phase14 and Phase15 use the **same frozen four-view TF-IDF + LinearSVC configuration and official 150-prompt grouped folds**; Phase15 makes one pre-declared provider-terms eligibility intervention: drop **17,756 external rows across exactly seven class labels** from Phase14's 43,781 rows, leaving 26,025 rows and 11 labels. This changes the fitted vocabulary/class coefficients as an intended downstream consequence; no inference-group or postprocess change.
+
+- Overall macro OOF BA **0.417810→0.405322**, Δ=**−0.012488**.
+- Seven **removed-support** classes: mean per-label recall Δ=**−0.192381**.
+- Eleven **retained-support** classes: mean per-label recall Δ=**+0.101989**.
+- Class-specific **Phase14→Phase15**: GLM-5.3-Flash **0.393→0.013 (−0.380)**; Gemini-3.6-Flash **0.653→0.333 (−0.320)**; Gemini-3.8-Flash **0.653→0.353 (−0.300)**; GLM-5.3 **0.213→0.020 (−0.193)**; Kimi-K3 **0.207→0.047 (−0.160)**. Gemini-3.7-Flash, also removed, increases **0.273→0.327 (+0.053)**, showing *not all* excluded labels decline.
+- Prominent retained-support increases include Claude Fable5 **0.087→0.369 (+0.282)**, Claude Opus4.8 **0.227→0.433 (+0.207)**, and Claude Opus5 **0.500→0.707 (+0.207)**.
+
+Original pinned records: [Phase14 aggregate](../../phase14/public_sparse.json), [Phase15 aggregate](../../phase15/terms_clean_sparse.json), [frozen provider-terms rationale](../../phase15/TERMS_AUDIT.md).
+
+**Interpretation:** Removing exactly those external examples has a strong, measurable class-conditional impact on the historical source-constrained OOF. This is *not evidence* of what Phase15's unknown hidden-test class errors are, nor how much of its **0.048322** OOF/Public discrepancy follows from this mechanism. **Phase14 has no authenticated Public-score counterpart in our evidence**, so its official generalization change is unknown. It would also be incorrect to re-admit provider-terms-blocked rows based on a favorable OOF result. The remaining useful hypothesis is missing *lawfully sourced, genuinely host-matched* support for particular labels, combined with possible non-target class decision boundary shifts. Avoid repeated model selection on these already-used 150 prompts.
+
 ## Leak hypothesis: already tested, narrower than “not leaking”
 
 [Actual Phase15 external-vs-official audit, Actions #44213134245](https://github.com/kolihhan/name-kaggle/actions/runs/44213134245) confirmed:
