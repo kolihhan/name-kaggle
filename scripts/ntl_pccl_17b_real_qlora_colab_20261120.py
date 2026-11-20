@@ -230,7 +230,7 @@ def paired_credible(valid,y,a,b,labels):
     rescued=int((~correct0&correct1).sum())
     regressed=int((correct0&~correct1).sum())
     delta_by_label={
-        lab:round(float((correct1[y==k]-correct0[y==k]).mean()),6)
+        lab:round(float((correct1[y==k].astype(np.int8)-correct0[y==k].astype(np.int8)).mean()),6)
         for k,lab in enumerate(labels)}
     # Prompt-cluster bootstrap stratified by the three held-out publisher sources.
     rng=np.random.default_rng(SEED)
