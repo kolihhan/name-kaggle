@@ -23,12 +23,17 @@ jobs:
           kaggle competitions leaderboard name-that-llm --show --csv > /tmp/ntl-public-lb/top.csv
           kaggle competitions submissions name-that-llm -v > /tmp/ntl-current-subs.csv
           python - <<'PY'
-          import csv,glob,json,os
+          import csv,glob,json,os,io
           from pathlib import Path
           paths=glob.glob('/tmp/ntl-public-lb/*.csv')
           if not paths:raise RuntimeError('OFFICIAL_LEADERBOARD_CSV_MISSING')
           p=Path(paths[0])
-          with p.open(encoding='utf-8-sig',newline='') as f: rows=list(csv.DictReader(f))
+          raw_lb=p.read_text(encoding='utf-8-sig')
+          print('NTL_LIVE_LB_RAW_FIRST_LINES='+repr(raw_lb.splitlines()[:5])[:1100],flush=True)
+          usable=raw_lb.splitlines()
+          starts=[i for i,line in enumerate(usable) if ',' in line and 'score' in line.lower() and ('team' in line.lower() or 'rank' in line.lower())]
+          if not starts:raise RuntimeError('LEADERBOARD_CSV_HEADER_NOT_DISCOVERED')
+          rows=list(csv.DictReader(io.StringIO('\\n'.join(usable[starts[0]:]))))
           if len(rows)<10:
               print('NTL_LEADERBOARD_FAILED_CSV_HEAD='+repr(p.read_text()[:700]),flush=True)
               raise RuntimeError('LEADERBOARD_TOO_SHORT')
