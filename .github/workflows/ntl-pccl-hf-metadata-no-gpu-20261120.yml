@@ -39,4 +39,20 @@ jobs:
             'readme_bytes':len(s.encode()),'license_lines':lines[:9],
             'readme_sha256':__import__('hashlib').sha256(s.encode()).hexdigest(),
           },sort_keys=True),flush=True)
+          current=HfApi().model_info(model,files_metadata=True)
+          old=HfApi().model_info(model,revision=revision,files_metadata=True)
+          def weights(m):
+            out={}
+            for s in (m.siblings or []):
+              if s.rfilename.endswith('.safetensors'):
+                l=getattr(s,'lfs',None)
+                out[s.rfilename]=getattr(l,'sha256',None) if l else None
+            return out
+          evidence={'old_revision':old.sha,'current_revision':current.sha,
+              'old_weight_blob_sha':weights(old),
+              'current_weight_blob_sha':weights(current),
+              'same_weight_file_hashes':bool(weights(old)) and weights(old)==weights(current) and all(weights(old).values()),
+              'current_license_metadata':getattr(current.card_data,'license',None) if current.card_data else None,
+              'current_license_tags':[t for t in (current.tags or []) if t.startswith('license:')]}
+          print('NTL_PCCL_PINNED_VS_HEAD_WEIGHTS_LICENSE='+json.dumps(evidence,sort_keys=True),flush=True)
           PY
