@@ -1,0 +1,63 @@
+name: NTL upstream 4270 README source-domain and copyright scope read-only one-shot
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-4270-readme-domain-gap-license-readonly-once.yml]
+permissions: {contents: read}
+jobs:
+  source_readme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Inspect generator README domain shift and declared rights without sample download
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-readme-original
+          kaggle datasets download -d lxdlxdlxd/ntl-synth-generations-v1 -f README.md -p /tmp/ntl-readme-original --unzip -q >/dev/null
+          python - <<'PY'
+          import re,json
+          from pathlib import Path
+          f=next(Path("/tmp/ntl-readme-original").rglob("README.md"))
+          text=f.read_text(errors="replace")
+          sections={}
+          key=None
+          for line in text.splitlines():
+              if line.startswith("## "):
+                  key=line.strip("# ").strip()
+                  sections[key]=[]
+              elif key:
+                  sections[key].append(line)
+          names=[k for k in sections if any(s in k.lower() for s in
+              ("known differences","licence","how it was generated","coverage"))]
+          r={}
+          for k in names:
+              s="\n".join(sections[k])
+              lines=[line.strip() for line in s.splitlines() if line.strip()]
+              # Preserve only relevant prose under license/domain sections;
+              # never print raw generated passages or secrets.
+              if "differences" in k.lower() or "licence" in k.lower():
+                  r[k]={"line_count":len(lines),
+                        "nonempty_prose_lines":[line[:240] for line in lines[:14]],
+                        "has_own_generation_claim":bool(re.search("generated|output",s,re.I)),
+                        "mentions_provider_terms":bool(re.search("provider|terms|api|commercial|upstream",s,re.I))}
+              else:
+                  r[k]={"line_count":len(lines),
+                        "mentions_API_provider":bool(re.search("api|vertex|openrouter|zhipu",s,re.I)),
+                        "mentions_domain_shift":bool(re.search("format|prompt|topic|styl|length|domain|transfer",s,re.I)),
+                        "claims_api_response_identity":bool(re.search("returned_model|requested_model",s,re.I))}
+          r["readme_sections"]=list(sections.keys())
+          r["original_generator_runtime_execution_unverified"]=True
+          r["provider_terms_not_determined_from_publisher_license"]=True
+          r["no_passages_downloaded_no_training_no_submit"]=True
+          print("NTL_LXDLXD_ORIGINAL_README_DOMAIN_RIGHTS="+json.dumps(r,sort_keys=True))
+          PY
+      - name: Remove upstream README
+        if: always()
+        run: rm -rf /tmp/ntl-readme-original
