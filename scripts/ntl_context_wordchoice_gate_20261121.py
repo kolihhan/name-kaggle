@@ -48,8 +48,14 @@ def cluster_ci(rows,a,b,seed=20261121,draws=1000):
     diffs.sort()
     return diffs[int(.025*len(diffs))],diffs[min(len(diffs)-1,int(.975*len(diffs)))]
 
-def gate(rows,folds,family):
-    validate(rows,folds)
+def gate(rows,folds,family,fit_manifests=None):
+    """Fail closed: no promotable metrics without explicit fold-fit lineage.
+
+    This checks manifest consistency, not authenticity of the model weights.
+    """
+    if fit_manifests is None:
+        raise ValueError("fit provenance required for promotion")
+    validate_fit_provenance(rows, folds, fit_manifests)
     metric={k:{"BA18":ba18(rows,k),"sibling_macro":sibling_macro(rows,k,family)} for k in ("C0","C1","C2")}
     cis={k:cluster_ci(rows,"C1",k) for k in ("C0","C2")}
     passed=all(metric["C1"]["sibling_macro"]-metric[k]["sibling_macro"]>=.02 and cis[k][0]>0 for k in ("C0","C2"))
@@ -122,6 +128,27 @@ def provenance_self_test():
             for fold in range(5)}
     manifests = {arm: mk() for arm in ("C0", "C1", "C2")}
     assert validate_fit_provenance(rows, folds, manifests)
+    assert gate(rows, folds, {i:i//2 for i in range(18)}, manifests)["mechanism_pass"] is False
+    try:
+        gate(rows, folds, {i:i//2 for i in range(18)})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("missing provenance accepted at promotion entrypoint")
+    # Perfect-looking C1 on held-out rows is NOT promotable if fit includes a heldout row.
+    for row in rows:
+        if row["label"] % 2 == 0:
+            row["C0"] = row["label"] + 1
+            row["C2"] = row["label"] + 1
+    assert gate(rows, folds, {i:i//2 for i in range(18)}, manifests)["mechanism_pass"] is True
+    leaky = copy.deepcopy(manifests)
+    leaky["C1"][0]["train_ids"].append(leaky["C1"][0]["heldout_ids"][0])
+    try:
+        gate(rows, folds, {i:i//2 for i in range(18)}, leaky)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("perfect in-sample C1 accepted at promotion entrypoint")
     def reject(mutator):
         bad = copy.deepcopy(manifests)
         mutator(bad)
@@ -144,7 +171,14 @@ if __name__=="__main__":
     assert mask_words("a b c")==mask_words("a b c")
     assert mask_words("a")==[0]
     assert len(mask_words(" ".join(map(str,range(300))))==32
-    assert gate(rows,folds,family)["mechanism_pass"] is False
+    def complete_manifests():
+        all_ids={r["id"] for r in rows}
+        return {arm:{fold:{"train_ids":sorted(all_ids-{r["id"] for r in rows if r["fold"]==fold}),
+                            "train_prompt_ids":sorted(set(folds)-{p for p,v in folds.items() if v==fold}),
+                            "heldout_ids":sorted(r["id"] for r in rows if r["fold"]==fold)}
+                     for fold in range(5)} for arm in ("C0","C1","C2")}
+    manifests=complete_manifests()
+    assert gate(rows,folds,family,manifests)["mechanism_pass"] is False
     try: validate(rows+[rows[0]],folds)
     except ValueError: pass
     else: raise AssertionError("duplicate accepted")
@@ -153,6 +187,6 @@ if __name__=="__main__":
     else: raise AssertionError("missing class accepted")
     for r in rows:
         if r["label"]%2==0: r["C0"]=r["label"]+1; r["C2"]=r["label"]+1
-    assert gate(rows,folds,family)["mechanism_pass"] is True
+    assert gate(rows,folds,family,manifests)["mechanism_pass"] is True
     provenance_self_test()
     print("PASS synthetic CPU self-tests; no real training, no official BA change")
