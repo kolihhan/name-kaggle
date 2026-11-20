@@ -1,0 +1,154 @@
+name: NTL PC-CL Qwen3 1.7B REAL matched T4 CE vs SupCon once Nov20
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pccl-real-paired-t4-training-once-20261120.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-pccl-real-nov20-owner-t4, cancel-in-progress: false}
+jobs:
+  bounded_train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      COLAB_SESSION: ntl-pccl17-${{ github.run_id }}
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/ntl-pccl-adc-${{ github.run_id }}.json
+    steps:
+      - name: Owner ADC auth preflight without allocating any GPU
+        shell: bash
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          value=os.environ.get("COLAB_ADC_JSON","")
+          if not value:raise SystemExit("NO_COLAB_ADC_JSON; NO_GPU_REQUESTED")
+          x=json.loads(value)
+          if x.get('type')!='authorized_user' or not all(x.get(k) for k in ('client_id','client_secret','refresh_token')):
+            raise SystemExit("INVALID_COLAB_ADC; NO_GPU_REQUESTED")
+          dst=Path(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+          dst.write_text(value)
+          dst.chmod(0o600)
+          print("NTL_PCCL_COLAB_OWNER_ADC_PRESENT; GPU_NOT_ALLOCATED",flush=True)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ntl_pccl_18source_prepare_20261120.py
+            scripts/ntl_pccl_17b_real_qlora_colab_20261120.py
+            scripts/ntl_pccl_real_colab_remote_once_20261120.py
+            artifacts/research/ntl-pccl-20261120/PREREG.md
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Pin/Gate exact prospective methods and verify ADC refresh
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check google-auth==2.43.0 requests==2.32.5
+          python -m py_compile scripts/ntl_pccl_18source_prepare_20261120.py scripts/ntl_pccl_17b_real_qlora_colab_20261120.py scripts/ntl_pccl_real_colab_remote_once_20261120.py
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f"
+          done
+          python - <<'PY'
+          import google.auth
+          from google.auth.transport.requests import Request
+          try:
+            cred,_=google.auth.default(scopes=[
+              'openid','https://www.googleapis.com/auth/cloud-platform',
+              'https://www.googleapis.com/auth/colaboratory'])
+            cred.refresh(Request())
+            assert cred.valid
+          except Exception as exc:
+            print("NTL_PCCL_AUTH_REFRESH_FAILED_NO_GPU="+type(exc).__name__,flush=True)
+            raise SystemExit(1)
+          print("NTL_PCCL_AUTH_REFRESH=PASS_NO_GPU",flush=True)
+          from pathlib import Path
+          pr=Path('artifacts/research/ntl-pccl-20261120/PREREG.md').read_text()
+          trainer=Path('scripts/ntl_pccl_17b_real_qlora_colab_20261120.py').read_text()
+          prep=Path('scripts/ntl_pccl_18source_prepare_20261120.py').read_text()
+          for term in ('same model forward tokens','0.702','0.054444','32','13 of 18'):
+            assert term in pr,term
+          for term in ('REVISION="658b6ee46470b73f3e0e04e57fc9fb7031fd7daa"',
+                       'def infonce','"C0","C1"','no_competition_submit'):
+            assert term in trainer,term
+          for term in ('POOL_SHA = "7b1e500ad6512caecc64f6e512d1189a6813448386ee2476398683f6a1ddf492"',
+                       'OPT_STEPS = 160','RECTANGLE_STEPS = 120'):
+            assert term in prep,term
+          print('NTL_PCCL_FROZEN_CONTRACT=PASS',flush=True)
+          PY
+      - name: Prepare exact SHA-pinned public-only 18-label cohort with rectangle schedule
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 numpy==2.3.4 pyarrow==22.0.0
+          mkdir -p /tmp/ntl-pccl-pool
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/ntl-pccl-pool --unzip -q >/dev/null
+          done
+          python -m scripts.ntl_pccl_18source_prepare_20261120 --self-test
+          python -m scripts.ntl_pccl_18source_prepare_20261120 --input /tmp/ntl-pccl-pool --output /tmp/ntl-pccl-private
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('/tmp/ntl-pccl-private/manifest.json').read_text())
+          assert d['train_rows']==8347 and d['valid_rows']==1800 and d['batch_info']['rectangle_eligible_label_count']==13
+          assert len(d['train_sources'])==8 and len(d['valid_sources'])==3
+          print("NTL_PCCL_FROZEN_BYTES_OR_COHORT_DRIFT_GUARD=PASS",flush=True)
+          PY
+      - name: Install official Colab CLI (still no GPU)
+        run: |
+          python -m pip install -q --disable-pip-version-check google-colab-cli==0.7.5
+          colab version
+      - name: Allocate one T4, train both arms and get only aggregate
+        shell: bash
+        run: |
+          set -euo pipefail
+          colab --auth adc new -s "$COLAB_SESSION" --gpu T4
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-pccl-private/train.parquet /content/train.parquet
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-pccl-private/valid.parquet /content/valid.parquet
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-pccl-private/batches.json /content/batches.json
+          colab --auth adc upload -s "$COLAB_SESSION" /tmp/ntl-pccl-private/manifest.json /content/manifest.json
+          colab --auth adc upload -s "$COLAB_SESSION" scripts/ntl_pccl_17b_real_qlora_colab_20261120.py /content/ntl_pccl_17b_real_qlora_colab_20261120.py
+          colab --auth adc exec -s "$COLAB_SESSION" --timeout 3500 -f scripts/ntl_pccl_real_colab_remote_once_20261120.py
+          colab --auth adc download -s "$COLAB_SESSION" /content/ntl-pccl-nov20-result.json ./ntl-pccl-aggregate.json
+          python - <<'PY'
+          import json
+          r=json.load(open('ntl-pccl-aggregate.json'))
+          assert r['scope']=='ntl_real_owner_t4_pccl_external_source_disjoint_v0'
+          assert [x['arm'] for x in r['arms']]==['C0','C1']
+          assert all(x['optimizer_steps']==160 for x in r['arms'])
+          assert r['train_rows']==8347 and r['valid_rows']==1800
+          assert r['no_competition_submit'] and r['pilot_not_strong_0702_complementarity']
+          print("NTL_PCCL_AUTHENTIC_QWEN3_17B_CE_VS_CL="+json.dumps({
+             'C0':r['arms'][0]['BA18'],'C1':r['arms'][1]['BA18'],
+             'delta':r['paired']['delta_BA'],
+             'ci95':r['paired']['delta_prompt_cluster_CI95'],
+             'rescues':r['paired']['rescues'],
+             'regressions':r['paired']['regressions'],
+             'decision':r['decision']},sort_keys=True),flush=True)
+          PY
+      - name: Always stop remote T4 and erase authentication and text copies
+        if: always()
+        shell: bash
+        continue-on-error: true
+        run: |
+          if command -v colab >/dev/null 2>&1 && test -f "$GOOGLE_APPLICATION_CREDENTIALS"; then
+            colab --auth adc stop -s "$COLAB_SESSION" || true
+          fi
+          rm -rf /tmp/ntl-pccl-pool /tmp/ntl-pccl-private
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          echo "NTL_PCCL_T4_CLEANUP_ATTEMPTED=TRUE"
+      - name: Publish aggregate only, no text/checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntl-pccl-real-17b-paired-aggregate-${{ github.run_id }}
+          path: ntl-pccl-aggregate.json
+          if-no-files-found: warn
+          retention-days: 14
