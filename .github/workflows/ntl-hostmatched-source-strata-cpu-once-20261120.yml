@@ -1,0 +1,53 @@
+name: NTL host-match source-locked proxy feasibility CPU once 20261120
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-hostmatched-source-strata-cpu-once-20261120.yml]
+permissions: {contents: read}
+jobs:
+  cpu_metadata_feasibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/ntl_hostmatched_source_stratified_feasibility_20261120.py
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Syntax and source-label controlled unit test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.4
+          python -m py_compile scripts/ntl_hostmatched_source_stratified_feasibility_20261120.py
+          python scripts/ntl_hostmatched_source_stratified_feasibility_20261120.py --self-test
+      - name: Fetch exact SHA-pinned public Open Pool files in ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-host-match
+          for f in sources.csv source_protocol.csv per_model.csv ntl_open_pool.parquet; do
+            kaggle datasets download -d crtproduction/name-that-llm-open-pool -f "$f" -p /tmp/ntl-host-match --unzip -q >/dev/null
+          done
+      - name: Compute source-locked equal-budget high-match versus random cohort WITHOUT training
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ntl_hostmatched_source_stratified_feasibility_20261120.py \
+            --input /tmp/ntl-host-match --out ntl-host-match-safe-aggregate.json
+      - name: Erase all downloaded text, prompts, source files and IDs
+        if: always()
+        run: rm -rf /tmp/ntl-host-match
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ntl-host-match-metadata-only-${{ github.run_id }}
+          path: ntl-host-match-safe-aggregate.json
+          if-no-files-found: warn
+          retention-days: 10
