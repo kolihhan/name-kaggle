@@ -1,0 +1,66 @@
+name: NTL 2026-11-20 official leaderboard and submission census READ ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-official-live-leaderboard-readonly-20261120.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Fetch official live Public leaderboard and own submission records - no submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-public-lb
+          kaggle competitions leaderboard name-that-llm -d -p /tmp/ntl-public-lb -q
+          kaggle competitions submissions name-that-llm -v > /tmp/ntl-current-subs.csv
+          python - <<'PY'
+          import csv,glob,json,os
+          from pathlib import Path
+          paths=glob.glob('/tmp/ntl-public-lb/*.csv')
+          if not paths:raise RuntimeError('OFFICIAL_LEADERBOARD_CSV_MISSING')
+          p=Path(paths[0])
+          with p.open(encoding='utf-8-sig',newline='') as f: rows=list(csv.DictReader(f))
+          if len(rows)<10:raise RuntimeError('LEADERBOARD_TOO_SHORT')
+          print('NTL_OFFICIAL_LB_CSV_COLUMNS='+repr(list(rows[0])),flush=True)
+          cols=list(rows[0])
+          score=next((c for c in cols if c.lower() in ('score','publicscore')),None)
+          if not score:raise RuntimeError('LEADERBOARD_SCORE_FIELD_UNKNOWN')
+          result=[]
+          for idx,row in enumerate(rows):
+              try:score_float=float(row[score])
+              except (ValueError,TypeError):continue
+              result.append((idx+1,score_float,row))
+          result.sort(key=lambda x:-x[1])
+          target=.702
+          near=[x for x in result if abs(x[1]-target)<.001]
+          print('NTL_LIVE_LB_SCORE_ONLY='+json.dumps({
+             'number_of_teams':len(result),
+             'top10_scores':[round(x[1],5) for x in result[:10]],
+             'top10_threshold':round(result[9][1],5),
+             'median_of_top20':round(result[19][1],5) if len(result)>=20 else None,
+             'public_0702_score_positions':[x[0] for x in near[:10]],
+             'entries_above_0702':sum(s>.702 for _,s,_ in result),
+             'first_20_scores':[round(x[1],5) for x in result[:20]],
+          },sort_keys=True),flush=True)
+          raw=Path('/tmp/ntl-current-subs.csv').read_text(encoding='utf-8-sig')
+          subs=list(csv.DictReader(raw.splitlines()))
+          print('NTL_OWN_SUBS_COLUMNS='+repr(list(subs[0]) if subs else []),flush=True)
+          ids={'58514818','57838845','57861337'}
+          chosen=[{k:r.get(k) for k in ('ref','date','status','publicScore','privateScore','description')} for r in subs if r.get('ref') in ids]
+          print('NTL_OWN_SUBS_CONFIRMED='+json.dumps({
+             'submission_count_returned':len(subs),
+             'champion_and_historic':chosen,
+             'incomplete':[{k:r.get(k) for k in ('ref','status','description')} for r in subs if any(u in str(r.get('status','')).lower() for u in ('pending','running','queued'))],
+             'no_submit_no_score':True,
+          },sort_keys=True),flush=True)
+          PY
+          rm -rf /tmp/ntl-public-lb /tmp/ntl-current-subs.csv
