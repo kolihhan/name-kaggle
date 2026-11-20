@@ -1,0 +1,33 @@
+name: NTL PCCL HF exact 1.7B pinned license metadata CPU probe Nov20
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-pccl-hf-metadata-no-gpu-20261120.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Inspect exact full SHA and revision-specific card license without GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check huggingface-hub==0.36.0
+          python - <<'PY'
+          from huggingface_hub import HfApi
+          import json
+          model='Qwen/Qwen3-1.7B-Base'
+          revision='658b6ee46470b73f3e0e04e57fc9fb7031fd7daa'
+          info=HfApi().model_info(model,revision=revision)
+          card=info.card_data
+          r={'model':model,'requested_revision':revision,'returned_sha':info.sha,
+             'same_sha':str(info.sha)==revision,
+             'card_type':type(card).__name__,
+             'card_license_getattr':getattr(card,'license',None),
+             'card_to_dict_license':(card.to_dict().get('license') if card is not None else None),
+             'top_level_license_tags':[s for s in (info.tags or []) if str(s).startswith('license:')]}
+          print('NTL_PCCL_HF_PINNED_METADATA='+json.dumps(r,sort_keys=True),flush=True)
+          PY
