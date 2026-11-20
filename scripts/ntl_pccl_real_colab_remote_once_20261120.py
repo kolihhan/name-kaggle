@@ -22,8 +22,20 @@ def main():
     subprocess.run([sys.executable,"-m","pip","install","-q",
         "--disable-pip-version-check",*pkgs],check=True,timeout=450)
     print("NTL_PCCL_REMOTE_DEPENDENCIES_INSTALLED",flush=True)
-    p=subprocess.run([sys.executable,str(TRAINER)],timeout=3000,check=False)
+    p=subprocess.run([sys.executable,str(TRAINER)],timeout=3000,check=False,
+                     capture_output=True,text=True)
+    # The Colab CLI may suppress a nested subprocess's stdout/stderr. The only
+    # reusable diagnostic is the bounded exception tail; never print raw data.
+    markers=[line for line in p.stdout.splitlines()
+             if line.startswith("NTL_PCCL_")]
+    for line in markers[-18:]:
+        print(line[:1200],flush=True)
     if p.returncode:
+        error_lines=p.stderr.splitlines()
+        print("NTL_PCCL_PRIVATE_PYTHON_EXCEPTION_TAIL_BEGIN",flush=True)
+        for line in error_lines[-28:]:
+            print(line[:350],flush=True)
+        print("NTL_PCCL_PRIVATE_PYTHON_EXCEPTION_TAIL_END",flush=True)
         print("NTL_PCCL_T4_TRAIN_FAILURE_NO_RETRY_NO_SCORE="+str(p.returncode),flush=True)
         raise SystemExit(p.returncode)
     result=ROOT/"ntl-pccl-nov20-result.json"
