@@ -1,3 +1,15 @@
+# 2026-11-20 12:40 MYT — True 0.702 champion vs latest 0.704 public code audited
+
+**Actual original-source audit:** [complete results](artifacts/research/ntl-0702-vs-0704-true-source-diff-20261120/RESULT.md); GitHub Actions [#44675311464](https://github.com/kolihhan/name-kaggle/actions/runs/44675311464) SUCCESS. Owner's **official COMPLETE 0.702** source code SHA `2343b692d9fbadccd585cd1f7149986f8130be4e8aacffb6cc9902d356b05ffc`. Public Lightning "0.704" Notebook: **27/29 identical source parts**, only **GLM-queue Fable-mass priority** and **Apex final GLM/postprocessing** changed. These two interventions are confounded and notebook title +.002 is not a reliably demonstrated model gain. Areeb 0.704 contains extra visualizations/analysis. This source-level audit rules out the thesis that public 0.704 introduced a novel large reader/backbone.
+
+**Paired-strong comparison still blocked for a concrete reason, not vague gate:** [#44675693564](https://github.com/kolihhan/name-kaggle/actions/runs/44675693564) saw actual scored champion private Notebook output; **no 18-way component/pre-post GLM/Apex logits are exported**, only `submission.parquet`, code and smoke binaries. Can't calculate true champion rescues/regressions without rerunning actual strong inference on labeled rows. Preview output isn't official hidden test labels.
+
+**Post-training fresh-source 18-label holdout feasibility:** Kaggle API [#44675959849](https://github.com/kolihhan/name-kaggle/actions/runs/44675959849) SUCCESS. Current 231,036-row Open Pool `gen_date` parseable in 33,603, **ZERO rows published as generated on/after 2026-11-16**. Metadata route claims in 85,470, but not independently authenticated. An independently dated after-training 18-class holdout simply is not present in that snapshot. Do not mistake a new dataset version for new training-source-independent generated examples.
+
+**Competition:** authenticated 0.702 best still, live current top10 0.761 (gap 0.059). **No new NTL Kaggle scorer submission, GPU, training or achieved uplift.** No 0.704 clone submission, no Oleg spend-based proxy as fresh eval. Focus on acquiring a genuinely new route-authenticated 18-label prompt panel if further strong-GPU experiments are cost-justified.
+
+---
+
 # 2026-11-20 12:25 MYT — live Kaggle ranking target corrected
 
 **Official authenticated Public leaderboard [Actions #44674191096](https://github.com/kolihhan/name-kaggle/actions/runs/44674191096) SUCCESS:** top 1 **0.776**, top 10 cutoff **0.761**, top20 cutoff **0.751**. Owner frozen **#58514818 COMPLETE 0.702**, **gap to current top10 = 0.059 BA**. 23 account submissions returned, 0 pending. This API returns 20 teams, **owner exact rank unknown**. Do NOT tell owner 0.702 is already near top10; earlier 0.692 top10 anecdote is stale. [Full authenticated decision memo](artifacts/research/ntl-live-lb-submission-priority-20261120/RESULT.md).
