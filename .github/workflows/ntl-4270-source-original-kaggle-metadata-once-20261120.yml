@@ -1,0 +1,59 @@
+name: NTL 4270 dominant original dataset public provenance only once
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-4270-source-original-kaggle-metadata-once-20261120.yml]
+permissions: {contents: read}
+jobs:
+  original_metadata_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Fetch original uploader public dataset metadata (no passage download)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-source-original
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          root=Path("/tmp/ntl-source-original")
+          d="lxdlxdlxd/ntl-synth-generations-v1"
+          commands=[
+             ["kaggle","datasets","metadata","-d",d,"-p",str(root)],
+             ["kaggle","datasets","files","-d",d],
+          ]
+          results={}
+          for i,cmd in enumerate(commands):
+              p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                               text=True,timeout=80)
+              # Store ONLY public dataset field headings and small count information.
+              results["metadata" if i==0 else "files"]={"exit_code":p.returncode,
+                     "error_category":("not_found" if "404" in p.stderr.lower() else
+                       "permission" if "403" in p.stderr.lower() else
+                       "unsupported_cli" if "usage" in p.stderr.lower() else
+                       "other" if p.returncode else "none")}
+          raw=root/"dataset-metadata.json"
+          if raw.exists():
+              meta=json.loads(raw.read_text())
+              results["public_metadata"]={key:meta.get(key) for key in (
+                  "id","title","subtitle","licenses","keywords","resources","collaborators",
+                  "datasetSlug","datasetId","ownerSlug","usabilityRating"
+              ) if key in meta}
+              results["description_present"]=bool(meta.get("description",""))
+              desc=meta.get("description","")
+              for pattern in ("openrouter","vertex","serv","api","license","model","provider","generation"):
+                  results["description_mentions_"+pattern]=pattern in str(desc).lower()
+          results["original_producer_terms_and_model_route_verified"]=False
+          results["no_training_no_passage_download_no_submission"]=True
+          print("NTL_LXDLXD_ORIGINAL_DATASET_PUBLIC_METADATA="+json.dumps(results,sort_keys=True))
+          PY
+      - name: Remove downloaded metadata
+        if: always()
+        run: rm -rf /tmp/ntl-source-original
