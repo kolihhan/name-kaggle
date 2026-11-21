@@ -21,6 +21,16 @@ jobs:
           set -uo pipefail
           python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
           slug="kolihhan/private-small-agent-qwen9b-v8-step70-to100"
+          python - <<'PY'
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          a=KaggleApi();a.authenticate()
+          for version in ('', '/3'):
+              try:
+                  result=a.kernels_status('kolihhan/private-small-agent-qwen9b-v8-step70-to100'+version)
+                  print('KAGGLE_V3_PROVIDER_STATUS',version or 'LATEST',str(result)[:450],flush=True)
+              except Exception as e:
+                  print('KAGGLE_V3_PROVIDER_READ_ERROR',type(e).__name__,flush=True)
+          PY
           timeout 100 kaggle kernels logs "$slug" > /tmp/small-agent-kaggle.log 2>&1
           echo "KAGGLE_LOGS_READ_EXIT=$?"
           timeout 100 kaggle kernels files "$slug" -v --page-size 100 > /tmp/small-agent-files.csv 2>&1
@@ -33,8 +43,9 @@ jobs:
           # Never export full private logs; print tightly allowlisted diagnostic codes only.
           patterns={
             'TRAINING_STEP100':'KAGGLE_ORIGINAL_QWEN9B_V8_STAGE100_FULL_STATE_VERIFIED',
-            'MODEL_STARTED':'QLORA_V8_FINAL30_RESUME',
-            'RESTORED_CHECKPOINT':'STAGE70_FULL_STATE_INTACT_AND_RESTORED',
+            'ORIGINAL_TRAIN_CODE_LOADED':'QLORA_T4_TRL_NATIVE_FP32_GEMM_FALLBACK_ENABLED',
+            'MODEL_STARTED':'KAGGLE_ORIGINAL_QWEN9B_V8_STEP70_TO100_START',
+            'RESTORED_CHECKPOINT':'KAGGLE_STAGE70_SOURCE_OPTIMIZER_SCHEDULER_RNG_INTACT',
             'MISSING_DATASET':'FileNotFoundError',
             'CUDA_OOM':'CUDA out of memory',
             'PYTORCH_OOM':'torch.OutOfMemoryError',
