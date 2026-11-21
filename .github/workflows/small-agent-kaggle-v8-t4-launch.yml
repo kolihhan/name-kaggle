@@ -1,0 +1,168 @@
+name: Small Agent Qwen9B original v8 step70-to100 Kaggle private GPU launch
+on:
+  push:
+    branches: [infra/small-agent-kaggle-relay-20261121]
+    paths: [.github/SMALL_AGENT_KAGGLE_T4_LAUNCH]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: private-small-agent-v8-kaggle-step70to100-once
+  cancel-in-progress: false
+env:
+  KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+  GH_TOKEN: ${{ github.token }}
+  STAGE70_ARTIFACT: "14693522324"
+  SOURCE_ARTIFACT: "14124045608"
+  DATASET_ID: "kolihhan/qlora-v8-stage70-verified-20261121"
+  KERNEL_ID: "kolihhan/qlora-v8-9b-stage70-to100-kaggle-t4"
+  KAGGLE_REMOTE_SOURCE_COMMIT: "b64776be3c28a6f167b311008c6cfb12be478daa"
+jobs:
+  private-kaggle-transport-and-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Install pinned Kaggle CLI (no competition submission)
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}" || { echo "KAGGLE_AUTH_NOT_CONFIGURED"; exit 40; }
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          kaggle --version
+      - name: Download original public GitHub artifact ZIPs with immutable artifact IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p transfer/data transfer/outer transfer/kernel
+          for spec in "${STAGE70_ARTIFACT}:stage70" "${SOURCE_ARTIFACT}:source"; do
+            aid="${spec%%:*}"; label="${spec#*:}"
+            curl -fLsS --retry 3 --max-time 1800 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/kolihhan/small-agent-qlora/actions/artifacts/$aid/zip" \
+              -o "transfer/outer/$label.zip"
+            unzip -tq "transfer/outer/$label.zip" >/dev/null
+            echo "ORIGINAL_SMALL_AGENT_GITHUB_ARTIFACT_DOWNLOADED=$aid"
+          done
+          unzip -p transfer/outer/stage70.zip 'qlora-v8-stage70-checkpoint.zip' > transfer/data/qlora-v8-stage70-checkpoint.zip
+          unzip -q transfer/outer/source.zip -d transfer/data
+      - name: Exact stage70 optimizer/source guard plus private dataset metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,os,zipfile
+          from pathlib import Path
+          root=Path('transfer/data')
+          p=root/'qlora-v8-stage70-checkpoint.zip'
+          assert p.is_file() and p.stat().st_size==539885434
+          train=root/'qlora-v8-train.jsonl'
+          audit=root/'qlora-v8-audit.json'
+          assert train.is_file() and audit.is_file()
+          digest=lambda b:hashlib.sha256(b).hexdigest()
+          audit_data=json.loads(audit.read_text())
+          assert digest(train.read_bytes())=='203a643b9ef809bad311a4adad0ef24caccd9505f3fb3f8981ab95da5d999ac7'
+          assert audit_data['train_sha256']==digest(train.read_bytes())
+          assert audit_data['train_actions']==798 and audit_data['train_parents']==304
+          assert audit_data['validation_parents']==35
+          assert audit_data['protected_question_hashes_loaded']==165
+          assert audit_data['no_gaia_training'] is True
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              for name in ('checkpoint-70/adapter_model.safetensors','checkpoint-70/optimizer.pt',
+                           'checkpoint-70/scheduler.pt','checkpoint-70/rng_state.pth','checkpoint-70/trainer_state.json'):
+                  assert name in names
+              report=json.loads(z.read('stage70-verified-report.json'))
+              cfg=json.loads(z.read('run_config.json'))
+              state=json.loads(z.read('checkpoint-70/trainer_state.json'))
+              assert report['trained_step_end']==70 and report['scheduler_max_steps']==100
+              assert report['original_training_code_sha']=='3eac23cca117a41855f4998399f79a5d9d5f4369'
+              assert report['adapter_sha256']=='214ca477a95c8dd9c4395d1093ada147eb7fed62d33b3781f846d28d54f4c8c8'
+              assert state['global_step']==70 and state['max_steps']==100
+              assert cfg['training_examples']==798 and cfg['pause_at_step']==70
+              for name,key in [('adapter_model.safetensors','adapter_sha256'),
+                               ('optimizer.pt','optimizer_sha256'),
+                               ('scheduler.pt','scheduler_sha256'),
+                               ('rng_state.pth','rng_sha256')]:
+                  assert digest(z.read('checkpoint-70/'+name))==report[key],name
+          h=hashlib.sha256()
+          with p.open('rb') as f:
+              for block in iter(lambda:f.read(4*1024*1024),b''):h.update(block)
+          manifest={
+              'protocol':'private-kaggle-original-qlora-v8-step70-v1',
+              'dataset_id':os.environ['DATASET_ID'],
+              'stage70_source_run':44861054303,
+              'stage70_artifact':14693522324,
+              'stage70_zip_bytes':p.stat().st_size,
+              'stage70_zip_sha256':h.hexdigest(),
+              'train_sha256':audit_data['train_sha256'],
+              'source_artifact':14124045608,
+              'no_gaia_training':True
+          }
+          (root/'stage70-kaggle-transport-manifest.json').write_text(json.dumps(manifest,indent=2))
+          metadata={
+              'title':'Private original Qwen3.5-9B Small Agent v8 verified step70 checkpoint',
+              'id':os.environ['DATASET_ID'],
+              'licenses':[{'name':'unknown'}],
+              'subtitle':'Private research checkpoint + verified 798 tool-action source. Not GAIA labels.',
+              'description':'Private nonpublic staging of an original verified research checkpoint and existing training data; no license is granted to redistribute.',
+              'isPrivate':True,
+          }
+          (root/'dataset-metadata.json').write_text(json.dumps(metadata,indent=2))
+          assert len(list(root.glob('*.zip')))==1
+          print('SMALL_AGENT_STAGE70_PRIVATE_KAGGLE_DATASET_PAYLOAD_VERIFIED',p.stat().st_size,flush=True)
+          PY
+      - name: Create PRIVATE Kaggle dataset for original stage70
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Existing dataset means a previous attempt may already exist:
+          # fail closed instead of silently overwriting verified checkpoint source.
+          kaggle datasets create -p transfer/data
+          echo "SMALL_AGENT_KAGGLE_PRIVATE_DATASET_CREATE_ACCEPTED"
+      - name: Generate pinned T4-only private Kaggle training script and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 \
+            "https://raw.githubusercontent.com/kolihhan/small-agent-qlora/${KAGGLE_REMOTE_SOURCE_COMMIT}/scripts/kaggle_v8_stage100_remote.py" \
+            -o transfer/kernel/pinned_kaggle_v8.py
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          folder=Path('transfer/kernel')
+          source=(folder/'pinned_kaggle_v8.py').read_text()
+          assert 'SOURCE_SHA = "3eac23cca117a41855f4998399f79a5d9d5f4369"' in source
+          assert 'STAGE70_ARTIFACT = 14693522324' in source
+          assert 'pause_at_step=None,resume_from_checkpoint=OUT/"checkpoint-70"' in source
+          assert 'max_steps=MAX_STEPS,save_steps=10' in source
+          # Set before torch is imported: Kaggle T4x2 exposes one exact Colab-like T4.
+          trigger="from __future__ import annotations\n"
+          assert source.count(trigger)==1
+          source=source.replace(trigger,trigger+"\nimport os\nos.environ['CUDA_VISIBLE_DEVICES']='0'\n",1)
+          (folder/'train.py').write_text(source)
+          metadata={
+              'id':os.environ['KERNEL_ID'],
+              'title':'Private Small Agent Qwen9B QLoRA v8 resume step70 to100',
+              'code_file':'train.py',
+              'language':'python','kernel_type':'script',
+              'is_private':True,'enable_gpu':True,'enable_internet':True,
+              'machine_shape':'NvidiaTeslaT4',
+              'dataset_sources':[os.environ['DATASET_ID']],
+              'competition_sources':[],
+              'kernel_sources':[],
+          }
+          (folder/'kernel-metadata.json').write_text(json.dumps(metadata,indent=2))
+          compile(source,'train.py','exec')
+          print('SMALL_AGENT_KAGGLE_T4_PRIVATE_KERNEL_SOURCE_VERIFIED',os.environ['KERNEL_ID'])
+          PY
+      - name: Push ONE private Kaggle T4x2 training script (do not submit competitions)
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p transfer/kernel --accelerator NvidiaTeslaT4
+          echo "SMALL_AGENT_KAGGLE_T4_KERNEL_PUSH_ACCEPTED"
+          kaggle kernels status "$KERNEL_ID" || true
+          echo "SMALL_AGENT_KAGGLE_TRAINING_KERNEL_URL=https://www.kaggle.com/code/$KERNEL_ID"
