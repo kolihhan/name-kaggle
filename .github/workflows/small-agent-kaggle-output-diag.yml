@@ -1,0 +1,57 @@
+name: Diagnose Small Agent Kaggle failure (read-only)
+on:
+  push:
+    branches: [infra/small-agent-kaggle-relay-20261121]
+    paths: [.github/SMALL_AGENT_KAGGLE_OUTPUT_DIAG_START]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Check latest private kernel logs and artifact filenames only
+        shell: bash
+        run: |
+          set -uo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          slug="kolihhan/private-small-agent-qwen9b-v8-step70-to100"
+          timeout 100 kaggle kernels logs "$slug" > /tmp/small-agent-kaggle.log 2>&1
+          echo "KAGGLE_LOGS_READ_EXIT=$?"
+          timeout 100 kaggle kernels files "$slug" -v --page-size 100 > /tmp/small-agent-files.csv 2>&1
+          echo "KAGGLE_FILES_READ_EXIT=$?"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          lines=Path('/tmp/small-agent-kaggle.log').read_text(errors='replace').splitlines()
+          print('KAGGLE_LOG_LINES',len(lines))
+          # Never export full private logs; print tightly allowlisted diagnostic codes only.
+          patterns={
+            'TRAINING_STEP100':'KAGGLE_ORIGINAL_QWEN9B_V8_STAGE100_FULL_STATE_VERIFIED',
+            'MODEL_STARTED':'QLORA_V8_FINAL30_RESUME',
+            'RESTORED_CHECKPOINT':'STAGE70_FULL_STATE_INTACT_AND_RESTORED',
+            'MISSING_DATASET':'FileNotFoundError',
+            'CUDA_OOM':'CUDA out of memory',
+            'PYTORCH_OOM':'torch.OutOfMemoryError',
+            'RUNTIME_ERROR':'RuntimeError:',
+            'IMPORT_ERROR':'ModuleNotFoundError:',
+            'PYTHON_TRACEBACK':'Traceback (most recent call last)',
+            'T4_START':'NVIDIA T4',
+            'MODEL_DOWNLOAD_FAIL':'GatedRepoError',
+            'TRAINING_FAILURE':'NO_CHECKPOINT100_CANNOT_CLAIM_COMPLETED',
+            'SOURCE_FAIL':'original verified 70-step full-state training contract drift',
+          }
+          for name,pat in patterns.items():
+            print('KAGGLE_LOG_SIGNATURE_'+name, sum(pat.lower() in x.lower() for x in lines))
+          filelog=Path('/tmp/small-agent-files.csv').read_text(errors='replace').splitlines()
+          print('KAGGLE_OUTPUT_METADATA_LINE_COUNT',len(filelog))
+          for name in ('qlora-v8-stage100-checkpoint.zip','stage100-verified-report.json'):
+            print('KAGGLE_OUTPUT_LISTS_'+name.replace('.','_').replace('-','_'),any(name in x for x in filelog))
+          # Avoid logging contents/paths of any other user file.
+          print('KAGGLE_OUTPUT_LIST_ERROR',any(x.lower().startswith('error') or '403' in x for x in filelog))
+          PY
