@@ -1,0 +1,65 @@
+name: Official Kaggle owner scores read-only — NTL + Gemma 20261121
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/owner-latest-score-readonly-20261121.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-official-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read completed scores and newest submission IDs ONLY (no submit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${KAGGLE_API_TOKEN:-}" && ( -z "${KAGGLE_USERNAME:-}" || -z "${KAGGLE_KEY:-}" ) ]]; then
+            echo "BLOCKED_KAGGLE_AUTH_NO_SECRET"
+            exit 1
+          fi
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import csv, io, json, subprocess
+          for comp in ("name-that-llm", "gemma-4-developer-agent"):
+              p=subprocess.run(["kaggle","competitions","submissions",comp,"-v","-q"],
+                               capture_output=True,text=True,timeout=95,check=True)
+              raw=p.stdout.lstrip("\ufeff").strip()
+              rows=list(csv.DictReader(io.StringIO(raw)))
+              if not rows: raise RuntimeError("NO_OWN_SUBMISSIONS_"+comp)
+              required={"ref","date","status","publicScore"}
+              if not required.issubset(rows[0]):
+                  raise RuntimeError("UNEXPECTED_LEDGER_COLUMNS_"+comp)
+              safe=[]
+              for row in rows:
+                  score=None
+                  try:
+                      if str(row.get("publicScore") or "").strip():
+                          score=float(row["publicScore"])
+                  except (ValueError,TypeError): pass
+                  safe.append({"id":str(row.get("ref") or ""),
+                               "date":str(row.get("date") or ""),
+                               "status":str(row.get("status") or ""),
+                               "public_score":score})
+              complete=[r for r in safe if r["status"].upper().split(".")[-1]=="COMPLETE"
+                        and r["public_score"] is not None]
+              complete.sort(key=lambda r:(-r["public_score"],r["date"]),reverse=False)
+              newest=sorted(safe,key=lambda r:(r["date"],int(r["id"]) if r["id"].isdigit() else -1),reverse=True)
+              print("OFFICIAL_OWNER_LEDGER="+json.dumps({
+                    "competition":comp,
+                    "total_submissions":len(safe),
+                    "best_scored":complete[0] if complete else None,
+                    "top_5_completed":complete[:5],
+                    "latest_12_submissions":newest[:12],
+                    "matches_0_711":[r for r in complete if abs(r["public_score"]-0.711)<0.00051][:10],
+                    "read_only":True},sort_keys=True),flush=True)
+          PY
+          echo "OFFICIAL_READ_ONLY_LEDGER_DONE=TRUE"
