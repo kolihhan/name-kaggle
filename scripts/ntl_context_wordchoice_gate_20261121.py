@@ -170,7 +170,7 @@ if __name__=="__main__":
     rows=[dict(id=f"{i}-{y}",prompt_id=f"p{i}",fold=i%5,source="synthetic",label=y,C0=y,C1=y,C2=y) for i in range(90) for y in range(18)]
     assert mask_words("a b c")==mask_words("a b c")
     assert mask_words("a")==[0]
-    assert len(mask_words(" ".join(map(str,range(300))))==32
+    assert len(mask_words(" ".join(map(str,range(300)))))==32
     def complete_manifests():
         all_ids={r["id"] for r in rows}
         return {arm:{fold:{"train_ids":sorted(all_ids-{r["id"] for r in rows if r["fold"]==fold}),
