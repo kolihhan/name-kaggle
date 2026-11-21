@@ -1,0 +1,1 @@
+One authorized Kaggle private v3 continuation attempt for Qwen3.5-9B stage70→100 after source commit 0fa096c Linux+Windows CI succeeded. Corrects missing auto-extracted checkpoint ZIP with SHA-256 full-state validation. Do not resubmit notebook or competitions automatically. Fail closed unless prior kernel status ERROR.
