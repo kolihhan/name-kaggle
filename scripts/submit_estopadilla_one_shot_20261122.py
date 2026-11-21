@@ -75,8 +75,11 @@ def make_private_copy(code: Path, meta: dict, username: str) -> str:
     kernel = f"{username}/{SLUG}"
     meta.pop("id_no", None)  # otherwise Kaggle would update the author's notebook
     meta["id"] = kernel
-    meta["title"] = "NTL Estopadilla GLM53 User Prefix 0716 Repro 20261122"
+    meta["title"] = "NTL Estopadilla GLM53 0716 Repro 20261122"
     meta["code_file"] = code.name
+    print("SOURCE_METADATA_KEYS", sorted(meta.keys()))
+    print("SOURCE_MODEL_REFERENCES", len(meta.get("model_sources") or []))
+    print("SOURCE_KERNEL_REFERENCES", len(meta.get("kernel_sources") or []))
     meta["is_private"] = "true"
     meta["language"] = "python"
     meta["enable_gpu"] = str(meta.get("enable_gpu", "false")).lower()
