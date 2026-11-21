@@ -1,1 +1,2 @@
 One-time owner-authorized read-only Kaggle v8 completion/failure diagnosis. Do not start GPU, push kernel, download private datasets, or expose raw logs.
+Read-only follow-up: distinguish v1/v2 file-not-found error and verify dataset source metadata.
