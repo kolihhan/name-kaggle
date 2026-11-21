@@ -1,0 +1,61 @@
+name: Identify scored Estopadilla 0.716 notebook version
+on:
+  push:
+    branches: [ops/submit-estopadilla-glm053-20261122]
+    paths: [.github/workflows/find-estopadilla-scored-version-20261122.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  find-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Cancel stale queue-poll job before it can submit 3-row smoke output
+        shell: bash
+        run: |
+          gh api --method POST repos/kolihhan/name-kaggle/actions/runs/44922889534/cancel && echo OLD_POLL_CANCEL_REQUESTED || echo OLD_POLL_ALREADY_DONE_OR_NOT_CANCELLABLE
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'httpx>=0.27,<1'
+      - name: Find original complete scored historical version with Kaggle session API
+        shell: bash
+        run: |
+          python - <<'PY'
+          import httpx,os,sys
+          source='0-716-robust-glm-5-3-likelihood-user-prefix'
+          base='https://www.kaggle.com/api/i/'
+          token=os.environ['KAGGLE_API_TOKEN']
+          with httpx.Client(follow_redirects=True,timeout=35,headers={'Authorization':'Bearer '+token}) as client:
+              resp=client.get('https://www.kaggle.com')
+              xsrf=client.cookies.get('XSRF-TOKEN','')
+              print('SESSION_BOOTSTRAP',resp.status_code,'XSRF_PRESENT',bool(xsrf))
+              if not xsrf: sys.exit(2)
+              def post(endpoint,body):
+                  r=client.post(base+endpoint,json=body,headers={'X-XSRF-TOKEN':xsrf,'Content-Type':'application/json'})
+                  print('API',endpoint.split('/')[-1],'HTTP',r.status_code)
+                  r.raise_for_status()
+                  return r.json()
+              base_body={'authorUserName':'estopadilla','kernelSlug':source,'tab':'output'}
+              initial=post('kernels.LegacyKernelsService/GetKernelViewModel',base_body)
+              print('INITIAL_KEYS',list(initial.keys())[:30])
+              kernel=initial.get('kernel') or {}
+              kid=kernel.get('id')
+              total=int(initial.get('totalVersionCount') or 0)
+              print('KERNEL_ID_PRESENT',bool(kid),'VERSION_COUNT',total)
+              if not kid: raise SystemExit('No kernel id')
+              hist=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(kid),'sortOption':'VERSION_ID','pageSize':max(200,total)})
+              items=hist.get('items') or []
+              print('HISTORY_ITEMS',len(items))
+              for item in items:
+                  v=item.get('version') or {}; run=item.get('run') or {}
+                  num=v.get('versionNumber')
+                  if not num: continue
+                  view=post('kernels.LegacyKernelsService/GetKernelViewModel',dict(base_body,versionNumber=int(num)))
+                  sub=view.get('submission') or {}
+                  print('VERSION',num,'STATUS',run.get('status'),'SCORE',sub.get('scoreFormatted'),'RUN_DATE',run.get('dateCreated'),'SESSION_ID',run.get('id'))
+          PY
