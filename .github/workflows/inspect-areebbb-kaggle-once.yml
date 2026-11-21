@@ -1,0 +1,28 @@
+name: Inspect Areebbb private Kaggle Notebook status once
+on:
+  push:
+    branches: [ops/submit-areebbb-fingerprints-20261121]
+    paths: [.github/workflows/inspect-areebbb-kaggle-once.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read-only private Notebook and one-shot submission status
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PRIVATE_KERNEL_STATUS_START"
+          kaggle kernels status kolihhan/ntl-areebbb-fingerprints-0709-20261121 2>&1 | head -c 1200 || true
+          echo
+          echo "PRIVATE_KERNEL_FILES_START"
+          kaggle kernels files kolihhan/ntl-areebbb-fingerprints-0709-20261121 -v 2>&1 | head -c 1200 || true
+          echo
