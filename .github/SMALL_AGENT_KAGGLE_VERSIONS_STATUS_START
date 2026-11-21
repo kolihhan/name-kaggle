@@ -11,3 +11,5 @@ Follow-up: user requested live both-project status. Read Kaggle individual histo
 2026-11-21T20:07+08:00 read-only latest Kaggle version1/version2 status recheck for owner; no GPU start, no version push, no training modification.
 
 Read-only follow-up 2026-11-21 20:23 MYT: confirm latest v1/v2 and latest actual Kaggle Notebook status; no GPU launch, no notebook push, no dataset mutation.
+
+2026-11-21 20:59 MYT owner requests fresh verification: Small Agent perhaps finished Kaggle training. Read-only API check of latest private kernel status; no GPU launch, no cancellation, no notebook submission, no secret or dataset modification.
