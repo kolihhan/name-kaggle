@@ -55,3 +55,35 @@ jobs:
           # Avoid logging contents/paths of any other user file.
           print('KAGGLE_OUTPUT_LIST_ERROR',any(x.lower().startswith('error') or '403' in x for x in filelog))
           PY
+      - name: Version-specific safe file-error and dataset attachment diagnosis
+        shell: bash
+        run: |
+          set -uo pipefail
+          slug="kolihhan/private-small-agent-qwen9b-v8-step70-to100"
+          for version in 1 2; do
+            timeout 45 kaggle kernels logs "$slug/$version" > "/tmp/sa-v$version.log" 2>&1
+            echo "KAGGLE_VERSION_${version}_LOG_READ_EXIT=$?"
+          done
+          python - <<'PY'
+          import hashlib,re
+          from pathlib import Path
+          for v in (1,2):
+              txt=Path(f'/tmp/sa-v{v}.log').read_text(errors='replace')
+              print('KAGGLE_VERSION',v,'LINES',len(txt.splitlines()),'LOG_SHA256',hashlib.sha256(txt.encode()).hexdigest())
+              for ln in txt.splitlines():
+                  if 'FileNotFoundError' in ln or 'No such file or directory' in ln:
+                      safe=re.sub(r'(?i)(token|secret|password|key)[=:]\\S+',r'\\1=REDACTED',ln)
+                      print('KAGGLE_SAFE_MISSING_INPUT',v,safe[:300])
+          PY
+          mkdir -p /tmp/sa-latest-metadata
+          timeout 60 kaggle kernels pull -k "$slug" -m -p /tmp/sa-latest-metadata >/dev/null 2>&1
+          echo "KAGGLE_METADATA_READ_EXIT=$?"
+          python - <<'PY'
+          import pathlib,json
+          p=pathlib.Path('/tmp/sa-latest-metadata/kernel-metadata.json')
+          print('KAGGLE_METADATA_PRESENT',p.is_file())
+          if p.is_file():
+              d=json.loads(p.read_text())
+              print('KAGGLE_LATEST_DATASET_SOURCES',d.get('dataset_sources'))
+              print('KAGGLE_LATEST_GPU',d.get('enable_gpu'),'MACHINE',d.get('machine_shape'))
+          PY
