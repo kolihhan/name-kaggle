@@ -5,3 +5,5 @@ Fresh owner status request: both projects. Read Kaggle Small Agent v1 v2 status 
 Read-only fresh v1-v2 status for 2026-11-21 18:08+08 user question; no GPU actions, no private data opened.
 
 Follow-up: user requested live both-project status. Read Kaggle individual historical v1 and corrected v2 status only; no GPU launch, no cancellation, no data changes.
+
+2026-11-21 19:15 Asia/Kuala_Lumpur: user requests current two-project statuses. One-time read-only Kaggle version1 vs version2 API status. Do not launch, stop, resubmit or expose credentials.
