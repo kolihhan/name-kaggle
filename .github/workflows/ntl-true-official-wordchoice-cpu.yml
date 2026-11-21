@@ -1,0 +1,99 @@
+name: NTL official C0 C1 C2 CPU pilot
+
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - ".github/workflows/ntl-true-official-wordchoice-cpu.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-official-text-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - name: Checkout frozen research branch
+        uses: actions/checkout@v4
+        with:
+          ref: research/attribution-bottleneck-review-20261106
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU notebook runtime
+        run: |
+          python -m pip install --quiet "kaggle>=1.7" "numpy<3" "pandas<3" "scikit-learn<2" joblib nbformat nbclient ipykernel
+      - name: Fetch official competition training file EPHEMERALLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${KAGGLE_API_TOKEN:-}" && ( -z "${KAGGLE_USERNAME:-}" || -z "${KAGGLE_KEY:-}" ) ]]; then
+            echo "BLOCKED_KAGGLE_CREDENTIALS: missing existing Actions auth secret"
+            exit 1
+          fi
+          mkdir -p /tmp/ntl-official
+          # No raw official data is committed, uploaded, or logged.
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-official >/dev/null
+          sudo mkdir -p /kaggle/input/competitions/name-that-llm /kaggle/working /content/ntl_private
+          sudo chown -R "$(id -u):$(id -g)" /kaggle /content
+          ln -s "$GITHUB_WORKSPACE" /content/name-kaggle
+          if [[ -f /tmp/ntl-official/train.csv.zip ]]; then
+            python - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          target=Path('/kaggle/input/competitions/name-that-llm')
+          with ZipFile('/tmp/ntl-official/train.csv.zip') as z:
+              assert set(z.namelist()) == {'train.csv'}, 'Unexpected competition file membership'
+              z.extract('train.csv',target)
+          PY
+          elif [[ -f /tmp/ntl-official/train.csv ]]; then
+            mv /tmp/ntl-official/train.csv /kaggle/input/competitions/name-that-llm/train.csv
+          else
+            echo "BLOCKED_KAGGLE_DOWNLOAD: official train.csv missing"
+            exit 1
+          fi
+          echo "KAGGLE_OFFICIAL_DATA_PRESENT=TRUE (no rows or text exported)"
+      - name: Run actual C0/C1/C2 fit on 2699 official rows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, pathlib, json, nbformat, sys
+          from nbclient import NotebookClient
+          notebook=pathlib.Path('notebooks/ntl_wordchoice_c0_c1_c2_official_pilot_20261121.ipynb')
+          assert notebook.is_file()
+          book=nbformat.read(notebook,as_version=4)
+          try:
+              NotebookClient(book, timeout=1600, kernel_name='python3',
+                resources={'metadata':{'path':os.getcwd()}}).execute()
+          except Exception as e:
+              # GitHub logs are public: NEVER print official row values or notebook outputs.
+              print('OFFICIAL_PILOT_FAILED:',type(e).__name__,file=sys.stderr)
+              sys.exit(1)
+          p=pathlib.Path('/kaggle/working/wordchoice_official/metrics.json')
+          if not p.is_file():
+              sys.exit('OFFICIAL_PILOT_BLOCKED: no real metrics.json produced')
+          r=json.loads(p.read_text())
+          if set(r.get('metric',{})) != {'C0','C1','C2'}:
+              sys.exit('OFFICIAL_PILOT_BLOCKED: incomplete three-arm metric')
+          print('OFFICIAL_C0_C1_C2_COMPLETE=TRUE')
+          print('BA18',json.dumps({k:round(float(v['BA18']),8) for k,v in r['metric'].items()},sort_keys=True))
+          print('SIBLING_MACRO',json.dumps({k:round(float(v['sibling_macro']),8) for k,v in r['metric'].items()},sort_keys=True))
+          print('MECHANISM_PASS', bool(r.get('mechanism_pass')))
+          print('NOTE=spent prompt folds, NOT frozen 0.702 champion same-row validation')
+          PY
+      - name: Clear ephemeral competition data
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-official /kaggle/input/competitions/name-that-llm /kaggle/working/wordchoice_official /content/ntl_private
+          echo "Ephemeral official data and model checkpoints deleted; no raw-data artifacts uploaded"
