@@ -1,0 +1,96 @@
+name: Small Agent Qwen9B verified auto-unpacked checkpoint stage70 resume v3
+on:
+  push:
+    branches: [infra/small-agent-kaggle-relay-20261121]
+    paths: [.github/SMALL_AGENT_KAGGLE_V3_FIXED_START]
+permissions:
+  contents: read
+concurrency:
+  group: private-small-agent-v8-kaggle-step70to100-fixed-v3-once
+  cancel-in-progress: false
+env:
+  KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+  DATASET_ID: "kolihhan/qlora-v8-stage70-verified-20261121"
+  KERNEL_ID: "kolihhan/private-small-agent-qwen9b-v8-step70-to100"
+  KAGGLE_REMOTE_SOURCE_COMMIT: "0fa096c15c33afe63e5582c0e9e675d0b49c48a2"
+jobs:
+  attach-and-relaunch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Preflight actual Kaggle READY dataset and existing private notebook
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}" || exit 40
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import os
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          a=KaggleApi();a.authenticate()
+          s=a.dataset_status(os.environ['DATASET_ID'])
+          print('KAGGLE_ORIGINAL_STAGE70_PRIVATE_DATASET_STATUS',s,flush=True)
+          if str(s).lower()!='ready': raise RuntimeError('private stage70 dataset is NOT ready, refusing GPU')
+          k=a.kernels_status(os.environ['KERNEL_ID'])
+          print('KAGGLE_STAGE70_ORIGINAL_NOTEBOOK_PRE_PUSH_STATUS',str(k)[:600],flush=True)
+          PY
+      - name: Build v3 Kaggle T4 QLoRA 70-to100 with verified unpacked dataset support
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p kernel
+          curl -fLsS --retry 3 "https://raw.githubusercontent.com/kolihhan/small-agent-qlora/${KAGGLE_REMOTE_SOURCE_COMMIT}/scripts/kaggle_v8_stage100_remote.py" -o kernel/pinned-v8-source.py
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path('kernel/pinned-v8-source.py')
+          s=p.read_text()
+          for phrase in ('SOURCE_SHA = "3eac23cca117a41855f4998399f79a5d9d5f4369"',
+                         'STAGE70_ARTIFACT = 14693522324',
+                         'pause_at_step=None,resume_from_checkpoint=OUT/"checkpoint-70"',
+                         'max_steps=MAX_STEPS,save_steps=10'):
+              assert phrase in s,phrase
+          marker='from __future__ import annotations\n'
+          assert s.count(marker)==1
+          s=s.replace(marker,marker+"\nimport os\nos.environ['CUDA_VISIBLE_DEVICES']='0'\n",1)
+          assert 'kaggle_auto_extracted' in s and 'actual stage70 tensor state SHA mismatch' in s
+          assert 'OUT / "checkpoint-70"' in s and 'if BUNDLE.is_file():' in s
+          compile(s,'train.py','exec')
+          Path('kernel/train.py').write_text(s)
+          m={
+              'id':os.environ['KERNEL_ID'],
+              'title':'Private Small Agent Qwen9B v8 step70 to100',
+              'code_file':'train.py','language':'python','kernel_type':'script',
+              'is_private':True,'enable_gpu':True,'enable_internet':True,
+              'machine_shape':'NvidiaTeslaT4',
+              'dataset_sources':[os.environ['DATASET_ID']],
+              'competition_sources':[],'kernel_sources':[]
+          }
+          Path('kernel/kernel-metadata.json').write_text(json.dumps(m,indent=2))
+          print('KAGGLE_STAGE70_T4_KERNEL_V2_INPUT_SOURCE',m['dataset_sources'],flush=True)
+          PY
+      - name: Push corrected private Notebook version with attached READY original dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p kernel --accelerator NvidiaTeslaT4
+          echo "KAGGLE_SMALL_AGENT_V8_T4_V3_FIXED_KERNEL_PUSH_ACCEPTED"
+          mkdir -p /tmp/verify-kernel
+          kaggle kernels pull -k "$KERNEL_ID" -m -p /tmp/verify-kernel
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          m=json.loads(Path('/tmp/verify-kernel/kernel-metadata.json').read_text())
+          assert m['id']==os.environ['KERNEL_ID'],m
+          assert m.get('is_private') is True
+          assert m.get('enable_gpu') is True
+          assert m.get('enable_internet') is True
+          assert m.get('machine_shape')=='NvidiaTeslaT4'
+          assert m.get('dataset_sources')==[os.environ['DATASET_ID']],m.get('dataset_sources')
+          print("KAGGLE_SMALL_AGENT_V8_T4_DATASET_MOUNT_VERIFIED",m['dataset_sources'],flush=True)
+          PY
+          kaggle kernels status "$KERNEL_ID"
+          echo "KAGGLE_SMALL_AGENT_V8_T4_V3_NOTEBOOK=https://www.kaggle.com/code/$KERNEL_ID"
