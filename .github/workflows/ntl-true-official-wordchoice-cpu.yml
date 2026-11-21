@@ -31,7 +31,7 @@ jobs:
           python-version: "3.11"
       - name: Install CPU notebook runtime
         run: |
-          python -m pip install --quiet "kaggle>=1.7" "numpy<3" "pandas<3" "scikit-learn<2" joblib nbformat nbclient ipykernel
+          python -m pip install --quiet "kaggle==2.2.5" "six==1.17.0" "numpy<3" "pandas<3" "scikit-learn<2" joblib nbformat nbclient ipykernel
       - name: Fetch official competition training file EPHEMERALLY
         shell: bash
         run: |
