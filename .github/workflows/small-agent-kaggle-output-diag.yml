@@ -117,3 +117,53 @@ jobs:
           # Don't emit user file names or contents.
           print('KAGGLE_DATASET_FILES_LIST_ERROR', any('error' in ln.lower() or '403' in ln for ln in lines))
           PY
+
+      - name: v3 exception site and allowlisted failure reason only
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60 kaggle kernels logs "kolihhan/private-small-agent-qwen9b-v8-step70-to100/3" > /tmp/sa-v3-private-log.jsonl 2>&1 || true
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          rows=[]
+          for raw in Path('/tmp/sa-v3-private-log.jsonl').read_text(errors='replace').splitlines():
+              try:
+                  obj=json.loads(raw.strip().lstrip(','))
+                  chunk=obj.get('data','') if isinstance(obj,dict) else ''
+              except (ValueError,TypeError):
+                  chunk=''
+              rows.extend(chunk.splitlines())
+          print('V3_LOG_PARSED_LINES',len(rows))
+          exceptions=[]
+          for line in rows:
+              m=re.search(r'\b([A-Za-z][A-Za-z0-9_]*(?:Error|Exception)):\s*(.*)',line)
+              if m: exceptions.append((m.group(1),m.group(2).strip()))
+          print('V3_EXCEPTION_COUNT',len(exceptions))
+          if exceptions:
+              kind,msg=exceptions[-1]
+              print('V3_EXCEPTION_TYPE',kind[:60])
+              safe_terms=('out of memory','bf16','fp16','float16','bfloat16','dtype',
+                          'expected','requires','cuda','t4','gradient','optimizer',
+                          'checkpoint','resume','flash','triton','chunked','addmm',
+                          'tensor','device','training','quantiz','bnb','bitsandbytes',
+                          'unsupported','architecture','unknown','already','none',
+                          'not implemented','size mismatch','no kernel image',
+                          'not found','matmul','does not support','kernel')
+              if any(x in msg.lower() for x in safe_terms):
+                  x=re.sub(r'https?://\S+','<url>',msg)
+                  x=re.sub(r'(/[^\s:;,]+)+','<path>',x)
+                  x=re.sub(r'\b[A-Fa-f0-9]{24,}\b','<digest>',x)
+                  x=re.sub(r'(?i)\b(?:token|secret|password|credential|api.key|authorization|bearer)\s*[=:]\s*\S+','<redacted>',x)
+                  print('V3_EXCEPTION_MESSAGE_REDACTED',x[:350])
+              else:
+                  print('V3_EXCEPTION_MESSAGE_SHA256',hashlib.sha256(msg.encode()).hexdigest())
+          frames=[]
+          for line in rows:
+              m=re.search(r'File "[^"]+", line (\d+), in ([A-Za-z_][A-Za-z0-9_]*)',line)
+              if m:frames.append((int(m.group(1)),m.group(2)))
+          print('V3_TRACE_SITE_LINE_FUNCTION',frames[-10:])
+          print('V3_RESTORED_SOURCE',any('KAGGLE_STAGE70_SOURCE_OPTIMIZER_SCHEDULER_RNG_INTACT' in s for s in rows))
+          print('V3_TRAIN_CALL_STARTED',any('KAGGLE_ORIGINAL_QWEN9B_V8_STEP70_TO100_START' in s for s in rows))
+          print('V3_STEP100_COMPLETE',any('KAGGLE_ORIGINAL_QWEN9B_V8_STAGE100_FULL_STATE_VERIFIED' in s for s in rows))
+          PY
