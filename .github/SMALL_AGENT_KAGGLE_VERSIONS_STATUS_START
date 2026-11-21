@@ -15,3 +15,5 @@ Read-only follow-up 2026-11-21 20:23 MYT: confirm latest v1/v2 and latest actual
 2026-11-21 20:59 MYT owner requests fresh verification: Small Agent perhaps finished Kaggle training. Read-only API check of latest private kernel status; no GPU launch, no cancellation, no notebook submission, no secret or dataset modification.
 
 2026-11-21 fresh owner gogo: read only current Kaggle v3 status, no new kernel version and no GPU dispatch. Inspect latest /3 and current kernel receipt, avoid treating v1/v2 as current.
+
+2026-11-21 22:05 MYT owner requests current v3 training status read-only; do not resubmit or cancel. 
