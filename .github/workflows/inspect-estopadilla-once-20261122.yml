@@ -1,0 +1,31 @@
+name: Check Estopadilla Kaggle notebook and submission status
+on:
+  push:
+    branches: [ops/submit-estopadilla-glm053-20261122]
+    paths: [.github/workflows/inspect-estopadilla-once-20261122.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read-only Kaggle status, outputs, and submission marker
+        shell: bash
+        run: |
+          set +e
+          echo 'PRIVATE_NOTEBOOK_STATUS'
+          kaggle kernels status kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 2>&1 | head -c 1400
+          echo
+          echo 'PRIVATE_NOTEBOOK_FILES'
+          kaggle kernels files kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -v 2>&1 | head -c 1400
+          echo
+          echo 'SUBMISSION_MARKER'
+          kaggle competitions submissions name-that-llm -v 2>&1 | grep 'estopadilla-glm53-0716-20261122' | head -c 1000 || true
+          echo
