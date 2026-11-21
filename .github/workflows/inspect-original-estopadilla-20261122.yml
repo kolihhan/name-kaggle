@@ -1,0 +1,37 @@
+name: Inspect original Estopadilla 0.716 notebook output (one shot)
+on:
+  push:
+    branches: [ops/submit-estopadilla-glm053-20261122]
+    paths: [.github/workflows/inspect-original-estopadilla-20261122.yml]
+permissions:
+  contents: read
+jobs:
+  inspect-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Inspect source and its outputs
+        shell: bash
+        run: |
+          set +e
+          echo 'ESTOPADILLA_SOURCE_STATUS'
+          kaggle kernels status estopadilla/0-716-robust-glm-5-3-likelihood-user-prefix
+          echo 'ESTOPADILLA_SOURCE_FILES'
+          kaggle kernels files estopadilla/0-716-robust-glm-5-3-likelihood-user-prefix -v
+          echo 'ESTOPADILLA_SOURCE_VERSIONS'
+          python - <<'PY'
+          import kaggle
+          api = kaggle.api
+          source='estopadilla/0-716-robust-glm-5-3-likelihood-user-prefix'
+          for obj in [api.kernels_list(user='estopadilla',search='0-716-robust',page_size=20)]:
+              for x in obj:
+                  print(str(x)[:1600])
+                  if getattr(x,'ref',None)==source:
+                      print('SOURCE_RAW_ATTRS', {k:str(v)[:1000] for k,v in vars(x).items() if not k.startswith('_')})
+          PY
