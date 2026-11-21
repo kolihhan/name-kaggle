@@ -36,6 +36,9 @@ jobs:
           if str(s).lower()!='ready': raise RuntimeError('private stage70 dataset is NOT ready, refusing GPU')
           k=a.kernels_status(os.environ['KERNEL_ID'])
           print('KAGGLE_STAGE70_ORIGINAL_NOTEBOOK_PRE_PUSH_STATUS',str(k)[:600],flush=True)
+          # Fail closed if an owner has already started a newer GPU session.
+          if 'ERROR' not in str(k).upper():
+              raise RuntimeError('refuse v3 launch: kernel is not in the previously verified ERROR state')
           PY
       - name: Build v3 Kaggle T4 QLoRA 70-to100 with verified unpacked dataset support
         shell: bash
