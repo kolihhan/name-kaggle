@@ -166,4 +166,14 @@ jobs:
           print('V3_RESTORED_SOURCE',any('KAGGLE_STAGE70_SOURCE_OPTIMIZER_SCHEDULER_RNG_INTACT' in s for s in rows))
           print('V3_TRAIN_CALL_STARTED',any('KAGGLE_ORIGINAL_QWEN9B_V8_STEP70_TO100_START' in s for s in rows))
           print('V3_STEP100_COMPLETE',any('KAGGLE_ORIGINAL_QWEN9B_V8_STAGE100_FULL_STATE_VERIFIED' in s for s in rows))
+
+          # Numeric-only evidence of training progress; never print prompts or private traces.
+          loss_logs=sum(bool(re.search(r"['\"](?:loss|learning_rate)['\"]\s*:",s)) for s in rows)
+          summaries=[s for s in rows if 'train_runtime' in s or 'train_samples_per_second' in s]
+          percents=[int(x) for s in rows for x in re.findall(r'(?<!\d)(\d{1,3})%\|',s)]
+          epochs=[float(x) for s in rows for x in re.findall(r"['\"]epoch['\"]\s*:\s*(\d+(?:\.\d+)?)",s)]
+          print('V3_NUMERIC_LOSS_LOG_RECORDS',loss_logs)
+          print('V3_TRAIN_SUMMARY_LOG_RECORDS',len(summaries))
+          print('V3_MAX_PROGRESS_PERCENT',max(percents,default=-1))
+          print('V3_MAX_REPORTED_EPOCH',max(epochs,default=-1))
           PY
