@@ -1,0 +1,50 @@
+name: Read-only Small Agent private Kaggle dataset and notebook status
+on:
+  push:
+    branches: [infra/small-agent-kaggle-relay-20261121]
+    paths: [.github/SMALL_AGENT_KAGGLE_STATUS_START]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Kaggle authenticated no-GPU read-only resource state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi()
+          api.authenticate()
+          ds="kolihhan/qlora-v8-stage70-verified-20261121"
+          kr="kolihhan/private-small-agent-qwen9b-v8-step70-to100"
+          for label,func,arg in (
+            ("PRIVATE_DATASET",api.dataset_status,ds),
+            ("ACTUAL_PRIVATE_KERNEL",api.kernels_status,kr)):
+              try:
+                result=func(arg)
+                print("SMALL_AGENT_KAGGLE_"+label+"_STATUS",str(result)[:1800],flush=True)
+              except Exception as e:
+                print("SMALL_AGENT_KAGGLE_"+label+"_ERROR",type(e).__name__,str(e)[:600],flush=True)
+          PY
+          mkdir -p /tmp/sa-kaggle-metadata
+          kaggle kernels pull -k kolihhan/private-small-agent-qwen9b-v8-step70-to100 -m -p /tmp/sa-kaggle-metadata || true
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('/tmp/sa-kaggle-metadata/kernel-metadata.json')
+          if p.is_file():
+              x=json.loads(p.read_text())
+              print('SMALL_AGENT_KERNEL_PULLED_METADATA',json.dumps({
+                  k:x.get(k) for k in ('id','title','dataset_sources','is_private','enable_gpu','machine_shape','enable_internet')
+              },sort_keys=True),flush=True)
+          else:
+              print('SMALL_AGENT_KERNEL_PULLED_METADATA_NOT_AVAILABLE',flush=True)
+          PY
