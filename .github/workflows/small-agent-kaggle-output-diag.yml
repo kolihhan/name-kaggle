@@ -87,3 +87,20 @@ jobs:
               print('KAGGLE_LATEST_DATASET_SOURCES',d.get('dataset_sources'))
               print('KAGGLE_LATEST_GPU',d.get('enable_gpu'),'MACHINE',d.get('machine_shape'))
           PY
+      - name: Verify private Kaggle dataset file names only
+        shell: bash
+        run: |
+          set -uo pipefail
+          ds="kolihhan/qlora-v8-stage70-verified-20261121"
+          timeout 60 kaggle datasets files "$ds" -v > /tmp/sa-dataset-files.csv 2>&1
+          echo "KAGGLE_DATASET_FILES_READ_EXIT=$?"
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/sa-dataset-files.csv').read_text(errors='replace')
+          lines=s.splitlines()
+          print('KAGGLE_DATASET_FILES_ROW_COUNT',len(lines))
+          for name in ('qlora-v8-train.jsonl','qlora-v8-audit.json','qlora-v8-stage70-checkpoint.zip','stage70-kaggle-transport-manifest.json'):
+              print('KAGGLE_PRIVATE_DATASET_HAS_'+name.replace('-','_').replace('.','_'),any(name in ln for ln in lines))
+          # Don't emit user file names or contents.
+          print('KAGGLE_DATASET_FILES_LIST_ERROR', any('error' in ln.lower() or '403' in ln for ln in lines))
+          PY
