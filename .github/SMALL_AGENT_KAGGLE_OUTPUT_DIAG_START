@@ -1,1 +1,1 @@
-Read-only post-v3-failure inspection authorized by owner task, 2026-11-22 00:03 MYT. Fetch only Kaggle provider state, allowlisted log signatures and checkpoint output filenames; no notebook push, GPU training or artifact content disclosure.
+Run existing read-only Kaggle v3 diagnostics with allowlisted exception classifier, 2026-11-22 00:05 MYT; no GPU submission, no notebook version change, no private log exposure.
