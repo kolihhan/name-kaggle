@@ -1,0 +1,42 @@
+name: Submit Estopadilla 0.716 public notebook once (isolated reproduction)
+on:
+  push:
+    branches: [ops/submit-estopadilla-glm053-20261122]
+    paths:
+      - .github/workflows/submit-estopadilla-once-20261122.yml
+      - scripts/submit_estopadilla_one_shot_20261122.py
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ntl-estopadilla-glm53-0716-20261122-only
+  cancel-in-progress: false
+jobs:
+  pull-run-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 215
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out isolated submit script, not official data
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/submit_estopadilla_one_shot_20261122.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify submission is isolated and source syntax is valid
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f" || { echo "Official data detected; refusing to run"; exit 1; }
+          done
+          python -m py_compile scripts/submit_estopadilla_one_shot_20261122.py
+      - name: Install official Kaggle tools
+        run: python -m pip install -q 'kaggle==2.2.5' 'kagglehub>=1.0.3,<2' 'six==1.17.0'
+      - name: Clone author notebook privately, run, verify output and submit
+        run: python -u scripts/submit_estopadilla_one_shot_20261122.py
