@@ -1,0 +1,95 @@
+name: Submit existing Areebbb Kaggle Notebook after successful run
+on:
+  push:
+    branches: [ops/submit-areebbb-fingerprints-20261121]
+    paths: [.github/workflows/submit-existing-areebbb-when-ready.yml]
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: ntl-areebbb-existing-preview-to-official-submit-20261121
+  cancel-in-progress: false
+jobs:
+  submit-existing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 215
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stop obsolete status poll that used the wrong slug
+        shell: bash
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/44868105328/cancel" \
+            && echo "OBSOLETE_RUN_CANCEL_REQUESTED" \
+            || echo "OBSOLETE_RUN_CANCELLATION_UNAVAILABLE"
+      - name: Install official Kaggle API client
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Wait for already-started Kaggle Notebook and submit its output once
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, subprocess, re, time, sys, pathlib
+          KERNEL = "kolihhan/ntl-areebbb-fingerprints-0709-repro-20261121"
+          MARKER = "areebbb-0709-20261121"
+          COMP = "name-that-llm"
+          if os.getenv("GITHUB_REPOSITORY") != "kolihhan/name-kaggle" or os.getenv("GITHUB_REF") != "refs/heads/ops/submit-areebbb-fingerprints-20261121":
+              raise SystemExit("Wrong repository or branch; refuse submission")
+          if not os.getenv("KAGGLE_API_TOKEN"):
+              raise SystemExit("Kaggle token secret missing")
+          def call(args, timeout=120):
+              p=subprocess.run(["kaggle", *args],text=True,capture_output=True,timeout=timeout)
+              if p.returncode != 0:
+                  err=p.stderr.replace(os.environ.get("KAGGLE_API_TOKEN") or "<missing>","[REDACTED]")
+                  err=re.sub(r"KGAT_[A-Za-z0-9_-]+","[REDACTED]",err)
+                  raise RuntimeError("Kaggle command failed: " + " ".join(args[:3]) + " | " + err[-350:])
+              return p.stdout.strip()
+          def already_submitted():
+              return MARKER in call(["competitions","submissions",COMP,"-v"])
+          if already_submitted():
+              print("ALREADY_SUBMITTED: marker in official Kaggle ledger; no duplicate",flush=True)
+              sys.exit(0)
+          deadline=time.monotonic()+190*60
+          while time.monotonic()<deadline:
+              result=call(["kernels","status",KERNEL])
+              print("NOTEBOOK_STATUS",result.replace("\n"," ")[:250],flush=True)
+              if re.search(r"\bcomplete(?:d)?\b",result,re.I):
+                  break
+              if re.search(r"\b(?:error|failed|cancelled|canceled)\b",result,re.I):
+                  raise SystemExit("Notebook failed; no Kaggle submission")
+              time.sleep(45)
+          else:
+              raise SystemExit("Notebook still running at CI limit; no Kaggle submission")
+          # Use actual Notebook output, never upload a locally fabricated prediction file.
+          files=call(["kernels","files",KERNEL,"-v"])
+          matches=re.findall(r"([\w./-]+\.(?:parquet|csv))",files,re.I)
+          candidates=list(dict.fromkeys(pathlib.Path(x).name for x in matches
+              if re.search(r"(?:^|[_.-])submission(?:[_.-]|$)",pathlib.Path(x).stem,re.I)
+              and not pathlib.Path(x).name.lower().startswith("sample")))
+          print("ACTUAL_NOTEBOOK_OUTPUTS",candidates,flush=True)
+          if "submission.parquet" in candidates:
+              selected="submission.parquet"
+          elif len(candidates)==1:
+              selected=candidates[0]
+          else:
+              raise SystemExit("Missing or ambiguous submission output: no competition submission")
+          if already_submitted():
+              print("ALREADY_SUBMITTED: second guard",flush=True)
+              sys.exit(0)
+          out=call(["competitions","submit",COMP,"-f",selected,"-k",KERNEL,
+                    "-m","Areebbb public Fingerprints/Sibling 0.709 reproduction "+MARKER],timeout=300)
+          print("KAGGLE_SUBMIT_RESPONSE",out[-1200:],flush=True)
+          m=re.search(r"Submission\s+(?:ref|id)\s*:?\s*(\d+)",out,re.I)
+          if m:
+              print("OFFICIAL_SUBMISSION_REF",m.group(1),flush=True)
+              try:
+                  print("OFFICIAL_SUBMISSION_STATUS",call(["competitions","submission",m.group(1)]),flush=True)
+              except Exception:
+                  print("OFFICIAL_SUBMISSION_SCORING_PENDING",flush=True)
+          else:
+              print("OFFICIAL_SUBMISSION_REF_UNPARSED: verify Kaggle ledger",flush=True)
+          PY
