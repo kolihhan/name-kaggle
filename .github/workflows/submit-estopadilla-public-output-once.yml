@@ -46,10 +46,11 @@ jobs:
           if not any(line.startswith('submission.parquet,') for line in files.splitlines()):
               raise SystemExit('Source submission.parquet not listed')
           dest=pathlib.Path('/tmp/estopadilla-output');dest.mkdir(exist_ok=True)
-          p=call(['kaggle','kernels','output',source,'--file-pattern',r'^submission\\.parquet$','-p',str(dest),'-o'])
+          p=call(['kaggle','kernels','output',source,'-p',str(dest),'-o'])
           print('DOWNLOAD_RESULT',p.stdout[-800:])
           file=dest/'submission.parquet'
           if not file.exists():
+              print('DOWNLOADED_FILES',sorted(str(p.relative_to(dest)) for p in dest.rglob('*') if p.is_file())[:50])
               raise SystemExit('SOURCE_FILE_NOT_DOWNLOADED')
           meta=pq.ParquetFile(file)
           print('FILE_VALIDATION',{'bytes':file.stat().st_size,'rows':meta.metadata.num_rows,'columns':meta.schema.names})
