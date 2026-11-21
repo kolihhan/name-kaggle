@@ -27,8 +27,8 @@ jobs:
           kaggle kernels list -m -s Areebbb --page-size 10 -v 2>&1 | head -c 2600 || true
           echo
           echo "PRIVATE_KERNEL_STATUS_START"
-          kaggle kernels status kolihhan/ntl-areebbb-fingerprints-0709-20261121 2>&1 | head -c 1200 || true
+          kaggle kernels status kolihhan/ntl-areebbb-fingerprints-0709-repro-20261121 2>&1 | head -c 1200 || true
           echo
           echo "PRIVATE_KERNEL_FILES_START"
-          kaggle kernels files kolihhan/ntl-areebbb-fingerprints-0709-20261121 -v 2>&1 | head -c 1200 || true
+          kaggle kernels files kolihhan/ntl-areebbb-fingerprints-0709-repro-20261121 -v 2>&1 | head -c 1200 || true
           echo
