@@ -25,7 +25,9 @@ def run(args: list[str], *, timeout: int = 180, quiet: bool = False) -> str:
     p = subprocess.run(command, text=True, capture_output=True, timeout=timeout)
     if p.returncode != 0:
         # Error messages may include credential-bearing URLs; avoid printing raw stderr.
-        print(f"COMMAND_FAILED: {' '.join(command[:5])}; exit={p.returncode}", flush=True)
+        safe_error = p.stderr.replace(os.environ.get("KAGGLE_API_TOKEN") or "<no-token>", "[REDACTED]")
+        safe_error = re.sub(r"KGAT_[A-Za-z0-9_-]+", "[REDACTED]", safe_error)
+        print(f"COMMAND_FAILED: {' '.join(command[:5])}; exit={p.returncode}; error={safe_error[-1600:]}", flush=True)
         raise RuntimeError("Kaggle CLI command failed; see code and endpoint permissions")
     if not quiet:
         print(p.stdout[-2000:], flush=True)
