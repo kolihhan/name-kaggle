@@ -1,0 +1,53 @@
+name: Auth-only relay preflight for Small Agent v8 Kaggle continuation
+on:
+  push:
+    branches: [infra/small-agent-kaggle-relay-20261121]
+    paths: [.github/SMALL_AGENT_KAGGLE_RELAY_AUTH_START]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  relay-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Validate token and cross-repo original stage70 artifact metadata (no payload)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}" || { echo "RELAY_KAGGLE_SECRET_MISSING"; exit 41; }
+          echo "RELAY_KAGGLE_SECRET_PRESENT"
+          curl --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/kolihhan/small-agent-qlora/actions/artifacts/14693522324" -o artifact-metadata.json
+          python - <<'PY'
+          import json
+          x=json.load(open('artifact-metadata.json'))
+          assert x.get('name')=='qlora-v8-stage70-full-state-if-trained'
+          assert not x.get('expired')
+          assert x.get('id')==14693522324
+          print('RELAY_GITHUB_STAGE70_PUBLIC_ARTIFACT_METADATA_PASS',x.get('size_in_bytes'))
+          PY
+          # Only check HTTP status; no checkpoint body downloaded.
+          url="https://api.github.com/repos/kolihhan/small-agent-qlora/actions/artifacts/14693522324/zip"
+          status=$(curl -sSL -o /dev/null --max-time 12 -w '%{http_code}' --range 0-0 \
+             -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$url" || true)
+          echo "RELAY_ARTIFACT_DOWNLOAD_HTTP_STATUS=$status"
+      - name: Authenticated Kaggle account read-only identity check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi()
+          api.authenticate()
+          print('RELAY_KAGGLE_API_AUTH_OK',flush=True)
+          kernels=api.kernels_list(mine=True,page=1,page_size=1)
+          print('RELAY_KAGGLE_API_KERNEL_LIST_PASS',type(kernels).__name__,flush=True)
+          PY
