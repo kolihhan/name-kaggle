@@ -37,6 +37,6 @@ jobs:
           done
           python -m py_compile scripts/submit_areebbb_one_shot_20261121.py
       - name: Install official Kaggle clients
-        run: python -m pip install -q 'kaggle==2.2.5' 'kagglehub>=1.0.3,<2'
+        run: python -m pip install -q 'kaggle==2.2.5' 'kagglehub>=1.0.3,<2' 'six==1.17.0'
       - name: Pull public author Notebook, clone privately, run and submit exactly once
         run: python -u scripts/submit_areebbb_one_shot_20261121.py
