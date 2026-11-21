@@ -2,3 +2,4 @@ One-time owner-authorized read-only Kaggle v8 completion/failure diagnosis. Do n
 Read-only follow-up: distinguish v1/v2 file-not-found error and verify dataset source metadata.
 Read-only dataset file-name presence preflight after exact Kaggle FileNotFoundError in both v1 and v2.
 Final read-only confirmation of Kaggle automatic ZIP extraction and all original optimizer-state filename presence.
+One-time read-only check immediately after accepted v3 push: distinguish new queued session from old failed v2 logs, no GPU mutation or notebook push.
