@@ -20,6 +20,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "SOURCE_KERNEL_STATUS_START"
+          kaggle kernels status areebbb/0-709-fingerprints-sibling-specialis 2>&1 | head -c 1500 || true
+          echo
           echo "PRIVATE_KERNEL_STATUS_START"
           kaggle kernels status kolihhan/ntl-areebbb-fingerprints-0709-20261121 2>&1 | head -c 1200 || true
           echo
