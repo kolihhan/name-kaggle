@@ -1,1 +1,3 @@
 Read-only Kaggle status after private dataset create accepted and canonical private Notebook slug returned. No GPU, no new version, no competition submission; determine whether dataset creation is complete before any source-attachment repair.
+
+After confirmed v2 dataset mount in launch #44891282947, recheck actual Kaggle kernel run status and private mount without launching new GPU or model.
