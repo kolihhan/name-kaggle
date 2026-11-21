@@ -1,0 +1,41 @@
+name: One-shot Areebbb 0.709 private reproduction and Kaggle submission
+on:
+  push:
+    branches:
+      - ops/submit-areebbb-fingerprints-20261121
+    paths:
+      - .github/workflows/submit-areebbb-fingerprints-once.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ntl-areebbb-fingerprints-20261121-one-off
+  cancel-in-progress: false
+jobs:
+  pull-run-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 215
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out isolated runner script only, without competition data
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/submit_areebbb_one_shot_20261121.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Ensure repository competition data was not brought into runner
+        run: |
+          set -euo pipefail
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do
+            test ! -e "$f" || { echo "Official competition data present; fail closed"; exit 1; }
+          done
+          python -m py_compile scripts/submit_areebbb_one_shot_20261121.py
+      - name: Install official Kaggle clients
+        run: python -m pip install -q 'kaggle==2.2.5' 'kagglehub>=1.0.3,<2'
+      - name: Pull public author Notebook, clone privately, run and submit exactly once
+        run: python -u scripts/submit_areebbb_one_shot_20261121.py
