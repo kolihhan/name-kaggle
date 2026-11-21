@@ -84,7 +84,11 @@ jobs:
                   for output in cell.get('outputs',[]):
                       if output.get('output_type')=='error':
                           cls=re.sub('[^a-zA-Z0-9_]', '', str(output.get('ename','UNKNOWN')))[:40]
-                          marks.append({'cell_index':cell_index,'error_class':cls})
+                          record={'cell_index':cell_index,'error_class':cls}
+                          # Only cell 1 is safe static setup code; later cells may hold private data.
+                          if cell_index == 1 and cls == 'SyntaxError':
+                              record['syntax_info']=re.sub('[^a-zA-Z0-9 _.:()/-]', '',str(output.get('evalue','')))[:120]
+                          marks.append(record)
               print('OFFICIAL_PILOT_FAILED:',type(e).__name__,
                     'SAFE_ERROR_CLASSES='+json.dumps(marks[:3]),file=sys.stderr)
               sys.exit(1)
