@@ -7,3 +7,5 @@ Read-only fresh v1-v2 status for 2026-11-21 18:08+08 user question; no GPU actio
 Follow-up: user requested live both-project status. Read Kaggle individual historical v1 and corrected v2 status only; no GPU launch, no cancellation, no data changes.
 
 2026-11-21 19:15 Asia/Kuala_Lumpur: user requests current two-project statuses. One-time read-only Kaggle version1 vs version2 API status. Do not launch, stop, resubmit or expose credentials.
+
+2026-11-21T20:07+08:00 read-only latest Kaggle version1/version2 status recheck for owner; no GPU start, no version push, no training modification.
