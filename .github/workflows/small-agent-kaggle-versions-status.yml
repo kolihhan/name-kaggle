@@ -1,0 +1,44 @@
+name: Verify exact Small Agent Kaggle version 1 vs version 2 statuses
+on:
+  push:
+    branches: [infra/small-agent-kaggle-relay-20261121]
+    paths: [.github/SMALL_AGENT_KAGGLE_VERSIONS_STATUS_START]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Read Kaggle version 1 and 2 without starting jobs or changing metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          import json
+          api=KaggleApi();api.authenticate()
+          slug='kolihhan/private-small-agent-qwen9b-v8-step70-to100'
+          for v in [1,2]:
+              try:
+                  k=api.kernels_status(f'{slug}/{v}')
+                  print(f'SMALL_AGENT_KAGGLE_VERSION_{v}_STATUS=',str(k)[:600],flush=True)
+              except Exception as exc:
+                  print(f'SMALL_AGENT_KAGGLE_VERSION_{v}_STATUS_ERROR=',type(exc).__name__,str(exc)[:500],flush=True)
+          try:
+              k=api.kernels_status(slug)
+              print('SMALL_AGENT_KAGGLE_LATEST_STATUS=',str(k)[:600],flush=True)
+          except Exception as exc:
+              print('SMALL_AGENT_KAGGLE_LATEST_STATUS_ERROR=',type(exc).__name__,str(exc)[:500],flush=True)
+          PY
+          for version in 1 2; do
+            echo "SMALL_AGENT_KAGGLE_VERSION_${version}_CLI_BEGIN"
+            kaggle kernels status "kolihhan/private-small-agent-qwen9b-v8-step70-to100/${version}" || true
+            echo "SMALL_AGENT_KAGGLE_VERSION_${version}_CLI_END"
+          done
