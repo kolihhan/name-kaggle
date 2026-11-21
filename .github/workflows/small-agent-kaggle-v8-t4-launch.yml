@@ -103,7 +103,7 @@ jobs:
           }
           (root/'stage70-kaggle-transport-manifest.json').write_text(json.dumps(manifest,indent=2))
           metadata={
-              'title':'Private original Qwen3.5-9B Small Agent v8 verified step70 checkpoint',
+              'title':'Private Small Agent Qwen9B v8 checkpoint70',
               'id':os.environ['DATASET_ID'],
               'licenses':[{'name':'unknown'}],
               'subtitle':'Private research checkpoint + verified 798 tool-action source. Not GAIA labels.',
@@ -145,7 +145,7 @@ jobs:
           (folder/'train.py').write_text(source)
           metadata={
               'id':os.environ['KERNEL_ID'],
-              'title':'Private Small Agent Qwen9B QLoRA v8 resume step70 to100',
+              'title':'Private Small Agent Qwen9B v8 step70 to100',
               'code_file':'train.py',
               'language':'python','kernel_type':'script',
               'is_private':True,'enable_gpu':True,'enable_internet':True,
