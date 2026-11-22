@@ -44,7 +44,8 @@ def run_cli(*argv: str,timeout:int=180)->str:
         # Never expose the raw CLI error which may contain credential-bearing URLs.
         kind=("PERMISSION_DENIED" if ("denied" in p.stderr.lower() or "access" in p.stderr.lower())
               else "RESOURCE_UNAVAILABLE_OR_KAGGLE_CLI_ERROR")
-        sanitized=re.sub(r"(?:KGAT_[A-Za-z0-9_-]+|Bearer\\s+\\S+|https?://\\S+)", "[REDACTED]", (p.stderr or p.stdout)[-400:]).replace("\\n"," ")\n        raise RuntimeError(f"KAGGLE_{argv[0]}_{argv[1] if len(argv)>1 else ''}:{kind}:EXIT{p.returncode}:{sanitized[:280]}")
+        sanitized=re.sub(r"(?:KGAT_[A-Za-z0-9_-]+|Bearer\\s+\\S+|https?://\\S+)", "[REDACTED]", (p.stderr or p.stdout)[-400:]).replace("\\n"," ")
+        raise RuntimeError(f"KAGGLE_{argv[0]}_{argv[1] if len(argv)>1 else ''}:{kind}:EXIT{p.returncode}:{sanitized[:280]}")
     return p.stdout
 
 
