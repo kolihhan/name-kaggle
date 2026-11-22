@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/ntl-distributed-glm-evidence-cpu-once-20261122.yml
       - scripts/ntl_glm_distributed_evidence_20261122.py
+      - scripts/ntl_merge_public_glm_caches_20261122.py
 permissions: {contents: read}
 jobs:
   experiment:
@@ -36,14 +37,13 @@ jobs:
           assert WINDOW==8
           print('NTL_DISTRIBUTED_GLM_CPU_PREFLIGHT=PASS')
           PY
-      - name: Download official train and source's existing scored per-token caches ephemerally
+      - name: Recover two original public GLM cache versions and official train ephemerally
         shell: bash
         run: |
           set -euo pipefail
           test -n "${KAGGLE_API_TOKEN:-}"
-          mkdir -p /tmp/ntl-real-official /tmp/ntl-glm-token-cache
+          mkdir -p /tmp/ntl-real-official /tmp/ntl-glm-cache-chunks
           kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-real-official >/dev/null
-          kaggle kernels output estopadilla/ntl-glm-prefix-ab -p /tmp/ntl-glm-token-cache -o --file-pattern '.*(glm53|flash)_(features[.]csv|scores[.]npz)$' >/dev/null
           python - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
@@ -52,18 +52,13 @@ jobs:
               with ZipFile(p) as z:
                   assert set(z.namelist())=={'train.csv'}
                   z.extractall(p.parent)
-          assert Path('/tmp/ntl-real-official/train.csv').exists()
-          required=('glm53_features.csv','flash_features.csv','glm53_scores.npz','flash_scores.npz')
-          cache=Path('/tmp/ntl-glm-token-cache')
-          for name in required:
-              matches=[p for p in cache.rglob(name) if p.is_file()]
-              if len(matches)!=1:
-                  print('NTL_CACHE_EXPECTED_FILENAME_COUNT='+name+':'+str(len(matches)))
-                  raise RuntimeError('cache_filename_missing_or_ambiguous')
-              if matches[0].parent!=cache:
-                  (cache/name).symlink_to(matches[0])
-          print('NTL_OFFICIAL_TRAIN_AND_PUBLIC_NPZ_PRESENT=TRUE')
+          assert Path('/tmp/ntl-real-official/train.csv').is_file()
           PY
+          python -m scripts.ntl_merge_public_glm_caches_20261122 \
+            --train /tmp/ntl-real-official/train.csv \
+            --root /tmp/ntl-glm-cache-chunks \
+            --out /tmp/ntl-glm-token-cache
+          echo NTL_FULL_2699_TOKEN_CACHE_VERIFIED=TRUE
       - name: Run frozen 5-fold within-family C0 C1 C2 and report only aggregate metrics
         shell: bash
         run: |
@@ -81,5 +76,5 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -rf /tmp/ntl-real-official /tmp/ntl-glm-token-cache
+          rm -rf /tmp/ntl-real-official /tmp/ntl-glm-token-cache /tmp/ntl-glm-cache-chunks
           echo NTL_DATA_NOT_PERSISTED_OR_LOGGED=TRUE
