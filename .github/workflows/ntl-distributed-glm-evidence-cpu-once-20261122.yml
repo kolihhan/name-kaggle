@@ -2,7 +2,9 @@ name: NTL original distributed GLM evidence vs permuted alignment CPU — real o
 on:
   push:
     branches: [research/attribution-bottleneck-review-20261106]
-    paths: [.github/workflows/ntl-distributed-glm-evidence-cpu-once-20261122.yml]
+    paths:
+      - .github/workflows/ntl-distributed-glm-evidence-cpu-once-20261122.yml
+      - scripts/ntl_glm_distributed_evidence_20261122.py
 permissions: {contents: read}
 jobs:
   experiment:
