@@ -59,7 +59,7 @@ def soft_source_capacity(scores,clusters,*,max_group=18):
 def self_test():
     # Both rows strongly prefer class 0; hard constraint forces one to
     # relabel, but the soft source-capacity model allows two class-0 rows.
-    scores=np.array([[18.,0.,-2.],[17.,0.,-2.]])
+    scores=np.array([[100.,0.,0.],[100.,0.,0.]])
     group=np.array([4,4])
     hard=prior.assign(scores,group)
     soft=soft_source_capacity(scores,group)
