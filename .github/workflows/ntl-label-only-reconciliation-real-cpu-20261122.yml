@@ -1,0 +1,29 @@
+name: NTL strong-label-only reconciliation against weaker scores actual CPU folds
+on:
+  push:
+    branches: [research/ntl-label-only-reconciliation-20261122]
+    paths:
+      - .github/workflows/ntl-label-only-reconciliation-real-cpu-20261122.yml
+permissions:
+  contents: read
+jobs:
+  real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal CPU dependencies
+        run: python -m pip install -q --disable-pip-version-check 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
+      - name: Frozen full / k5 label-only strong-to-weak joint reconciliation
+        run: |
+          python -m scripts.ntl_label_only_reconciliation_20261122
+          echo NTL_LABEL_ONLY_NO_GPU_NO_OFFICIAL_SUBMISSION=TRUE
