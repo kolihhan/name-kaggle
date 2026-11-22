@@ -24,7 +24,7 @@ jobs:
           test -n "$KAGGLE_API_TOKEN"
           python -m py_compile kaggle/ntl_0715_label_only_joint_final_20261122.py scripts/build_ntl_0715_label_joint_candidate_20261122.py
           python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' pyarrow
-          python -c 'from kaggle.ntl_0715_label_only_joint_final_20261122 import smoke; smoke()'
+          python -c 'import runpy; runpy.run_path("kaggle/ntl_0715_label_only_joint_final_20261122.py",run_name="test")["smoke"]()'
           python - <<'PY'
           import csv,io,subprocess
           p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=90,check=True)
