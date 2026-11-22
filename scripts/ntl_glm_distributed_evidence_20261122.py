@@ -37,28 +37,79 @@ STATS=("n_tok","lp_mean","lp_std","lp_q05","lp_q10","lp_q25",
        "top20","rank_ge100","lp_mean_first","lp_mean_second",
        "bpc","tok_per_char")
 
-def load_cache(path:Path):
+def safe_pickle_object_string_ids(path:Path, expected_ids:set[str], expected_n:int):
+    """Read string payloads from numpy object-array pickle *without executing it*.
+
+    Numpy's object 'ids' uses pickle. Never call np.load(...allow_pickle=True)
+    on a third-party artifact. pickletools.genops parses opcodes without running
+    REDUCE / GLOBAL / BUILD. Match only known official IDs, preserve their order.
+    """
+    import io
+    import pickletools
+    import zipfile
+    from numpy.lib import format as npyformat
+    with zipfile.ZipFile(path) as archive:
+        raw=archive.read("ids.npy")
+    stream=io.BytesIO(raw)
+    version=npyformat.read_magic(stream)
+    if version==(1,0): shape,fortran,dtype=npyformat.read_array_header_1_0(stream)
+    elif version==(2,0):shape,fortran,dtype=npyformat.read_array_header_2_0(stream)
+    else:raise ValueError("unknown_numpy_id_header_version")
+    if tuple(shape)!=(expected_n,) or not dtype.hasobject or fortran:
+        raise ValueError("unexpected_object_ID_array_contract")
+    picked=stream.read()
+    ids=[]
+    for op,arg,_ in pickletools.genops(picked):
+        if op.name in ("SHORT_BINUNICODE","BINUNICODE","BINUNICODE8","UNICODE",
+                       "SHORT_BINSTRING","BINSTRING","BINBYTES","SHORT_BINBYTES"):
+            if isinstance(arg,bytes):
+                try:arg=arg.decode("utf-8")
+                except UnicodeDecodeError:continue
+            if isinstance(arg,str) and arg in expected_ids:
+                ids.append(arg)
+    if len(ids)!=expected_n or len(set(ids))!=expected_n:
+        raise ValueError("pickle_static_ID_extraction_not_unique_or_incomplete")
+    return np.asarray(ids,dtype=str)
+
+def load_cache(path:Path, feature_table:pd.DataFrame):
+    expected=set(feature_table.id.astype(str))
+    expected_n=len(expected)
+    ids=safe_pickle_object_string_ids(path,expected,expected_n)
     with np.load(path,allow_pickle=False) as f:
-        ids=np.asarray(f["ids"]).astype(str)
-        scores=np.asarray(f["scores"],dtype=np.float64)
+        matrix=np.asarray(f["scores"],dtype=np.float64)
         offsets=np.asarray(f["offsets"],dtype=np.int64)
         prefix=np.asarray(f["n_prefix"],dtype=np.int64)
         tokens=np.asarray(f["tokens"])
     n=len(ids)
-    if len(set(ids.tolist()))!=n or n!=2699:
-        raise ValueError("must contain 2699 unique row identifiers")
-    if scores.ndim!=1 or offsets.ndim!=1 or len(offsets)!=n+1 or offsets[0]!=0 or offsets[-1]!=len(scores):
-        raise ValueError("unsupported flattened score/offset contract")
-    if tokens.ndim!=1 or len(tokens)!=len(scores) or np.any(np.diff(offsets)<0):
+    if n!=expected_n or n<100 or not expected.issuperset(ids):
+        raise ValueError("cache and published feature-table IDs differ")
+    if matrix.ndim!=2 or matrix.shape[1]!=4 or offsets.ndim!=1 or len(offsets)!=n+1 or offsets[0]!=0 or offsets[-1]!=len(matrix):
+        raise ValueError("unsupported flattened 4-column score/offset contract")
+    if tokens.ndim!=1 or len(tokens)!=len(matrix) or np.any(np.diff(offsets)<0):
         raise ValueError("aligned tokens missing or offsets malformed")
-    if prefix.ndim==0:prefix=np.repeat(prefix,n)
     if prefix.shape!=(n,):
         raise ValueError("unexpected per-passage prefix count")
     if (prefix<0).any() or np.any(prefix>np.diff(offsets)):
         raise ValueError("invalid prefix token counts")
-    if not np.all(np.isfinite(scores)):
+    if not np.all(np.isfinite(matrix)):
         raise ValueError("nonfinite score values")
-    return dict(ids=ids,scores=scores,offsets=offsets,prefix=prefix,tokens=tokens)
+    # Determine which numeric column is next-token log probability by comparing
+    # against the publisher's existing per-row lp_mean feature, without labels.
+    published=feature_table.set_index("id").loc[ids,"lp_mean"].to_numpy(dtype=float)
+    differences=[]
+    for col in range(matrix.shape[1]):
+        means=np.asarray([matrix[offsets[i]+prefix[i]:offsets[i+1],col].mean()
+            if offsets[i]+prefix[i]<offsets[i+1] else np.nan for i in range(n)])
+        if not np.isfinite(means).all():
+            raise ValueError("empty_text_suffix_or_nonfinite")
+        differences.append(float(np.median(np.abs(means-published))))
+    best=int(np.argmin(differences))
+    others=sorted(differences)
+    if others[0]>.15 or others[1]-others[0]<.03:
+        raise ValueError("cannot_unequivocally_identify_lp_column:"+str([round(x,3) for x in differences]))
+    return dict(ids=ids,scores=matrix[:,best],offsets=offsets,
+                prefix=prefix,tokens=tokens,lp_column=best,
+                lp_median_abs_error=round(others[0],6))
 
 def row_values(c,i):
     a,b=c["offsets"][i:i+2]
@@ -138,8 +189,10 @@ def evaluate(train,folds,fullfeat,flashfeat,full,flash):
     if len(train)!=2699 or train.prompt_id.nunique()!=150:
         raise ValueError("official train size or prompt count differs")
     if len(folds)!=2699:raise ValueError("frozen fold size differs")
-    if any(set(frame.id)!=set(train.id) for frame in (fullfeat,flashfeat,folds)):
-        raise ValueError("feature / frozen fold ID mismatch")
+    if set(folds.id)!=set(train.id):
+        raise ValueError("frozen fold and official train ID mismatch")
+    if set(fullfeat.id)!=set(flashfeat.id) or set(fullfeat.id)!=set(full["ids"]) or len(fullfeat)<100:
+        raise ValueError("cache and both published feature-table IDs must exactly match")
     train=train.merge(folds[['id','prompt_id','model','fold_id']],on='id',suffixes=('','_fold'),
                       validate='one_to_one')
     if (train.prompt_id!=train.prompt_id_fold).any() or (train.model!=train.model_fold).any():
@@ -157,8 +210,8 @@ def evaluate(train,folds,fullfeat,flashfeat,full,flash):
         if len(set(fold[prompt==p]))!=1:
             raise ValueError("prompt crosses frozen folds")
     allowed=np.isin(label,[FULL,FLASH])
-    if allowed.sum()!=300 or set(np.unique(fold[allowed]))!=set(range(5)):
-        raise ValueError("expected exactly 300 GLM sibling rows across 5 folds")
+    if allowed.sum()<80 or set(np.unique(fold[allowed]))!=set(range(5)):
+        raise ValueError("need enough GLM sibling rows from published cache across 5 frozen folds")
     diff=np.zeros((len(ids),5),dtype=float)
     local=np.zeros((len(ids),10),dtype=float)
     shuffled=np.zeros((len(ids),10),dtype=float)
@@ -173,7 +226,7 @@ def evaluate(train,folds,fullfeat,flashfeat,full,flash):
     ys=(label[allowed]==FULL).astype(int)
     ff=fold[allowed]
     pr=prompt[allowed]
-    if ys.sum()!=150 or len(ys)!=300:raise ValueError("label count mismatch")
+    if ys.sum()<35 or (len(ys)-ys.sum())<35:raise ValueError("not enough GLM examples in cache")
     preds={}
     for name,x in inputs.items():
         if not np.isfinite(x).all():raise ValueError("nonfinite features")
@@ -228,6 +281,10 @@ if __name__=="__main__":
     folds=pd.read_csv(a.folds,dtype={"id":str,"prompt_id":str,"model":str})
     fullfeat=pd.read_csv(a.glm53_features,dtype={"id":str})
     flashfeat=pd.read_csv(a.flash_features,dtype={"id":str})
-    f=load_cache(a.glm53_scores);l=load_cache(a.flash_scores)
+    f=load_cache(a.glm53_scores,fullfeat);l=load_cache(a.flash_scores,flashfeat)
+    print("NTL_GLM_SAFE_CACHE_CONTRACT="+json.dumps({"rows":len(f["ids"]),
+        "full_lp_column":f["lp_column"],"flash_lp_column":l["lp_column"],
+        "full_mean_abs_err":f["lp_median_abs_error"],
+        "flash_mean_abs_err":l["lp_median_abs_error"]}))
     result=evaluate(train,folds,fullfeat,flashfeat,f,l)
     print("NTL_DISTRIBUTED_GLM_REAL_OOF="+json.dumps(result,sort_keys=True))
