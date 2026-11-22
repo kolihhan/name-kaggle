@@ -25,6 +25,8 @@ ALLOWED_INPUTS=(
     Path("/kaggle/input/name-that-llm"),
 )
 SUBMISSION=Path("/kaggle/working/submission.parquet")
+MAX_GROUP_MATRIX=4500
+NTL_BASE_DATA_DIR=None  # set from scored notebook DATA variable, if available
 SEED=20261122
 BONUS=1.5
 MAX_GROUP=18
@@ -33,12 +35,15 @@ MAX_TEST_ROWS=25000
 
 
 def input_root():
+    roots=list(ALLOWED_INPUTS)
+    if NTL_BASE_DATA_DIR is not None:
+        roots=[Path(NTL_BASE_DATA_DIR)] + roots
     options=[
-        root for root in ALLOWED_INPUTS
+        root for root in dict.fromkeys(roots)
         if (root/"train.csv").is_file() and (root/"test.csv").is_file()
     ]
-    if len(options)!=1:
-        raise RuntimeError("OFFICIAL_COMPETITION_DATASET_PATH_NOT_UNIQUE")
+    if not options:
+        raise RuntimeError("OFFICIAL_COMPETITION_DATASET_PATH_NOT_FOUND")
     return options[0]
 
 
@@ -49,6 +54,8 @@ def infer_group(text_train,text_test):
     vectorizer.fit(text_train)
     x=vectorizer.transform(text_test)
     n=len(text_test)
+    if n>MAX_GROUP_MATRIX:
+        raise RuntimeError("INFERRED_GROUP_DENSE_MATRIX_MEMORY_GUARD")
     if n<2:
         return np.zeros(n,dtype=int)
     # Original frozen test method: same average-linkage cosine cut 0.90.
@@ -132,11 +139,12 @@ def main():
         len(df_test)<1 or len(df_test)>MAX_TEST_ROWS or
         len(previous)!=len(df_test) or
         df_test.id.duplicated().any() or previous.id.duplicated().any() or
-        set(df_test.id)!=set(previous.id)):
+        set(df_test.id.astype(str))!=set(previous.id.astype(str))):
         raise RuntimeError("FROZEN_BASE_NOTEBOOK_OUTPUT_CONTRACT_INVALID")
     # Preserve exact scored champion test output IDs and ordering.
     old=previous.copy()
-    aligned=old.set_index("id").loc[df_test.id.to_numpy()]["model"].astype(str).to_numpy()
+    old_keyed=old.assign(_id_text=old.id.astype(str)).set_index("_id_text")
+    aligned=old_keyed.loc[df_test.id.astype(str).to_numpy()]["model"].astype(str).to_numpy()
     texts_train=df_train.text.astype(str).tolist()
     texts_test=df_test.text.astype(str).tolist()
 
@@ -154,7 +162,12 @@ def main():
         raise RuntimeError("CHAMPION_OUTPUT_ORDER_CHANGED")
 
     # Output changed final labels only, preserving public scored provenance.
-    new.to_parquet(SUBMISSION,index=False)
+    staging=SUBMISSION.with_name("submission_joint_staging.parquet")
+    new.to_parquet(staging,index=False)
+    reread=pd.read_parquet(staging)
+    if not np.array_equal(reread.id.to_numpy(),old.id.to_numpy()) or len(reread)!=len(old):
+        raise RuntimeError("STAGED_OUTPUT_ID_OR_ORDER_DRIFT")
+    staging.replace(SUBMISSION)
     print("NTL_0715_LABEL_ONLY_JOINT_INFERENCE="+json.dumps({
         "test_rows":len(new),**stats,
         "model":"weak-charSVC+topic-group+Hungarian anchored to champion hard labels",
