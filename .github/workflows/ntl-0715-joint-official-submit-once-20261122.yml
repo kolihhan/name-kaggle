@@ -4,6 +4,7 @@ on:
     branches: [research/ntl-0715-joint-official-once-20261122]
     paths:
       - .github/workflows/ntl-0715-joint-official-submit-once-20261122.yml
+      - scripts/submit_ntl_0715_joint_official_once_20261122.py
 permissions:
   contents: read
 concurrency:
