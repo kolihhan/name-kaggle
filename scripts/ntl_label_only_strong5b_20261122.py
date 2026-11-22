@@ -100,6 +100,14 @@ def experiment():
             strong=make_svc(20261031+fold).fit(strong_x,y[tr])
             ss=np.asarray(strong.decision_function(strong_v))
 
+            # Preserve EXACT original blind lexical grouping vocabulary,
+            # independent from Phase5b's classification feature matrices.
+            group_vec=TfidfVectorizer(analyzer="word",ngram_range=(1,2),
+                stop_words="english",max_features=50000,min_df=2,
+                sublinear_tf=True)
+            group_vec.fit(train_text)
+            xb=group_vec.transform(valid_text)
+
             anchor=ss.argmax(axis=1)
             wraw=ws.argmax(axis=1)
             blind=lexical_cluster(xb)
