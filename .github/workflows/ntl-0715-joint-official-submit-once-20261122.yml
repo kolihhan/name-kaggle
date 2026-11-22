@@ -1,0 +1,30 @@
+name: NTL one-shot actual official code score — frozen 0.715 + joint labels
+on:
+  push:
+    branches: [research/ntl-0715-joint-official-once-20261122]
+    paths:
+      - .github/workflows/ntl-0715-joint-official-submit-once-20261122.yml
+permissions:
+  contents: read
+concurrency:
+  group: ntl-official-0715-joint-once-20261122
+  cancel-in-progress: false
+jobs:
+  official:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install authenticated Kaggle API and check immutable script
+        run: |
+          python -m py_compile scripts/submit_ntl_0715_joint_official_once_20261122.py
+          python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Actually test one official code submission (one safe slot reserved)
+        run: |
+          python -m scripts.submit_ntl_0715_joint_official_once_20261122
+          echo NTL_OFFICIAL_ATTEMPT_TERMINAL=TRUE
