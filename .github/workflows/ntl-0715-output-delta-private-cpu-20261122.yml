@@ -1,0 +1,81 @@
+name: NTL 0.715 private joint exact output delta vs scored champion once
+on:
+  push:
+    branches: [research/ntl-0715-private-live-run-20261122]
+    paths:
+      - .github/workflows/ntl-0715-output-delta-private-cpu-20261122.yml
+permissions: {contents: read}
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU data reader and Kaggle API
+        run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'pandas>=2,<3' 'pyarrow>=15,<25'
+      - name: Download only owned scored winner and new complete private result
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          mkdir -p /tmp/ntl-base /tmp/ntl-new
+          kaggle kernels output kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-base -o > /tmp/base-fetch-safe-log 2>&1
+          kaggle kernels output kolihhan/ntl-0-715-label-only-joint-decoder-research -p /tmp/ntl-new -o > /tmp/new-fetch-safe-log 2>&1
+          test -f /tmp/ntl-base/submission.parquet
+          test -f /tmp/ntl-new/submission.parquet
+          echo NTL_0715_COMPARE_BOTH_PRIVATE_PARQUET_PRESENT=TRUE
+      - name: Compare exact row IDs, labels, duplicates and changed class distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          import pandas as pd
+          base=Path('/tmp/ntl-base/submission.parquet')
+          new=Path('/tmp/ntl-new/submission.parquet')
+          b=pd.read_parquet(base)
+          n=pd.read_parquet(new)
+          if set(b.columns)!={'id','model'} or set(n.columns)!={'id','model'}:
+              raise ValueError('unexpected submission format')
+          b['id']=b['id'].astype(str)
+          n['id']=n['id'].astype(str)
+          if b.id.duplicated().any() or n.id.duplicated().any():
+              raise ValueError('duplicate submission IDs')
+          if set(b.id)!=set(n.id):
+              raise ValueError('source and candidate evaluate different IDs')
+          aligned=n.set_index('id').loc[b.id]
+          baseline=b['model'].astype(str).to_numpy()
+          later=aligned['model'].astype(str).to_numpy()
+          delta=int((baseline!=later).sum())
+          changed_labels=sorted(set(later[baseline!=later]))
+          result={
+            'base_rows':int(len(b)),
+            'new_rows':int(len(n)),
+            'aligned_ids':True,
+            'same_original_row_order':bool((b.id.to_numpy()==n.id.to_numpy()).all()),
+            'changed_predictions':delta,
+            'changed_fraction':round(delta/max(1,len(b)),6),
+            'unchanged_predictions':int(len(b)-delta),
+            'baseline_num_predicted_classes':int(b.model.nunique()),
+            'new_num_predicted_classes':int(n.model.nunique()),
+            'changed_into_class_count':int(len(changed_labels)),
+            'parquet_bytes_base':base.stat().st_size,
+            'parquet_bytes_new':new.stat().st_size,
+            'exact_binary_identical':base.read_bytes()==new.read_bytes(),
+            'privately_verified_joint_inference': bool(delta>0),
+            'official_competition_score':None,
+            'safe_to_assume_gain':False,
+            'new_competition_submission':False,
+          }
+          print('NTL_0715_REAL_CHAMPION_JOINT_OUTPUT_DELTA='+json.dumps(result,sort_keys=True),flush=True)
+          PY
+      - name: Delete downloaded user submissions and transient logs
+        if: always()
+        run: |
+          rm -rf /tmp/ntl-base /tmp/ntl-new /tmp/base-fetch-safe-log /tmp/new-fetch-safe-log
+          echo NTL_0715_PRIVATE_DATA_NOT_UPLOADED_TO_GITHUB=TRUE
