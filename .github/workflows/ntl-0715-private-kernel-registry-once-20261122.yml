@@ -1,0 +1,48 @@
+name: NTL one-time verify Kaggle private 0.715 joint kernel registry and status
+on:
+  push:
+    branches: [research/ntl-0715-private-live-run-20261122]
+    paths:
+      - .github/workflows/ntl-0715-private-kernel-registry-once-20261122.yml
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect exact user's private kernel, not run or submit anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import re, subprocess, json
+          target='kolihhan/ntl-0715-label-only-joint-20261122-v1'
+          cmds=[
+            ['kernels','status',target],
+            ['kernels','list','--mine','-v'],
+          ]
+          for cmd in cmds:
+              proc=subprocess.run(['kaggle',*cmd],capture_output=True,text=True,timeout=95)
+              combined=proc.stdout+proc.stderr
+              statuses=sorted(set(re.findall(r'KernelWorkerStatus[.][A-Z_]+',combined)))
+              refs=sorted(set(re.findall(r'kolihhan/[A-Za-z0-9_-]*0715[A-Za-z0-9_-]*',combined)))
+              kind='STATUS' if cmd[0]=='status' else 'MY_LIST'
+              access={'permission_denied':bool(re.search(r'(permission denied|403|forbidden)',combined,re.I)),
+                 'not_found':bool(re.search(r'(404|not found)',combined,re.I)),
+                 'credentials_error':bool(re.search(r'(401|unauthorized|authentication)',combined,re.I))}
+              print('NTL_0715_PRIVATE_'+kind+'_PROBE='+json.dumps({
+                  'return_code':proc.returncode,
+                  'worker_states':statuses,
+                  'target_found_exact':target in combined,
+                  'matched_refs':refs[:10],
+                  'access':access,
+              },sort_keys=True),flush=True)
+          print('NTL_0715_REGISTRY_CHECK_NO_NEW_KERNEL_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
