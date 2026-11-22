@@ -1,0 +1,66 @@
+name: NTL 0.711 Champion Top2 artifact recoverability and official status — READ ONLY
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths:
+      - .github/workflows/ntl-0711-top2-recoverability-cpu-20261122.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install official Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read exact 0.711 kernel file manifest, metadata and own latest score
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python - <<'PY'
+          import csv,io,json,re,subprocess
+          COMP='name-that-llm'
+          KERNELS=['kolihhan/ntl-areebbb-fingerprints-0709-repro-20261121',
+                   'kolihhan/ntl-estopadilla-glm053-v5-20261122']
+          def call(*args,timeout=90):
+              p=subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+              if p.returncode: return None
+              return p.stdout
+          raw=call('competitions','submissions',COMP,'-v','-q')
+          if raw is None: raise RuntimeError('OFFICIAL_LEDGER_UNAVAILABLE')
+          rows=list(csv.DictReader(io.StringIO(raw.lstrip('\ufeff'))))
+          if not rows:raise RuntimeError('EMPTY_OWN_LEDGER')
+          relevant=[]
+          for r in rows:
+              if r.get('ref') in ('58651061','58680531'):
+                  relevant.append({k:r.get(k) for k in ('ref','status','date','publicScore')})
+          print('OWNER_EXACT_OFFICIAL_SUBMISSIONS='+json.dumps(relevant,sort_keys=True))
+          for kernel in KERNELS:
+              state=call('kernels','status',kernel)
+              if state is None:
+                  print('KERNEL_STATUS_UNAVAILABLE='+kernel);continue
+              print('KERNEL_STATUS='+json.dumps({'kernel':kernel,'status':state[:180]}))
+              files=call('kernels','files',kernel,'--page-size','200','-v')
+              if files is None:
+                  print('KERNEL_MANIFEST_UNAVAILABLE='+kernel);continue
+              candidate=[]
+              for line in files.splitlines():
+                  if re.search(r'\.(?:parquet|csv|npy|npz|pkl|joblib|json|pt|safetensors)\b',line,re.I):
+                      # Emit only basename, not raw paths/data or input row IDs.
+                      names=re.findall(r'([\w./-]+\.(?:parquet|csv|npy|npz|pkl|joblib|json|pt|safetensors))',line,re.I)
+                      candidate.extend(n.rsplit('/',1)[-1] for n in names)
+              names=sorted(set(candidate))
+              print('KERNEL_OUTPUT_BASENAMES='+json.dumps({'kernel':kernel,'files':names[:100],'count':len(names)}))
+              print('EXPLICIT_TOP2_FILE_PRESENT='+str(any(re.search(r'prob|logit|score|top.?2|oof',n,re.I) for n in names)))
+          print('TOP2_UPPER_BOUND=NOT_NUMERIC_UNLESS_PAIRED_18CLASS_LABELS_AND_EXACT_CHAMPION_TOP2_AVAILABLE')
+          print('NO_SCORE_TUNING_NO_SUBMISSION_NO_GPU=TRUE')
+          PY
