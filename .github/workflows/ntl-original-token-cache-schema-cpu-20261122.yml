@@ -50,7 +50,15 @@ jobs:
                       elif ext==".npz":
                           import numpy as np
                           with np.load(p,allow_pickle=False) as data:
-                              rec.update(keys=list(data.files)[:60],arrays={k:{'shape':list(data[k].shape),'dtype':str(data[k].dtype)} for k in data.files})
+                              rec['keys']=list(data.files)[:60]
+                              arrays={}
+                              for k in data.files:
+                                  try:
+                                      a=data[k]
+                                      arrays[k]={'shape':list(a.shape),'dtype':str(a.dtype)}
+                                  except ValueError:
+                                      arrays[k]={'requires_pickle':True}
+                              rec['arrays']=arrays
                   except Exception as e:
                       rec["schema_error"]=type(e).__name__
                   print("CACHE_FILE_CONTRACT="+json.dumps(rec,sort_keys=True))
