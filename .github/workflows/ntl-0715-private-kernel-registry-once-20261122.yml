@@ -27,13 +27,14 @@ jobs:
           cmds=[
             ['kernels','status',target],
             ['kernels','list','--mine','-v'],
+            ['kernels','pull',target,'-p','/tmp/ntl-0715-pull-probe','-m'],
           ]
           for cmd in cmds:
               proc=subprocess.run(['kaggle',*cmd],capture_output=True,text=True,timeout=95)
               combined=proc.stdout+proc.stderr
               statuses=sorted(set(re.findall(r'KernelWorkerStatus[.][A-Z_]+',combined)))
               refs=sorted(set(re.findall(r'kolihhan/[A-Za-z0-9_-]*0715[A-Za-z0-9_-]*',combined)))
-              kind='STATUS' if cmd[0]=='status' else 'MY_LIST'
+              kind={'status':'STATUS','list':'MY_LIST','pull':'EXACT_PULL'}[cmd[1]]
               access={'permission_denied':bool(re.search(r'(permission denied|403|forbidden)',combined,re.I)),
                  'not_found':bool(re.search(r'(404|not found)',combined,re.I)),
                  'credentials_error':bool(re.search(r'(401|unauthorized|authentication)',combined,re.I))}
@@ -42,6 +43,7 @@ jobs:
                   'worker_states':statuses,
                   'target_found_exact':target in combined,
                   'matched_refs':refs[:10],
+                  'error_tail_sanitized':[re.sub(r'(KGAT_[A-Za-z0-9_-]+|Bearer\\s+[^\\s]+|https?://[^\\s]+)','[REDACTED]',line)[:280] for line in proc.stderr.strip().splitlines()[-4:]],
                   'access':access,
               },sort_keys=True),flush=True)
           print('NTL_0715_REGISTRY_CHECK_NO_NEW_KERNEL_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
