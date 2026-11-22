@@ -1,0 +1,86 @@
+name: NTL compare actual scored Estopadilla v5 output vs private joint 0.715
+on:
+  push:
+    branches: [research/ntl-0715-private-live-run-20261122]
+    paths: [.github/workflows/ntl-0715-true-scored-v5-output-delta-20261122.yml]
+permissions: {contents: read}
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle CLI and private parquet reader
+        run: python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'pandas>=2,<3' 'pyarrow>=15,<25'
+      - name: Retrieve actual publicly scored original v5 and completed private joint output
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess,json,re
+          from pathlib import Path
+          pairs=[
+            ("SCORED_PUBLIC_V5","estopadilla/0-716-robust-glm-5-3-likelihood-user-prefix/5","/tmp/ntl-truth-v5"),
+            ("SCORED_PUBLIC_BASE","estopadilla/0-716-robust-glm-5-3-likelihood-user-prefix","/tmp/ntl-truth-latest"),
+            ("NEW_PRIVATE_JOINT","kolihhan/ntl-0-715-label-only-joint-decoder-research","/tmp/ntl-actual-joint"),
+          ]
+          for key,kernel,dest in pairs:
+              Path(dest).mkdir(parents=True,exist_ok=True)
+              p=subprocess.run(['kaggle','kernels','output',kernel,'-p',dest,'-o'],capture_output=True,text=True,timeout=120)
+              names=sorted(f.name for f in Path(dest).glob('*') if f.is_file())
+              print('NTL_0715_TRUE_SCORED_SOURCE_OUTPUT='+json.dumps({
+                'key':key,'kernel':kernel,'status':p.returncode,
+                'file_names':names[:14],
+                'submission_present':Path(dest,'submission.parquet').is_file(),
+                'error_type':('denied' if 'denied' in p.stderr.lower() else 'not-found'
+                  if 'not found' in p.stderr.lower() else 'unknown' if p.returncode else 'none')
+              },sort_keys=True),flush=True)
+          PY
+      - name: Actual class label deltas (private only, aggregate numbers)
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd,json
+          source_paths=[
+            Path('/tmp/ntl-truth-v5/submission.parquet'),
+            Path('/tmp/ntl-truth-latest/submission.parquet'),
+          ]
+          src=next((x for x in source_paths if x.is_file()),None)
+          dest=Path('/tmp/ntl-actual-joint/submission.parquet')
+          if src is None or not dest.is_file():
+              print('NTL_0715_DIFF_STATUS=BLOCKED_MISSING_ACTUAL_SCORED_SOURCE_OR_NEW_OUTPUT',flush=True)
+              raise SystemExit(0)
+          old=pd.read_parquet(src)
+          new=pd.read_parquet(dest)
+          if set(old.columns)!={'id','model'} or set(new.columns)!={'id','model'}:
+              raise ValueError('submission columns mismatch')
+          if old.id.duplicated().any() or new.id.duplicated().any():
+              raise ValueError('duplicate submission IDs')
+          old['id']=old.id.astype(str)
+          new['id']=new.id.astype(str)
+          if set(old.id)!=set(new.id):
+              raise ValueError('different exact scored test row IDs')
+          lookup=new.set_index('id').loc[old.id]
+          change=(old.model.astype(str).to_numpy()!=lookup.model.astype(str).to_numpy())
+          print('NTL_0715_TRUE_CHAMPION_V5_DELTA='+json.dumps({
+            'scored_source':str(src.parent.name),
+            'n_rows':int(len(old)),
+            'new_n_rows':int(len(new)),
+            'changed_prediction_count':int(change.sum()),
+            'same_prediction_count':int((~change).sum()),
+            'fraction_changed':round(float(change.mean()),5),
+            'old_predicted_labels_n':int(old.model.nunique()),
+            'new_predicted_labels_n':int(new.model.nunique()),
+            'official_public_score_from_competition_ledger':0.715,
+            'new_public_score':None,
+            'official_submission_made':False
+          },sort_keys=True),flush=True)
+          PY
+      - name: No private source/output attachment
+        if: always()
+        run: |
+          rm -rf /tmp/ntl-truth-v5 /tmp/ntl-truth-latest /tmp/ntl-actual-joint
+          echo NTL_NO_PREDICTIONS_OR_MODEL_DATA_UPLOADED_TO_GITHUB=TRUE
