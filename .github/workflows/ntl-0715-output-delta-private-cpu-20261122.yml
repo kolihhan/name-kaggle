@@ -23,8 +23,23 @@ jobs:
           set -euo pipefail
           test -n "$KAGGLE_API_TOKEN"
           mkdir -p /tmp/ntl-base /tmp/ntl-new
-          kaggle kernels output kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-base -o > /tmp/base-fetch-safe-log 2>&1
-          kaggle kernels output kolihhan/ntl-0-715-label-only-joint-decoder-research -p /tmp/ntl-new -o > /tmp/new-fetch-safe-log 2>&1
+          python - <<'PY'
+          import subprocess,re,json
+          work=[
+            ("BASE","kolihhan/ntl-estopadilla-glm53-0716-repro-20261122","/tmp/ntl-base"),
+            ("NEW","kolihhan/ntl-0-715-label-only-joint-decoder-research","/tmp/ntl-new")
+          ]
+          for kind,ref,dest in work:
+              p=subprocess.run(['kaggle','kernels','output',ref,'-p',dest,'-o'],
+                               capture_output=True,text=True,timeout=140)
+              raw=p.stdout+'\n'+p.stderr
+              safe=re.sub(r'KGAT_[A-Za-z0-9_-]+|Bearer\s+\S+|https?://\S+','[REDACTED]',raw)
+              print('NTL_0715_OUTPUT_DOWNLOAD_DIAG='+json.dumps({
+                  'kind':kind,'exit':p.returncode,
+                  'message_tail':safe[-350:],
+                  'submission_exists':__import__('pathlib').Path(dest,'submission.parquet').is_file()
+              },sort_keys=True),flush=True)
+          PY
           test -f /tmp/ntl-base/submission.parquet
           test -f /tmp/ntl-new/submission.parquet
           echo NTL_0715_COMPARE_BOTH_PRIVATE_PARQUET_PRESENT=TRUE
