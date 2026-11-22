@@ -105,7 +105,7 @@ def load_cache(path:Path, feature_table:pd.DataFrame):
         differences.append(float(np.median(np.abs(means-published))))
     best=int(np.argmin(differences))
     others=sorted(differences)
-    if others[0]>.15 or others[1]-others[0]<.03:
+    if others[0]>.50 or others[1]-others[0]<1.0:
         raise ValueError("cannot_unequivocally_identify_lp_column:"+str([round(x,3) for x in differences]))
     return dict(ids=ids,scores=matrix[:,best],offsets=offsets,
                 prefix=prefix,tokens=tokens,lp_column=best,
