@@ -10,6 +10,7 @@ five-fold group OOF gain +0.0556; UNKNOWN transfer to 0.715 hidden Kaggle.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import time
 
@@ -26,7 +27,7 @@ ALLOWED_INPUTS=(
 )
 SUBMISSION=Path("/kaggle/working/submission.parquet")
 MAX_GROUP_MATRIX=4500
-NTL_BASE_DATA_DIR=None  # set from scored notebook DATA variable, if available
+NTL_BASE_DATA_DIR=os.environ.get('NTL_SCORER_DATA_DIR') or None
 SEED=20261122
 BONUS=1.5
 MAX_GROUP=18
