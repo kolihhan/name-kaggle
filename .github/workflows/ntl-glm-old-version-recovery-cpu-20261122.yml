@@ -1,0 +1,52 @@
+name: Recover version-1 GLM score cache (800 rows) for full 2699-row original test
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-glm-old-version-recovery-cpu-20261122.yml]
+permissions: {contents: read}
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Retrieve original public Notebook v1 output without modifying any Kaggle artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q requests numpy
+          python - <<'PY'
+          import os,requests,zipfile,tempfile
+          from pathlib import Path
+          token=os.environ.get('KAGGLE_API_TOKEN','')
+          url='https://www.kaggle.com/api/v1/kernels/output/download/estopadilla/ntl-glm-prefix-ab'
+          required={'flash_features.csv','glm53_features.csv','flash_scores.npz','glm53_scores.npz'}
+          with tempfile.TemporaryDirectory() as tmp:
+              for version in (1,2):
+                  headers={'Authorization':'Bearer '+token} if token else {}
+                  response=requests.get(url,params={'version_number':version},headers=headers,
+                      stream=True,timeout=(15,180))
+                  print('CACHE_VERSION_HTTP='+str(version)+':'+str(response.status_code))
+                  if response.status_code!=200:
+                      print('CACHE_VERSION_AUTH_OR_DOWNLOAD_BLOCKED='+str(version))
+                      continue
+                  path=Path(tmp)/f'v{version}.zip'
+                  with path.open('wb') as f:
+                      for chunk in response.iter_content(1024*1024):
+                          if chunk:f.write(chunk)
+                  if not zipfile.is_zipfile(path):
+                      print('CACHE_VERSION_NONZIP='+str(version))
+                      continue
+                  with zipfile.ZipFile(path) as z:
+                      found={Path(name).name for name in z.namelist()}&required
+                      print('CACHE_VERSION_REQUIRED_FILES='+str(version)+':'+str(sorted(found)))
+                      if found!=required:continue
+                      with z.open(next(n for n in z.namelist() if n.endswith('glm53_scores.npz'))) as f:
+                          import io,numpy as np
+                          data=np.load(io.BytesIO(f.read()),allow_pickle=False)
+                          print('CACHE_VERSION_GLM_TOKEN_ROWS='+str(version)+':'+str(len(data['offsets'])-1))
+          print('NO_RAW_OUTPUT_NO_COMPETITION_SUBMISSION_NO_MODEL=TRUE')
+          PY
