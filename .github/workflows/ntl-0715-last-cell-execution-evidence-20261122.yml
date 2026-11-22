@@ -1,0 +1,66 @@
+name: NTL confirm actual new last-cell executed or fail-open (private read-only)
+on:
+  push:
+    branches: [research/ntl-0715-private-live-run-20261122]
+    paths: [.github/workflows/ntl-0715-last-cell-execution-evidence-20261122.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Download existing private output, inspect only decoder execution markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          mkdir -p /tmp/ntl-private-markers
+          kaggle kernels output kolihhan/ntl-0-715-label-only-joint-decoder-research -p /tmp/ntl-private-markers -o >/tmp/ntl-pull.log 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          import re,json
+          p=Path('/tmp/ntl-private-markers')
+          logs=sorted(p.rglob('*.log'))
+          chunks=[]
+          for f in logs:
+              if f.stat().st_size>10_000_000: continue
+              content=f.read_text(encoding='utf8',errors='replace')
+              for marker in (
+                'NTL_0715_LABEL_ONLY_JOINT_INFERENCE=',
+                'NTL_0715_LABEL_ONLY_JOINT_FAIL_OPEN_KEEP_SCORED_OUTPUT=',
+                'NTL_0715_JOINT_INPUT_COUNT=',
+                'NTL_0715_LABEL_ONLY_JOINT_SYNTHETIC=',
+              ):
+                  i=content.find(marker)
+                  if i!=-1:
+                      frag=content[i+len(marker):i+len(marker)+750]
+                      frag=frag.split('\n',1)[0]
+                      # Never reveal competition raw text/predictions.
+                      if marker.endswith('INFERENCE='):
+                          import json
+                          try:
+                              m=re.search(r'^\{[^\n]*?\}',frag)
+                              value=json.loads(m.group(0)) if m else None
+                          except Exception: value=None
+                          if isinstance(value,dict):
+                              chunks.append({'marker':marker[:-1],'result':{
+                                  k:value.get(k) for k in ('test_rows','changed_rows','modified_groups','total_inferred_groups','seconds')
+                              }})
+                          else: chunks.append({'marker':marker[:-1],'recognized':True,'parseable':False})
+                      else:
+                          chunks.append({'marker':marker[:-1],
+                                         'recognized':True,
+                                         'value':frag[:80] if marker.endswith(('INPUT_COUNT=','SYNTHETIC=')) else '[EXCEPTION_REDACTED]'})
+          print('NTL_0715_PRIVATE_LAST_CELL_EVIDENCE='+json.dumps({
+              'logs_seen':len(logs),'safe_markers':chunks,
+              'marker_count':len(chunks),
+              'inference_completed':any(x['marker'].endswith('INFERENCE') for x in chunks),
+              'fail_open_seen':any('FAIL_OPEN' in x['marker'] for x in chunks),
+          },sort_keys=True),flush=True)
+          PY
+          rm -rf /tmp/ntl-private-markers /tmp/ntl-pull.log
+          echo NTL_0715_INFERENCE_EVIDENCE_READ_ONLY_NO_NEW_GPU_NO_SUBMISSION=TRUE
