@@ -1,0 +1,35 @@
+name: NTL Source-Conditional Generative Attribution (real CPU OOF)
+on:
+  push:
+    branches: [research/ntl-conditional-generative-20261122]
+    paths:
+      - scripts/ntl_source_conditional_hierarchical_v1_20261122.py
+      - .github/workflows/ntl_hierarchical_generative_cpu_20261122.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  source-likelihood:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install only CPU science dependencies
+        run: python -m pip install -q --disable-pip-version-check 'numpy<3' 'scipy<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
+      - name: Verify source-condition probability on synthetic inputs
+        run: python -m scripts.ntl_source_conditional_hierarchical_v1_20261122 --synthetic-only --summary /tmp/unused.json
+      - name: Actual 18-model and all-five-prompt-fold generative experiment
+        run: |
+          python -m scripts.ntl_source_conditional_hierarchical_v1_20261122 --summary /tmp/ntl_source_likelihood_result.json
+          python -c 'import json; d=json.load(open("/tmp/ntl_source_likelihood_result.json")); assert d["rows"]==2699 and d["classes"]==18 and d["prompts"]==150; print("NTL_GENERATIVE_REAL_GATE="+str(d["falsifier_pass"]))'
+      - name: Ensure no competition source text exported
+        if: always()
+        run: |
+          if [ -f /tmp/ntl_source_likelihood_result.json ]; then
+            python -c 'import json; x=json.load(open("/tmp/ntl_source_likelihood_result.json")); assert not any(k in x for k in ("id","text","model_predictions","raw")); print("NTL_GENERATIVE_AGGREGATE_ONLY=TRUE")'
+          fi
