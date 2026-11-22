@@ -1,0 +1,61 @@
+name: NTL original GLM token-cache availability contract (CPU)
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-original-token-cache-schema-cpu-20261122.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Inspect exact precomputed GLM token-likelihood output schemas (no model inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas pyarrow
+          mkdir -p /tmp/ntl-token-cache-v1 /tmp/ntl-token-cache-v2
+          for version in 369698677 369866875; do
+            dest=/tmp/ntl-token-cache-v1
+            if [ "$version" = 369866875 ]; then dest=/tmp/ntl-token-cache-v2; fi
+            if kaggle kernels output "estopadilla/ntl-glm-prefix-ab" -v "$version" -p "$dest" -o >/tmp/cache-$version.log 2>&1; then
+              echo "CACHE_DOWNLOAD_OK=$version"
+            else
+              echo "CACHE_DOWNLOAD_FAILED=$version"
+              sed -E 's/KGAT_[A-Za-z0-9_-]+/[REDACTED]/g' /tmp/cache-$version.log | tail -n 3
+            fi
+          done
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          import json
+          for name in ("v1","v2"):
+              root=Path("/tmp/ntl-token-cache-"+name)
+              paths=[p for p in root.rglob("*") if p.is_file()]
+              print("CACHE_VERSION="+name+" FILE_COUNT="+str(len(paths)))
+              for p in sorted(paths)[:35]:
+                  ext=p.suffix.lower()
+                  rec={"extension":ext,"size":p.stat().st_size,
+                       "name":p.name if p.suffix.lower() in (".parquet",".csv",".jsonl",".npz",".npy") else "OTHER"}
+                  try:
+                      if ext==".parquet":
+                          import pyarrow.parquet as pq
+                          pf=pq.ParquetFile(p)
+                          rec.update(rows=pf.metadata.num_rows,columns=pf.schema.names[:60])
+                      elif ext==".csv":
+                          rec.update(columns=pd.read_csv(p,nrows=1).columns.tolist()[:60])
+                      elif ext==".npz":
+                          import numpy as np
+                          with np.load(p,allow_pickle=False) as data:
+                              rec.update(keys=list(data.files)[:60])
+                  except Exception as e:
+                      rec["schema_error"]=type(e).__name__
+                  print("CACHE_FILE_CONTRACT="+json.dumps(rec,sort_keys=True))
+          print("CPU_ONLY_NO_PRIVATE_TEXT_NO_MODEL_NO_SUBMISSION=TRUE")
+          PY
+          rm -rf /tmp/ntl-token-cache-v1 /tmp/ntl-token-cache-v2
