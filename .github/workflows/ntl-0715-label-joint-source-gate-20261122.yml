@@ -1,0 +1,62 @@
+name: NTL 0.715 champion label-only joint decoder exact private CPU source gate
+on:
+  push:
+    branches: [research/ntl-0715-label-joint-inference-20261122]
+    paths:
+      - .github/workflows/ntl-0715-label-joint-source-gate-20261122.yml
+permissions:
+  contents: read
+jobs:
+  exact-scored-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Confirm authenticated 0.715 source score and local runtime without GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m py_compile kaggle/ntl_0715_label_only_joint_final_20261122.py scripts/build_ntl_0715_label_joint_candidate_20261122.py
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' pyarrow
+          python -c 'from kaggle.ntl_0715_label_only_joint_final_20261122 import smoke; smoke()'
+          python - <<'PY'
+          import csv,io,subprocess
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=90,check=True)
+          found=[x for x in csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))) if x.get('ref')=='58680531']
+          if len(found)!=1 or found[0].get('publicScore')!='0.715' or 'COMPLETE' not in found[0].get('status',''):
+              raise RuntimeError('scored exact 0.715 owner submission absent')
+          print('NTL_0715_EXACT_CHAMPION_LEDGER=VERIFIED',flush=True)
+          PY
+      - name: Pull only exact OWN champion source and create private candidate offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-0715-source
+          kaggle kernels pull kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-0715-source -m >/tmp/ntl-0715-pull.log 2>&1
+          python -m scripts.build_ntl_0715_label_joint_candidate_20261122 --source /tmp/ntl-0715-source --out /tmp/ntl-0715-joint-private
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('/tmp/ntl-0715-joint-private')
+          meta=json.loads((root/'kernel-metadata.json').read_text())
+          assert meta['id']=='kolihhan/ntl-0715-label-only-joint-20261122-v1'
+          assert meta['is_private'] is True
+          nb=json.loads((root/meta['code_file']).read_text())
+          last=nb['cells'][-1]
+          src=''.join(last['source'])
+          compile(src,'candidate_added_cell','exec')
+          assert 'ntl_0715_label_only_joint_runtime.py' in src
+          assert not any(s in src for s in ('competition_submit_code','kaggle competitions submit'))
+          print('NTL_0715_JOINT_FINAL_CELL_CPU_CONTRACT=PASS',flush=True)
+          print('NTL_0715_JOINT_KAGGLE_KERNEL_PUSHED=FALSE',flush=True)
+          PY
+          rm -rf /tmp/ntl-0715-source /tmp/ntl-0715-joint-private /tmp/ntl-0715-pull.log
+      - name: Zero official submission or model runtime
+        if: always()
+        run: echo NTL_0715_SOURCE_GATE_NO_GPU_NO_INFERENCE_NO_COMPETITION_SUBMIT=TRUE
