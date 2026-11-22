@@ -1,0 +1,76 @@
+name: NTL original distributed GLM evidence vs permuted alignment CPU — real official OOF
+on:
+  push:
+    branches: [research/attribution-bottleneck-review-20261106]
+    paths: [.github/workflows/ntl-distributed-glm-evidence-cpu-once-20261122.yml]
+permissions: {contents: read}
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/attribution-bottleneck-review-20261106
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install CPU stack and preflight original mechanism implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'numpy<3' 'pandas<3' 'scikit-learn<2' pyarrow
+          python -m py_compile scripts/ntl_glm_distributed_evidence_20261122.py
+          python - <<'PY'
+          import numpy as np
+          from scripts.ntl_glm_distributed_evidence_20261122 import distributed_features, shuffled_flash, WINDOW
+          a=np.arange(33,dtype=float)*.12
+          b=np.cos(np.arange(33))*.15
+          assert len(distributed_features(a,b))==10
+          assert np.isclose(np.mean(shuffled_flash(b,"synthetic")),np.mean(b))
+          assert np.allclose(shuffled_flash(b,"synthetic"),shuffled_flash(b,"synthetic"))
+          assert WINDOW==8
+          print('NTL_DISTRIBUTED_GLM_CPU_PREFLIGHT=PASS')
+          PY
+      - name: Download official train and source's existing scored per-token caches ephemerally
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-real-official /tmp/ntl-glm-token-cache
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-real-official >/dev/null
+          kaggle kernels output estopadilla/ntl-glm-prefix-ab -p /tmp/ntl-glm-token-cache -o >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('/tmp/ntl-real-official/train.csv.zip')
+          if p.is_file():
+              with ZipFile(p) as z:
+                  assert set(z.namelist())=={'train.csv'}
+                  z.extractall(p.parent)
+          assert Path('/tmp/ntl-real-official/train.csv').exists()
+          required=('glm53_features.csv','flash_features.csv','glm53_scores.npz','flash_scores.npz')
+          assert all((Path('/tmp/ntl-glm-token-cache')/p).is_file() for p in required)
+          print('NTL_OFFICIAL_TRAIN_AND_PUBLIC_NPZ_PRESENT=TRUE')
+          PY
+      - name: Run frozen 5-fold within-family C0 C1 C2 and report only aggregate metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_glm_distributed_evidence_20261122 \
+            --train /tmp/ntl-real-official/train.csv \
+            --folds artifacts/phase1/folds.csv \
+            --glm53_features /tmp/ntl-glm-token-cache/glm53_features.csv \
+            --flash_features /tmp/ntl-glm-token-cache/flash_features.csv \
+            --glm53_scores /tmp/ntl-glm-token-cache/glm53_scores.npz \
+            --flash_scores /tmp/ntl-glm-token-cache/flash_scores.npz
+          echo NTL_GLM_DISTRIBUTED_CPU_COMPLETED=TRUE
+          echo HISTORICAL_OOF_ONLY_NO_0P715_CHAMPION_GAIN_CLAIM=TRUE
+      - name: Delete competition training and external cache bytes
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-real-official /tmp/ntl-glm-token-cache
+          echo NTL_DATA_NOT_PERSISTED_OR_LOGGED=TRUE
