@@ -44,7 +44,7 @@ def run_cli(*argv: str,timeout:int=180)->str:
         # Never expose the raw CLI error which may contain credential-bearing URLs.
         kind=("PERMISSION_DENIED" if ("denied" in p.stderr.lower() or "access" in p.stderr.lower())
               else "RESOURCE_UNAVAILABLE_OR_KAGGLE_CLI_ERROR")
-        raise RuntimeError(f"KAGGLE_{argv[0]}_{argv[1] if len(argv)>1 else ''}:{kind}:EXIT{p.returncode}")
+        sanitized=re.sub(r"(?:KGAT_[A-Za-z0-9_-]+|Bearer\\s+\\S+|https?://\\S+)", "[REDACTED]", (p.stderr or p.stdout)[-400:]).replace("\\n"," ")\n        raise RuntimeError(f"KAGGLE_{argv[0]}_{argv[1] if len(argv)>1 else ''}:{kind}:EXIT{p.returncode}:{sanitized[:280]}")
     return p.stdout
 
 
@@ -147,7 +147,7 @@ def submit_exactly_once()->None:
     # No download/repush: Kaggle code-submission API references the actual
     # owner-private COMPLETE notebook and reexecutes against hidden rerun.
     response=run_cli("competitions","submit",COMP,
-       "-f","submission.parquet","-k",KERNEL,
+       "-f","submission.parquet","-k",KERNEL,"-v","1",
        "-m",MARKER,timeout=240)
     print("NTL_0715_JOINT_SUBMISSION_CLI_ACCEPTED="+str(
        "Submission ref:" in response),flush=True)
