@@ -1,0 +1,27 @@
+name: NTL genuine strong5b label-only weak-score joint decoding CPU
+on:
+  push:
+    branches: [research/ntl-label-only-strong5b-20261122]
+    paths:
+      - .github/workflows/ntl-label-only-strong5b-real-cpu-20261122.yml
+permissions:
+  contents: read
+jobs:
+  strong5b-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install only source-faithful CPU stack
+        run: python -m pip install -q --disable-pip-version-check 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
+      - name: True historical strong 0.367 vs weak 0.316 source-aware joint reconciliation
+        run: |
+          python -m scripts.ntl_label_only_strong5b_20261122
+          echo NTL_LABEL_ONLY_STRONG5B_NO_GPU_NO_KAGGLE_SUBMISSION=TRUE
