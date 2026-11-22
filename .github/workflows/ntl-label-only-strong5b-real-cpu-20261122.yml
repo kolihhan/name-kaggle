@@ -4,6 +4,7 @@ on:
     branches: [research/ntl-label-only-strong5b-20261122]
     paths:
       - .github/workflows/ntl-label-only-strong5b-real-cpu-20261122.yml
+      - scripts/ntl_label_only_strong5b_20261122.py
 permissions:
   contents: read
 jobs:
