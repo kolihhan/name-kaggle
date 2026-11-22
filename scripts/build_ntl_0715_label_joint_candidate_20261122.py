@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 
 BASE="kolihhan/ntl-estopadilla-glm53-0716-repro-20261122"
-DEST="kolihhan/ntl-0715-label-only-joint-20261122-v1"
+DEST="kolihhan/ntl0715jointreg20261122b"
 RUNTIME=Path("kaggle/ntl_0715_label_only_joint_final_20261122.py")
 NOTEBOOK_TITLE="NTL 0.715 Label-Only Joint Decoder Research"
 COMP="name-that-llm"
