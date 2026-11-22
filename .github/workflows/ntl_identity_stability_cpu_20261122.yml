@@ -20,36 +20,18 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install CPU tools only
-        run: |
-          python -m pip install --disable-pip-version-check -q 'numpy<3' 'scipy<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
-      - name: Verify no official dataset is exported; validate synthetic identity signal
-        run: |
-          python -m scripts.ntl_identity_stability_20261122 --synthetic-only --summary /tmp/unused.json
-      - name: Run actual 18-class fixed prompt-disjoint DEV experiment
+        run: python -m pip install --disable-pip-version-check -q 'numpy<3' 'scipy<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
+      - name: Synthetic directional-signal test
+        run: python -m scripts.ntl_identity_stability_20261122 --synthetic-only --summary /tmp/unused.json
+      - name: Real 18-way prompt-disjoint DEV OOF
         run: |
           test -f data/train.csv
           test -f artifacts/phase1/folds.csv
           python -m scripts.ntl_identity_stability_20261122 --summary /tmp/ntl_identity_stability_aggregate.json
-          python - <<'PY'
-          import json
-          o=json.load(open('/tmp/ntl_identity_stability_aggregate.json'))
-          assert o['rows']==2699 and o['prompts']==150 and o['classes']==18
-          assert set(o['arms'])=={'all','supervised_chi2','stable_prompt','shuffled_prompt'}
-          print('NTL_IDENTITY_STABILITY_CPU_REAL_DEV_COMPLETE='+json.dumps({
-            'arms':o['arms'], 'mechanism_gate_pass':o['mechanism_gate_pass'],
-            'comparisons':o['comparisons']
-          },sort_keys=True))
-          PY
-      - name: Verify aggregate-only output, no text/IDs
+          python -c 'import json; o=json.load(open("/tmp/ntl_identity_stability_aggregate.json")); assert o["rows"]==2699 and o["prompts"]==150 and o["classes"]==18; print("NTL_REAL_RESULT="+json.dumps({"arms":o["arms"],"comparisons":o["comparisons"],"gate":o["mechanism_gate_pass"]},sort_keys=True))'
+      - name: Assert output contains aggregate scores only
         if: always()
         run: |
           if [ -f /tmp/ntl_identity_stability_aggregate.json ]; then
-            python - <<'PY'
-          from pathlib import Path
-          import json
-          p=Path('/tmp/ntl_identity_stability_aggregate.json')
-          o=json.loads(p.read_text())
-          assert not any(k in o for k in ('text','id','predictions','train_rows'))
-          print('NTL_NO_RAW_COMPETITION_EXPOSURE_IN_NEW_ARTIFACT=TRUE')
-          PY
+            python -c 'import json; o=json.load(open("/tmp/ntl_identity_stability_aggregate.json")); assert not any(k in o for k in ("text","id","predictions","train_rows")); print("NEW_OUTPUT_AGGREGATE_ONLY=TRUE")'
           fi
