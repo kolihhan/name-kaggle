@@ -46,6 +46,7 @@ def build(download:Path,output:Path)->dict:
     cells=notebook.get("cells")
     if not isinstance(cells,list) or len(cells)<3:
         raise ValueError("source did not have a recognizable cell structure")
+    original_cell_count=len(cells)
     original_code="\n".join("".join(c.get("source",[]))
         for c in cells if c.get("cell_type")=="code")
     if "submission.parquet" not in original_code:
@@ -85,14 +86,12 @@ def build(download:Path,output:Path)->dict:
     (output/"kernel-metadata.json").write_text(
         json.dumps(revised,indent=2,ensure_ascii=False)+"\n"
     )
-    if len(notebook["cells"])!=len(cells)+1:
-        # NOTE: cells is same mutable list; comparing here intentionally
-        # fails if buggy — don't rely on mutated reference.
+    if len(notebook["cells"])!=original_cell_count+1:
         raise AssertionError("unexpected cell delta")
     return {
         "source_kernel":BASE,
         "candidate_kernel":DEST,
-        "original_cell_count":len(cells)-1,
+        "original_cell_count":original_cell_count,
         "candidate_cell_count":len(notebook["cells"]),
         "source_code_sha256":hashlib.sha256(original_code.encode()).hexdigest(),
         "appended_runtime_sha256":hashlib.sha256(script.encode()).hexdigest(),
