@@ -1,0 +1,86 @@
+name: NTL no-run registration test for inaccessible Kaggle joint candidate
+on:
+  push:
+    branches: [research/ntl-0715-register-norun-20261122]
+    paths: [.github/workflows/ntl-0715-private-register-norun-20261122.yml]
+permissions: {contents: read}
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      TARGET: kolihhan/ntl0715jointreg20261122b
+      SOURCE_SHA: 202bf1bf86ca6363f7f5d44786c30838904610feaf07701653d66da3495551a8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Build exactly scored source + unchanged postprocess, check --no-run capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          kaggle kernels push --help | grep -q -- '--no-run'
+          mkdir -p /tmp/ntl0715registrationsource
+          kaggle kernels pull kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl0715registrationsource -m >/dev/null
+          python -m scripts.build_ntl_0715_label_joint_candidate_20261122 --source /tmp/ntl0715registrationsource --out /tmp/ntl0715registercandidate
+          python - <<'PY'
+          from pathlib import Path
+          import os,json,hashlib
+          a=Path('/tmp/ntl0715registrationsource')
+          b=Path('/tmp/ntl0715registercandidate')
+          am=json.loads((a/'kernel-metadata.json').read_text())
+          bm=json.loads((b/'kernel-metadata.json').read_text())
+          aa=json.loads((a/am['code_file']).read_text())
+          bb=json.loads((b/bm['code_file']).read_text())
+          raw='\n'.join(''.join(c.get('source',[])) for c in aa['cells'] if c.get('cell_type')=='code')
+          assert hashlib.sha256(raw.encode()).hexdigest()==os.environ['SOURCE_SHA']
+          assert aa['cells']==bb['cells'][:-1]
+          assert bm['is_private'] is True and bm['id']==os.environ['TARGET']
+          for k in ('enable_gpu','enable_internet','model_sources','dataset_sources','kernel_sources','competition_sources','docker_image'):
+              assert am.get(k)==bm.get(k),k
+          print('NTL_0715_UNIQUE_REGISTRATION_EXACT_SOURCE=PASS',flush=True)
+          PY
+      - name: Register code only without GPU, no run, no competition submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,re,os
+          p=subprocess.run(['kaggle','kernels','push','-p','/tmp/ntl0715registercandidate','--no-run'],capture_output=True,text=True,timeout=240)
+          out=p.stdout+'\n'+p.stderr
+          safe=re.sub(r'(KGAT_[A-Za-z0-9_-]+|Bearer\s+\S+)','[REDACTED]',out)
+          print('NTL_0715_NORUN_REGISTER_EXIT='+str(p.returncode),flush=True)
+          print('NTL_0715_NORUN_REGISTER_RESPONSE_TAIL='+safe[-500:].replace('\n',' '),flush=True)
+          if p.returncode: raise RuntimeError('no-run private registration failed, no GPU started')
+          PY
+      - name: Verify exact ref through private pull and mine recent filter
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,subprocess,re,json
+          target=os.environ['TARGET']
+          calls=[
+            ['kaggle','kernels','pull',target,'-p','/tmp/ntl0715verify','-m'],
+            ['kaggle','kernels','list','--mine','--page-size','100','--sort-by','dateCreated','-v'],
+            ['kaggle','kernels','status',target],
+          ]
+          for cmd in calls:
+              p=subprocess.run(cmd,capture_output=True,text=True,timeout=90)
+              text=p.stdout+'\n'+p.stderr
+              category=cmd[2] if cmd[1]=='kernels' else 'UNKNOWN'
+              print('NTL_0715_NORUN_VERIFY='+json.dumps({
+                 'action':category,'return_code':p.returncode,
+                 'contains_exact_slug':target in text,
+                 'worker_state':re.findall(r'KernelWorkerStatus[.][A-Z_]+',text)[:2],
+                 'access_denied': 'denied' in text.lower() or 'access' in text.lower(),
+                 'notebook_not_found': 'notebook not found' in text.lower(),
+              },sort_keys=True),flush=True)
+          print('NTL_0715_NORUN_NO_GPU_NO_COMPETITION_SUBMISSION=TRUE',flush=True)
+          PY
+      - name: Delete local code staging
+        if: always()
+        run: rm -rf /tmp/ntl0715registrationsource /tmp/ntl0715registercandidate /tmp/ntl0715verify
