@@ -58,11 +58,15 @@ def build(download:Path,output:Path)->dict:
     if "competition_submit" in script or "get_secret(" in script:
         raise RuntimeError("unapproved submit or secrets access")
     append=(
-        "# Inference-only final label reconciliation, no hidden labels.\n"
-        "import pathlib\n"
+        "# Last cell: inference-only group adjustment. Preserve scored source on failure.\n"
+        "import os\n"
+        "os.environ['NTL_SCORER_DATA_DIR']=str(globals().get('DATA',''))\n"
         f"runtime_code = {script!r}\n"
-        "exec(compile(runtime_code,'ntl_0715_label_only_joint_runtime.py','exec'),"
+        "try:\n"
+        "    exec(compile(runtime_code,'ntl_0715_label_only_joint_runtime.py','exec'),"
         " {'__name__':'__main__'})\n"
+        "except Exception as exc:\n"
+        "    print('NTL_0715_LABEL_ONLY_JOINT_FAIL_OPEN_KEEP_SCORED_OUTPUT='+type(exc).__name__)\n"
     )
     notebook["cells"].append(code_cell(append))
     revised=dict(data)
