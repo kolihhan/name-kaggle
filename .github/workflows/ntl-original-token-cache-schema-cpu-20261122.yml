@@ -20,16 +20,14 @@ jobs:
           set -euo pipefail
           python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas pyarrow
           mkdir -p /tmp/ntl-token-cache-v1 /tmp/ntl-token-cache-v2
-          for version in 369698677 369866875; do
-            dest=/tmp/ntl-token-cache-v1
-            if [ "$version" = 369866875 ]; then dest=/tmp/ntl-token-cache-v2; fi
-            if kaggle kernels output "estopadilla/ntl-glm-prefix-ab" -v "$version" -p "$dest" -o >/tmp/cache-$version.log 2>&1; then
-              echo "CACHE_DOWNLOAD_OK=$version"
-            else
-              echo "CACHE_DOWNLOAD_FAILED=$version"
-              sed -E 's/KGAT_[A-Za-z0-9_-]+/[REDACTED]/g' /tmp/cache-$version.log | tail -n 3
-            fi
-          done
+          # Official CLI output accepts a kernel ref, not scriptVersionId through -v.
+          # Inspect only latest currently published output; version lineage recorded separately.
+          if kaggle kernels output "estopadilla/ntl-glm-prefix-ab" -p /tmp/ntl-token-cache-v2 -o >/tmp/cache-latest.log 2>&1; then
+            echo "CACHE_DOWNLOAD_OK=LATEST"
+          else
+            echo "CACHE_DOWNLOAD_FAILED=LATEST"
+            sed -E 's/KGAT_[A-Za-z0-9_-]+/[REDACTED]/g' /tmp/cache-latest.log | tail -n 4
+          fi
           python - <<'PY'
           from pathlib import Path
           import pandas as pd
