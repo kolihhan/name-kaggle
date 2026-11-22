@@ -1,0 +1,30 @@
+name: NTL soft source-capacity vs hard Hungarian real 18-way and k5 CPU
+on:
+  push:
+    branches: [research/ntl-soft-source-capacity-20261122]
+    paths:
+      - .github/workflows/ntl-soft-source-capacity-real-cpu-20261122.yml
+permissions:
+  contents: read
+jobs:
+  frozen-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HF_HUB_DISABLE_IMPLICIT_TOKEN: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install CPU dependencies
+        run: python -m pip install -q --disable-pip-version-check 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' 'fastembed>=0.6,<1' threadpoolctl
+      - name: Frozen full and sparse real grouped transfer test, soft source-capacity
+        run: |
+          python -m scripts.ntl_soft_source_capacity_20261122
+          echo NTL_SOFT_CAPACITY_NO_GPU_NO_OFFICIAL_SUBMISSION=TRUE
