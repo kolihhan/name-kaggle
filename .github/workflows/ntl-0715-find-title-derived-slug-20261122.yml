@@ -1,0 +1,52 @@
+name: NTL Kaggle title-derived kernel slug finder (no writes)
+on:
+  push:
+    branches: [research/ntl-0715-register-norun-20261122]
+    paths: [.github/workflows/ntl-0715-find-title-derived-slug-20261122.yml]
+permissions: {contents: read}
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Search only owner kernels and plausible title-derived slugs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,re,json
+          candidates=[
+             'kolihhan/ntl-0-715-label-only-joint-decoder-research',
+             'kolihhan/ntl-0715-label-only-joint-decoder-research',
+             'kolihhan/ntl-0715-label-only-joint-20261122-v1',
+             'kolihhan/ntl0715jointreg20261122b',
+          ]
+          for slug in candidates:
+              p=subprocess.run(['kaggle','kernels','status',slug],capture_output=True,text=True,timeout=90)
+              data=p.stdout+p.stderr
+              print('NTL_JOINT_SLUG_CANDIDATE='+json.dumps({
+                  'slug':slug,'exit':p.returncode,
+                  'worker':re.findall(r'KernelWorkerStatus[.][A-Z_]+',data)[:2],
+                  'permission_denied': 'denied' in data.lower(),
+                  'notebook_not_found': 'notebook not found' in data.lower()
+              },sort_keys=True),flush=True)
+          for pg in (1,2,3):
+              p=subprocess.run(['kaggle','kernels','list','--mine','--sort-by',
+                   'dateCreated','--page-size','100','--page',str(pg),'-v'],
+                   capture_output=True,text=True,timeout=120)
+              out=p.stdout
+              names=sorted(set(re.findall(r'kolihhan/[A-Za-z0-9_-]+',out)))
+              matching=[name for name in names if
+                  any(term in name.lower() for term in ('joint','0715','label-only'))]
+              print('NTL_JOINT_OWNER_PAGE='+json.dumps({
+                  'page':pg,'exit':p.returncode,
+                  'total_owner_kernel_refs_this_page':len(names),
+                  'candidate_refs':matching[:30]
+              },sort_keys=True),flush=True)
+          print('NTL_JOINT_FIND_NO_GPU_NO_KERNEL_PUSH_NO_COMPETITION_SUBMISSION=TRUE',flush=True)
+          PY
