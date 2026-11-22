@@ -1,0 +1,108 @@
+name: NTL actual 0.715 Champion + joint decoder PRIVATE KAGGLE GPU push once
+on:
+  push:
+    branches: [research/ntl-0715-private-live-run-20261122]
+    paths:
+      - .github/workflows/ntl-0715-private-joint-run-20261122.yml
+permissions:
+  contents: read
+concurrency:
+  group: ntl-0715-joint-private-kaggle-20261122
+  cancel-in-progress: false
+jobs:
+  launch_one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PROVENANCE: '202bf1bf86ca6363f7f5d44786c30838904610feaf07701653d66da3495551a8'
+      DEST: 'kolihhan/ntl-0715-label-only-joint-20261122-v1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fail closed if Kaggle auth, owned exact 0.715 score, or file contract invalid
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' pyarrow
+          python -m py_compile kaggle/ntl_0715_label_only_joint_final_20261122.py scripts/build_ntl_0715_label_joint_candidate_20261122.py
+          python -c 'import runpy; runpy.run_path("kaggle/ntl_0715_label_only_joint_final_20261122.py",run_name="smoke_only")["smoke"]()'
+          python - <<'PY'
+          import csv,io,subprocess
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=120,check=True)
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          found=[x for x in rows if x.get('ref')=='58680531']
+          if len(found)!=1 or found[0].get('publicScore')!='0.715' or 'COMPLETE' not in found[0].get('status',''):
+              raise RuntimeError('exact previously scored 0.715 owner submission missing')
+          print('NTL_0715_OFFICIAL_CHAMPION_CONFIRMED=TRUE',flush=True)
+          PY
+      - name: Build exact owned source + one final postprocess cell privately and preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-0715-scored-src
+          kaggle kernels pull kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-0715-scored-src -m > /tmp/pull-source-safe.log 2>&1
+          python -m scripts.build_ntl_0715_label_joint_candidate_20261122 --source /tmp/ntl-0715-scored-src --out /tmp/ntl-0715-joint-one
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os
+          base=Path('/tmp/ntl-0715-scored-src')
+          target=Path('/tmp/ntl-0715-joint-one')
+          b=json.loads((base/'kernel-metadata.json').read_text())
+          t=json.loads((target/'kernel-metadata.json').read_text())
+          a=json.loads((base/b['code_file']).read_text())
+          c=json.loads((target/t['code_file']).read_text())
+          raw='\n'.join(''.join(x.get('source',[])) for x in a['cells'] if x.get('cell_type')=='code')
+          if hashlib.sha256(raw.encode()).hexdigest()!=os.environ['PROVENANCE']:
+              raise RuntimeError('scored-source has changed, refuse GPU')
+          if a['cells']!=c['cells'][:-1] or len(c['cells'])!=len(a['cells'])+1:
+              raise RuntimeError('not exact one-cell append')
+          if t['id']!=os.environ['DEST'] or t['is_private'] is not True:
+              raise RuntimeError('private target incorrect')
+          for key in ('model_sources','kernel_sources','dataset_sources','competition_sources','enable_gpu','enable_internet','machine_shape','docker_image'):
+              if t.get(key)!=b.get(key):
+                  raise RuntimeError('scored notebook mounts or resource constraints changed: '+key)
+          added=''.join(c['cells'][-1]['source'])
+          compile(added,'last_cell','exec')
+          if 'NTL_SCORER_DATA_DIR' not in added or 'FAIL_OPEN' not in added:
+              raise RuntimeError('final cell missing safe data contract or scored fallback')
+          print('NTL_0715_EXACT_SCORED_CODE_SHA256='+os.environ['PROVENANCE'],flush=True)
+          print('NTL_0715_PRIVATE_CANDIDATE_MATCHED_SCORED_SOURCE=TRUE',flush=True)
+          print('NTL_0715_CANDIDATE_APPEND_CELL_COUNT=1',flush=True)
+          PY
+      - name: Push one private Kaggle GPU Notebook, NO official competition submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600 kaggle kernels push -p /tmp/ntl-0715-joint-one > /tmp/push-joint-safe.log 2>&1
+          echo NTL_0715_PRIVATE_KERNEL_PUSH_ACCEPTED=TRUE
+          echo NTL_0715_PRIVATE_KERNEL_REF="$DEST"
+          echo NTL_0715_OFFICIAL_SUBMISSION=FALSE
+      - name: Verify remote Kaggle kernel status (never poll another submission)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,re,subprocess,time
+          dest=os.environ['DEST']
+          for k in range(6):
+              p=subprocess.run(['kaggle','kernels','status',dest],capture_output=True,text=True,timeout=80)
+              states=re.findall(r'KernelWorkerStatus[.][A-Z_]+',p.stdout+p.stderr)
+              if p.returncode==0 and states:
+                  print('NTL_0715_PRIVATE_GPU_KERNEL_STATE='+states[0],flush=True)
+                  if states[0].endswith(('.ERROR','.FAILED','.CANCELLED')):
+                      raise RuntimeError('private GPU kernel failed immediately')
+                  break
+              time.sleep(12)
+          else:
+              print('NTL_0715_PRIVATE_KERNEL_STATUS=UNCONFIRMED_BUT_PUSH_ACCEPTED',flush=True)
+          PY
+      - name: Remove local competition material and token-unrelated logs
+        if: always()
+        run: |
+          rm -rf /tmp/ntl-0715-scored-src /tmp/ntl-0715-joint-one /tmp/pull-source-safe.log /tmp/push-joint-safe.log
+          echo NTL_0715_NO_MODEL_WEIGHTS_OR_TRAINING_DATA_UPLOADED_TO_GITHUB=TRUE
