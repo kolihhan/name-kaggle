@@ -1,3 +1,13 @@
+# 2026-11-22 23:44 MYT — ACTUAL 0.715 + LABEL-ONLY JOINT OFFICIAL CODE SUBMISSION PENDING
+
+**FACT:** Kaggle accepted real official Code Submission **#58729013** 2026-11-22 15:44 UTC, marker `ntl-0715-joint-label-hard-anchor-once-20261122`, **PENDING / numeric Public BA EMPTY**, authenticated [Action #45039930220](https://github.com/kolihhan/name-kaggle/actions/runs/45039930220). Previous official scored best **0.715 #58680531** untouched.
+
+**Treatment:** exact original 0.715 Estopadilla v5 source (32 cells SHA256 `202bf1bf86ca6363f7f5d44786c30838904610feaf07701653d66da3495551a8`), plus one weak char-SVC + blind Prompt-set Hungarian hard-label reconciler Cell (runtime SHA256 `70d4b95eef7900c99927967ab63d60b6f20c21537b7090515a1de78893ba08d6`). The Kaggle title-derived exact private source `kolihhan/ntl-0-715-label-only-joint-decoder-research` is COMPLETE, 3-row preview output had **0/3 changed predictions**; ~4,000-row hidden rerun may be different. Scorer run is the actual prospective test, not the preview. Official quota before submit: 5 available, 0 active; one slot preserved.
+
+**Research hypothesis:** Public BA ≥0.725 (+0.010) vs 0.715. Kill if ≤0.715, empty score or runtime failure; no repeated tuning against public results. Grouped 2,699-row official-train 5-fold evidence is historical adaptive DEV, cannot be equated to hidden score. No newer Public gain claimed yet. No new model training, no default Champion change.
+
+---
+
 # 2026-11-20 — ORIGINAL NTL 13-generator per-row metadata checked: 4,758/4,758 exact ID match
 
 **REAL [Actions #44765273054](https://github.com/kolihhan/name-kaggle/actions/runs/44765273054) SUCCESS.** Downloaded publisher `lxdlxdlxd/ntl-synth-generations-v1` source parquet ephemerally; read only generation metadata, no passages or prompts. Original full source **4,758 rows, 13 labels**, all **requested_model = returned_model** by publisher-recorded ID. Claude 5×330 via Vertex; Gemini 4×390 with three settings per label; GLM 406/413 via Zhipu; Kimi-K3 369 (320 metadata settings explicitly thinking-off); Qwen3.8-max 360. [Per-family totals and scope](artifacts/research/ntl-original-13generator-row-route-verify-20261120/RESULT.md). Internal publisher ID consistency is stronger provenance than aggregated route checkbox, but does **NOT** certify API execution, lawful training rights, 18-class coverage, or host-domain parity. Main source was 4,270/8,347 in the filtered training cohort; full upstream has 4,758. No new GPU/QLoRA or competition submission; scored best **0.702** unchanged. NEXT potential competitive lever must clear original provider rights, family-specific settings and fresh same-row transfer vs 0.702. Do not blindly launch full 8,347 train.
