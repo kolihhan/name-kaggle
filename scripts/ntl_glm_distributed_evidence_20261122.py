@@ -128,8 +128,8 @@ def paired_rows(full,flash):
     for i,key in enumerate(full["ids"]):
         a,t=row_values(full,i)
         b,u=row_values(flash,i)
-        if len(a)<16 or not np.array_equal(t,u):
-            raise ValueError("insufficient or non-identical suffix tokens")
+        if not np.array_equal(t,u):
+            raise ValueError("non-identical suffix tokens")
         yield str(key),a,b
 
 def fixed_summary(a,b):
@@ -217,6 +217,8 @@ def evaluate(train,folds,fullfeat,flashfeat,full,flash):
     shuffled=np.zeros((len(ids),10),dtype=float)
     for i,(_id,a,b) in enumerate(paired_rows(full,flash)):
         if not allowed[i]:continue
+        if len(a)<16:
+            raise ValueError("target_GLM_passage_too_short_for_two_windows")
         diff[i]=fixed_summary(a,b)
         local[i]=distributed_features(a,b)
         shuffled[i]=distributed_features(a,shuffled_flash(b,_id))
