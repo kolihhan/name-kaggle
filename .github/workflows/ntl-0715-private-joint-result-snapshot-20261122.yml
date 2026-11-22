@@ -1,0 +1,45 @@
+name: NTL actual private 0.715 joint notebook safe output/status snapshot
+on:
+  push:
+    branches: [research/ntl-0715-private-live-run-20261122]
+    paths:
+      - .github/workflows/ntl-0715-private-joint-result-snapshot-20261122.yml
+permissions: {contents: read}
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Query exact title-derived running kernel and inspect only safe completion markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,re,json
+          ref='kolihhan/ntl-0-715-label-only-joint-decoder-research'
+          for cmd in ([ 'kernels','status',ref],
+                      ['kernels','files',ref,'-v'],
+                      ['kernels','logs',ref]):
+              p=subprocess.run(['kaggle',*cmd],capture_output=True,text=True,timeout=120)
+              data=p.stdout+'\n'+p.stderr
+              kind=cmd[1].upper()
+              status=re.findall(r'KernelWorkerStatus[.][A-Z_]+',data)
+              marker_lines=[line for line in data.splitlines() if
+                 re.match(r'^NTL_0715_(?:LABEL_ONLY_JOINT_INFERENCE|LABEL_ONLY_JOINT_FAIL_OPEN_KEEP_SCORED_OUTPUT|JOINT_INPUT_COUNT|LABEL_ONLY_JOINT_SYNTHETIC)=',line.strip())]
+              names=sorted(set(re.findall(r'[A-Za-z0-9_.-]+[.](?:parquet|json|csv)',data)))
+              failure_signatures=sorted(set(re.findall(
+                 r'(?:MemoryError|FileNotFoundError|ValueError|RuntimeError|OutOfMemoryError|TimeoutError|Traceback)',
+                 data)))[:8]
+              print('NTL_0715_PRIVATE_LIVE_'+kind+'='+json.dumps({
+                'return_code':p.returncode,'states':status[:2],
+                'safe_markers':marker_lines[-6:],
+                'output_basenames':names[:18],
+                'failure_types':failure_signatures
+              },sort_keys=True),flush=True)
+          print('NTL_0715_PRIVATE_LIVE_NO_NEW_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
