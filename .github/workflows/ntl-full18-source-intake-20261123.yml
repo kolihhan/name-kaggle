@@ -1,0 +1,34 @@
+name: NTL Full18 prospective data source intake Nov23 metadata only
+on:
+  push:
+    branches: [research/ntl-full18-source-intake-20261123]
+    paths:
+      - .github/workflows/ntl-full18-source-intake-20261123.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-full18-source-intake-20261123
+  cancel-in-progress: false
+jobs:
+  source-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle catalog client and smoke public metadata parser
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          python -m py_compile scripts/ntl_full18_source_intake_20261123.py
+          python -m scripts.ntl_full18_source_intake_20261123 --smoke
+      - name: Query current public source catalog and inspect at most 12 metadata manifests
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m scripts.ntl_full18_source_intake_20261123
+          echo NTL_FULL18_NO_MODEL_NO_RAW_CORPUS_NO_GPU_NO_COMPETITION_SUBMISSION=TRUE
