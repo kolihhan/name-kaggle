@@ -1,0 +1,26 @@
+name: NTL SOTA strong feature audit alternate ARM runner
+on:
+  push:
+    branches: [exp/ntl-paper-supcon-strongreadout-20261123]
+    paths:
+      - .github/workflows/ntl-paper-strong-assets-arm-20261123.yml
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Pull scored 0.715 source only and inspect frozen embedding assets
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python -m scripts.ntl_paper_scl_strong_assets_audit_20261123
+          echo NTL_ZERO_API_COST_NO_TRAIN_MODEL_OR_SUBMISSION=TRUE
