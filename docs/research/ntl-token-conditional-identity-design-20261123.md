@@ -54,7 +54,7 @@ train loss = CE_18(S(x), true_model)                       [per-response]
 
 ### Fair controls (two arms + a targeted lexical control)
 
-**C0 direct:** same frozen backbone / tokenizer / token cap / split / number of optimization updates and examples. Pool last-token or masked mean causal h (choose **masked mean** before training), then a *capacity-near-matched* MLP 18-way CE. If near-matching trainable parameters cannot be achieved without changing the representation, report ratio; do not hide it.
+**C0 direct:** same frozen backbone / tokenizer / token cap / split / number of optimization updates and examples. Pool the causal **current-token** hidden states h_t (for all observed response tokens, using hidden[:,1:]) with **masked mean**, then a *capacity-near-matched* MLP 18-way CE. C1 uses h_(t-1) AND e(y_t); C0 must see all tokens, not a disadvantaged prefix-only encoding. If near-matching trainable parameters cannot be achieved without changing the representation, report ratio; do not hide it.
 
 **C1 TCAE:** exactly the formula above; same data, hidden cache, optimizer update budget, seeds, early-stop policy (none), train-fold-only preprocessing, macro BA.
 
