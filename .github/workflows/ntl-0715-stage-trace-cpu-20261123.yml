@@ -1,0 +1,47 @@
+name: NTL Frozen 0.715 Pre Post GLM No-Change Trace Source Proof
+on:
+  push:
+    branches: [exp/ntl-0715-stage-trace-frozen-20261123]
+    paths:
+      - .github/workflows/ntl-0715-stage-trace-cpu-20261123.yml
+      - scripts/build_ntl_0715_stage_trace_private_20261123.py
+      - scripts/ntl_frozen0715_stage_trace_20261123.py
+permissions: {contents: read}
+concurrency:
+  group: ntl-0715-stage-trace-cpu-20261123
+  cancel-in-progress: false
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Run real sidecar synthetic tests without model or GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'numpy>=1.26,<3' 'pandas>=2,<3' 'pyarrow>=15,<26' 'kaggle==2.2.5' 'six==1.17.0'
+          python -m py_compile scripts/ntl_frozen0715_stage_trace_20261123.py scripts/build_ntl_0715_stage_trace_private_20261123.py
+          python -m scripts.ntl_frozen0715_stage_trace_20261123
+          python -m scripts.build_ntl_0715_stage_trace_private_20261123 --smoke
+      - name: Pull exact owner-scored SHA 0.715 source ONLY and construct private unpushed trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-0715-stage-trace-source
+          kaggle kernels pull kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-0715-stage-trace-source -m >/tmp/ntl-0715-pull.log 2>&1
+          python -m scripts.build_ntl_0715_stage_trace_private_20261123 --source /tmp/ntl-0715-stage-trace-source --out /tmp/ntl-0715-stage-trace-private
+          echo NTL_FROZEN_0715_PRIVATE_UNPUSHED_TRUE_NO_REAL_GPU_NO_COMPETITION_SUBMIT=TRUE
+      - name: Always scrub owner's unpushed notebook and source
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-0715-stage-trace-source /tmp/ntl-0715-stage-trace-private /tmp/ntl-0715-pull.log
+          echo NTL_FROZEN_0715_TEMPORARY_SOURCES_SCRUBBED=TRUE
