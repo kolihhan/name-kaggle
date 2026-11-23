@@ -1,0 +1,41 @@
+name: NTL stage evidence conservation candidate CPU contract
+on:
+  push:
+    branches: [research/ntl-stage-evidence-conservation-bet-20261124]
+    paths:
+      - scripts/ntl_stage_evidence_conservation_20261124.py
+      - docs/research/ntl-stage-evidence-conservation-one-shot-20261124.md
+      - .github/workflows/ntl-stage-evidence-conservation-cpu-20261124.yml
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Execute frozen candidate contract with strict negative controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'numpy>=1.26,<3' 'pandas>=2,<3' 'pyarrow>=15,<26'
+          python scripts/ntl_stage_evidence_conservation_20261124.py --self-test
+          python - <<'PY'
+          import tempfile, pathlib, subprocess, pandas as pd
+          with tempfile.TemporaryDirectory() as d:
+              root=pathlib.Path(d)
+              pre=root/'pre.parquet'; post=root/'post.parquet'; out=root/'candidate.parquet'
+              pd.DataFrame({'id':['1','2','3'],'model':['glm-5.3','claude-opus-4-6','gpt-5.6-luna']}).to_parquet(pre,index=False)
+              pd.DataFrame({'id':['1','2','3'],'model':['glm-5.3-flash','glm-5.3','gpt-5.6-luna']}).to_parquet(post,index=False)
+              before=post.read_bytes()
+              subprocess.run(['python','scripts/ntl_stage_evidence_conservation_20261124.py','--pre',str(pre),'--post',str(post),'--out',str(out)],check=True)
+              assert post.read_bytes()==before, 'modified frozen output'
+              assert pd.read_parquet(out).model.tolist()==['glm-5.3-flash','claude-opus-4-6','gpt-5.6-luna']
+              p=subprocess.run(['python','scripts/ntl_stage_evidence_conservation_20261124.py','--pre',str(pre),'--post',str(post),'--out',str(out)],capture_output=True)
+              assert p.returncode!=0, 'candidate silently overwritten'
+          print('NTL_STAGE_CANDIDATE_CPU_CONTRACT=PASS')
+          print('NTL_STAGE_REAL_LABELED_EVALUATION=NOT_RUN')
+          print('NTL_STAGE_OFFICIAL_SUBMISSION=NOT_RUN')
+          PY
