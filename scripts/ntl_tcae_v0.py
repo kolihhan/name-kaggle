@@ -21,7 +21,7 @@ from torch.nn import functional as F
 
 
 def align_next_token(hidden: torch.Tensor, token_ids: torch.Tensor,
-                     output_embedding: nn.Embedding):
+                     output_weight: torch.Tensor):
     """Require caller hidden for [BOS]+targets; strip last state before scoring.
 
     The LM must run causally with a BOS prefix. No future label or prompt_id
@@ -32,10 +32,14 @@ def align_next_token(hidden: torch.Tensor, token_ids: torch.Tensor,
         raise ValueError("Expected aligned [batch,length] token IDs and [batch,length+1,hidden] states")
     if hidden.shape[1] != token_ids.shape[1] + 1:
         raise ValueError("Hidden must be for [BOS]+targets with one extra time step")
-    if token_ids.min() < 0 or token_ids.max() >= output_embedding.num_embeddings:
+    # LM heads are frequently nn.Linear, not nn.Embedding. Gather vocabulary
+    # rows from the frozen output projection weight, never call Linear(ids).
+    if output_weight.ndim != 2 or output_weight.shape[1] != hidden.shape[2]:
+        raise ValueError("LM output matrix must be [vocab, hidden_dim]")
+    if token_ids.min() < 0 or token_ids.max() >= output_weight.shape[0]:
         raise ValueError("Invalid target ID")
     # Provide both views from the same frozen causal backbone pass.
-    return hidden[:, :-1, :], hidden[:, 1:, :], output_embedding(token_ids)
+    return hidden[:, :-1, :], hidden[:, 1:, :], F.embedding(token_ids,output_weight.detach())
 
 
 def masked_mean(x: torch.Tensor, mask: torch.Tensor):
@@ -149,11 +153,11 @@ def selftest():
     fake_emb = nn.Embedding(8,d)
     raw_ids = torch.tensor([[1,2]])
     h_bos = torch.randn(1,3,d)
-    h_prev, h_current, e_current = align_next_token(h_bos,raw_ids,fake_emb)
+    h_prev, h_current, e_current = align_next_token(h_bos,raw_ids,fake_emb.weight)
     assert h_prev.shape == h_current.shape == e_current.shape == (1,2,d)
     assert torch.equal(h_prev, h_bos[:,:-1]) and torch.equal(h_current,h_bos[:,1:])
     try:
-        align_next_token(h_bos[:,:-1],raw_ids,fake_emb)
+        align_next_token(h_bos[:,:-1],raw_ids,fake_emb.weight)
         raise AssertionError("causal guard failed")
     except ValueError:
         pass
