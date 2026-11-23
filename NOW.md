@@ -1,3 +1,22 @@
+# 2026-11-23 MYT — GLOBAL53 + TOKEN13 NESTED FUSION TEST COMPLETE: NEGATIVE
+
+**Real CPU evaluation [GitHub Actions #45169232586](https://github.com/kolihhan/name-kaggle/actions/runs/45169232586) SUCCESS**, with publisher cache SHA verification. First attempt stopped because token extraction unnecessarily included short non-GLM samples; fixed to process only the 300 labelled GLM rows, rerun passed.
+
+Frozen 300 true GLM sibling rows / 150 prompts / 5 outer prompt-disjoint folds; 4-fold inner StratifiedGroupKFold tunes regularization C and token-block scale. Same 2699 original public-cache IDs, all eight publisher SHA values match; no new model forward/API/GPU/QLoRA/submit.
+
+| Method | BA | Correct / 300 |
+|---|---:|---:|
+| Global 53 fixed C=1 | **94.33%** | **283** |
+| Global 53 + Token 13 fixed | 92.00% | 276 |
+| Token 13 only | 92.67% | 278 |
+| Global 53 + Token 13 nested | 92.33% | 277 |
+
+Nested fusion vs Global53: **1 rescue, 7 regressions, net −6, −2.00pp BA**; prompt-cluster bootstrap 95% interval **[−4.00, −0.33]pp**. Token-only: 9 rescues, 14 regressions. **DECISION: reject this 13-feature token fusion; do not threshold/feature-retune on the same spent 300 rows.** The global 53 already capture more reliable information; token summaries add noise/redundancy in this setting. [Full report](docs/research/ntl-global53-token13-fusion-result-20261123.md) · [code](scripts/ntl_global53_token_fusion_nestedcv_20261123.py).
+
+This is reused official TRAIN and two-class GLM-only, not prospective transfer or 18-way estimate. Current Public champion **0.715 unchanged**.
+
+---
+
 # 2026-11-23 MYT — NTL ATLAS A0 REAL TEST COMPLETE: NO STRONG BASELINE GAIN
 
 **REAL successful [GitHub Actions #45152458986](https://github.com/kolihhan/name-kaggle/actions/runs/45152458986)** ran exact original ATLAS 2026 multi-temperature argmax-prod readout on genuinely SHA-pinned aligned GLM5.3/Flash token logprobs, 2699 full official TRAIN rows but **300 real GLM-labelled historical binary responses** (150 prompt groups). Actual GLM two-way BA: **mean loglikelihood 0.8933333 (268/300)**, **ATLAS readout 0.9133333 (274/300)**, ordinary token sign 0.9100 (273/300), **pre-existing strong 5-fold GLM global model 0.9433333 (283/300)**. ATLAS vs mean **+6 net** (10 rescued, 4 regressed, +0.020 BA, prompt bootstrap CI [-0.003333,+0.043333] includes zero). ATLAS vs **strong** **−9 net** (6 rescued, 15 regressed, −0.030 BA). **DECISION: ATLAS token-only A0 is rejected for champion promotion; do not try threshold/temperature retuning on spent 300.** Full learned source-conditioned ATLAS was **not trained**, so do not interpret as ATLAS paper refutation. No new model generation, paid API, new QLoRA, GPU or competition submission. **0.715 Public Champion unchanged.** [Full real-result report](docs/research/ntl-atlas-a0-real-result-20261123.md).
