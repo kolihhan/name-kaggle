@@ -1,3 +1,13 @@
+# 2026-11-23 MYT — FCS-v1 DISTILGPT2 PRETRAINED NEXT-TOKEN RESEARCH: CONTEXT PASS, STANDALONE COMPETITION FAIL
+
+**Completed authentic GitHub Actions [#45107714630](https://github.com/kolihhan/name-kaggle/actions/runs/45107714630), 5-fold 2699 historical official TRAIN rows / 18 labels / 150 Prompt groups.** Same-row OOF BA: BOS-only unigram **0.1748198**; genuine pretrained next-token contextual probabilities **0.1952026**; shuffled context **0.1718568**; fixed four-view Strong Sparse **0.3670892**. Genuine context vs BOS-only **+0.0203828** (prompt-bootstrap CI [+0.0051852,+0.0363173], 5/5 folds), vs shuffled **+0.0233458** (CI [+0.0066789,+0.0388889], 5/5 folds). Pre-frozen **mechanism gate PASS**, **competitive vs Sparse FAIL** (−0.1718867 BA). No use of 0.715 Champion's weights/predictions or official competition submission.
+
+**Cost/coverage:** DistilGPT2 FP32 CPU real+shuffled forward 535.7 + 534.1 seconds, science 1226.2 seconds; **1381/2699 passages truncated to 127 BPE tokens (51.2%)**. This small pretrained LM is not one of the 18 target generators. Read [frozen contract](docs/research/ntl-fcs-v1-contract-20261123.md) and [verified complete results](docs/research/ntl-fcs-v1-result-20261123.md).
+
+**Research decision:** Real contextual token surprise profile contains additional identity-related information on spent historical OOF, but the global 55-feature representation is severely insufficient for standalone 18-way attribution. Pursue verified source-specific conditional evidence and independent full-18 source/protocol transfer instead of another ensemble/routing tweak. No Public score prediction or new Kaggle submission. Verified account best **0.715** unchanged.
+
+---
+
 # 2026-11-23 MYT — INDEPENDENT GENERATIVE TOKEN-TRANSITION EXPERIMENT COMPLETED: CONTEXT DOES NOT BEAT MARGINAL
 
 **Executed real 18-label, 2699-row, frozen 5-fold historical TRAIN OOF; no 0.715 ensemble, GPU or Kaggle submission.** Generative unigram **0.2444743**, real class-conditional bigram **0.1892916**, shuffled-token-order bigram negative control **0.1537534**, independent prior 4-view Strong Sparse LinearSVC **0.3670892**. Matched same-row bigram vs unigram **−0.0551827 BA** (prompt-bootstrap 95% CI [−0.0718519,−0.0370370]), bigram vs shuffled **+0.0355382** (CI [+0.0188433,+0.0522457], 5/5 folds). Full source and authenticated completed CI: [GitHub Actions #45106442160](https://github.com/kolihhan/name-kaggle/actions/runs/45106442160), 165s scientific elapsed. [Pre-frozen contract](docs/research/ntl-generative-transition-v1-contract-20261123.md) · [final analysis](docs/research/ntl-generative-transition-v1-result-20261123.md).
