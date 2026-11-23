@@ -27,7 +27,7 @@ REQUIRED = [
 ]
 OWNER="kolihhan/ntl-estopadilla-glm53-0716-repro-20261122"
 LIMIT=25
-MAX_TOTAL=30
+MAX_TOTAL=34
 MAX_MODULES=250
 MARKERS = {
  "pretrained_backbone":r"from_pretrained\s*\(|(?:%%writefile\s+)(?:infer|atlas_infer|adapter|pipe)\.py",
