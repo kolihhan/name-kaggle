@@ -192,6 +192,12 @@ def main():
                 name for name in names if name.lower().endswith(".csv") and
                 ("text" in name.lower() or "corpus" in name.lower() or "block" in name.lower() or "panel" in name.lower())
             ),None)
+            if not selected:
+                # A one-file dataset commonly uses generic "passages.csv" rather
+                # than "corpus" or "panels" in its filename. Do not skip it.
+                csv_files=[name for name in names if name.lower().endswith(".csv")]
+                if len(csv_files)==1:
+                    selected=csv_files[0]
             record={"ref":ref,"inventory":inventory,
                     "chosen_bounded_dataset_file":selected,
                     "source_metadata_not_legal_independence_proof":True}
