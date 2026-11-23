@@ -31,3 +31,7 @@
 5. A candidate with positive rigorous transfer vs strong 0.715 and unchanged runtime would merit **one** locked competition submission after valid inference packaging. The current work has **no observed 18-way BA improvement** and no submission.
 
 **Latest verified Kaggle champion Public BA: 0.715**, unchanged. User has not authorized paid API calls. Do not use 5-way 97.1% or MAABench 74.27% as predicted NTL BA.
+
+## 2026-11-23 update — ATLAS retained as a parallel paper direction
+
+**Do not treat SupCon as the sole recommended paper.** ATLAS (Ko et al., arXiv 2610.19583) is an active competing objective: conditioned causal likelihood instead of supervised contrastive discrimination. It reports 74.27% joint OOD **five-family accuracy**, not NTL 18-class BA. Original code has a Qwen2.5-7B backbone, trainable family prefixes and source-specific LoRA B with shared A; exact full implementation involves K conditioned inference passes per text, so not a drop-in budget-neutral replacement for 0.715. Cheapest first test is only the **original ATLAS bounded per-token argmax-prod readout** applied to previously cached real GLM/Flash aligned token likelihoods, versus mean-likelihood, with fixed T = 1,2,4,8. This is an explicitly partial *readout mechanism check*, not ATLAS training nor evidence of 18-way improvement. Keep both paper research paths separate until actual same-row independent label evidence exists. See [dedicated ATLAS design](ntl-atlas-2026-vs-supcon-vs0715-20261123.md). No paid APIs, new QLoRA, GPU training, or Kaggle submission authorized.
