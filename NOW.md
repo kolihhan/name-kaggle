@@ -1,3 +1,15 @@
+# 2026-11-23 10:30 MYT — OFFICIAL NTL JOINT-DECODER SCORE 0.594, HARD NO-GO
+
+**Authenticated Kaggle terminal receipt: official Code Submission #58729013 COMPLETE with Public Balanced Accuracy 0.594**, vs unchanged true account Champion **#58680531 COMPLETE 0.715**, delta **−0.121** (−12.1 percentage points). Independent authenticated read-only Kaggle ledger in [GitHub Actions #45100579731](https://github.com/kolihhan/name-kaggle/actions/runs/45100579731), executed 2026-11-23 10:30 MYT.
+
+**Treatment:** exact original Estopadilla v5 0.715 scorer 32 cells + one final weak char-SVC scores / blind lexical Prompt-group Hungarian hard-label decoder, official submission marker `ntl-0715-joint-label-hard-anchor-once-20261122`. Original scored code source and mounted resources pinned. The private preview's 3 rows were unchanged, but the official hidden reexecution scored much worse. The hidden test's actual per-row predictions or task distribution have not been inspected; do not assert an exact causal mechanism for the decline.
+
+**Scientific decision: RETIRE/NO-GO this particular final groupwise one-label-per-class reconciler on the 0.715 scorer.** Historical Phase5b TRAIN prompt-grouped 5-fold gain +0.0556 was a weak-proxy experiment, not transfer evidence for 0.715; real score falsifies its promoted hidden-gain hypothesis (predeclared ≥0.725). Possible explanations to investigate *read-only* if justified: blind cluster purity error, invalid one-each-model prior in hidden prompts, weak-model out-of-domain calibration, mismatch of strong-model hard-label error structure, and skip/fail-open behavior. None of those is proven by 0.594 alone.
+
+**Do not repeat this Kaggle candidate, tune group threshold/anchor via Public LB, overwrite the current Champion or claim 0.594 as new best.** Historical best Public remains **0.715**. No official NTL improvement resulted.
+
+---
+
 # 2026-11-22 23:44 MYT — ACTUAL 0.715 + LABEL-ONLY JOINT OFFICIAL CODE SUBMISSION PENDING
 
 **FACT:** Kaggle accepted real official Code Submission **#58729013** 2026-11-22 15:44 UTC, marker `ntl-0715-joint-label-hard-anchor-once-20261122`, **PENDING / numeric Public BA EMPTY**, authenticated [Action #45039930220](https://github.com/kolihhan/name-kaggle/actions/runs/45039930220). Previous official scored best **0.715 #58680531** untouched.
