@@ -1,0 +1,33 @@
+# NTL paper application — Cross-prompt Supervised Contrastive (SCL), 2026-11-23
+
+## Task & paper selection
+
+**User goal**: improve exact 18-way Name That LLM generalization **without paid model APIs, QLoRA foundation-model fitting, weak-model proxy, Public-LB threshold fitting, or a larger hidden inference ensemble**.
+
+**Research comparisons (verified original publications):**
+- [ATLAS — Who's Behind the Text? Robust Model Authorship Attribution (Ko et al., arXiv 2610.19583, 2026)](https://arxiv.org/abs/2610.19583): source-conditioned **autoregressive likelihood** under per-source adaptors; reports **74.27% accuracy** when both domain and generator version shift, +9.00 points vs paper's best baseline on MAABench. **Not** NTL 18-class BA. Training LoRA/source-specific conditional heads and scoring multiple source likelihoods cost more than our no-new-inference-budget goal. Defer exact ATLAS, don't implement a fake TFIDF analogue.
+- [Idiosyncrasies in Large Language Models (Sun et al., ICML 2025)](https://proceedings.mlr.press/v267/sun25z.html): LLM2vec-based fine-tuned discriminative classification, 97.1% accuracy on five broad model families (not sibling 18-class NTL). Official [code](https://github.com/locuslab/llm-idiosyncrasies); not strong evidence 18 modern siblings can reach 97% with 2699 labels, and full model fine-tuning would violate our efficient/no-QLoRA emphasis.
+- [Model Attribution in LLM-Generated Disinformation: A Domain Generalization Approach with Supervised Contrastive Learning (Beigi et al., arXiv 2407.21264, 2024)](https://arxiv.org/abs/2407.21264): same-source prompts as positives, different-model responses as negatives; especially suitable given NTL official train's 150 prompts each with ~18 model answers. Paper compared 3 sources and 3 prompt methods; **is not independently established as 2026 SOTA for modern 18 exact siblings**. Use core domain-invariance **method**, NOT claim exact reproduction or paper-reported accuracy on NTL.
+
+**Selected experiment:** implement prompt-paired SCL **on genuinely strong already frozen neural embeddings**, train ONLY a small readout head, no new base QLoRA. This is an **application of existing paper**, not a claim of new algorithm.
+
+## Code written, exact execution state
+
+- [SCL readout implementation](../../scripts/ntl_paper_prompt_supcon_20261123.py) committed on branch `exp/ntl-paper-supcon-strongreadout-20261123`: 18-way projection+CE, plus fixed CE+SupCon `lambda=0.3`, `tau=0.1`, 12 epochs, prompt-paired balanced minibatches and same CE control. Different labels **within same prompt** are hard negatives; same label **across two distinct prompts** is the positive pair. No paid LLM calls, target LLM inference, foundation-model fine-tuning or hidden submission.
+- The model trainer **requires real precomputed pretrained neural embeddings** (`ids` and `embeddings` arrays in NPZ plus explicit encoder revision and SHA metadata). A user-generated synthetic vector can test gradient mechanics **but cannot claim NTL BA**.
+- **Critical label leakage stop:** if the frozen encoder (including the scored 0.715 adapter) was trained on official 2699 labels, 5-fold *readout-only* OOF against those labels would be contaminated. The default real OOF path refuses such feature metadata. An `--external-only` path trains CE vs SCL readout from official features but scores **only genuine independently labeled external responses**, with exact encoder identity and untouched source-scope confirmation. External Oleg216 is historical and spent; diagnostic, not new deployment-validation.
+- [Github Actions #45149230647](https://github.com/kolihhan/name-kaggle/actions/runs/45149230647): smoke & gradient test **QUEUED**, no CI success yet.
+- [Github Actions #45148589048](https://github.com/kolihhan/name-kaggle/actions/runs/45148589048): source-only retrieval of exact prior scored 0.715 notebook's encoder asset paths **QUEUED**, no contents obtained from this run yet.
+- [Github Actions #45149509625](https://github.com/kolihhan/name-kaggle/actions/runs/45149509625): alternate ARM runner for source availability, **QUEUED** on latest inspection. GitHub Actions itself is a blocker to verifying whether 0.715 real frozen feature matrices can be exported; do not pretend offline scoring completed.
+- Separate direct local PyTorch **loss-math-only** check (not exact GitHub module source): 36 embeddings = two 18-class prompt panels, **36 positive directed edges**, **612 same-prompt cross-source hard-negative directed edges**, finite loss **3.9426** and finite gradients. This tests the SupCon equation, NOT any Kaggle feature computation or BA.
+- The previous [syntax POS comparison #45146166103](https://github.com/kolihhan/name-kaggle/actions/runs/45146166103) is also QUEUED. Do not promote either based on a job being queued.
+
+## What a valid result requires
+
+1. Identify **frozen strong encoder** weights/revision and exact-identity raw embeddings, for both train and separate source. **No post-label-exposure OOF**.
+2. Evaluate **same embedding matrix** under CE-only vs CE+cross-prompt SupCon, same training schedule, same prompt grouped splits when valid. Do not substitute weak char TFIDF proxies as if they were 27B embeddings.
+3. For a source-trained 0.715 encoder, use **external-only**, and require genuinely disjoint source labels; compare same-row CE vs SCL 18-class BA, family/sibling error, rescues and regressions. The historical Oleg216 all come from `sensitive_topics` and have already been inspected repeatedly; do not treat as fresh test.
+4. Compare with actual scored 0.715 final predictions ONLY if matching rows exist. Prior [read-only availability check #45139584293](https://github.com/kolihhan/name-kaggle/actions/runs/45139584293) found only 3-row public previews and no full final 0.715 Kaggle output. Do not fabricate a strong baseline or claim +0.01 without its actual matched predictions.
+5. A candidate with positive rigorous transfer vs strong 0.715 and unchanged runtime would merit **one** locked competition submission after valid inference packaging. The current work has **no observed 18-way BA improvement** and no submission.
+
+**Latest verified Kaggle champion Public BA: 0.715**, unchanged. User has not authorized paid API calls. Do not use 5-way 97.1% or MAABench 74.27% as predicted NTL BA.
