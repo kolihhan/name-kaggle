@@ -1,0 +1,57 @@
+name: Inspect requested NTL forensic EDA notebook (one-shot, read-only)
+on:
+  push:
+    branches:
+      - work/ntl-user-forensic-eda-20261123
+    paths:
+      - .github/workflows/ntl-forensic-eda-inspect-once-20261123.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Kaggle CLI
+        run: python -m pip install -q 'kaggle==2.2.5'
+      - name: Pull exact public notebook and assess scoring capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KAGGLE_API_TOKEN:?KAGGLE_API_TOKEN secret is missing}"
+          mkdir -p /tmp/ntl_forensic_notebook
+          kaggle kernels pull evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie -p /tmp/ntl_forensic_notebook -m
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/ntl_forensic_notebook')
+          files=sorted(p for p in root.rglob('*') if p.is_file())
+          print('PULLED_FILES', [str(p.relative_to(root)) for p in files])
+          notebooks=list(root.rglob('*.ipynb'))
+          sources=[]
+          if notebooks:
+              nb=json.loads(notebooks[0].read_text())
+              for cell in nb.get('cells', []):
+                  if cell.get('cell_type')=='code':
+                      src=cell.get('source','')
+                      sources.append(''.join(src) if isinstance(src,list) else str(src))
+          else:
+              for p in files:
+                  if p.suffix=='.py': sources.append(p.read_text(errors='replace'))
+          txt='\n'.join(sources)
+          terms={'submission_parquet':'submission.parquet' in txt,'write_parquet':'.to_parquet(' in txt,'test_dataset':'test.csv' in txt,'competition_input':'name-that-llm' in txt,'prediction_terms':any(t in txt for t in ['predict(', 'predict_proba(', 'predictions', 'model_pred'])}
+          print('CODE_CELLS',len(sources))
+          print('SCORING_SIGNALS',json.dumps(terms,sort_keys=True))
+          if terms['submission_parquet'] and terms['write_parquet'] and terms['test_dataset']:
+              print('PRELIMINARY_VERDICT: MAY BE A SCORING NOTEBOOK, inspect exact version before submission')
+          else:
+              print('PRELIMINARY_VERDICT: NOT A VALID COMPETITION SUBMISSION SOURCE (no complete test->submission parquet path)')
+          PY
+          echo '--- PREEXISTING ORIGINAL NOTEBOOK OUTPUT FILES ---'
+          kaggle kernels files evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie || true
+          echo 'READ_ONLY_AUDIT_DONE; no Kaggle notebook pushed; no competition submission made'
