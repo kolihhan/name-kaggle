@@ -1,0 +1,71 @@
+name: NTL global53 plus token13 nested prompt-grouped fusion
+on:
+  push:
+    branches: [exp/ntl-global-token-fusion-nestedcv-20261123]
+    paths:
+      - .github/workflows/ntl-global53-token-fusion-20261123.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-global53-token-fusion-nestedcv-20261123
+  cancel-in-progress: false
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install CPU dependencies and syntax-check nested fusion
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy<3' 'pandas<3' 'scikit-learn<2' 'pyarrow<25' 'requests>=2,<3'
+          python -m py_compile scripts/ntl_global53_token_fusion_nestedcv_20261123.py
+      - name: Recover the same 2699 real GLM token caches with pinned publisher hashes
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-fusion-source /tmp/ntl-fusion-parts
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-fusion-source >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('/tmp/ntl-fusion-source/train.csv.zip')
+          if p.exists():
+              with ZipFile(p) as z:
+                  assert set(z.namelist())=={'train.csv'}
+                  z.extractall(p.parent)
+          assert Path('/tmp/ntl-fusion-source/train.csv').is_file()
+          PY
+          python -m scripts.ntl_merge_public_glm_caches_20261122 --train /tmp/ntl-fusion-source/train.csv --root /tmp/ntl-fusion-parts --out /tmp/ntl-fusion-merged | tee /tmp/ntl-fusion-merge.log
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          log=Path('/tmp/ntl-fusion-merge.log').read_text()
+          found=[x.split('=',1)[1] for x in log.splitlines() if x.startswith('NTL_RECOVERED_FULL_PUBLIC_GLM_CACHE=')]
+          assert len(found)==1
+          actual=json.loads(found[0])
+          hashes={
+             '1': {'flash_features.csv':'9e4e8ff516e018e26e69e98ba91a76378a7201af58accf57912cb2bfb57050bb','flash_scores.npz':'f36bd2ebca78cdad15818e80ca9ce710a915385dd7c8260f9aec25de904f6ddf','glm53_features.csv':'a98121f8c07c0bca8b853f7fe9349a33d138d1daa2e58a0c81042503b9dbab5a','glm53_scores.npz':'4c9ca8ff599e4a6a3685605c6a4779c37ba7089a07ed768e1b91c9dac937a915'},
+             '2': {'flash_features.csv':'5e1ff2a924c77dd0f52650d99f0ba9c5ef0d534fcacdbb99200f982376845011','flash_scores.npz':'b2039e7e919d8b3dfd560afe7d51a3523bc7fe01b56efcc6af71447f9632a930','glm53_features.csv':'b9598ff0697993859cdaa8e8bd62c956e99b94921b3638be8f8d5999ad02df7f','glm53_scores.npz':'7f437ad911629b9ef25636570dc82b3f944d8b96a616c979caeade14d5e955e1'}}
+          assert actual['version_source_sha256']==hashes,'PUBLISHER_CACHE_SHA_DRIFT_STOP'
+          assert actual['complete_official_ID_coverage'] and actual['token_alignment_verified']
+          print('NTL_FUSION_PINNED_CACHE_VERIFIED=TRUE')
+          PY
+      - name: Run global53 plus token13 fusion with nested prompt-grouped OOF
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_global53_token_fusion_nestedcv_20261123 --train /tmp/ntl-fusion-source/train.csv --folds artifacts/phase1/folds.csv --glm53_features /tmp/ntl-fusion-merged/glm53_features.csv --flash_features /tmp/ntl-fusion-merged/flash_features.csv --glm53_scores /tmp/ntl-fusion-merged/glm53_scores.npz --flash_scores /tmp/ntl-fusion-merged/flash_scores.npz
+          echo NTL_GLOBAL53_TOKEN13_NESTED_FUSION_COMPLETE_NO_NEW_MODEL_INFERENCE=TRUE
+      - name: Delete sensitive text and raw likelihoods
+        if: always()
+        run: |
+          rm -rf /tmp/ntl-fusion-source /tmp/ntl-fusion-parts /tmp/ntl-fusion-merged /tmp/ntl-fusion-merge.log
+          echo NTL_FUSION_TRANSIENT_DATA_CLEANED=TRUE
