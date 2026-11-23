@@ -175,7 +175,7 @@ def metrics(y,old,new,labels):
             "per_class_recall":{k:round(v,4) for k,v in by.items()}}
 
 def run_contract(train_csv,fold_csv,feature_npz,metadata_json,ext_csv=None,
-                 ext_npz=None,ext_metadata=None):
+                 ext_npz=None,ext_metadata=None,external_only=False):
     import pandas as pd
     official_sha="40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
     if encode_sha(train_csv)!=official_sha:raise ValueError("OFFICIAL_SOURCE_SHA_DRIFT")
@@ -188,11 +188,14 @@ def run_contract(train_csv,fold_csv,feature_npz,metadata_json,ext_csv=None,
             (joined.prompt_id==joined.prompt_id_f)).all()
     assert set(joined.fold_id)==set(range(5))
     assert joined.groupby("prompt_id").fold_id.nunique().max()==1
-    x,meta=validate_feature_contract(feature_npz,metadata_json,joined.id,False)
+    if external_only and (ext_csv is None or ext_npz is None or ext_metadata is None):
+        raise ValueError('EXTERNAL_ONLY_REQUIRES_ACTUAL_LABELLED_EXTERNAL_FEATURES')
+    x,meta=validate_feature_contract(feature_npz,metadata_json,joined.id,external_only)
     y=joined.model.astype(str).to_numpy()
     groups=joined.prompt_id.astype(str).to_numpy()
     predictions={}
-    for k in (0.,LAMBDA):
+    if not external_only:
+      for k in (0.,LAMBDA):
         o=np.empty(len(joined),dtype=object)
         for fold in range(5):
             tridx=np.flatnonzero(joined.fold_id.to_numpy()!=fold)
@@ -201,15 +204,21 @@ def run_contract(train_csv,fold_csv,feature_npz,metadata_json,ext_csv=None,
                                  seed=SEED+fold,lambda_supcon=k)
             o[vaidx]=predict(model,x[vaidx],labels)
         predictions["C0_CE" if k==0 else "C1_PromptSCL"]=o
-    zero=predictions["C0_CE"]; scl=predictions["C1_PromptSCL"]
-    result={"scope":"OFFICIAL_2699_FIXED_5FOLD_NO_LEAKING_ENCODER",
+    if not external_only:
+      zero=predictions["C0_CE"]; scl=predictions["C1_PromptSCL"]
+      result={"scope":"OFFICIAL_2699_FIXED_5FOLD_NO_LEAKING_ENCODER",
       "embedding_provenance":meta["encoder_id"]+"/"+meta["encoder_revision"],
       "CE_BA":round(float(np.mean([np.mean(zero[y==q]==q) for q in sorted(set(y))])),6),
       "SCL_vs_CE":metrics(y,zero,scl,tuple(sorted(set(y)))),
       "note":"training folds same, prefit encoder must not have seen official labels",
       "paid_api":False,"QLoRA":False,"new_foundation_model_training":False,
       "competition_submit":False}
-    print("NTL_PAPER_SUPCON_REAL="+json.dumps(result,sort_keys=True),flush=True)
+      print("NTL_PAPER_SUPCON_REAL="+json.dumps(result,sort_keys=True),flush=True)
+    else:
+      print("NTL_PAPER_SUPCON_OOF_SKIPPED="+json.dumps({
+        "reason":"CURRENT_BACKBONE_TRAINED_ON_OFFICIAL_LABELS",
+        "test":"EXTERNAL_SOURCE_DISJOINT_ONLY",
+        "no_fake_2699_OOF":True},sort_keys=True),flush=True)
     if (ext_csv is None) != (ext_npz is None) or (ext_npz is None)!=(ext_metadata is None):
         raise ValueError("INCOMPLETE_EXTERNAL_FEATURE_SET")
     if ext_csv is not None:
@@ -267,10 +276,12 @@ if __name__=="__main__":
     a.add_argument("--external",type=Path)
     a.add_argument("--external-features",type=Path)
     a.add_argument("--external-metadata",type=Path)
+    a.add_argument("--external-only",action="store_true")
     v=a.parse_args()
     if v.smoke:smoke()
     else:
         if any(z is None for z in (v.train,v.folds,v.features,v.metadata)):
             raise ValueError("REQUIRE_REAL_FROZEN_EMBEDDINGS_SOURCE")
         run_contract(v.train,v.folds,v.features,v.metadata,
-                     v.external,v.external_features,v.external_metadata)
+                     v.external,v.external_features,v.external_metadata,
+                     external_only=v.external_only)
