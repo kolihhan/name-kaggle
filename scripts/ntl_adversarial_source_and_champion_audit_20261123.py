@@ -40,7 +40,7 @@ MAX_RECORDS = 75_000
 FIELDS = {
     "label": ("model", "label", "target_model", "model_id", "generator",
               "model_name", "source_model"),
-    "served": ("served_model", "gen_served_model", "returned_model", "actual_model",
+    "served": ("served_model", "model_served", "gen_served_model", "returned_model", "actual_model",
                "response_model", "returned_model_id", "served_model_id", "gen_model"),
     "requested": ("requested_model", "request_model", "proxy_model",
                   "model_requested", "request_model_id"),
@@ -49,7 +49,7 @@ FIELDS = {
     "text": ("text", "response", "output", "generation", "answer", "article", "content"),
     "source": ("source_dataset", "source_file", "source", "dataset", "data_source"),
     "route": ("gen_route", "route", "api_provider", "provider", "api_base"),
-    "timestamp": ("timestamp", "created_at", "generation_date", "generated_at",
+    "timestamp": ("timestamp", "run_start", "created_at", "generation_date", "generated_at",
                   "request_date", "response_time"),
 }
 def emit(key, value):
@@ -134,6 +134,23 @@ def read_publisher_sample(ref,filename,root):
             blocks=df[[prompt,label]].groupby(prompt,dropna=False)[label].nunique()
             result["apparent_full18_blocks"]=int((blocks>=18).sum())
             result["prompt_blocks_not_proven_independent"]=True
+    if "served_matches" in df.columns:
+        z=df["served_matches"].fillna(False).astype(str).str.strip().str.lower()
+        result["publisher_served_matches_boolean_true"]=int(z.isin(("true","1","yes")).sum())
+        result["publisher_served_matches_boolean_false"]=int(z.isin(("false","0","no")).sum())
+        result["served_matches_publisher_self_reported_not_audit"]=True
+    if selected["timestamp"]:
+        times=pd.to_datetime(df[selected["timestamp"]],errors="coerce",utc=True)
+        result["parseable_run_timestamp_count"]=int(times.notna().sum())
+        if times.notna().any():
+            result["earliest_run_date"]=str(times.min().date())
+            result["latest_run_date"]=str(times.max().date())
+    if "domain" in df.columns:
+        result["domain_count"]=int(df["domain"].nunique())
+    if "task_type" in df.columns:
+        result["task_type_count"]=int(df["task_type"].nunique())
+    if "setting" in df.columns:
+        result["settings_count"]=int(df["setting"].nunique())
     result["strong_0715_prefit_upstream_overlap_tested"]=False
     result["fresh_holdout_admitted"]=False
     return result
@@ -204,6 +221,25 @@ def main():
             if selected:
                 record["data_check"]=read_publisher_sample(ref,selected,root)
             source.append(record)
+        # Compare publisher C1/C2 prompt and passage intersections, no raw rows logged.
+        c1=root/"source_3"/"passages.csv"
+        c2=root/"source_2"/"passages.csv"
+        if c1.is_file() and c2.is_file():
+            a=pd.read_csv(c1);b=pd.read_csv(c2)
+            def as_set(frame,key):
+                return set(frame[key].dropna().astype(str)) if key in frame.columns else set()
+            pa,pb=as_set(a,"prompt_id"),as_set(b,"prompt_id")
+            ta,tb=as_set(a,"text"),as_set(b,"text")
+            emit("NTL_ADVERSARIAL_C1_C2_OVERLAP",{
+                "c1_rows":len(a),"c2_rows":len(b),
+                "c1_unique_prompt_keys":len(pa),"c2_unique_prompt_keys":len(pb),
+                "same_prompt_ids":len(pa&pb),
+                "same_exact_text_responses":len(ta&tb),
+                "same_label_support":len(as_set(a,"label")&as_set(b,"label")),
+                "any_shared_prompt_proves_independent_holdout":False,
+                "publisher_metadata_not_independently_authenticated":True,
+                "raw_prompts_text_ids_not_logged":True,
+            })
         emit("NTL_ADVERSARIAL_SOURCE_EVIDENCE",
              {"sources":source,"data_admitted":False,
               "selection_frozen_before_inspecting_labels":True})
