@@ -1,3 +1,15 @@
+# 2026-11-23 MYT — DESIGN-FIRST NTL PIVOT: FRESH18 IS NOT A PREREQUISITE FOR ARCHITECTURE RESEARCH
+
+**Decision:** Do not block exploratory 18-way mechanism research because a brand-new, publisher-authenticated full-18 source is unavailable. That stricter evidence remains needed to claim **independent full-class source transfer**, not to design or test a new model on official disjoint TRAIN folds. No Public-LB tuning. **Official champion remains 0.715 (#58680531).**
+
+**Critical correction:** subtracting the same common LM log-likelihood from every candidate score cancels under argmax; it cannot improve attribution. ATLAS-style source-conditioned likelihood already exists in prior art. Do not repeat tiny DistilGPT2 128-token heads (0.1827 OOF), hierarchical TFIDF hard-negatives (0.2737), or 0.715 weak-score Hungarian override (official 0.594).
+
+**New research direction:** TCAE-v0 (Token-Conditional Authorship Energy), genuinely *discriminative* token/context interaction on a proposed frozen **Qwen3-1.7B-Base** backbone, trained against direct **C0** using full observed response hidden states and lexical-only **Clex** on the *same* official 150 prompt-grouped 5-fold splits. Do not compare these expected development OOF scores numerically with 0.715 Public. Freeze true model revision, GPU memory/time and one-shot optimizer budget BEFORE a real run. Planned per-response supervised 18-way CE; no 18× backbone inference or synthetic source data. One hypothesis, no serial patching.
+
+**Executed engineering evidence only:** [final authenticated synthetic CPU Actions #45132778093](https://github.com/kolihhan/name-kaggle/actions/runs/45132778093) SUCCESS, exact commit `de422986ed7825562ad226e1a7b9025f665b4111`: prior-vs-current causal token alignment, masked padding, gradients, interaction vs lexical counterexample and near-matched parameters (**14610** TCAE vs **14624** direct for toy D=48). This is **NOT** real 18-class accuracy, source transfer, pretrained backbone loading, or GPU training; no Kaggle submission. Design/stop gate [here](docs/research/ntl-token-conditional-identity-design-20261123.md); code [here](scripts/ntl_tcae_v0.py). **NEXT:** model-revision and GPU feasibility preflight, then *one* frozen real full 18-class same-row research experiment only if viable. No model-quality result from this turn.
+
+---
+
 # 2026-11-23 MYT — NTL FRESH18 ACQUISITION GATE DONE: 12/18 PROXY; SIX NATIVE 404; NO NEW TRAINING
 
 **New actual Actions:** [#45129347799](https://github.com/kolihhan/name-kaggle/actions/runs/45129347799) SUCCESS catalog/quota check (12/18 exact models; six missing; Kaggle Model Proxy remaining daily **$10**, monthly **$100**). [#45129637029](https://github.com/kolihhan/name-kaggle/actions/runs/45129637029) SUCCESS live six native-path probe: all six **HTTP 404**, zero exact returned models, observed **$0** quota debit. All routes bounded; no generated texts saved, no competition data published, no model training, no official submissions.
