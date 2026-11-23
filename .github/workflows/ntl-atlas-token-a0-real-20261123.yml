@@ -1,0 +1,78 @@
+name: NTL ATLAS exact argmax prod real token A0 versus GLM historical
+on:
+  push:
+    branches: [exp/ntl-atlas-real-token-readout-20261123]
+    paths:
+      - .github/workflows/ntl-atlas-token-a0-real-20261123.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-atlas-token-real-a0-20261123
+  cancel-in-progress: false
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install CPU-only analysis dependencies and test EXACT paper equation
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy<3' 'pandas<3' 'scikit-learn<2' 'pyarrow<25' 'requests>=2,<3'
+          python -m py_compile scripts/ntl_atlas_exact_token_readout_a0_20261123.py
+          python -m scripts.ntl_atlas_exact_token_readout_a0_20261123 --smoke
+      - name: Recover the SAME historical 800 plus 1899 existing real caches without new inference
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          mkdir -p /tmp/ntl-atlas-glm-source /tmp/ntl-atlas-glm-parts
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-atlas-glm-source >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('/tmp/ntl-atlas-glm-source/train.csv.zip')
+          if p.exists():
+              with ZipFile(p) as z:
+                  assert set(z.namelist())=={'train.csv'}
+                  z.extractall(p.parent)
+          assert Path('/tmp/ntl-atlas-glm-source/train.csv').is_file()
+          PY
+          python -m scripts.ntl_merge_public_glm_caches_20261122 --train /tmp/ntl-atlas-glm-source/train.csv --root /tmp/ntl-atlas-glm-parts --out /tmp/ntl-atlas-glm-merged | tee /tmp/ntl-atlas-merge-log.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          log=Path('/tmp/ntl-atlas-merge-log.txt').read_text()
+          found=[x.split('=',1)[1] for x in log.splitlines() if x.startswith('NTL_RECOVERED_FULL_PUBLIC_GLM_CACHE=')]
+          assert len(found)==1
+          actual=json.loads(found[0])
+          hashes={
+             '1': {'flash_features.csv':'9e4e8ff516e018e26e69e98ba91a76378a7201af58accf57912cb2bfb57050bb',
+                   'flash_scores.npz':'f36bd2ebca78cdad15818e80ca9ce710a915385dd7c8260f9aec25de904f6ddf',
+                   'glm53_features.csv':'a98121f8c07c0bca8b853f7fe9349a33d138d1daa2e58a0c81042503b9dbab5a',
+                   'glm53_scores.npz':'4c9ca8ff599e4a6a3685605c6a4779c37ba7089a07ed768e1b91c9dac937a915'},
+             '2': {'flash_features.csv':'5e1ff2a924c77dd0f52650d99f0ba9c5ef0d534fcacdbb99200f982376845011',
+                   'flash_scores.npz':'b2039e7e919d8b3dfd560afe7d51a3523bc7fe01b56efcc6af71447f9632a930',
+                   'glm53_features.csv':'b9598ff0697993859cdaa8e8bd62c956e99b94921b3638be8f8d5999ad02df7f',
+                   'glm53_scores.npz':'7f437ad911629b9ef25636570dc82b3f944d8b96a616c979caeade14d5e955e1'}}
+          assert actual['version_source_sha256']==hashes,'GLM_PUBLISHER_VERSION_DRIFT_STOP'
+          assert actual['complete_official_ID_coverage'] and actual['token_alignment_verified']
+          print('NTL_ATLAS_PINNED_REAL_CACHE_SOURCE_VERIFIED=TRUE')
+          PY
+      - name: Run exact ATLAS token readout on 300 real GLM siblings and 0.9433 strong control
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_atlas_exact_token_readout_a0_20261123 --train /tmp/ntl-atlas-glm-source/train.csv --folds artifacts/phase1/folds.csv --glm53_features /tmp/ntl-atlas-glm-merged/glm53_features.csv --flash_features /tmp/ntl-atlas-glm-merged/flash_features.csv --glm53_scores /tmp/ntl-atlas-glm-merged/glm53_scores.npz --flash_scores /tmp/ntl-atlas-glm-merged/flash_scores.npz
+          echo NTL_REAL_ATLAS_A0_NO_NEW_MODEL_FORWARD_NO_QLORA_NO_PUBLIC_SUBMISSION=TRUE
+      - name: Always delete original train text and raw source likelihood scores
+        if: always()
+        run: |
+          rm -rf /tmp/ntl-atlas-glm-source /tmp/ntl-atlas-glm-parts /tmp/ntl-atlas-glm-merged /tmp/ntl-atlas-merge-log.txt
+          echo NTL_REAL_SENSITIVE_DATA_NOT_PERSISTED=TRUE
