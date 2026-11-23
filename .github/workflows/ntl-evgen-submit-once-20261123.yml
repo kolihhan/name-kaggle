@@ -60,8 +60,9 @@ jobs:
           print('ORIGINAL_METADATA',json.dumps({k:(len(v) if isinstance(v,list) else v) for k,v in m.items() if k not in ['dataset_sources','kernel_sources','model_sources']},default=str)[:3000],flush=True)
           assert m.get('language','python').lower()=='python'
           assert m.get('kernel_type','notebook')=='notebook'
+          m.pop('id_no',None)
           m['id']=dst
-          m['title']='NTL Evgen Forensic EDA exact public inference repro 20261123'
+          m['title']='ntl evgen forensic eda repro 20261123'
           m['is_private']=True
           m['enable_internet']=False
           if target not in m.get('competition_sources',[]):
