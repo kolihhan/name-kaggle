@@ -34,7 +34,8 @@ def align_next_token(hidden: torch.Tensor, token_ids: torch.Tensor,
         raise ValueError("Hidden must be for [BOS]+targets with one extra time step")
     if token_ids.min() < 0 or token_ids.max() >= output_embedding.num_embeddings:
         raise ValueError("Invalid target ID")
-    return hidden[:, :-1, :], output_embedding(token_ids)
+    # Provide both views from the same frozen causal backbone pass.
+    return hidden[:, :-1, :], hidden[:, 1:, :], output_embedding(token_ids)
 
 
 def masked_mean(x: torch.Tensor, mask: torch.Tensor):
@@ -94,9 +95,9 @@ class DirectPooledHead(nn.Module):
         self.body = nn.Sequential(nn.Linear(dim, width), nn.GELU(),
                                   nn.Linear(width, classes))
 
-    def forward(self, prev_hidden, observed_token_embedding, attention_mask):
-        # Only prior causal hidden states: no current target-token embeddings.
-        return self.body(masked_mean(prev_hidden, attention_mask))
+    def forward(self, current_hidden, observed_token_embedding, attention_mask):
+        # Fair direct control sees all current response tokens from hidden[:,1:].
+        return self.body(masked_mean(current_hidden, attention_mask))
 
 
 class TokenOnlyHead(nn.Module):
@@ -148,8 +149,9 @@ def selftest():
     fake_emb = nn.Embedding(8,d)
     raw_ids = torch.tensor([[1,2]])
     h_bos = torch.randn(1,3,d)
-    h_prev, e_current = align_next_token(h_bos,raw_ids,fake_emb)
-    assert h_prev.shape == e_current.shape == (1,2,d)
+    h_prev, h_current, e_current = align_next_token(h_bos,raw_ids,fake_emb)
+    assert h_prev.shape == h_current.shape == e_current.shape == (1,2,d)
+    assert torch.equal(h_prev, h_bos[:,:-1]) and torch.equal(h_current,h_bos[:,1:])
     try:
         align_next_token(h_bos[:,:-1],raw_ids,fake_emb)
         raise AssertionError("causal guard failed")
