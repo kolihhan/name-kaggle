@@ -1,0 +1,76 @@
+name: NTL public Evgen Dvorkin forensic EDA source read-only inspection
+on:
+  push:
+    branches: [research/ntl-evgendvorkin-notebook-review-20261123]
+    paths: [.github/workflows/ntl-evgendvorkin-public-code-read-20261123.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Pull ONLY the exact public notebook and inspect its code/claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          mkdir -p /tmp/ntl-evgen-public
+          python - <<'PY'
+          import subprocess, re, pathlib, json, hashlib
+          ref='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+          p=subprocess.run(['kaggle','kernels','pull',ref,'-p','/tmp/ntl-evgen-public','-m'],
+                capture_output=True,text=True,timeout=150)
+          safe=re.sub(r'(KGAT_[A-Za-z0-9_-]+|Bearer\s+\S+|https?://\S+)',
+                '[REDACTED]',p.stdout+'\n'+p.stderr)
+          print('NTL_EVGEN_PUBLIC_KERNEL_PULL='+json.dumps({
+             'ref':ref,'status':p.returncode,'message_tail':safe[-380:]}),flush=True)
+          if p.returncode!=0:raise SystemExit(0)
+          root=pathlib.Path('/tmp/ntl-evgen-public')
+          files=sorted(x for x in root.iterdir() if x.is_file())
+          print('NTL_EVGEN_SOURCE_FILES='+json.dumps(
+            [{'file':f.name,'bytes':f.stat().st_size,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()} for f in files]
+          ),flush=True)
+          ipynbs=[f for f in files if f.suffix=='.ipynb']
+          scripts=[f for f in files if f.suffix=='.py']
+          if ipynbs:
+              obj=json.loads(ipynbs[0].read_text(encoding='utf-8'))
+              cells=obj.get('cells',[])
+              print('NTL_EVGEN_CELL_COUNT='+str(len(cells)),flush=True)
+              for i,c in enumerate(cells):
+                  code=''.join(c.get('source',[]))
+                  if c.get('cell_type')=='code':
+                      print('NTL_EVGEN_CODE_CELL='+json.dumps({
+                         'cell':i,'chars':len(code),'code':code[:13000]
+                      },ensure_ascii=False),flush=True)
+                  else:
+                      print('NTL_EVGEN_MARKDOWN_CELL='+json.dumps({
+                         'cell':i,'chars':len(code),'prose':code[:5000]
+                      },ensure_ascii=False),flush=True)
+                  outputs=c.get('outputs',[])
+                  fragments=[]
+                  for output in outputs[:5]:
+                      txt=''.join(output.get('text',[]))
+                      if not txt:
+                          data=output.get('data',{})
+                          txt=''.join(data.get('text/plain',[]))
+                      if txt:fragments.append(txt[:500])
+                  if fragments:
+                      print('NTL_EVGEN_VISIBLE_OUTPUTS='+json.dumps({
+                         'cell':i,'text_fragments':fragments
+                      },ensure_ascii=False),flush=True)
+          elif scripts:
+              for f in scripts:
+                  c=f.read_text(encoding='utf-8')
+                  print('NTL_EVGEN_SCRIPT_CODE='+json.dumps({
+                    'file':f.name,'chars':len(c),'code':c[:100000]
+                  },ensure_ascii=False),flush=True)
+          else:
+              print('NTL_EVGEN_NO_PULLABLE_CODE=TRUE',flush=True)
+          PY
+      - name: Remove external notebook cache
+        if: always()
+        run: rm -rf /tmp/ntl-evgen-public
