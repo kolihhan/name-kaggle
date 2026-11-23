@@ -158,7 +158,7 @@ def analyze(official: pd.DataFrame, c1: pd.DataFrame, c2: pd.DataFrame) -> dict:
 
 
 def selftest() -> None:
-    assert features("The quick, brown fox jumps 123.") == (6.0, 4.0, 50.0, 50.0, 100/6)
+    assert features("The quick, brown fox jumps 123.") == (6.0, 4.0, 200/6, 50.0, 100/6)
     rows = [
         {"prompt_id": g, "model": f"m{i}", "text": f"Alpha beta gamma {i}."}
         for g in range(3) for i in range(6)
