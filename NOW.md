@@ -1,3 +1,18 @@
+# 2026-11-23 MYT — ACTIVE NTL: STOP SMALL-MODEL/QLORA LANE; HIGH-SCORE SOURCE REALITY CHECK COMPLETE
+
+**LATEST USER DECISION supersedes earlier design-first 14B/8B TCAE and QLoRA suggestions for the CURRENT active research lane:** **NO NEW QLoRA TRAINING, NO DISTILGPT2/1.7B PROXY, NO LEARNING FROM PUBLIC 0.54/0.66 AS COMPETITIVE BASELINE.** Benchmark against existing **official own 0.715** and public candidate sources actually at least the same quality, while separating code-title claims from real scored receipts. Preserve old research documents as historical contracts, not current marching orders.
+
+**NEW REAL EXECUTION:**
+- [Authenticated public-code source diff #45136005059](https://github.com/kolihhan/name-kaggle/actions/runs/45136005059) SUCCESS. Owner scored 0.715 source SHA `202bf1bf86ca6363f7f5d44786c30838904610feaf07701653d66da3495551a8` **identical** to pulled Estopadilla public V5. Sanpier requested V3 SHA `d526209d0eda5138867324fbb35e11345f1b2bb8dc74d772fcdfb929753a7434`, different from latest SHA `9d4b79ab02d63f9152d57bb6b0cc6448c6423f0b678b06f781225812b58e9173`. Its Kaggle page says best **0.717 V3**. Do not attribute that score to later code.
+- [Actual GLM/Fable decision code #45136282372](https://github.com/kolihhan/name-kaggle/actions/runs/45136282372) SUCCESS. Inspected Dennis, Sanpier V3/latest, Areeb 0.719-title, Hcluo 0.719-title, Ranjeet sibling odds. Main lineage is inherited powerful 9-model/26-dataset stack plus user-prefix GLM likelihood, budget-aware ranking and **protected GLM→Claude-Fable returns**. Other notebooks share the same functions; different names ≠ independently tested new models. Kaggle CLI sorted metadata omits numeric score, so 0.719 in a title is NOT a newly authenticated score.
+- Full exact hashes, technical deltas, score-evidence limits and priority: [source-lineage report](docs/research/ntl-0715-highscore-decision-lineage-20261123.md).
+
+**CORRECT RESEARCH TARGET:** Genuine independent stage-wise information and budget-sensitive likelihood coverage, with **no more weak-model override of strong predictions**. Existing user 0.715 ALREADY has GLM likelihood, per-family residual, style features, soft grouping; indiscriminate Hungarian override already lowered Public 0.715→0.594. Need row-aligned post-GLM final decision evidence and independent same-row truth to assert gains; if unavailable, say blocked, not claim an improvement. Porting Dennis/Sanpier's exact Fable guard = reproduction/prior art, NOT original innovation.
+
+**RESULT THIS TURN:** code lineage audited and archived; **no training, GPU, new Kaggle submission, new BA score, or Champion modification**. Existing official best 0.715 unchanged.
+
+---
+
 # 2026-11-23 MYT — DESIGN-FIRST NTL PIVOT: FRESH18 IS NOT A PREREQUISITE FOR ARCHITECTURE RESEARCH
 
 **Decision:** Do not block exploratory 18-way mechanism research because a brand-new, publisher-authenticated full-18 source is unavailable. That stricter evidence remains needed to claim **independent full-class source transfer**, not to design or test a new model on official disjoint TRAIN folds. No Public-LB tuning. **Official champion remains 0.715 (#58680531).**
