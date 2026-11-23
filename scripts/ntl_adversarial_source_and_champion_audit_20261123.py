@@ -73,10 +73,10 @@ def get_files(ref):
                 re.search(r"(^|/)(readme|audit|license|manifest|provenance|metadata)",x,re.I)][:12],
             "data_files":[x for x in filenames if x.lower().endswith((".parquet",".csv",".jsonl"))][:20]},rows
 def norm(v):
-    s=str(v or "").strip().lower()
+    s=str(v if v is not None else "").strip().lower()
     return s.rsplit("/",1)[-1]
 def read_publisher_sample(ref,filename,root):
-    folder=root/("source_"+str(DATA.index((ref,filename))))
+    folder=root/("source_"+str(next(i for i,(a,_) in enumerate(DATA) if a==ref)))
     folder.mkdir(exist_ok=True)
     rc,_=exec_cli(["datasets","download","-d",ref,"-f",filename,"-p",str(folder),
                    "--unzip","-o","-q"],timeout=150)
