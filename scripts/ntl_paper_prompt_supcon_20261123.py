@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 
 SEED=20261123
-EPOCHS=18
+EPOCHS=12
 WIDTH=128
 ZDIM=64
 LR=7e-4
@@ -90,7 +90,7 @@ def pair_batches(y,g,seed):
     order=rng.permutation(len(pairs))
     # Use roughly 3 prompt comparisons per unique prompt per epoch;
     # capped to prevent quadratic O(P^2) overtraining.
-    limit=min(len(order),max(30,3*len(panels)))
+    limit=min(len(order),max(30,len(panels)))
     for t in order[:limit]:
         a,b,common=pairs[t]
         # EXACTLY two prompts x same label set. This produces paired
@@ -126,7 +126,6 @@ def fit_one(x,y,groups,seed=SEED,lambda_supcon=LAMBDA,epochs=EPOCHS):
     if len(set(groups))<10:raise ValueError("TOO_FEW_PROMPTS")
     label_map={name:i for i,name in enumerate(unique)}
     yi=np.asarray([label_map[str(q)] for q in y],dtype=np.int64)
-    gi=np.asarray([hashlib.sha256(str(v).encode()).digest()[:8] for v in groups])
     _,gidx=np.unique(groups,return_inverse=True)
     inputs=torch.from_numpy(np.asarray(x,dtype=np.float32))
     ys=torch.from_numpy(yi)
