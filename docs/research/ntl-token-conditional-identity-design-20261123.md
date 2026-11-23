@@ -35,8 +35,8 @@ These are non-comparable model families/OOF/Public; do not compute a BA delta be
 
 ### Architecture: TCAE-v0, one backbone forward
 
-Input text x tokenizes to y_1 ... y_T under a pinned public pretrained causal LM (proposed Qwen3-1.7B, revision pinned before any outcomes; if unavailable, abort rather than switch after seeing scores).
-At position t, use h_(t-1) from causal last-hidden state (BOS for first token), and the pretrained frozen LM output embedding e(y_t) of the **actual next token**. No future token is allowed into h_(t-1).
+Input text x tokenizes to y_1 ... y_T under a pinned public pretrained causal LM (proposed Qwen/Qwen3-1.7B-Base (open-weight Apache-2.0, HF-reported 1.7206B parameters), revision pinned in the next no-score preflight before any outcomes; if unavailable, abort rather than switch after seeing scores).
+At position t, use h_(t-1) from causal last-hidden state (BOS for first token), and the pretrained frozen LM **output projection weight row** e(y_t) of the **actual next token** (compatible with LM heads implemented as nn.Linear, not just nn.Embedding). No future token is allowed into h_(t-1).
 
 ```
 a_t       = A h_(t-1)                                      [rank r]
