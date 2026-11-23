@@ -17,7 +17,8 @@ jobs:
       - name: Install CPU-only PyTorch and NumPy
         run: |
           set -euo pipefail
-          python -m pip install -q --disable-pip-version-check numpy==2.3.4 'torch==2.8.0' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q --disable-pip-version-check numpy==2.3.4
+          python -m pip install -q --disable-pip-version-check 'torch==2.8.0' --index-url https://download.pytorch.org/whl/cpu
       - name: Fixed SupCon prompt-pair and loss gradient tests
         run: |
           set -euo pipefail
