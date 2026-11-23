@@ -1,0 +1,77 @@
+name: NTL 0.715 private stage trace READ ONLY status and aggregates
+on:
+  push:
+    branches: [exp/ntl-0715-stage-trace-frozen-20261123]
+    paths:
+      - .github/workflows/ntl-0715-stage-trace-check-status-20261123.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-0715-trace-status-read-only-20261123
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Check real Kaggle status, then only aggregated observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 'pandas>=2,<3' 'pyarrow>=15,<26'
+          python - <<'PY'
+          import subprocess,re,json,pathlib,os
+          ref='kolihhan/ntl-0715-frozen-stage-trace-research-20261123'
+          def cmd(args,timeout=100):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          p=cmd(['kernels','status',ref])
+          st=re.findall(r'KernelWorkerStatus[.][A-Z_]+',p.stdout+'\n'+p.stderr)
+          print('NTL_TRACE_CURRENT_WORKER='+json.dumps({'returncode':p.returncode,'state':st[0] if st else 'UNKNOWN','lookup_unverified':p.returncode!=0},sort_keys=True),flush=True)
+          if p.returncode!=0:
+              print('NTL_TRACE_STATUS_QUERY_FAILED_NO_INFERENCE_CREATED=TRUE')
+              raise SystemExit(0)
+          state=st[0] if st else ''
+          if not state.endswith('.COMPLETE'):
+              print('NTL_TRACE_NOT_YET_COMPLETE_NO_NEW_JOB=TRUE')
+              raise SystemExit(0)
+          logs=cmd(['kernels','logs',ref],timeout=150)
+          print('NTL_TRACE_LOGS_FETCH_RC='+str(logs.returncode),flush=True)
+          for marker in ('NTL_TRACE_PRE_GLM_METADATA=','NTL_TRACE_UNLABELLED_STAGE_CHANGES=','NTL_TRACE_PRE_GLM_NOT_VERIFIED=','NTL_TRACE_POST_GLM_NOT_VERIFIED='):
+              lines=[l.split(marker,1)[1].strip() for l in (logs.stdout+'\n'+logs.stderr).splitlines() if marker in l]
+              if not lines:continue
+              val=lines[-1]
+              if marker.endswith('CHANGES=') or marker.endswith('METADATA='):
+                  try:
+                      j=json.loads(val)
+                      keys=['status','n_rows','changed_final_labels','changed_across_families','changed_within_family_siblings','unchanged','pre_snapshot_rows','strong_logits_rows_aligned','strong_logits_shape_valid','baseline_submission_bytes_unchanged','out_parquet_sha_unchanged_by_audit','no_true_labels_accessed','no_accuracy_or_BA_claim','original_glm_stage_report_present']
+                      data={k:j[k] for k in keys if k in j}
+                      print('NTL_TRACE_SAFE_'+marker[10:-1].replace('=','')+'='+json.dumps(data,sort_keys=True),flush=True)
+                  except (json.JSONDecodeError,TypeError):
+                      print('NTL_TRACE_LOG_MARKER_UNPARSEABLE='+marker,flush=True)
+              else: print('NTL_TRACE_FAILURE_MARKER='+marker+val[:80],flush=True)
+          # Download notebook-produced artifacts only if complete; never print raw submissions.
+          root=pathlib.Path('/tmp/ntl-stage-trace-outputs')
+          root.mkdir(parents=True,exist_ok=True)
+          p2=cmd(['kernels','output',ref,'-p',str(root)],timeout=300)
+          print('NTL_TRACE_OUTPUT_DOWNLOAD_RC='+str(p2.returncode),flush=True)
+          agg=list(root.rglob('ntl_stage_trace_aggregates.json'))
+          if agg:
+              try:
+                  j=json.loads(agg[0].read_text())
+                  keys=['status','n_rows','changed_final_labels','changed_across_families','changed_within_family_siblings','unchanged','original_glm_stage_report_present','strong_logits_shape_valid','out_parquet_sha_unchanged_by_audit','no_true_labels_accessed','no_accuracy_or_BA_claim']
+                  print('NTL_TRACE_AGGREGATE_RESULT='+json.dumps({k:j[k] for k in keys if k in j},sort_keys=True),flush=True)
+              except (ValueError,KeyError,UnicodeDecodeError) as e:
+                  print('NTL_TRACE_AGGREGATE_PARSE_ERROR='+type(e).__name__,flush=True)
+          else:
+              print('NTL_TRACE_AGGREGATE_FILE_NOT_FOUND=TRUE',flush=True)
+          print('NTL_TRACE_READ_ONLY_NO_KAGGLE_PUSH_NO_COMPETITION_SUBMIT=TRUE',flush=True)
+          PY
+      - name: Scrub notebook outputs
+        if: always()
+        shell: bash
+        run: rm -rf /tmp/ntl-stage-trace-outputs
