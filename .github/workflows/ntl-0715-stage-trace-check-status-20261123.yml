@@ -76,3 +76,5 @@ jobs:
         shell: bash
         run: rm -rf /tmp/ntl-stage-trace-outputs
 # Automation read-only observation 2026-11-24 01:07 MYT; no kernel push.
+
+# Read-only status recheck requested 2026-11-24 morning MYT; no private kernel push.
