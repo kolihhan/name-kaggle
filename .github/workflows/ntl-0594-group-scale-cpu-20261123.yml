@@ -1,0 +1,27 @@
+name: NTL 0.594 forensic group-scale forced errors CPU only
+on:
+  push:
+    branches: [research/ntl-0594-mechanism-forensics-20261123]
+    paths:
+      - .github/workflows/ntl-0594-group-scale-cpu-20261123.yml
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Load immutable official train/folds only and test group scaling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
+          python -m scripts.ntl_0594_group_scale_forensics_20261123
+          echo NTL_0594_FORENSICS_NO_GPU_NO_KAGGLE_SUBMISSION=TRUE
