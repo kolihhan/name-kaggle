@@ -1,0 +1,47 @@
+name: NTL official 58729013 score terminal read once
+on:
+  push:
+    branches: [research/ntl-0715-joint-official-once-20261122]
+    paths: [.github/workflows/ntl-58729013-official-score-read-20261123.yml]
+permissions: {contents: read}
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Authenticated official Kaggle NTL score receipt only (no submissions)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,subprocess
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,check=True,timeout=90)
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          refs=('58729013','58680531')
+          for ref in refs:
+              matched=[r for r in rows if r.get('ref')==ref]
+              if len(matched)!=1:raise RuntimeError('EXPECTED_RECEIPT_MISSING_'+ref)
+              r=matched[0]
+              print('NTL_OFFICIAL_AUTHENTICATED_RECEIPT='+json.dumps({
+                  k:r.get(k) for k in ('ref','date','status','publicScore','privateScore','description')
+              },sort_keys=True),flush=True)
+          a=next(r for r in rows if r.get('ref')==refs[0])
+          b=next(r for r in rows if r.get('ref')==refs[1])
+          try:
+              new=float(a['publicScore'])
+              old=float(b['publicScore'])
+          except (ValueError,TypeError):
+              print('NTL_58729013_OFFICIAL_DELTA=UNAVAILABLE',flush=True)
+          else:
+              print('NTL_58729013_OFFICIAL_DELTA='+json.dumps({
+                  'new':new,'champion':old,'delta':round(new-old,6),
+                  'improved':new>old,'new_champion':new if new>old else old
+              },sort_keys=True),flush=True)
+          print('NTL_READ_ONLY_NO_NEW_KERNEL_NO_SUBMISSION=TRUE',flush=True)
+          PY
