@@ -1,0 +1,64 @@
+name: NTL pinned 0.715 source vs Evgen feature-data contract read-only
+on:
+  push:
+    branches: [research/ntl-evgendvorkin-notebook-review-20261123]
+    paths: [.github/workflows/ntl-0715-original-logits-contract-audit-20261123.yml]
+permissions: {contents: read}
+jobs:
+  introspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read only actual 0.715 clone source code; no GPU/competition submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-old-scored
+          kaggle kernels pull kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-old-scored -m > /tmp/ntl-old-sourcepull.log 2>&1
+          python - <<'PY'
+          import pathlib,json,re,hashlib
+          root=pathlib.Path('/tmp/ntl-old-scored')
+          md=json.loads((root/'kernel-metadata.json').read_text())
+          nb=json.loads((root/md['code_file']).read_text())
+          parts=[(i,''.join(c.get('source',[]))) for i,c in enumerate(nb['cells']) if c['cell_type']=='code']
+          raw='\n'.join(code for i,code in parts)
+          print('NTL_ORIGINAL_0715_SOURCE_CONTRACT='+json.dumps({
+            'original_cells':len(nb['cells']),
+            'code_sha256':hashlib.sha256(raw.encode()).hexdigest(),
+            'model_mounts':len(md.get('model_sources') or []),
+            'data_mounts':len(md.get('dataset_sources') or []),
+            'kernel_mounts':len(md.get('kernel_sources') or []),
+            'gpu':md.get('enable_gpu'),
+          },sort_keys=True),flush=True)
+          markers=('FINAL_LOGITS','save_final_logits','final-logits','logits.npz',
+                   'KAGGLE_IS_COMPETITION_RERUN','FAST_COMMIT','RUN_LIMIT_S',
+                   'V1_DEADLINE_H','GLM','fable_return','prefix','SINKHORN',
+                   'experiment','9 * 3600','NOOP','submission.parquet')
+          for i,code in parts:
+            matches=[]
+            for term in markers:
+              occurrences=len(re.findall(re.escape(term),code,re.I))
+              if occurrences:matches.append((term,occurrences))
+            if not matches:continue
+            excerpts=[]
+            lines=code.splitlines()
+            for k,line in enumerate(lines):
+              if any(re.search(re.escape(term),line,re.I) for term in markers):
+                excerpt=' '.join(lines[max(0,k-1):min(len(lines),k+2)])
+                if len(excerpt)>250:excerpt=excerpt[:250]
+                if 'V1_PAYLOAD' in excerpt or len(excerpt)>230 and 'H4sIA' in excerpt:continue
+                excerpts.append(excerpt)
+                if len(excerpts)>=11:break
+            print('NTL_0715_SOURCE_CELL='+json.dumps({
+               'cell':i,'chars':len(code),'matches':matches,
+               'excerpts':excerpts[:11],
+            },ensure_ascii=False),flush=True)
+          PY
+      - name: Clean up fetched owner source
+        if: always()
+        run: rm -rf /tmp/ntl-old-scored /tmp/ntl-old-sourcepull.log
