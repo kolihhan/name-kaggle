@@ -1,0 +1,44 @@
+name: NTL FCS-v1 pretrained causal surprisal fingerprint frozen 18-class CPU
+on:
+  push:
+    branches: [research/ntl-frozen-causal-surprisal-20261123]
+    paths:
+      - .github/workflows/ntl-fcs-v1-pretrained-cpu-20261123.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-fcs-v1-frozen-pretrained-20261123
+  cancel-in-progress: false
+jobs:
+  frozen-pretrained:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      TOKENIZERS_PARALLELISM: 'false'
+      HF_HUB_DISABLE_XET: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      PYTHONUNBUFFERED: '1'
+      USE_TF: '0'
+      USE_FLAX: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install pinned CPU-only pretrained LM runtime and science helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_fcs_v1_20261123.py
+          test -f docs/research/ntl-fcs-v1-contract-20261123.md
+          python -m pip install -q --disable-pip-version-check 'torch==2.6.0+cpu' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q --disable-pip-version-check 'transformers==4.57.1' 'huggingface_hub>=0.34,<1' 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' 'tokenizers>=0.22,<0.23' safetensors threadpoolctl
+          python -c 'import torch, transformers; print("NTL_FCS_V1_CPU_RUNTIME="+torch.__version__+"/"+transformers.__version__); assert not torch.cuda.is_available()'
+      - name: Download fixed public pretrained model; execute all authentic train-only OOF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_fcs_v1_20261123
+          echo NTL_FCS_V1_NO_PRIVATE_MODEL_NO_GPU_NO_HIDDEN_TEST_NO_KAGGLE_SUBMISSION=TRUE
