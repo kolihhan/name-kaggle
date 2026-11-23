@@ -1,0 +1,74 @@
+name: NTL SemEval top-solution source-transfer real CPU falsifier
+on:
+  push:
+    branches: [research/ntl-semeval-source-transfer-audit-20261124]
+    paths:
+      - .github/workflows/ntl-semeval-source-transfer-cpu-20261124.yml
+      - scripts/ntl_semeval_source_transfer_20261124.py
+      - docs/research/ntl-semeval-source-transfer-contract-20261124.md
+permissions: {contents: read}
+concurrency:
+  group: ntl-semeval-source-transfer-real-20261124
+  cancel-in-progress: false
+jobs:
+  test_real_12class:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_semeval_source_transfer_20261124.py
+            docs/research/ntl-semeval-source-transfer-contract-20261124.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install CPU deps and execute self-test; original competition data NOT checked out
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3' 'scipy>=1.13,<2'
+          python -m py_compile scripts/ntl_semeval_source_transfer_20261124.py
+          python -m scripts.ntl_semeval_source_transfer_20261124 --selftest
+          test ! -e data/train.csv
+          echo NTL_SEMEVAL_FROZEN_CONTRACT_PRESENT=TRUE
+      - name: Download pinned source panels and official TRAIN to private ephemeral tmp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-st-official /tmp/ntl-st-c1 /tmp/ntl-st-c2
+          timeout 240 kaggle competitions download -c name-that-llm -p /tmp/ntl-st-official -q >/tmp/ntl-st-official-download.log 2>&1
+          timeout 150 kaggle datasets download -d beroli/ntl-benchmark-c1-generated-panels -p /tmp/ntl-st-c1 --unzip -q >/tmp/ntl-st-c1-download.log 2>&1
+          timeout 150 kaggle datasets download -d beroli/ntl-benchmark-c2-generated-panels -p /tmp/ntl-st-c2 --unzip -q >/tmp/ntl-st-c2-download.log 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root=Path('/tmp/ntl-st-official')
+          zips=list(root.glob('*.zip'))
+          if len(zips)!=1:raise RuntimeError('competition ZIP ambiguity')
+          with zipfile.ZipFile(zips[0]) as z:
+              matching=[v for v in z.namelist() if v.split('/')[-1]=='train.csv']
+              if len(matching)!=1:raise RuntimeError('competition train.csv ambiguity')
+              (root/'train.csv').write_bytes(z.read(matching[0]))
+          assert (Path('/tmp/ntl-st-c1')/'passages.csv').is_file()
+          assert (Path('/tmp/ntl-st-c2')/'passages.csv').is_file()
+          print('NTL_SEMEVAL_PINNED_INPUT_PATHS_VERIFIED=TRUE',flush=True)
+          PY
+      - name: Execute real 2699 historical TRAIN vs authentic public C1/C2 panel source fingerprint comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_semeval_source_transfer_20261124 --official /tmp/ntl-st-official/train.csv --c1 /tmp/ntl-st-c1/passages.csv --c2 /tmp/ntl-st-c2/passages.csv
+          echo NTL_SEMEVAL_NO_FIT_NO_GPU_NO_SUBMISSION_NO_18CLASS_HOLDOUT=TRUE
+      - name: Scrub all texts, original CSVs, downloaded zip and logs
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-st-official /tmp/ntl-st-c1 /tmp/ntl-st-c2 /tmp/ntl-st-*-download.log
+          echo NTL_SEMEVAL_TEMP_TEXTS_REMOVED=TRUE
