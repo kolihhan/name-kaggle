@@ -67,7 +67,7 @@ def fetch(ref,path):
             "output_files":names[:18]}
 
 def compare(base,other,name):
-    a=base.data;b=other.data
+    a=base["data"];b=other["data"]
     A=set(a.index);B=set(b.index)
     if A!=B:
         emit("DIFF",{"target":name,"comparable":False,
