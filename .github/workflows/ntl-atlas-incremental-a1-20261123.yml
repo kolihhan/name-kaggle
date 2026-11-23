@@ -11,7 +11,7 @@ concurrency:
 jobs:
   evaluate:
     runs-on: ubuntu-latest
-    timeout-minutes: 24
+    timeout-minutes: 30
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       PYTHONUNBUFFERED: '1'
@@ -45,7 +45,19 @@ jobs:
                   z.extractall(p.parent)
           assert Path('/tmp/ntl-atlas-glm-source/train.csv').is_file()
           PY
-          python -m scripts.ntl_merge_public_glm_caches_20261122 --train /tmp/ntl-atlas-glm-source/train.csv --root /tmp/ntl-atlas-glm-parts --out /tmp/ntl-atlas-glm-merged | tee /tmp/ntl-atlas-merge-log.txt
+          # Kaggle sometimes closes a public ZIP stream mid-transfer. Retry transport only.
+          # Recreate scratch directories because the recovery script enforces new paths.
+          recovered=0
+          for attempt in 1 2 3; do
+            rm -rf /tmp/ntl-atlas-glm-parts /tmp/ntl-atlas-glm-merged
+            mkdir -p /tmp/ntl-atlas-glm-parts
+            if python -m scripts.ntl_merge_public_glm_caches_20261122 --train /tmp/ntl-atlas-glm-source/train.csv --root /tmp/ntl-atlas-glm-parts --out /tmp/ntl-atlas-glm-merged | tee /tmp/ntl-atlas-merge-log.txt; then
+              recovered=1
+              break
+            fi
+            echo "NTL_PUBLIC_SOURCE_STREAM_INTERRUPTED_ATTEMPT=$attempt"
+          done
+          test "$recovered" -eq 1
           python - <<'PY'
           import json
           from pathlib import Path
