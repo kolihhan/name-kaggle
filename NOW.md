@@ -1,3 +1,13 @@
+# 2026-11-23 — ATLAS (2026) ADDED AS NTL RESEARCH CANDIDATE (CO-EQUAL WITH SUPCON)
+
+**Author paper/source verified**: [arXiv 2610.19583](https://arxiv.org/abs/2610.19583), [official implementation](https://github.com/komseok0109/ATLAS). ATLAS uses Qwen2.5-7B frozen causal backbone + per-family source-control prefixes + shared-A/source-specific-B LoRA, trains next-token LM likelihood and compares all source-conditioned per-token likelihoods with bounded multi-temperature argmax-prod. **74.27% accuracy on 5-family MAABench joint domain/version shift; NOT 18-way NTL BA.** 
+
+**NEAR-TERM FIXED-BUDGET RESEARCH:** test *only* the paper's clipped/bounded token-level readout on already-existing SHA-pinned aligned GLM vs GLM-Flash token-score caches, comparing plain mean logprob vs ATLAS argmax-prod T={1,2,4,8}, **ZERO new LLM calls or tokens**. This is **not faithful full ATLAS**, can establish at most a GLM 2-way mechanism result, and **HAS NOT RUN**. Full K-conditioned trained ATLAS would add local GPU computation and new LoRA training, conflict with user's current NTL no-QLoRA / existing-time-budget constraint: retain as DEFERRED, not silently reject the paper. SupCon remains a separate complementary discriminative experiment. [Verified architecture/cost/evaluation comparison](docs/research/ntl-atlas-2026-vs-supcon-vs0715-20261123.md).
+
+**No new measured Public gain / no new competition submission. Official scored Champion = 0.715.**
+
+---
+
 # 2026-11-23 — NTL SOTA PAPER APPLICATION: STRONG EMBEDDING PROMPT-SCL CODE IMPLEMENTED, VALIDATION RUNS QUEUED
 
 **Paper research selection:** Recent 2026 **ATLAS** (arXiv:2610.19583) has reported 74.27% dual-domain/version-shift MAABench accuracy but its multiple source-conditioned LoRA LM likelihoods are expensive (and NOT NTL's 18-class BA). ICML 2025 Sun et al. LLM2Vec model-identity classification gets 97.1% 5-way but requires encoder fine-tuning. Selected the lower-cost **domain-generalization supervised contrastive mechanism** Beigi et al. (arXiv:2407.21264): positives same generator across different prompts, hard negatives different generators within one prompt. This is paper-derived, not a claim of original invention or 2026 SOTA score.
