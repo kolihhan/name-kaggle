@@ -54,6 +54,14 @@ def load(path: Path, *, expected_sha: str | None = None, expected_rows: int | No
     df = pd.read_csv(path, low_memory=False)
     if expected_rows is not None and len(df) != expected_rows:
         raise RuntimeError("source row count drift; reject")
+    # Original C1/C2 publisher CSVs use "label", not "model".
+    # Resolve only a known schema synonym; never guess generator identity.
+    if "model" not in df and "label" in df:
+        df["model"] = df["label"].astype(str).str.strip().str.lower()
+    elif "model" in df and "label" in df:
+        if not (df["model"].astype(str).str.strip().str.lower() ==
+                df["label"].astype(str).str.strip().str.lower()).all():
+            raise ValueError("conflicting model/label columns")
     required = {"prompt_id", "model", "text"}
     if not required.issubset(df):
         raise ValueError("required columns missing: " + str(sorted(required - set(df))))
