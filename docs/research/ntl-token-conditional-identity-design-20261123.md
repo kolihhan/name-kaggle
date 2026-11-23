@@ -35,7 +35,7 @@ These are non-comparable model families/OOF/Public; do not compute a BA delta be
 
 ### Architecture: TCAE-v0, one backbone forward
 
-Input text x tokenizes to y_1 ... y_T under a pinned public pretrained causal LM (proposed Qwen/Qwen3-1.7B-Base (open-weight Apache-2.0, HF-reported 1.7206B parameters), revision pinned in the next no-score preflight before any outcomes; if unavailable, abort rather than switch after seeing scores).
+Input text x tokenizes to y_1 ... y_T under a pinned public pretrained causal LM: **PRIMARY Qwen/Qwen3-14B-Base** (HF reports 14.7683B parameters, Apache-2.0). **SECONDARY hardware fallback Qwen/Qwen3-8B-Base** (HF reports 8.1907B parameters) *only if a pre-score, pre-training 14B inference/memory/throughput feasibility check demonstrably fails*. Neither DistilGPT2 nor 1.7B is eligible as the study backbone. Both candidates' exact revision SHAs, quantization config and hidden-size details must be frozen before the real experiment. If neither fits available GPU resources, mark blocked rather than automatically reverting to small models.
 At position t, use h_(t-1) from causal last-hidden state (BOS for first token), and the pretrained frozen LM **output projection weight row** e(y_t) of the **actual next token** (compatible with LM heads implemented as nn.Linear, not just nn.Embedding). No future token is allowed into h_(t-1).
 
 ```
@@ -76,10 +76,16 @@ NO source-specific thresholds, changed scorer routing, prompt matching at test t
 
 ## 5. Cost/runtime and preflight stop
 
-- Historical weak DistilGPT2 CPU attempts did not test a strong 1.7B backbone; however this bigger approach may be too expensive for free Kaggle GPU/9h hidden scoring.
-- Budget preflight with **no actual model training**: exact model revision, safe 4-bit or 8-bit inference if needed, hidden cache footprint (2699 x capped tokens x hidden-dim x dtype), 5-fold 3-head training estimated walltime, and hidden 4000-text inference extrapolated from actual token throughput. If memory > available, or projected inference >9 hours with margin, mark INFEASIBLE and *do not silently change the backbone, method or token cap after seeing BA*.
+- Historical weak DistilGPT2 CPU attempts did not test 8B/14B causal representation capacity. Primary 14B at FP16 requires roughly 29.5 GB just for model weights before activations; 4-bit weights are roughly 7.4 GB theoretical packed minimum **plus quantization metadata, hidden states, output embeddings and runtime overhead**. Actual feasible peak memory must be measured on the available GPU, not inferred from theoretical 4-bit size. Inference should use frozen 4-bit LM with trainable heads if quantization is needed; do not assume 14B fits 1x T4, or that adding 2x T4 makes CUDA device mapping automatic.
+- Budget preflight with **no actual model training**: primary 14B exact revision and real CUDA load/forward on controlled synthetic inputs, record architecture/cpu offload/quantization and tensor-device alignment; ONLY IF infeasible attempt predeclared 8B fallback; hidden cache footprint (2699 x capped tokens x hidden-dim x dtype), 5-fold 3-head training estimated walltime, and hidden 4000-text inference extrapolated from actual token throughput. If memory > available, or projected inference >9 hours with margin, mark INFEASIBLE and *do not silently change the backbone, method or token cap after seeing BA*.
 - Do not launch paid inference, external generation, or a competition submission. Do not claim Kaggle GPU quota from an older snapshot. Do not expose official TRAIN text, embeddings or label arrays in a public repository or public logs.
 - Current action authorization: **design-first architecture approval; preflight may be prepared.** Expensive Kaggle GPU training is a separate research run *only after the design and model revision/cost contract are pinned*.
+
+## 5a. 2026-11-23 owner correction: stop small-model-first research
+
+The owner's instruction is explicit: repeated DistilGPT2 / 1.7B toy representation experiments are no longer an adequate central research direction. **Replace previous Qwen3-1.7B backbone plan with Qwen3-14B-Base PRIMARY and Qwen3-8B-Base explicit feasibility-only fallback.** We are not claiming model size alone increases 18-class Balanced Accuracy. Keep the controlled C0/C1/Clex design unchanged so backbone power is not conflated with a new architecture or unfair control.
+
+A synthetic-only class-head implementation already passed GitHub Actions but **has not loaded either larger backbone or measured a single real attribution accuracy value**. Any actual GPU call must disclose measured peak VRAM, wall-clock, free quota and source SHA before beginning full 5-fold training.
 
 ## 6. Scientific decisions and pivot triggers
 
