@@ -1,0 +1,35 @@
+name: NTL independent matched-prompt conditional attribution 5-fold CPU one-shot
+on:
+  push:
+    branches: [research/ntl-matched-conditional-loss-v1-20261123]
+    paths: [.github/workflows/ntl-mpcd-v1-5fold-cpu-20261123.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-mpcd-v1-historical-prompt-folds-20261123
+  cancel-in-progress: false
+jobs:
+  mpcd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify contract and install CPU-only mathematical dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f docs/research/ntl-mpcd-v1-contract-20261123.md
+          python -m py_compile scripts/ntl_mpcd_v1_20261123.py
+          python -m pip install -q --disable-pip-version-check 'numpy>=1.26,<3' 'scipy>=1.13,<2' 'scikit-learn>=1.4,<2' 'pandas>=2,<3' threadpoolctl
+      - name: Run exactly one frozen 5-fold official TRAIN diagnostic; never Kaggle test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_mpcd_v1_20261123
+          echo NTL_MPCD_V1_NO_TEST_NO_GPU_NO_COMPETITION_SUBMISSION=TRUE
