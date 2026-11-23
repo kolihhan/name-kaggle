@@ -143,8 +143,10 @@ def run(args):
     paired=list(paired_rows(full,flash))
     ids=list(full["ids"])
     Xg_all=make_global(ff,lf,ids,paired)
-    Xt_all=np.asarray([token_features(a,b) for _,a,b in paired],dtype=np.float64)
-    Xg=Xg_all[allowed]; Xt=Xt_all[allowed]
+    # Only the 300 GLM-labelled rows enter the token-level experiment; other
+    # source families may have short completions and are not part of this study.
+    Xt=np.asarray([token_features(a,b) for i,(_,a,b) in enumerate(paired) if allowed[i]],dtype=np.float64)
+    Xg=Xg_all[allowed]
     if Xt.shape!=(300,13) or not np.isfinite(Xt).all():
         raise ValueError("TOKEN_FEATURE_BLOCK_INVALID")
     X=np.c_[Xg,Xt]
