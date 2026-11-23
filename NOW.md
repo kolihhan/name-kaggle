@@ -1,3 +1,13 @@
+# 2026-11-23 MYT — NTL 0.715 VS 0.719 PUBLIC OVERFIT AUDIT: NO PROOF; DO NOT CHASE
+
+**Real read-only [GitHub Actions #45137623140](https://github.com/kolihhan/name-kaggle/actions/runs/45137623140) SUCCESS.** Kaggle authenticated owned submission ledger returned **27 entries (25 COMPLETE/1 ERROR/1 PENDING), 21 numeric Public scores, max 0.715**. The public leaderboard CLI returned only 23 lines, no named highscore authors: **their current exact scores and independence are NOT authenticated by this method**. Sanpier official public page shows 13 notebook versions, best 0.717 at V3, while V3 versus newest code are different SHAs. Another repo source audit verified multiple 0.719-title notebooks inherit identical GLM user-prefix/Fable guard structure. This proves shared lineage, not overfit or a competitive gain.
+
+**Official test contract:** hidden roughly 4000; Public roughly 40% (~1600); thus +0.004 Public BA corresponds to ~6.4 net correct **ONLY under equal class sizes**. Actual 18-class count and paired changed rows unknown. Sensitivity example of six net under symmetric discordant null: 20 hypothetical changed rows => two-sided ~0.263; not an actual p-value, cannot infer significance. **No matched independently labeled 0.715 vs 0.719 final inference exists** from this audit. **VERDICT:** Public overfitting is a serious *risk*, not verified fact, and owner's 27 submissions are also Public-selection exposure. Keep 0.715 frozen.
+
+**Active user constraint:** no new QLoRA, tiny model proxy, blind ensemble patches, GPU, or extra official submission. Full proof requires same-row independent labels, per-class rescues/regressions and source/prompt split; absent that, do not claim 0.719 promotion. [Short report](docs/research/ntl-0715-vs0719-overfit-audit-20261123.md). **New competitive score: NONE.**
+
+---
+
 # 2026-11-23 MYT — ACTIVE NTL: STOP SMALL-MODEL/QLORA LANE; HIGH-SCORE SOURCE REALITY CHECK COMPLETE
 
 **LATEST USER DECISION supersedes earlier design-first 14B/8B TCAE and QLoRA suggestions for the CURRENT active research lane:** **NO NEW QLoRA TRAINING, NO DISTILGPT2/1.7B PROXY, NO LEARNING FROM PUBLIC 0.54/0.66 AS COMPETITIVE BASELINE.** Benchmark against existing **official own 0.715** and public candidate sources actually at least the same quality, while separating code-title claims from real scored receipts. Preserve old research documents as historical contracts, not current marching orders.
