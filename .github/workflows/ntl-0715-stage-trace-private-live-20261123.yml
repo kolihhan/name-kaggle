@@ -68,16 +68,22 @@ jobs:
           python - <<'PY'
           import os,re,subprocess
           target=os.environ['DEST']
-          q=subprocess.run(['kaggle','kernels','status',target],text=True,capture_output=True,timeout=80)
-          if q.returncode==0:
-              states=re.findall(r'KernelWorkerStatus\.[A-Z_]+',q.stdout+' '+q.stderr)
-              print('NTL_TRACE_ALREADY_EXISTS='+str(states or ['UNKNOWN']))
+          slug=target.split('/')[-1]
+          q=subprocess.run(['kaggle','kernels','list','--mine','--search',slug,'-v'],text=True,capture_output=True,timeout=90)
+          if q.returncode!=0:
+              print('NTL_TRACE_LIST_PROBE_FAILED='+str(q.returncode))
+              raise RuntimeError('could_not_verify_private_kernel_presence_using_list')
+          rows=q.stdout.splitlines()
+          found=[line for line in rows if target in line]
+          print('NTL_TRACE_EXISTING_EXACT_MATCH_COUNT='+str(len(found)))
+          if found:
+              q2=subprocess.run(['kaggle','kernels','status',target],text=True,capture_output=True,timeout=80)
+              states=re.findall(r'KernelWorkerStatus\\.[A-Z_]+',q2.stdout+' '+q2.stderr)
+              print('NTL_TRACE_ALREADY_EXISTS='+str(states or ['STATUS_NOT_AVAILABLE']))
               print('NTL_TRACE_NO_DUPLICATE_LAUNCH=TRUE')
               open('/tmp/ntl-trace-already-exists','w').write('1')
-          elif re.search(r'404|not found|not exist',q.stderr+' '+q.stdout,re.I):
-              print('NTL_TRACE_NOT_PRESENT_LAUNCH_ONCE=TRUE')
           else:
-              raise RuntimeError('could_not_verify_private_kernel_presence')
+              print('NTL_TRACE_CONFIRMED_NOT_IN_MATCHING_KERNEL_SEARCH=TRUE')
           PY
           if [ ! -f /tmp/ntl-trace-already-exists ]; then
             timeout 600 kaggle kernels push -p /tmp/ntl-stage-trace-private > /tmp/ntl-stage-trace-push.log 2>&1 || { echo NTL_TRACE_PUSH_ERROR; tail -12 /tmp/ntl-stage-trace-push.log | sed -E 's#https?://[^ ]+#[REDACTED]#g'; exit 1; }
