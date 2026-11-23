@@ -1,4 +1,4 @@
-name: NTL existing 0.715 vs highscore kernel outputs: real disagreement only
+name: NTL existing 0.715 vs highscore kernel outputs real disagreement only
 on:
   push:
     branches: [research/ntl-highscore-realprediction-drift-20261123]
