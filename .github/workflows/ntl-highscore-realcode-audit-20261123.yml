@@ -1,0 +1,34 @@
+name: NTL high-scoring 0.715+ notebook source diff - read only
+on:
+  push:
+    branches: [research/ntl-highscore-0715-0719-source-audit-20261123]
+    paths:
+      - .github/workflows/ntl-highscore-realcode-audit-20261123.yml
+      - scripts/ntl_highscore_realcode_audit_20261123.py
+permissions: {contents: read}
+concurrency:
+  group: ntl-highscore-realcode-audit-20261123
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 19
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install Kaggle metadata/source client ONLY
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Source-only code pull, exact-owner SHA guard and major decision diffs
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_highscore_realcode_audit_20261123.py
+          python -m scripts.ntl_highscore_realcode_audit_20261123
+          echo NTL_NO_NEW_MODEL_TRAINING_GPU_TEST_DATA_OR_KAGGLE_SUBMISSION=TRUE
