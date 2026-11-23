@@ -1,3 +1,11 @@
+# 2026-11-23 MYT — INDEPENDENT MPCD v1 CPU STUDY COMPLETE: NO PROMPT-PAIR IDENTITY GAIN
+
+**Real executed 5-fold 2699-row 18-class historical DEV (no 0.715 reuse):** row CE `0.3007407`; matched-prompt column CE `0.3014815`; equal-capacity **shuffled-prompt negative control** `0.3040741`. Genuine matched pairing is `+0.0007408` vs row, `−0.0025926` vs shuffled control; both prompt-bootstrap CIs cross zero, only 2/5 folds improve. Verified real [GitHub Actions #45104027619](https://github.com/kolihhan/name-kaggle/actions/runs/45104027619); [frozen pre-run contract](docs/research/ntl-mpcd-v1-contract-20261123.md) / [full result](docs/research/ntl-mpcd-v1-result-20261123.md).
+
+**Scientific decision:** Retire this specific compressed-char/style *matched-panel conditional CE* setup, not entire original research. Null control outperforms real pairing. Prior prompt-residual ModernBERT LDA source-transfer failed (−0.0358 mean); cross-prompt prototype LoRA v2 transfer failed (+0.0027 but CI spans zero); repeating simple prompt-removal or more paired-loss tuning is not justified. Shift hypothesis to **source-robust generator-specific token likelihood / fine-grained sibling evidence**, with a certified unused 18-class source-disjoint truth benchmark before heavier training. **No Kaggle official submission, no new GPU, no champion changes. Official own 0.715 remains best.**
+
+---
+
 # 2026-11-23 10:30 MYT — OFFICIAL NTL JOINT-DECODER SCORE 0.594, HARD NO-GO
 
 **Authenticated Kaggle terminal receipt: official Code Submission #58729013 COMPLETE with Public Balanced Accuracy 0.594**, vs unchanged true account Champion **#58680531 COMPLETE 0.715**, delta **−0.121** (−12.1 percentage points). Independent authenticated read-only Kaggle ledger in [GitHub Actions #45100579731](https://github.com/kolihhan/name-kaggle/actions/runs/45100579731), executed 2026-11-23 10:30 MYT.
