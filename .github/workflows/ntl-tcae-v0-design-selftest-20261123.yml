@@ -4,6 +4,7 @@ on:
     branches: [research/ntl-onepass-generative-identity-design-20261123]
     paths:
       - .github/workflows/ntl-tcae-v0-design-selftest-20261123.yml
+      - scripts/ntl_tcae_v0.py
 permissions: {contents: read}
 concurrency:
   group: ntl-tcae-design-synthetic-20261123
