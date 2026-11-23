@@ -75,3 +75,4 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf /tmp/ntl-stage-trace-outputs
+# Status observation requested 2026-11-24 00:01 MYT; read-only, no Kaggle push.
