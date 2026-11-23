@@ -1,0 +1,108 @@
+name: NTL 0.715 frozen scorer REAL private stage trace one-shot
+on:
+  push:
+    branches: [exp/ntl-0715-stage-trace-frozen-20261123]
+    paths:
+      - .github/workflows/ntl-0715-stage-trace-private-live-20261123.yml
+permissions:
+  contents: read
+concurrency:
+  group: ntl-0715-stage-trace-private-live-one
+  cancel-in-progress: false
+jobs:
+  launch_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      DEST: kolihhan/ntl-0715-frozen-stage-trace-research-20261123
+      EXPECTED_SHA: 202bf1bf86ca6363f7f5d44786c30838904610feaf07701653d66da3495551a8
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install and prove frozen read-only trace, no candidate training
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3' 'pyarrow>=15,<26'
+          python -m scripts.ntl_frozen0715_stage_trace_20261123
+          python -m scripts.build_ntl_0715_stage_trace_private_20261123 --smoke
+      - name: Construct private notebook from hash-pinned 0.715 scorer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-stage-trace-source
+          timeout 240 kaggle kernels pull kolihhan/ntl-estopadilla-glm53-0716-repro-20261122 -p /tmp/ntl-stage-trace-source -m >/tmp/ntl-stage-trace-pull.log 2>&1
+          python -m scripts.build_ntl_0715_stage_trace_private_20261123 --source /tmp/ntl-stage-trace-source --out /tmp/ntl-stage-trace-private
+          python - <<'PY'
+          import json,os,hashlib,pathlib
+          b=pathlib.Path('/tmp/ntl-stage-trace-source')
+          p=pathlib.Path('/tmp/ntl-stage-trace-private')
+          md=json.loads((p/'kernel-metadata.json').read_text())
+          src=json.loads((b/'kernel-metadata.json').read_text())
+          base=json.loads((b/src['code_file']).read_text())
+          candidate=json.loads((p/md['code_file']).read_text())
+          code='\n'.join(''.join(c.get('source',[])) for c in base['cells'] if c.get('cell_type')=='code')
+          assert hashlib.sha256(code.encode()).hexdigest()==os.environ['EXPECTED_SHA'], 'scored-code-sha-drift'
+          original=[c for c in candidate['cells'] if 'NTL_SIDE_CAR_TRACE' not in ''.join(c.get('source',[]))]
+          assert original==base['cells'] and len(candidate['cells'])==len(base['cells'])+2, 'scorer-modified'
+          assert md['id']==os.environ['DEST'] and md.get('is_private') is True, 'private-target-invalid'
+          for k in ('model_sources','dataset_sources','kernel_sources','competition_sources','enable_gpu','machine_shape','enable_internet','kernel_type','docker_image'):
+              assert src.get(k)==md.get(k), 'runtime-modified:'+k
+          # Kaggle derives the URL slug from title. Match it to the intended unique ID.
+          md['title']=os.environ['DEST'].split('/')[-1]
+          (p/'kernel-metadata.json').write_text(json.dumps(md,indent=2)+'\n')
+          print('NTL_TRACE_SCORER_SHA_PINNED=TRUE')
+          print('NTL_TRACE_ORIGINAL_CELLS_UNCHANGED=TRUE')
+          print('NTL_TRACE_PRIVATE_GPU_RUNTIME_UNCHANGED=TRUE')
+          print('NTL_TRACE_DIAGNOSTIC_CELLS=2')
+          PY
+      - name: Push private Kaggle run only if target does not already exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,re,subprocess
+          target=os.environ['DEST']
+          q=subprocess.run(['kaggle','kernels','status',target],text=True,capture_output=True,timeout=80)
+          if q.returncode==0:
+              states=re.findall(r'KernelWorkerStatus\.[A-Z_]+',q.stdout+' '+q.stderr)
+              print('NTL_TRACE_ALREADY_EXISTS='+str(states or ['UNKNOWN']))
+              print('NTL_TRACE_NO_DUPLICATE_LAUNCH=TRUE')
+              open('/tmp/ntl-trace-already-exists','w').write('1')
+          elif re.search(r'404|not found|not exist',q.stderr+' '+q.stdout,re.I):
+              print('NTL_TRACE_NOT_PRESENT_LAUNCH_ONCE=TRUE')
+          else:
+              raise RuntimeError('could_not_verify_private_kernel_presence')
+          PY
+          if [ ! -f /tmp/ntl-trace-already-exists ]; then
+            timeout 600 kaggle kernels push -p /tmp/ntl-stage-trace-private > /tmp/ntl-stage-trace-push.log 2>&1 || { echo NTL_TRACE_PUSH_ERROR; tail -12 /tmp/ntl-stage-trace-push.log | sed -E 's#https?://[^ ]+#[REDACTED]#g'; exit 1; }
+            echo NTL_TRACE_PRIVATE_PUSH_ACCEPTED=TRUE
+          fi
+          echo NTL_TRACE_OFFICIAL_COMPETITION_SUBMISSION=FALSE
+      - name: Read actual private worker state without accessing raw responses
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,subprocess,re,time,json
+          target=os.environ['DEST']
+          for i in range(6):
+              p=subprocess.run(['kaggle','kernels','status',target],capture_output=True,text=True,timeout=90)
+              states=re.findall(r'KernelWorkerStatus\.[A-Z_]+',p.stdout+p.stderr)
+              if p.returncode==0 and states:
+                  print('NTL_TRACE_PRIVATE_WORKER_STATUS='+states[0],flush=True)
+                  break
+              time.sleep(10)
+          else: print('NTL_TRACE_PRIVATE_WORKER_STATUS=UNVERIFIED',flush=True)
+          print('NTL_TRACE_RESEARCH_ONLY_NO_OFFICIAL_SUBMIT=TRUE')
+          PY
+      - name: Scrub private notebook and original source from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-stage-trace-source /tmp/ntl-stage-trace-private /tmp/ntl-stage-trace-push.log /tmp/ntl-stage-trace-pull.log
+          echo NTL_TRACE_PRIVATE_SOURCE_CLEANUP=TRUE
