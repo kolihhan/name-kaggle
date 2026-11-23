@@ -231,13 +231,20 @@ def run_contract(train_csv,fold_csv,feature_npz,metadata_json,ext_csv=None,
             ext_meta["encoder_revision"]!=meta["encoder_revision"]):
             raise ValueError("ENCODER_MISMATCH_BETWEEN_SOURCES")
         out={}
+        ext_preds={}
+        truth=ext.model.to_numpy(dtype=str)
         for k in (0.,LAMBDA):
             model,labels=fit_one(x,y,groups,lambda_supcon=k)
             pred=predict(model,ex,labels)
-            out["C0_CE" if k==0 else "C1_PromptSCL"]={
-                "BA":round(float(np.mean([
-                    np.mean(pred[ext.model.to_numpy()==lab]==lab) for lab in labels
-                ])),6)}
+            name="C0_CE" if k==0 else "C1_PromptSCL"
+            ext_preds[name]=pred
+            out[name]={"BA":round(float(np.mean([
+                np.mean(pred[truth==lab]==lab) for lab in labels
+            ])),6),"correct":int((pred==truth).sum())}
+        out["SCL_minus_CE"]=metrics(truth,ext_preds["C0_CE"],
+                                    ext_preds["C1_PromptSCL"],labels)
+        out["source_scope"]="historical_external_source_not_fresh_or_0715_matched"
+        out["no_public_lb_tuning"]=True
         print("NTL_PAPER_SUPCON_EXTERNAL="+json.dumps(out,sort_keys=True),flush=True)
 
 def smoke():
