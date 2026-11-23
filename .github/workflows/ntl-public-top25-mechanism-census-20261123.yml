@@ -1,0 +1,33 @@
+name: NTL public highrank 25 notebook mechanism census source only
+on:
+  push:
+    branches: [research/ntl-public-top25-mechanism-census-20261123]
+    paths:
+      - .github/workflows/ntl-public-top25-mechanism-census-20261123.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-public-top25-source-audit-once
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Kaggle source metadata client only
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Top25 actual code static mechanisms and source lineages
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/ntl_public_top25_mechanism_census_20261123.py
+          python -m scripts.ntl_public_top25_mechanism_census_20261123
+          echo NTL_PUBLIC_TOP25_NO_TRAINING_GPU_MODEL_RUN_DOWNLOAD_OR_SUBMISSION=TRUE
