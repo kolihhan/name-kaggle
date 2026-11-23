@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 24
     env:
-      KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       PYTHONUNBUFFERED: '1'
       OPENBLAS_NUM_THREADS: '2'
       OMP_NUM_THREADS: '2'
@@ -31,7 +31,7 @@ jobs:
       - name: Recover the SAME published GLM cache parts without inference
         run: |
           set -euo pipefail
-          test -n "\${KAGGLE_API_TOKEN:-}"
+          test -n "${KAGGLE_API_TOKEN:-}"
           mkdir -p /tmp/ntl-atlas-audit-source /tmp/ntl-atlas-audit-parts
           kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-atlas-audit-source >/dev/null
           python - <<'PY'
@@ -60,7 +60,7 @@ jobs:
              '2': {'flash_features.csv':'5e1ff2a924c77dd0f52650d99f0ba9c5ef0d534fcacdbb99200f982376845011',
                    'flash_scores.npz':'b2039e7e919d8b3dfd560afe7d51a3523bc7fe01b56efcc6af71447f9632a930',
                    'glm53_features.csv':'b9598ff0697993859cdaa8e8bd62c956e99b94921b3638be8f8d5999ad02df7f',
-                   'glm53_scores.npz':'7f437ad911629b9ef25636570dc82b3f944d8b96a616c979caeade14d5e9551e1'}}
+                   'glm53_scores.npz':'7f437ad911629b9ef25636570dc82b3f944d8b96a616c979caeade14d5e955e1'}}
           assert actual['version_source_sha256']==hashes,'GLM_PUBLISHER_VERSION_DRIFT_STOP'
           assert actual['complete_official_ID_coverage'] and actual['token_alignment_verified']
           print('NTL_ATLAS_AUDIT_PINNED_CACHE_VERIFIED=TRUE')
