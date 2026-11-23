@@ -1,0 +1,99 @@
+name: NTL fresh 18-class exact-route + free quota readiness (read only)
+on:
+  push:
+    branches: [research/ntl-fresh18-crosssource-identity-20261123]
+    paths: [.github/workflows/ntl-fresh18-proxy-readiness-20261123.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-fresh18-proxy-readiness-20261123
+  cancel-in-progress: false
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install pinned Kaggle CLI (no competition data downloaded)
+        shell: bash
+        run: python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+      - name: Query exact model catalog and quota WITHOUT any model calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python - <<'PY'
+          import json, re, subprocess
+          from collections import Counter
+          targets=(
+            'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra',
+            'gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.7-flash','gemini-3.8-flash',
+            'claude-fable-5','claude-opus-4-6','claude-opus-4-8','claude-opus-5','claude-sonnet-5',
+            'glm-5.3','glm-5.3-flash','kimi-k3','qwen3.8-max'
+          )
+          assert len(targets)==18 and len(set(targets))==18
+          def call(args,seconds):
+              try:
+                  p=subprocess.run(args,capture_output=True,text=True,timeout=seconds,check=False)
+                  return p.returncode,p.stdout
+              except subprocess.TimeoutExpired:
+                  return 124,''
+          mrc,mout=call(['kaggle','benchmarks','tasks','models'],75)
+          qrc,qout=call(['kaggle','benchmarks','quota','--format','json'],45)
+          # Catalog prints human-readable Slug / Display Name columns. Match only Slug.
+          slugs=set()
+          for line in mout.splitlines():
+              items=re.split(r'\s{2,}',line.strip())
+              if len(items)<2: continue
+              first=items[0].strip().lower().split('/')[-1].replace('@','-')
+              if re.fullmatch(r'[a-z0-9][a-z0-9_.-]{2,100}',first):
+                  slugs.add(first)
+          # The approved dated GPT-5.5 alias is from the repo's frozen route mapping.
+          def possible(t):
+              aliases={t,t+'-default'}
+              if t=='gpt-5.5': aliases.update(('gpt-5.5-2026-04-23','gpt-5.5-2026-04-23-default'))
+              return sorted(slugs.intersection(aliases))
+          matched={t:possible(t) for t in targets}
+          unmatched=[t for t in targets if not matched[t]]
+          counts=Counter('gpt' if s.startswith('gpt-') else
+                         'claude' if s.startswith('claude-') else
+                         'gemini' if s.startswith('gemini-') else
+                         'glm' if s.startswith('glm-') else
+                         'kimi' if s.startswith('kimi-') else 'qwen' for s in targets if matched[s])
+          quota={'parse_status':'NOT_AVAILABLE','periods':[]}
+          if qrc==0:
+              try:
+                  obj=json.loads(qout)
+                  raw=obj if isinstance(obj,list) else next((v for v in obj.values()
+                        if isinstance(v,list)),[]) if isinstance(obj,dict) else []
+                  periods=[]
+                  for x in raw:
+                      if not isinstance(x,dict): continue
+                      clean={}
+                      for k,v in x.items():
+                          if k.lower() in ('period','used','remaining','total','refillat','quotaused',
+                                             'quotaremaining','totalquotaallowed'):
+                              clean[k]=v
+                      periods.append(clean)
+                  quota={'parse_status':'OK' if periods else 'JSON_SCHEMA_UNKNOWN','periods':periods}
+              except (ValueError,TypeError):
+                  quota={'parse_status':'UNPARSEABLE_JSON','periods':[]}
+          print('NTL_FRESH18_P0_READINESS='+json.dumps({
+             'model_catalog_rc':mrc,
+             'quota_rc':qrc,
+             'model_catalog_entries_parsed':len(slugs),
+             'exact_alias_matches':matched,
+             'missing_exact_target_labels':unmatched,
+             'covered_count_out_of_18':sum(bool(v) for v in matched.values()),
+             'provider_families_with_catalog_entries':dict(counts),
+             'quota':quota,
+             'catalog_only_not_verified_returned_model':True,
+             'provider_rights_not_certified':True,
+             'cross_source_panel_constructed':False,
+             'model_inference_calls':0,'new_training':False,
+             'official_competition_submissions':0
+          },sort_keys=True),flush=True)
+          print('NTL_PHASE0_STOP_NO_API_GENERATIONS_OR_SPEND=TRUE',flush=True)
+          PY
