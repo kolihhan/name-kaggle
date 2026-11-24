@@ -112,7 +112,10 @@ def main(paths):
     labels=sorted(c1.model.unique())
     if not set(labels)<=set(t.model) or set(c2.model)!=set(labels):
         raise ValueError("panel class coverage mismatch")
-    oa,unofficial=build_blocks(t,labels)
+    # Official groups hold 18 members; project to the 12 matched C1/C2 labels
+    # BEFORE testing complete 12-model prompt groups.
+    t12=t.loc[t.model.isin(labels)].copy()
+    oa,unofficial=build_blocks(t12,labels)
     c1a,c1unused=build_blocks(c1,labels)
     c2a,c2unused=build_blocks(c2,labels)
     if not len(oa) in (149,150):raise ValueError("original complete prompt count drift")
