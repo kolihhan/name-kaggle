@@ -1,0 +1,68 @@
+name: NTL expert preservation — existing scored artifact inventory READ ONLY
+on:
+  push:
+    branches: [research/ntl-expert-preservation-same-row-evidence-20261124]
+    paths:
+      - .github/workflows/ntl-expert-evidence-readonly-inventory-20261124.yml
+permissions: {contents: read}
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect only existing Kaggle outputs and once-scored expert diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,re,subprocess,tempfile, pathlib
+          kernels={
+            'scored_0715':'kolihhan/ntl-estopadilla-glm53-0716-repro-20261122',
+            'scored_0718':'kolihhan/ntl-evgen-forensic-eda-repro-20261123',
+            'prior_trace':'kolihhan/ntl-0715-frozen-stage-trace-research-20261123',
+            'external_252_glm':'kolihhan/ntl-glm-conditional-compare-nov14',
+            'external_128_glm':'kolihhan/ntl-glm-crosssource-paired64-nov14',
+            'strong_cache_1200':'kolihhan/ntl-lightning0694-scale1200-nov15'
+          }
+          want=('prefix-votes.npz','final-logits.npz','glm-conditional-summary.json',
+                'glm-crosssource-summary.json','v1/report.json',
+                'report.json','ntl_stage_trace_aggregates.json','variant-proof.json')
+          out={}
+          def cli(*args,timeout=90):
+            return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          for alias,ref in kernels.items():
+            rec={'ref':ref}
+            stat=cli('kernels','status',ref)
+            mt=re.findall(r'KernelWorkerStatus[.][A-Z_]+',(stat.stdout+' '+stat.stderr))
+            rec['status']=mt[-1] if mt else ('NOT_ACCESSIBLE' if stat.returncode else 'UNKNOWN')
+            listing=cli('kernels','files',ref)
+            rec['files_lookup_ok']=listing.returncode==0
+            files=(listing.stdout or '').replace('\\','/')
+            rec['required_artifacts_found']={k:k in files for k in want}
+            # Do NOT print submission IDs, prediction tensors, text or other asset paths.
+            rec['real_18way_truth_matched_final_predictions_confirmed']=False
+            if alias=='external_252_glm' and listing.returncode==0:
+              with tempfile.TemporaryDirectory(prefix='ntl-glm252-aggregate-') as d:
+                q=cli('kernels','output',ref,'-p',d,'--file-pattern','^glm-conditional-summary[.]json$','-o',timeout=170)
+                f=list(pathlib.Path(d).rglob('glm-conditional-summary.json'))
+                rec['aggregate_read_ok']=q.returncode==0 and len(f)==1
+                if rec['aggregate_read_ok']:
+                  a=json.loads(f[0].read_text())
+                  permitted={'scope','champion_ref','rows','eligible_glm','conditional_only',
+                    'new_training','official_submission','independent_holdout','overall'}
+                  rec['previous_real_labelled_result']={k:a[k] for k in permitted if k in a}
+                  if isinstance(a.get('by_label'),dict):
+                    rec['glm_fable_real_result_per_label']={
+                      k:{z:d[z] for z in ('rows','baseline_correct','routed_correct','rescues','regressions') if z in d}
+                      for k,d in a['by_label'].items() if k in ('glm-5.3','glm-5.3-flash','claude-fable-5') and isinstance(d,dict)}
+            out[alias]=rec
+          print('NTL_PRESERVATION_READONLY_EXISTING_ARTIFACTS='+json.dumps(out,sort_keys=True),flush=True)
+          print('NTL_PRESERVATION_NO_GPU_NO_TRAIN_NO_NEW_SUBMIT=TRUE',flush=True)
+          PY
