@@ -82,12 +82,12 @@ def group_batches(y,group,selected,epoch):
 
 
 def selftest():
-    ys=np.tile(np.array(["a","b","c","d","e","f"],dtype=object),60)
-    gs=np.repeat(np.array([f"p{i:02}" for i in range(60)],dtype=object),6)
+    ys=np.tile(np.array(["a","b","c","d","e","f"],dtype=object),180)
+    gs=np.repeat(np.array([f"p{i:02}" for i in range(180)],dtype=object),6)
     bs,meta=group_batches(ys,gs,np.arange(len(ys)),0)
     assert meta["train_rows_covered"]==len(ys)
     assert all(len(z)==12 for z in bs)
-    assert len(bs)==60
+    assert len(bs)==180
     assert [list(x) for x in group_batches(ys,gs,np.arange(len(ys)),0)[0]]==[list(x) for x in bs]
     print("NTL_TPC_FOLD0_SELFTEST=PASS",flush=True)
 
