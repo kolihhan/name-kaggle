@@ -1,0 +1,76 @@
+name: NTL Fable 252 exact private GPU — one-time read-only status and result
+on:
+  push:
+    branches: [research/ntl-expert-preservation-same-row-evidence-20261124]
+    paths: [.github/workflows/ntl-fable-preservation252-private-status-once-20261124.yml]
+permissions: {contents: read}
+jobs:
+  watch_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read existing Kaggle experiment only, never push or submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,re,tempfile
+          from pathlib import Path
+          ref='kolihhan/ntl-fable-preservation-252-20261124'
+          st=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=75)
+          match=re.findall(r'KernelWorkerStatus[.][A-Z_]+',st.stdout+' '+st.stderr)
+          if st.returncode or not match:raise RuntimeError('private existing Kaggle worker status inaccessible')
+          state=match[-1]
+          print('NTL_FABLE_READONLY_WORKER='+state,flush=True)
+          logs=subprocess.run(['kaggle','kernels','logs',ref],capture_output=True,text=True,timeout=120)
+          text=(logs.stdout+' '+logs.stderr)
+          markers=('NTL_FABLE_252_PREPARED=','NTL_FABLE_252_PRE_APEX_SNAPSHOT=',
+                   'NTL_FABLE_PRESERVATION_REAL252=','NTL_FABLE_PRESERVATION_NO_ELIGIBLE_ROWS_NON_DISCRIMINATING=')
+          for marker in markers:
+            raw=[line.split(marker,1)[1].strip() for line in text.splitlines() if marker in line]
+            if not raw:continue
+            if marker=='NTL_FABLE_PRESERVATION_REAL252=':
+              try:
+                obj=json.loads(raw[-1]);allowed={'status','v1_status','source_rows',
+                    'fable_protection_eligible_rows','protected_final_predictions_changed',
+                    'old_unprotected_balanced_accuracy','new_protected_balanced_accuracy',
+                    'pre_apex_balanced_accuracy','paired_old_unprotected_to_real_protected',
+                    'specific_truth_classes','official_submission'}
+                print('NTL_FABLE_READONLY_REAL_METRICS='+json.dumps({k:v for k,v in obj.items() if k in allowed},sort_keys=True),flush=True)
+              except (ValueError,TypeError):print('NTL_FABLE_READONLY_LOG_RESULT_JSON_INVALID=TRUE',flush=True)
+            else:
+              # Only emit trusted JSON from our known diagnostic marker; never raw scored passages.
+              if marker.endswith('=') and raw[-1].startswith('{'):
+                try:
+                  j=json.loads(raw[-1])
+                  print('NTL_FABLE_READONLY_CHECKPOINT='+json.dumps({k:j.get(k) for k in ('rows','labels','pre_glm_native_logits_aligned','post_glm_labels_saved_ephemerally') if k in j},sort_keys=True),flush=True)
+                except ValueError:pass
+          if state=='KernelWorkerStatus.COMPLETE':
+            with tempfile.TemporaryDirectory(prefix='ntl-fable252-readonly-') as d:
+              p=subprocess.run(['kaggle','kernels','output',ref,'-p',d,
+                '--file-pattern','^ntl_fable_preservation_252_aggregate[.]json$','-o'],
+                capture_output=True,text=True,timeout=220)
+              files=list(Path(d).rglob('ntl_fable_preservation_252_aggregate.json'))
+              if p.returncode or len(files)!=1:
+                print('NTL_FABLE_READONLY_REAL_AGGREGATE_NOT_FOUND=TRUE',flush=True)
+              else:
+                z=json.loads(files[0].read_text())
+                fields=('status','v1_status','source_rows','fable_protection_eligible_rows',
+                 'protected_final_predictions_changed','old_unprotected_balanced_accuracy',
+                 'new_protected_balanced_accuracy','pre_apex_balanced_accuracy',
+                 'paired_old_unprotected_to_real_protected','paired_pre_apex_to_real_protected',
+                 'specific_truth_classes','official_submission')
+                print('NTL_FABLE_READONLY_VERIFIED_REAL_RESULT='+json.dumps({k:z.get(k) for k in fields},sort_keys=True),flush=True)
+          elif state in ('KernelWorkerStatus.ERROR','KernelWorkerStatus.CANCELLED','KernelWorkerStatus.FAILED'):
+            classes=re.findall(r'\b(?:FileNotFoundError|ValueError|AssertionError|RuntimeError|ModuleNotFoundError|KeyError|OSError|NameError|CUDA out of memory)\b',text)
+            print('NTL_FABLE_PRIVATE_FAIL_CLASSES='+json.dumps(classes[-8:]),flush=True)
+          else:
+            print('NTL_FABLE_READONLY_NO_REAL_RESULT_YET=TRUE',flush=True)
+          print('NTL_FABLE_NO_NEW_GPU_TRAINING_OR_COMPETITION_SUBMISSION=TRUE',flush=True)
+          PY
