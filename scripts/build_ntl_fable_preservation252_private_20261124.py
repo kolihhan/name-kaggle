@@ -39,8 +39,8 @@ def patch_data_assignment(source):
     """
     def replace(m):
         return (m.group(0)
-            + "\\nDATA = str(ntl_fable_probe.prepare(DATA))"
-            + "\\nos.environ['KAGGLE_IS_COMPETITION_RERUN'] = '1'")
+            + "\nDATA = str(ntl_fable_probe.prepare(DATA))"
+            + "\nos.environ['KAGGLE_IS_COMPETITION_RERUN'] = '1'")
     return DATA_PATTERN.subn(replace,source)
 
 
@@ -150,10 +150,10 @@ def smoke():
     import os, tempfile
     from types import SimpleNamespace
     with tempfile.TemporaryDirectory() as root:
-        Path(root,"train.csv").write_text("id,model,text\\n")
+        Path(root,"train.csv").write_text("id,model,text\n")
         original="DATA = next(p for p in ["+repr(root)+"] if os.path.exists(p + '/train.csv'))"
         patched,n=patch_data_assignment(original)
-        assert n==1 and patched.startswith(original+"\\n"),patched
+        assert n==1 and patched.startswith(original+"\n"),patched
         compile(patched,"<first-DATA-assignment-regression>","exec")
         ns={"os":os,"ntl_fable_probe":SimpleNamespace(prepare=lambda x:x+"/test-data")}
         previous=os.environ.get("KAGGLE_IS_COMPETITION_RERUN")
