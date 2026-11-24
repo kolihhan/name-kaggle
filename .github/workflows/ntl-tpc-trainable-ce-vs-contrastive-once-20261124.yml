@@ -1,0 +1,72 @@
+name: NTL Trainable RoBERTa CE vs Prompt Contrastive — one-shot REAL T4
+on:
+  push:
+    branches: [research/ntl-trainable-prompt-contrastive-20261124]
+    paths:
+      - .github/workflows/ntl-tpc-trainable-ce-vs-contrastive-once-20261124.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-tpc-trainable-roberta-private-once-20261124
+  cancel-in-progress: false
+jobs:
+  run_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_trainable_prompt_contrastive_fold0_20261124.py
+            scripts/ntl_tpc_private_builder_20261124.py
+            scripts/run_style_baseline.py
+            scripts/run_strong_sparse_anchor.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Check scope, source/runner safety, train-batch positive/negative coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3'
+          python -m py_compile scripts/ntl_trainable_prompt_contrastive_fold0_20261124.py scripts/ntl_tpc_private_builder_20261124.py
+          NTL_TPC_SELFTEST=1 python scripts/ntl_trainable_prompt_contrastive_fold0_20261124.py
+          echo NTL_TPC_NO_DATA_IN_PUBLIC_GITHUB_CHECKOUT=TRUE
+      - name: Build exactly one private Kaggle T4 notebook and launch true experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ntl_tpc_private_builder_20261124.py --out /tmp/ntl-tpc-once
+          python - <<'PY'
+          import re,subprocess
+          ref='kolihhan/ntl-tpc-roberta-trainable-ce-contrast-20261124'
+          listing=subprocess.run(['kaggle','kernels','list','--mine','--search','ntl-tpc-roberta-trainable-ce-contrast-20261124','-v'],
+                                 capture_output=True,text=True,timeout=90)
+          if listing.returncode:raise RuntimeError('private Kaggle existence lookup failed')
+          if ref in listing.stdout:
+              print('NTL_TPC_EXISTING_PRIVATE_NOTEBOOK_NO_REPUSH=TRUE',flush=True)
+          else:
+              push=subprocess.run(['kaggle','kernels','push','-p','/tmp/ntl-tpc-once'],
+                                  capture_output=True,text=True,timeout=600)
+              if push.returncode:
+                  print('NTL_TPC_PUSH_FAILED_EXIT='+str(push.returncode),flush=True)
+                  raise RuntimeError('Kaggle private notebook push failed')
+              print('NTL_TPC_ONE_SHOT_PRIVATE_GPU_PUSH_ACCEPTED=TRUE',flush=True)
+          s=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=90)
+          if s.returncode:raise RuntimeError('Kaggle status lookup failed')
+          worker=re.findall(r'KernelWorkerStatus[.][A-Z_]+',s.stdout)
+          if not worker:raise RuntimeError('unknown Kaggle worker state')
+          print('NTL_TPC_PRIVATE_WORKER='+worker[-1],flush=True)
+          print('NTL_TPC_OFFICIAL_COMPETITION_SUBMISSION=FALSE',flush=True)
+          PY
+      - name: Delete local private notebook/fold mapping, always
+        if: always()
+        shell: bash
+        run: rm -rf /tmp/ntl-tpc-once
