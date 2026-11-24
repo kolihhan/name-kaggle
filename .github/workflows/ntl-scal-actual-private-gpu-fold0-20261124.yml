@@ -1,0 +1,66 @@
+name: NTL SCaL one-shot REAL source-conditioned full-vocab GPU fold0
+on:
+  push:
+    branches: [research/ntl-source-contrastive-likelihood-20261124]
+    paths:
+      - .github/workflows/ntl-scal-actual-private-gpu-fold0-20261124.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-scal-actual-private-gpu-fold0-20261124
+  cancel-in-progress: false
+jobs:
+  train_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_scal_source_likelihood_fold0_20261124.py
+            scripts/ntl_scal_private_builder_20261124.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Exact source/folds checks and synthetic algorithm smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 'numpy>=1.26,<3' 'pandas>=2,<3'
+          python -m py_compile scripts/ntl_scal_source_likelihood_fold0_20261124.py scripts/ntl_scal_private_builder_20261124.py
+          NTL_SCAL_SELFTEST=1 python scripts/ntl_scal_source_likelihood_fold0_20261124.py
+      - name: Build and actually launch a single PRIVATE Kaggle GPU full-vocab training experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ntl_scal_private_builder_20261124.py --out /tmp/ntl-scal-fold0-once
+          python - <<'PY'
+          import csv,io,subprocess
+          target="kolihhan/ntl-scal-source-contrastive-fold0-20261124"
+          found=subprocess.run(["kaggle","kernels","list","--mine","--search","ntl-scal-source-contrastive-fold0-20261124","-v"],
+                capture_output=True,text=True,timeout=90)
+          if found.returncode:raise RuntimeError("private kernel existence lookup failed")
+          if target in found.stdout:
+              print("NTL_SCAL_EXISTING_PRIVATE_KERNEL_NO_REPUSH=TRUE",flush=True)
+          else:
+              subprocess.run(["kaggle","kernels","push","-p","/tmp/ntl-scal-fold0-once"],
+                  capture_output=True,text=True,timeout=600,check=True)
+              print("NTL_SCAL_PRIVATE_GPU_PUSH_ACCEPTED=TRUE",flush=True)
+          state=subprocess.run(["kaggle","kernels","status",target],
+                 capture_output=True,text=True,timeout=90)
+          if state.returncode:raise RuntimeError("private source runtime status unavailable")
+          import re
+          values=re.findall(r"KernelWorkerStatus[.][A-Z_]+",state.stdout)
+          print("NTL_SCAL_PRIVATE_GPU_WORKER="+(values[0] if values else "UNKNOWN"),flush=True)
+          print("NTL_SCAL_OFFICIAL_COMPETITION_SUBMISSION=FALSE",flush=True)
+          PY
+      - name: Always remove ephemeral hashed fold bundle and original source code
+        if: always()
+        shell: bash
+        run: rm -rf /tmp/ntl-scal-fold0-once
