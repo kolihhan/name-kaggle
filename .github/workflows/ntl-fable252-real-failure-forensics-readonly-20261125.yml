@@ -1,0 +1,64 @@
+name: NTL Fable252 failed kernel root cause read only
+on:
+  push:
+    branches: [research/ntl-qwen14b-promptfree-gpt-triad-icl-20261124]
+    paths:
+      - .github/workflows/ntl-fable252-real-failure-forensics-readonly-20261125.yml
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read existing private kernel status, sanitized traceback and stage markers only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,re,json,pathlib
+          ref="kolihhan/ntl-fable-preservation-252-20261124"
+          def cli(*args,timeout=130):
+              return subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=timeout)
+          st=cli("kernels","status",ref)
+          z=re.findall(r"KernelWorkerStatus[.][A-Z_]+",st.stdout+" "+st.stderr)
+          print("FABLE252_PRIVATE_NOW="+(z[-1] if z else "INACCESSIBLE"),flush=True)
+          logs=cli("kernels","logs",ref,timeout=180)
+          raw=logs.stdout+"\n"+logs.stderr
+          print("FABLE252_PRIVATE_LOGS_API_RC="+str(logs.returncode),flush=True)
+          markers=("NTL_FABLE_252_PREPARED=","NTL_FABLE_252_PRE_APEX_SNAPSHOT=",
+            "NTL_FABLE_PRESERVATION_REAL252=","NTL_FABLE_PRESERVATION_NO_ELIGIBLE_ROWS_NON_DISCRIMINATING=")
+          print("FABLE252_STAGE_FLAGS="+json.dumps({m:raw.count(m) for m in markers},sort_keys=True),flush=True)
+          exceptions=["FileNotFoundError","RuntimeError","ValueError","AssertionError",
+            "KeyError","TypeError","NameError","ModuleNotFoundError","OSError",
+            "ImportError","MemoryError","OutOfMemoryError","CUDA out of memory",
+            "StopIteration","AttributeError","IndexError","TimeoutError"]
+          found=[]
+          for line in raw.splitlines():
+              for kind in exceptions:
+                  if re.search(r"^\\s*"+re.escape(kind)+r":",line):
+                      tail=line.split(":",1)[1].strip()
+                      # Reject arbitrary notebook passage text; show only safe known code errors.
+                      if re.search(r"^[A-Za-z0-9_ /:.,()=<>-]{1,125}$",tail):
+                          found.append({"type":kind,"reason":tail})
+                      else:
+                          found.append({"type":kind,"reason":"REDACTED"})
+          print("FABLE252_EXCEPTION_CLASSES="+json.dumps(found[-18:],sort_keys=True),flush=True)
+          trace=[]
+          for line in raw.splitlines():
+              x=re.search(r'File "([^"]+)", line (\\d+), in ([A-Za-z0-9_<>]+)',line)
+              if x:trace.append({"file":pathlib.PurePosixPath(x.group(1)).name,
+                    "line":int(x.group(2)),"fn":x.group(3)})
+          print("FABLE252_TRACE_LOCATIONS="+json.dumps(trace[-20:],sort_keys=True),flush=True)
+          if z and z[-1] in ("KernelWorkerStatus.ERROR","KernelWorkerStatus.COMPLETE","KernelWorkerStatus.CANCELLED"):
+              files=cli("kernels","files",ref,timeout=120)
+              names=(files.stdout or "").lower()
+              print("FABLE252_HAS_RESULT="+str("ntl_fable_preservation_252_aggregate.json" in names),flush=True)
+              print("FABLE252_HAS_IPYNB_OUTPUT="+str("ipynb" in names),flush=True)
+          print("FABLE252_NO_NEW_SUBMISSION_NO_KERNEL_PUSH=TRUE",flush=True)
+          PY
