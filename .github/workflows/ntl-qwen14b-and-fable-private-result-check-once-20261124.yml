@@ -70,6 +70,23 @@ jobs:
                   errors=re.findall(r"\b(?:FileNotFoundError|ValueError|AssertionError|RuntimeError|ModuleNotFoundError|KeyError|OSError|NameError|OutOfMemoryError|CUDA out of memory)\b",q.stdout+" "+q.stderr)
                   print("NTL_CHECK_"+tag+"_ERROR_CLASSES="+json.dumps(errors[-6:]),flush=True)
               else:
+                  if tag=="GPT14B" and worker=="KernelWorkerStatus.RUNNING":
+                      logs=cli("kernels","logs",ref,timeout=120)
+                      output=logs.stdout+" "+logs.stderr
+                      progress=re.findall(r"NTL_QWEN14B_PROGRESS=({[^\\n]*})",output)
+                      latest=None
+                      for marker in reversed(progress):
+                          try:
+                              obj=json.loads(marker)
+                              latest={k:obj.get(k) for k in ("completed","total",
+                                  "median_forward_seconds","maximum_input_tokens")}
+                              break
+                          except (ValueError,TypeError):continue
+                      print("NTL_CHECK_GPT14B_PROGRESS="+json.dumps(latest),flush=True)
+                      print("NTL_CHECK_GPT14B_MODEL_LOADED="+str(
+                          "NTL_QWEN14B_REAL_MODEL_LOADED=" in output).lower(),flush=True)
+                      errors=re.findall(r"\\b(?:FileNotFoundError|ValueError|AssertionError|RuntimeError|ModuleNotFoundError|KeyError|OSError|NameError|OutOfMemoryError|CUDA out of memory)\\b",output)
+                      print("NTL_CHECK_GPT14B_OBSERVED_ERROR_CLASSES="+json.dumps(errors[-5:]),flush=True)
                   print("NTL_CHECK_"+tag+"_NO_REAL_RESULT_YET=TRUE",flush=True)
           print("NTL_CHECK_NO_TRAIN_NO_GPU_NO_NEW_SUBMISSION=TRUE",flush=True)
           PY
