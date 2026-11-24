@@ -117,6 +117,53 @@ def reachability(a,b):
         "source_only_no_real_validation_accuracy":True
     }
 
+
+def embedded_stage_diff(b):
+    """Compare actual payload V1 base with the installed prefix_variant_stage source."""
+    import ast,base64,difflib,io,tarfile
+    candidate=[c for c in b["cell_texts"] if c.startswith("%%writefile /kaggle/working/prefix_variant_stage.py\\n")]
+    setup=[c for c in b["cell_texts"] if "V1_PAYLOAD =" in c]
+    if len(candidate)!=1 or len(setup)!=1:
+        raise ValueError("stage source or compressed base ambiguous")
+    variant=candidate[0].split("\\n",1)[1]
+    # Find a literal payload without running the notebook's install statements.
+    payload=None
+    for node in ast.parse(setup[0]).body:
+        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="V1_PAYLOAD" for t in node.targets):
+            payload=ast.literal_eval(node.value)
+    if not isinstance(payload,str) or len(payload)<200:
+        raise ValueError("base stage payload missing or not a pinned literal")
+    archive=base64.b64decode(payload,validate=True)
+    with tarfile.open(fileobj=io.BytesIO(archive),mode="r:gz") as tf:
+        matches=[m for m in tf.getmembers() if m.isfile() and Path(m.name).name=="v1_stage.py"]
+        if len(matches)!=1:raise ValueError("expected exactly one original v1_stage.py")
+        original=tf.extractfile(matches[0]).read().decode("utf-8")
+    ast.parse(original);ast.parse(variant)
+    old=original.splitlines();new=variant.splitlines()
+    differ=list(difflib.unified_diff(old,new,n=0))
+    added=[x[1:] for x in differ if x.startswith("+") and not x.startswith("+++")]
+    removed=[x[1:] for x in differ if x.startswith("-") and not x.startswith("---")]
+    def defs(s):
+        return {n.name:sha(ast.dump(n,include_attributes=False).encode())
+                for n in ast.walk(ast.parse(s)) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))}
+    aa,bb=defs(original),defs(variant)
+    keywords=["order","mass","priority","token","prefix","fable","guard","fallback","shrink","select","blend","budget","deadline","entropy"]
+    changed_lines=[{"side":side,"line":line.strip()[:190]} for side,source in (("old",removed),("new",added))
+       for line in source if any(k in line.lower() for k in keywords) and not len(line)>350]
+    return {
+        "base_embedded_stage_sha":sha(original.encode()),
+        "variant_installed_stage_sha":sha(variant.encode()),
+        "stage_replaced_during_notebook_setup":True,
+        "old_line_count":len(old),"new_line_count":len(new),
+        "diff_lines_added":len(added),"diff_lines_removed":len(removed),
+        "functions_added":sorted(set(bb)-set(aa)),
+        "functions_removed":sorted(set(aa)-set(bb)),
+        "functions_changed":sorted(x for x in set(aa)&set(bb) if aa[x]!=bb[x]),
+        "changed_decision_lines_sample":changed_lines[:15],
+        "training_model_weights_changed_by_this_stage":False,
+        "evidence_is_static_code_only_not_a_paired_accuracy_test":True
+    }
+
 def summary(a,b):
     ma,mb=a["modules"],b["modules"]
     commons=sorted(set(ma)&set(mb))
@@ -144,6 +191,7 @@ def summary(a,b):
     return {
        "scope":"read_only_source_lineage_no_accuracy_attribution",
        "direct_execution_reachability":reachability(a,b),
+       "embedded_stage_mechanism_diff":embedded_stage_diff(b),
        "scored_notebooks":facts,
        "older_scored_code_sha_verified":True,
        "newer_notebook_sha_matches_original_public_code_file":
