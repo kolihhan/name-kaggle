@@ -1,0 +1,41 @@
+name: NTL exact Sanpier V3 one-shot private preview and official reproduction
+on:
+  push:
+    branches: [research/ntl-sanpier-v3-repro-20261124]
+    paths: [.github/workflows/ntl-sanpier-v3-repro-once-20261124.yml]
+permissions:
+  contents: read
+concurrency:
+  group: ntl-sanpier-v3-repro-20261124
+  cancel-in-progress: false
+jobs:
+  one_shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_sanpier_v3_repro_once_20261124.py
+            scripts/ntl_glm_rescue_per_token_once_20261124.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check exact frozen source, launch private preview once and submit only after verified output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 'numpy>=1.26,<3' 'pandas>=2,<3' 'pyarrow>=15,<26'
+          python -m py_compile scripts/ntl_sanpier_v3_repro_once_20261124.py
+          python -m scripts.ntl_sanpier_v3_repro_once_20261124
+      - name: Scrub temporary source and preview outputs
+        if: always()
+        run: rm -rf /tmp/ntl-sanpier-v3-*
