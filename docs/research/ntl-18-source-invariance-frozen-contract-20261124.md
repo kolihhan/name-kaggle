@@ -1,0 +1,17 @@
+# NTL prospective rank-fingerprint/source-transfer diagnostic — frozen 2026-11-24
+
+## Why
+Account official champion 0.718 Public BA reproduces public pipeline. The public >0.72 family is close to identical, while Nov 23 leaderboard first 0.809 and top10 approx0.774 (dated third-party snapshot, not verified live). Previous blind GLM-only reranking, punctuation veto, prompt residual LDA and small encoder training did not establish a competitive full18 gain. Before launching another intervention, test whether **model identity's style cues survive changes in generator/source protocol**.
+
+## Hypotheses
+- H1 Some **cross-source stable relative model features** remain in punctuation and syntax even after removing shared prompt effects. These may justify a new generator signature representation.
+- H0 Prompt/template, provider and generation settings dominate observed features, causing source-specific identity rank reversal; a larger external corpus will teach model-source artifacts rather than same-version identity.
+- Null: independently permute external *model labels* in each prompt group, preserving features and prompts, to measure apparent cross-source stability induced by chance.
+
+## One-shot fixed comparison
+- Official train 2699 rows/150 distinct prompt groups, official SHA256 `40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707`, 149 full matched all18 groups (1 missing Fable), thus 2682 rows used.
+- External dataset `nischaydnk/ntl-topic-synthetic-18llms` `generations.csv` SHA256 `bce34670f4d1170375e7baf85eec5577af4282d5f0ca6cf1573ce46e81c5a45c`, 14 precommitted 18-model blocks used in previous 252 study: 7 short, 4 median, 3 long =252 rows. Source is publisher-claimed, not independently authenticated served model and NOT fresh independent labels. Same 252 has been repeatedly examined; no supervised model fitting/threshold selection.
+- Fourteen human-interpretable language features `log_words,mean_word_length,sentence_density,comma,colon,semicolon,em_dash,curly_quotes,hyphen,digits,first_person,contractions,newlines,type_token_ratio` fixed before results, no TF-IDF or trainable model. For each prompt rank all18 models by feature, average rank per label within each source.
+- Compare per-feature Spearman rank agreement across 18 label means, prompt-bank bootstrap (1k draws) and model-label-destroying negative control (2k permutations of external labels independently within matched blocks), **max absolute corr over all14 features** FWER gate. Report template same-label top1/top3 purely as descriptive **privileged prompt-matched feasibility**; **cannot be used at Kaggle test time** because hidden prompt IDs and all18 matched responses are unavailable. Report per-model emdash presence drift to identify provider artifacts, not route/label fixes.
+- Positive exploratory signal: at least one feature adjusted maxT p<=0.05 and prompt-bank CI excludes zero, with cross-source Spearman same sign and template 18-class match above null. Failure still demands root cause diagnosis; don't infer all large-model fingerprints invalid. Any source difference may be caused by prompts, generator settings, template or postprocessing, not direct proof of model capability.
+- No neural/small training, GPU, Kaggle official submission or raw text outputs. Kaggle authorized official input is downloaded ephemerally on CPU Actions and scrubbed. Nothing to submit on top of champion until an inference-time usable 18-way observable signal and independent truth exist.
