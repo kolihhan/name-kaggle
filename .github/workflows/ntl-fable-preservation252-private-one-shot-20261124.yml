@@ -1,0 +1,90 @@
+name: NTL Fable preservation exact 0.718 on 252 genuine labelled rows — one-shot
+on:
+  push:
+    branches: [research/ntl-expert-preservation-same-row-evidence-20261124]
+    paths:
+      - .github/workflows/ntl-fable-preservation252-private-one-shot-20261124.yml
+permissions: {contents: read}
+concurrency:
+  group: ntl-fable-preservation-exact252-20261124
+  cancel-in-progress: false
+jobs:
+  launch_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/build_ntl_fable_preservation252_private_20261124.py
+            scripts/ntl_fable_preservation252_runtime_20261124.py
+            docs/research/ntl-fable-preservation252-frozen-contract-20261124.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: CPU-only exact rule/invariants smoke and local competition-data absence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3'
+          python -m py_compile scripts/build_ntl_fable_preservation252_private_20261124.py scripts/ntl_fable_preservation252_runtime_20261124.py
+          python scripts/build_ntl_fable_preservation252_private_20261124.py --smoke
+          NTL_FABLE_SELFTEST=1 python scripts/ntl_fable_preservation252_runtime_20261124.py
+      - name: Verify GPU quota and exact already-scored private source before any new inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle quota --format json >/tmp/ntl_fable_quota.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q=json.loads(Path('/tmp/ntl_fable_quota.json').read_text())
+          hours=[float(str(x['remaining']).rstrip('h')) for x in q if x.get('resource')=='GPU']
+          if len(hours)!=1:raise RuntimeError('KAGGLE_GPU_QUOTA_FORMAT_UNKNOWN')
+          print('NTL_FABLE_GPU_QUOTA_REMAINING_H='+str(hours[0]),flush=True)
+          if hours[0]<6:
+              print('NTL_FABLE_BLOCKED_INSUFFICIENT_GPU_HOURS=TRUE',flush=True)
+              raise SystemExit(10)
+          print('NTL_FABLE_GPU_QUOTA_GATE=PASS',flush=True)
+          PY
+          mkdir -p /tmp/ntl-fable252-source
+          kaggle kernels pull kolihhan/ntl-evgen-forensic-eda-repro-20261123             -p /tmp/ntl-fable252-source -m >/dev/null
+          python scripts/build_ntl_fable_preservation252_private_20261124.py \
+            --source /tmp/ntl-fable252-source --out /tmp/ntl-fable252-private
+      - name: Execute one real PRIVATE T4×2 inference experiment, NO COMPETITION SUBMISSION
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,re
+          ref='kolihhan/ntl-fable-preservation-252-20261124'
+          p=subprocess.run(['kaggle','kernels','list','--mine','--search','ntl-fable-preservation-252-20261124','-v'],
+             capture_output=True,text=True,timeout=90)
+          if p.returncode:raise RuntimeError('Kaggle private kernel idempotency lookup failed')
+          if ref in p.stdout:
+              print('NTL_FABLE_PRIVATE_EXISTS_NO_DUPLICATE=TRUE',flush=True)
+          else:
+              p=subprocess.run(['kaggle','kernels','push','-p','/tmp/ntl-fable252-private',
+                '--accelerator','NvidiaTeslaT4','--timeout','21600'],
+                capture_output=True,text=True,timeout=600)
+              if p.returncode:
+                  print('NTL_FABLE_PUSH_REJECTED_EXIT='+str(p.returncode),flush=True)
+                  print('NTL_FABLE_PUSH_FAIL_CLASS='+('quota' if 'quota' in p.stderr.lower() else 'metadata_or_kaggle'),flush=True)
+                  raise RuntimeError('Private 252 source-frozen push failed')
+              print('NTL_FABLE_ONE_REAL_PRIVATE_GPU_KERNEL_ACCEPTED=TRUE',flush=True)
+          status=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=80)
+          if status.returncode:raise RuntimeError('Private kernel status lookup failed')
+          matches=re.findall('KernelWorkerStatus[.][A-Z_]+',status.stdout)
+          print('NTL_FABLE_PRIVATE_WORKER='+(matches[-1] if matches else 'UNKNOWN'),flush=True)
+          print('NTL_FABLE_OFFICIAL_COMPETITION_SUBMISSION=FALSE',flush=True)
+          PY
+      - name: Delete source, intermediate private bundle and GPU quota file
+        if: always()
+        run: rm -rf /tmp/ntl-fable252-source /tmp/ntl-fable252-private /tmp/ntl_fable_quota.json
