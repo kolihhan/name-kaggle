@@ -65,3 +65,28 @@ jobs:
                   else:
                       print("NTL_SCAL_READONLY_AGGREGATE_NOT_FOUND=TRUE",flush=True)
           PY
+
+      - name: Authenticated latest official Kaggle 18-class scores — READ ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,subprocess
+          p=subprocess.run(["kaggle","competitions","submissions","name-that-llm","-v"],
+                           capture_output=True,text=True,timeout=120)
+          if p.returncode:raise RuntimeError("KAGGLE_READONLY_SUBMISSION_LEDGER_ERROR")
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff"))))
+          refs={"58680531","58755304","58808007","58811345"}
+          relevant=[{k:r.get(k) for k in ("ref","status","publicScore","date","description")}
+                    for r in rows if r.get("ref") in refs]
+          scored=[]
+          for r in rows:
+              try:score=float(r.get("publicScore") or "")
+              except (ValueError,TypeError):continue
+              scored.append({"ref":r.get("ref"),"score":score,"status":r.get("status"),
+                             "description":(r.get("description") or "")[:96]})
+          scored.sort(key=lambda r:-r["score"])
+          print("NTL_AUDIT_LATEST_OFFICIAL_RELEVANT="+json.dumps(relevant,sort_keys=True),flush=True)
+          print("NTL_AUDIT_LATEST_OFFICIAL_TOP="+json.dumps(scored[:8],sort_keys=True),flush=True)
+          print("NTL_AUDIT_LEDGER_COUNT="+str(len(rows)),flush=True)
+          PY
