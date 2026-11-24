@@ -41,6 +41,18 @@ jobs:
                    for x in ("Traceback","Notebook Threw Exception","ERROR","ValueError","NameError",
                       "FileNotFoundError","Failed","mount","CUDA","quota","No such file",
                       "KernelWorkerStatus","Cell In","ImportError","WorkerStatus")},sort_keys=True),flush=True)
+              # Inspect interpreter exception symbol, never dump original passages.
+              safe=re.sub(r"\\x1b\\[[0-9;]*[A-Za-z]","",logs.stdout+"\\n"+logs.stderr)
+              names=re.findall(r"NameError\\s*:\\s*name\\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\\s+is not defined",safe)
+              print("FABLE_ERROR_UNDEFINED_VARIABLES="+json.dumps(names[-12:]),flush=True)
+              lineclasses=[]
+              for line in safe.splitlines():
+                  if "NameError" in line or "Traceback" in line or "Cell In[" in line:
+                      # Fixed categories and exact Python variable only; no raw text.
+                      if "NameError" in line:lineclasses.append("NameError")
+                      elif "Traceback" in line:lineclasses.append("Traceback")
+                      elif "Cell In[" in line:lineclasses.append("NotebookCell")
+              print("FABLE_ERROR_TRACE_STRUCTURE="+json.dumps(lineclasses[-25:]),flush=True)
               files=[x for x in (root/"out").rglob("*") if x.is_file()]
               print("FABLE_ERROR_OUTPUT_BASENAMES="+json.dumps(
                   [{"name":f.name if f.suffix in (".ipynb",".json",".parquet",".log",".txt") else "other",
