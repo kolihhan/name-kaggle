@@ -81,6 +81,40 @@ def read(root,name):
       "code":code,"cell_texts":cells
     }
 
+
+def reachability(a,b):
+    """A narrow static proof of direct uses; does not assert dynamic impossibility."""
+    cells=b["cell_texts"]
+    def hits(needle):
+        return [{"code_cell":i,"occurrences":c.count(needle)}
+                for i,c in enumerate(cells) if needle in c]
+    variant=hits("prefix_variant_stage.py")
+    sibling=hits("sibling_agreement(")
+    fable_call=hits("from prefix_decisions import fable_return")
+    fable_exec=hits("fable_return(base_lp,_post,labels)")
+    v1_explicit=hits("V1_DIR / 'v1_stage.py'")
+    fast_gate=hits("if FAST_COMMIT:")
+    fast_guard=hits("if V1_ENABLED and not FAST_COMMIT:")
+    # All checks are limited to original notebook CODE CELLS, not third-party
+    # extracted GGUF binaries or dynamically evaluated strings.
+    return {
+        "new_prefix_variant_file_write_references":variant,
+        "variant_direct_reference_outside_write_cell":len(variant)>1,
+        "sibling_agreement_occurrences":sibling,
+        "sibling_agreement_direct_invocation_outside_definition":len(sibling)>1,
+        "fable_return_import_sites":fable_call,
+        "fable_return_actual_call_sites":fable_exec,
+        "v1_stage_invoked_explicitly":v1_explicit,
+        "fast_commit_placeholder_branch_present":bool(fast_gate),
+        "v1_skipped_when_fast_commit_true":bool(fast_guard),
+        "pre_glm_logits_output_filename_in_source":bool(hits("final-logits.npz")),
+        "old_source_has_fast_commit": "FAST_COMMIT" in a["code"],
+        "new_source_has_rehearsal_enabled":bool(re.search(r"V1_REHEARSAL_N\\s*=\\s*[1-9]\\d*",b["code"])),
+        "deduction":"In 3-row Kaggle preview, FAST_COMMIT is true and the main inference/GLM path is skipped. FileNotFoundError on missing final-logits.npz is a predictable sidecar observation, not evidence of full-hidden inference failure.",
+        "frozen_helper_is_not_proven_applied_just_because_written":True,
+        "source_only_no_real_validation_accuracy":True
+    }
+
 def summary(a,b):
     ma,mb=a["modules"],b["modules"]
     commons=sorted(set(ma)&set(mb))
@@ -106,7 +140,7 @@ def summary(a,b):
             "runtime_full_hidden_not_measured_here":True,
         }
     return {
-       "scope":"read_only_source_lineage_no_accuracy_attribution",
+       "scope":"read_only_source_lineage_no_accuracy_attribution",\n       "direct_execution_reachability":reachability(a,b),
        "scored_notebooks":facts,
        "older_scored_code_sha_verified":True,
        "newer_notebook_sha_matches_original_public_code_file":
