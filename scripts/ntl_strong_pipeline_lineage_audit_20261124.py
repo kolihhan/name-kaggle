@@ -109,7 +109,7 @@ def reachability(a,b):
         "v1_skipped_when_fast_commit_true":bool(fast_guard),
         "pre_glm_logits_output_filename_in_source":bool(hits("final-logits.npz")),
         "old_source_has_fast_commit": "FAST_COMMIT" in a["code"],
-        "new_source_has_rehearsal_enabled":bool(re.search(r"V1_REHEARSAL_N\\s*=\\s*[1-9]\\d*",b["code"])),
+        "new_source_has_rehearsal_enabled":bool(re.search(r"V1_REHEARSAL_N\s*=\s*[1-9]\d*",b["code"])),
         "deduction":"In 3-row Kaggle preview, FAST_COMMIT is true and the main inference/GLM path is skipped. FileNotFoundError on missing final-logits.npz is a predictable sidecar observation, not evidence of full-hidden inference failure.",
         "frozen_helper_is_not_proven_applied_just_because_written":True,
         "source_only_no_real_validation_accuracy":True
@@ -140,7 +140,8 @@ def summary(a,b):
             "runtime_full_hidden_not_measured_here":True,
         }
     return {
-       "scope":"read_only_source_lineage_no_accuracy_attribution",\n       "direct_execution_reachability":reachability(a,b),
+       "scope":"read_only_source_lineage_no_accuracy_attribution",
+       "direct_execution_reachability":reachability(a,b),
        "scored_notebooks":facts,
        "older_scored_code_sha_verified":True,
        "newer_notebook_sha_matches_original_public_code_file":
