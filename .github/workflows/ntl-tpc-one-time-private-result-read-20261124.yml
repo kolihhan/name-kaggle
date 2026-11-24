@@ -45,3 +45,28 @@ jobs:
                  'official_submit','duration_seconds','strong_sparse_feature_width')}
               print('NTL_TPC_REAL_AGGREGATE='+json.dumps(allowed,sort_keys=True),flush=True)
           PY
+
+      - name: Read currently scored Kaggle competition submissions (no submit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,subprocess
+          r=subprocess.run(["kaggle","competitions","submissions","name-that-llm","-v"],capture_output=True,text=True,timeout=90)
+          if r.returncode:raise RuntimeError("Kaggle score ledger unreadable")
+          src=r.stdout.lstrip("\ufeff").splitlines()
+          k=next((i for i,line in enumerate(src) if line.startswith("ref,")),None)
+          if k is None:raise RuntimeError("submission ledger header unreadable")
+          rows=list(csv.DictReader(io.StringIO("\n".join(src[k:]))))
+          watch={"58755304","58808007","58811345"}
+          relevant=[{q:d.get(q) for q in ("ref","status","publicScore","description","date")}
+                    for d in rows if d.get("ref") in watch]
+          best=[]
+          for d in rows:
+              try:score=float(d.get("publicScore") or "")
+              except ValueError:continue
+              if "COMPLETE" in (d.get("status") or ""):best.append((score,d.get("ref"),d.get("description","")))
+          best.sort(reverse=True)
+          print("NTL_NO_SMALL_MODEL_LEDGER_RELEVANT="+json.dumps(relevant,sort_keys=True),flush=True)
+          print("NTL_NO_SMALL_MODEL_BEST_COMPLETED="+json.dumps(best[:5]),flush=True)
+          PY
