@@ -1,0 +1,49 @@
+name: NTL GLM compute-allocation candidate exact input contract
+on:
+  push:
+    branches: [research/ntl-cost-aware-glm-priority-20261124]
+    paths: [.github/workflows/ntl-cost-aware-glm-priority-inspect-20261124.yml]
+permissions: {contents: read}
+jobs:
+  source_contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Retrieve exact pinned Dennis source; inspect only priority implementation and data contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import ast,hashlib,json,pathlib,re,subprocess,tempfile
+          ref='dennis6886/glm-user-prefix-guarded-fable-return'
+          with tempfile.TemporaryDirectory() as tmp:
+              p=pathlib.Path(tmp)
+              subprocess.run(['kaggle','kernels','pull',ref,'-p',tmp,'-m'],check=True,capture_output=True,timeout=90)
+              m=json.loads((p/'kernel-metadata.json').read_text())
+              nb=json.loads((p/m['code_file']).read_text())
+              cs=[''.join(c['source']) for c in nb['cells'] if c['cell_type']=='code']
+              sha=hashlib.sha256('\n'.join(cs).encode()).hexdigest()
+              print('NTL_BUDGET_BASE_SHA='+sha)
+              assert sha=='85b472b84211f58b26e870f552047e329bdf64958fc2c343ec0952a51f47cf68','source changed'
+              for i,c in enumerate(cs):
+                  if c.startswith('%%writefile /kaggle/working/prefix_variant_stage.py'):
+                      body=c.split('\n',1)[1]
+                      ast.parse(body)
+                      ls=body.splitlines()
+                      print('NTL_BUDGET_STAGE_CELL='+str(i))
+                      for j,l in enumerate(ls):
+                          if 58<=j<=235:
+                              print(f'STAGE {j+1}: {l}')
+                  if 'V1_DEADLINE_H =' in c and 'V1_COST =' in c:
+                      for l in c.splitlines():
+                          if len(l)<500:print('CONFIG '+l)
+                  if 'FAST_COMMIT =' in c:
+                      for l in c.splitlines():
+                          if 'FAST_COMMIT' in l or 'NB_T0' in l:print('RUNTIME '+l[:300])
+              print('NTL_BUDGET_META_COUNTS='+json.dumps({k:len(m.get(k,[])) for k in ('model_sources','dataset_sources','kernel_sources')}))
+          PY
