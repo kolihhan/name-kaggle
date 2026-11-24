@@ -106,7 +106,7 @@ def build(inp,out):
     candidate=dict(nb);candidate["cells"]=out_cells
     newmd=dict(md)
     newmd.pop("id_no",None)
-    newmd.update({"id":DEST,"title":"NTL Fable strong evidence 252 private exact inference",
+    newmd.update({"id":DEST,"title":DEST.split("/",1)[1],
                   "is_private":True,"enable_gpu":True,"enable_internet":False,
                   "dataset_sources":list(md["dataset_sources"])+[PANEL]})
     for k in ("model_sources","kernel_sources","competition_sources","machine_shape"):
