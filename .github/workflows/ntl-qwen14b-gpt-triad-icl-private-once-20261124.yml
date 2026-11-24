@@ -1,0 +1,92 @@
+name: NTL frozen Qwen3-14B GPT sibling ICL vs zero/placebo — one private GPU study
+on:
+  push:
+    branches: [research/ntl-qwen14b-promptfree-gpt-triad-icl-20261124]
+    paths:
+      - .github/workflows/ntl-qwen14b-gpt-triad-icl-private-once-20261124.yml
+permissions: {contents: read}
+concurrency: {group: ntl-qwen14b-triad-icl-20261124-once, cancel-in-progress: false}
+jobs:
+  prepare_one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/build_ntl_gpt14b_icl_private_20261124.py
+            scripts/ntl_gpt14b_icl_inference_20261124.py
+            docs/research/ntl-gpt14b-icl-triad-precommit-20261124.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Fail-closed CPU syntax, ICL controls and Kaggle quota
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 'numpy>=1.26,<3' 'pandas>=2,<3'
+          python -m py_compile scripts/build_ntl_gpt14b_icl_private_20261124.py scripts/ntl_gpt14b_icl_inference_20261124.py
+          python scripts/build_ntl_gpt14b_icl_private_20261124.py --smoke
+          python scripts/ntl_gpt14b_icl_inference_20261124.py --selftest
+          kaggle quota --format json > /tmp/ntl14b_quota.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q=json.loads(Path('/tmp/ntl14b_quota.json').read_text())
+          avail=[float(str(x['remaining']).rstrip('h')) for x in q if x.get('resource')=='GPU']
+          if len(avail)!=1:raise RuntimeError('GPU quota format unknown')
+          print('NTL_GPT14B_GPU_QUOTA_REMAINING_H='+str(avail[0]),flush=True)
+          if avail[0]<8:raise RuntimeError('GPU quota insufficient while 0.718 Fable252 queued')
+          print('NTL_GPT14B_QUOTA_GATE=PASS',flush=True)
+          PY
+      - name: Build exact pinned private Qwen3-14B frozen model experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-icl14b-source
+          kaggle kernels pull kolihhan/ntl-evgen-forensic-eda-repro-20261123 \
+            -p /tmp/ntl-icl14b-source -m >/dev/null
+          python scripts/build_ntl_gpt14b_icl_private_20261124.py \
+            --source /tmp/ntl-icl14b-source --out /tmp/ntl-icl14b-private
+          echo NTL_GPT14B_PRIVATE_SOURCE_PINNED=TRUE
+      - name: Push ONE new private GPU inference kernel, never submit competition
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,re
+          ref='kolihhan/ntl-qwen14b-gpt-triad-icl-private-20261124'
+          existing=subprocess.run(['kaggle','kernels','list','--mine','--search',
+             'ntl-qwen14b-gpt-triad-icl-private-20261124','-v'],
+             capture_output=True,text=True,timeout=90)
+          if existing.returncode:raise RuntimeError('Could not confirm idempotent private kernel lookup')
+          if ref in existing.stdout:
+              print('NTL_GPT14B_PRIVATE_ALREADY_EXISTS_NO_DUPLICATE=TRUE',flush=True)
+          else:
+              p=subprocess.run(['kaggle','kernels','push','-p','/tmp/ntl-icl14b-private',
+                '--accelerator','NvidiaTeslaT4','--timeout','14400'],
+                 capture_output=True,text=True,timeout=480)
+              if p.returncode:
+                  msg=p.stdout+' '+p.stderr
+                  reason='quota' if 'quota' in msg.lower() else ('metadata' if '400 Client Error' in msg else 'other')
+                  print('NTL_GPT14B_PRIVATE_PUSH_FAIL_CLASS='+reason,flush=True)
+                  raise RuntimeError('Frozen 14B private push rejected before inference')
+              print('NTL_GPT14B_ONE_PRIVATE_INFERENCE_ACCEPTED=TRUE',flush=True)
+          status=subprocess.run(['kaggle','kernels','status',ref],
+            capture_output=True,text=True,timeout=90)
+          if status.returncode:raise RuntimeError('Private kernel worker not accessible')
+          m=re.findall(r'KernelWorkerStatus[.][A-Z_]+',status.stdout)
+          print('NTL_GPT14B_PRIVATE_WORKER='+(m[-1] if m else 'UNKNOWN'),flush=True)
+          print('NTL_GPT14B_TRAINING=FALSE',flush=True)
+          print('NTL_GPT14B_OFFICIAL_SUBMISSION=FALSE',flush=True)
+          PY
+      - name: Scrub cloned private source and budget data
+        if: always()
+        run: rm -rf /tmp/ntl14b_quota.json /tmp/ntl-icl14b-source /tmp/ntl-icl14b-private
