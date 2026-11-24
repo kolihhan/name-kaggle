@@ -1,0 +1,71 @@
+name: NTL all18 cross-source original fingerprint stability — real CPU once
+on:
+  push:
+    branches: [research/ntl-cross-source-fingerprint-invariance-20261124]
+    paths: [.github/workflows/ntl-18source-fingerprint-stability-cpu-once-20261124.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-18source-fingerprint-cpu-one-shot-20261124, cancel-in-progress: false}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_18source_fingerprint_invariance_20261124.py
+            docs/research/ntl-18-source-invariance-frozen-contract-20261124.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Precommitted mechanism CPU smoke and no official data in repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3' 'scipy>=1.11,<2'
+          python -m py_compile scripts/ntl_18source_fingerprint_invariance_20261124.py
+          python scripts/ntl_18source_fingerprint_invariance_20261124.py --smoke
+      - name: Retrieve pinned original train and external 18-class corpus without log data leakage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-fingerprint/official /tmp/ntl-fingerprint/external
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-fingerprint/official >/dev/null
+          kaggle datasets download -d nischaydnk/ntl-topic-synthetic-18llms -f generations.csv \
+            -p /tmp/ntl-fingerprint/external --unzip -o -q >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          r=Path('/tmp/ntl-fingerprint/official')
+          f=r/'train.csv'
+          if not f.is_file():
+              z=list(r.glob('*.zip'))
+              if len(z)!=1:raise RuntimeError('exact competition train zip unavailable')
+              with ZipFile(z[0]) as fd:
+                  if 'train.csv' not in fd.namelist():raise RuntimeError('official train missing')
+                  fd.extract('train.csv',r)
+          assert f.is_file()
+          assert (Path('/tmp/ntl-fingerprint/external')/'generations.csv').is_file()
+          print('NTL_18SOURCE_REAL_PINNED_INPUTS_AVAILABLE=TRUE',flush=True)
+          PY
+      - name: Run all18 original nontrained cross-source rank invariance on real 14 prompt banks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ntl_18source_fingerprint_invariance_20261124.py \
+            --official /tmp/ntl-fingerprint/official/train.csv \
+            --external /tmp/ntl-fingerprint/external/generations.csv
+          echo NTL_18SOURCE_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE
+      - name: Delete all actual text and private ephemeral inputs
+        if: always()
+        shell: bash
+        run: rm -rf /tmp/ntl-fingerprint
