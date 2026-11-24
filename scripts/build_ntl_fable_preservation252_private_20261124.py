@@ -13,7 +13,7 @@ import re
 
 DONOR="kolihhan/ntl-evgen-forensic-eda-repro-20261123"
 DONOR_FILE_SHA="74d86affa9f55464ab39f735f392b54e47e2d8a2b631a0bca45de9435c600c56"
-DEST="kolihhan/ntl-fable-preservation-252-20261124"
+DEST="kolihhan/ntl-fable-preservation-252-v2-20261125"
 PANEL="nischaydnk/ntl-topic-synthetic-18llms"
 RUNNER=Path("scripts/ntl_fable_preservation252_runtime_20261124.py")
 DATA_PATTERN=re.compile(r"(?m)^DATA = next\(p for p in .*os\.path\.exists\(p \+ '/train\.csv'\)\)$")
@@ -30,6 +30,19 @@ def code(src):
     compile(src,"<validated notebook research sidecar>","exec")
     return {"cell_type":"code","execution_count":None,"metadata":{},
             "outputs":[],"source":src.splitlines(keepends=True)}
+
+def patch_data_assignment(source):
+    """Keep original DATA discovery before using DATA in the diagnostic.
+
+    Previous broken release replaced its FIRST assignment with
+    DATA = prepare(DATA), causing NameError before any diagnostic markers.
+    """
+    def replace(m):
+        return (m.group(0)
+            + "\\nDATA = str(ntl_fable_probe.prepare(DATA))"
+            + "\\nos.environ['KAGGLE_IS_COMPETITION_RERUN'] = '1'")
+    return DATA_PATTERN.subn(replace,source)
+
 
 def build(inp,out):
     if out.exists():raise FileExistsError("one-shot destination already exists")
@@ -85,9 +98,7 @@ def build(inp,out):
         if i==a:out_cells.append(before)
         if i==d:
             originalcode=text(c)
-            changed,count=DATA_PATTERN.subn(
-                 "DATA = str(ntl_fable_probe.prepare(DATA))\n"
-                 "os.environ['KAGGLE_IS_COMPETITION_RERUN'] = '1'",originalcode)
+            changed,count=patch_data_assignment(originalcode)
             if count!=1:raise ValueError("failed deterministic fake input injection")
             # Source-scoped 18-label truth is stored only in temp and not passed to the scorer.
             c=dict(c);c["source"]=changed.splitlines(keepends=True)
@@ -134,6 +145,26 @@ def smoke():
     assert DATA_PATTERN.search("DATA = next(p for p in ['/x','/y'] if os.path.exists(p + '/train.csv'))")
     assert DEADLINE_PATTERN.search("V1_DEADLINE_H = 8.8    # fixed 9h Kaggle cap")
     assert text(code("x=1\n")).strip()=="x=1"
+    # Compile AND EXECUTE the first-use DATA assignment with a safe fake path.
+    # This detects the exact 2026-11-24 NameError that the old smoke missed.
+    import os, tempfile
+    from types import SimpleNamespace
+    with tempfile.TemporaryDirectory() as root:
+        Path(root,"train.csv").write_text("id,model,text\\n")
+        original="DATA = next(p for p in ["+repr(root)+"] if os.path.exists(p + '/train.csv'))"
+        patched,n=patch_data_assignment(original)
+        assert n==1 and patched.startswith(original+"\\n"),patched
+        compile(patched,"<first-DATA-assignment-regression>","exec")
+        ns={"os":os,"ntl_fable_probe":SimpleNamespace(prepare=lambda x:x+"/test-data")}
+        previous=os.environ.get("KAGGLE_IS_COMPETITION_RERUN")
+        try:
+            exec(patched,ns)
+            assert ns["DATA"]==root+"/test-data"
+            assert os.environ["KAGGLE_IS_COMPETITION_RERUN"]=="1"
+        finally:
+            if previous is None:os.environ.pop("KAGGLE_IS_COMPETITION_RERUN",None)
+            else:os.environ["KAGGLE_IS_COMPETITION_RERUN"]=previous
+    print("NTL_FABLE_252_FIRST_ASSIGNMENT_NAMEERROR_REGRESSION=PASS",flush=True)
     print("NTL_FABLE_252_BUILDER_CPU_SELFTEST=PASS",flush=True)
 
 if __name__=="__main__":
