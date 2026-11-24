@@ -1,0 +1,74 @@
+name: NTL rescue-per-token resume existing COMPLETE candidate after strict asset identity check
+on:
+  push:
+    branches: [research/ntl-cost-aware-glm-priority-20261124]
+    paths: [.github/workflows/ntl-glm-rescue-resume-verified-20261124.yml]
+permissions:
+  contents: read
+concurrency:
+  group: ntl-glm-rescue-per-token-once-20261124
+  cancel-in-progress: false
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_glm_rescue_per_token_once_20261124.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify exact original candidate, compare asset identities without ordering, then resume one official submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 'numpy>=1.26,<3' 'pandas>=2,<3' 'pyarrow>=15,<26'
+          python - <<'PY'
+          import json, tempfile
+          from pathlib import Path
+          from collections import Counter
+          import pandas as pd
+          from scripts import ntl_glm_rescue_per_token_once_20261124 as m
+          m.selftest()
+          expected_sha='3ab131aaf18e6285cf6982481af2a1d19afdce8a99f9ae3afce0fab194c9da06'
+          if m.receipt(m.ledger()):
+              raise SystemExit(0)
+          assert m.worker_status()=='COMPLETE','existing preview not COMPLETE'
+          with tempfile.TemporaryDirectory(prefix='ntl-rescue-resume-') as d:
+              root=Path(d)
+              out,sha,parent=m.build(root)
+              assert sha==expected_sha,'candidate SHA drift'
+              for key,ref in [('current',m.DEST),('version1',m.DEST+'/1')]:
+                  md,nb,_=m.pull(ref,root/key)
+                  assert md.get('id')==m.DEST and str(md.get('is_private')).lower() in ('true','1')
+                  assert m.digest(nb)==expected_sha,'private code/version mismatch'
+                  for k in (*m.COUNTS,'competition_sources'):
+                      a,b=parent.get(k) or [],md.get(k) or []
+                      # Exact multiset of full version-bearing resource references; no normalization, dropping or version relaxation.
+                      ca,cb=Counter(map(str,a)),Counter(map(str,b))
+                      m.emit('NTL_RESUME_ASSET_COMPARISON',{'version':key,'kind':k,'original_n':len(a),'private_n':len(b),'same_order':a==b,'exact_multiset_equal':ca==cb,'missing_n':sum((ca-cb).values()),'extra_n':sum((cb-ca).values())})
+                      if ca!=cb:
+                          m.emit('NTL_RESUME_ASSET_MISMATCH_PUBLIC_REFS',{'kind':k,'missing':list((ca-cb).elements()),'extra':list((cb-ca).elements())})
+                          raise RuntimeError('genuine asset identity mismatch; NO_SUBMIT')
+                  for k in ('enable_gpu','enable_internet','machine_shape','docker_image','kernel_type'):
+                      if parent.get(k)!=md.get(k):
+                          m.emit('NTL_RESUME_RUNTIME_FIELD_DIFF',{'key':k,'expected':parent.get(k),'actual':md.get(k)})
+                          raise RuntimeError('runtime metadata mismatch; NO_SUBMIT')
+              dest=root/'outputs'
+              dest.mkdir()
+              m.cli('kernels','output',m.DEST,'-p',str(dest),timeout=240)
+              fs=list(dest.rglob('submission.parquet'))
+              assert len(fs)==1,'missing preview submission'
+              df=pd.read_parquet(fs[0])
+              assert set(df.columns)=={'id','model'} and len(df)>0 and not df.id.isna().any() and df.id.astype(str).is_unique and df.model.astype(str).isin(m.LABELS).all()
+              m.emit('NTL_RESUME_PREVIEW_VERIFIED',{'rows':len(df),'candidate_sha':expected_sha,'preview_only':True,'no_repush':True})
+              m.submit_once()
+          PY
