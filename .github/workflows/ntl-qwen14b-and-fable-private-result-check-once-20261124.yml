@@ -1,4 +1,5 @@
 name: NTL two existing strong-model private experiments — read-only status once
+# Status refresh for 2026-11-25 00:29 MYT, no inference triggered.
 on:
   push:
     branches: [research/ntl-qwen14b-promptfree-gpt-triad-icl-20261124]
