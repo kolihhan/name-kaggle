@@ -59,7 +59,7 @@ jobs:
                   if "NameError" in line or "Traceback" in line:
                       # Only expose symbol identifiers and nearby code-location keywords,
                       # never arbitrary source text in quotes.
-                      v=re.sub(r"['\\"][^'\\"]*['\\"]","[QUOTED]",line)
+                      v=re.sub(r"'[^']*'","[QUOTED]",line)
                       v=re.sub(r"[^A-Za-z0-9_ /:.,()=-]","?",v)
                       snippets.append({"line_index":i,"safe":v.strip()[-240:]})
               print("FABLE_ERROR_SAFE_EXCEPTION_CONTEXT="+json.dumps(snippets[-10:]),flush=True)
