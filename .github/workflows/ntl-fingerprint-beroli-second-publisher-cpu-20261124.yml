@@ -1,0 +1,68 @@
+name: NTL fingerprint style signal second publisher C1/C2 — real CPU
+on:
+  push:
+    branches: [research/ntl-cross-source-fingerprint-invariance-20261124]
+    paths: [.github/workflows/ntl-fingerprint-beroli-second-publisher-cpu-20261124.yml]
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_18source_fingerprint_invariance_20261124.py
+            scripts/ntl_publisher_c1_c2_fingerprint_replication_20261124.py
+            docs/research/ntl-beroli-publisher-fingerprint-transfer-precommit-20261124.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: No fitting, no GPU; CPU smoke and check source not exposed
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3' 'scipy>=1.11,<2'
+          python -m py_compile scripts/ntl_publisher_c1_c2_fingerprint_replication_20261124.py
+          python -m scripts.ntl_publisher_c1_c2_fingerprint_replication_20261124 --smoke
+      - name: Materialize source-pinned official and C1/C2 label cohorts, delete all later
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-publisher/official /tmp/ntl-publisher/c1 /tmp/ntl-publisher/c2
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-publisher/official >/dev/null
+          kaggle datasets download -d beroli/ntl-benchmark-c1-generated-panels -f passages.csv \
+            -p /tmp/ntl-publisher/c1 --unzip -o -q >/dev/null
+          kaggle datasets download -d beroli/ntl-benchmark-c2-generated-panels -f passages.csv \
+            -p /tmp/ntl-publisher/c2 --unzip -o -q >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          root=Path('/tmp/ntl-publisher/official')
+          if not (root/'train.csv').is_file():
+              z=list(root.glob('*.zip'))
+              if len(z)!=1:raise ValueError('official zip missing')
+              with ZipFile(z[0]) as f:f.extract('train.csv',root)
+          for f in ('official/train.csv','c1/passages.csv','c2/passages.csv'):
+              assert (Path('/tmp/ntl-publisher')/f).is_file()
+          print('NTL_CROSSPUBLISHER_SOURCES_PRESENT=TRUE',flush=True)
+          PY
+      - name: Real source-grouped 12-way fixed style fingerprint signature replication
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_publisher_c1_c2_fingerprint_replication_20261124 \
+            --official /tmp/ntl-publisher/official/train.csv \
+            --c1 /tmp/ntl-publisher/c1/passages.csv \
+            --c2 /tmp/ntl-publisher/c2/passages.csv
+          echo NTL_CROSSPUBLISHER_ZERO_NEW_TRAINING_GPU_OR_COMPETITION_SUBMISSIONS=TRUE
+      - name: Delete all actual passage text
+        if: always()
+        run: rm -rf /tmp/ntl-publisher
