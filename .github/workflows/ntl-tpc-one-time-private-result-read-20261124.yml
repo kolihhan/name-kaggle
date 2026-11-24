@@ -1,0 +1,47 @@
+name: NTL TPC one-shot PRIVATE research status and aggregate reader
+on:
+  push:
+    branches: [research/ntl-trainable-prompt-contrastive-20261124]
+    paths: [.github/workflows/ntl-tpc-one-time-private-result-read-20261124.yml]
+permissions: {contents: read}
+jobs:
+  read_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect actual Kaggle worker and read aggregate scientific result only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import json,re,subprocess,tempfile
+          from pathlib import Path
+          ref='kolihhan/ntl-tpc-roberta-trainable-ce-contrast-20261124'
+          s=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=80)
+          if s.returncode:raise RuntimeError('unable to query private Kaggle worker')
+          v=re.findall(r'KernelWorkerStatus[.][A-Z_]+',s.stdout)
+          if not v:raise RuntimeError('unknown worker state')
+          print('NTL_TPC_READONLY_WORKER='+v[-1],flush=True)
+          if v[-1]!='KernelWorkerStatus.COMPLETE':
+              print('NTL_TPC_READONLY_RESULT_NOT_VERIFIED=TRUE',flush=True)
+              raise SystemExit(0)
+          with tempfile.TemporaryDirectory(prefix='ntl-tpc-readonly-') as d:
+              p=subprocess.run(['kaggle','kernels','output',ref,'-p',d],
+                capture_output=True,text=True,timeout=250)
+              print('NTL_TPC_READONLY_OUTPUT_EXIT='+str(p.returncode),flush=True)
+              files=list(Path(d).rglob('ntl_tpc_aggregate.json'))
+              if p.returncode or len(files)!=1:
+                  print('NTL_TPC_READONLY_AGGREGATE_ABSENT=TRUE',flush=True)
+                  raise SystemExit(0)
+              j=json.loads(files[0].read_text())
+              allowed={k:j.get(k) for k in ('experiment','panels','external_pooled_95ci_B_minus_CE',
+                 'fine_tuned_layers','real_backbone_adaptation','pass_gate','promote',
+                 'official_submit','duration_seconds','strong_sparse_feature_width')}
+              print('NTL_TPC_REAL_AGGREGATE='+json.dumps(allowed,sort_keys=True),flush=True)
+          PY
