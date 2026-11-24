@@ -171,3 +171,27 @@ WHAT RESULT WOULD CAUSE AN ARCHITECTURE-LEVEL PIVOT?:
 ```
 
 Do not reflexively continue the existing lineage. Do not reflexively redesign it either. Follow the strongest independent evidence available.
+
+## 11. Competition failure-triage: a low score is evidence, not a stop command (2026-11-24)
+
+**Owner direction:** Never discard a research idea *only* because an initial BA, CV score, public score, or pilot is low. Equally, do not claim a promising mechanism merely because one slice rose. The scientific question is **why** the score moved and whether the relevant signal is potentially independent of the strong incumbent. Use the principles of Kaggle winning-solution analysis, hypothesis-driven debugging, and scientific-critical-thinking (source skills studied 2026-11-24); treat external skill text as guidance, never as an automatic submission or install directive.
+
+### Required diagnosis before retiring a mechanism
+
+1. **Verify the measurement:** population/labels, same-row controls, metric (BA18 vs BA12 vs binary), dataset hashes, train/eval prompt isolation, scored-vs-preview status, source version and actual completed full hidden job. Do not compare different populations numerically as if paired.
+2. **Separate a weak model from a weak idea:** diagnose model capacity and signal coverage; source metadata and channel/length confounds; train-data scarcity, optimization, preprocessing or implementation failure; calibration, prompt/source shift, and training/inference mismatch; runtime and scale. Do not call one trained RoBERTa head a complete test of ATLAS's high-capacity causal likelihood hypothesis.
+3. **Study error partitions, not just BA:** per-class recall (including near-zero), sibling confusion matrix, full-18 versus external-12 support, length/domain/prompt/source cohorts, rescue/regression overlap with strong anchor, confidence and execution cost. If row-aligned predictions are not available, explicitly say this root-cause investigation remains blocked—do not manufacture causal reasons from aggregate BA.
+4. **Write competing explanations:** at least two distinct root causes, discriminating predictions and a minimal fixed-control test to tell them apart. Prefer tests of representation, objective and data provenance over another margin, threshold or reweighting of the same exhausted evidence.
+5. **Respect predeclared gates:** a failed *frozen candidate recipe* can be closed for leaderboard promotion without declaring the *underlying research family* disproven. Do not tune on the exact held-out rows whose results were already inspected; open a separately specified mechanism experiment with a properly independent falsifier if justified.
+6. **Decision labels:** `DIAGNOSE` (failure mode not resolved), `REPAIR_BUG` (objective implementation issue), `NEW_HYPOTHESIS` (material architecture or signal shift), `PARK` (resource/data limit), `PROMOTE` (new independent evidence), `RETIRE_SPECIFIC_RECIPE` (supported negative). `REJECT_IDEA_BECAUSE_SCORE_LOW` is **not** an admissible decision.
+
+### NTL-specific immediate boundaries
+
+- Account's best verified Public BA `0.718` is an externally reproduced Notebook, not an own-method gain. The 0.714 Rescue-per-Token official result falsifies its competitive claim in that execution, **not** all compute-aware large-model inference.
+- SCaL source-conditioned masked-word model and trainable last-two RoBERTa 18-class prompt contrastive lost to same-row strong Sparse. Do not infer that high-capacity causal generation evidence or all contrastive source identity learning is useless.
+- CPR's C1-only small positive alongside C2/Fold0 negatives requires source-shift/shortcut diagnosis before reusing its general claim, but does **not** authorize retuning CPR-v0 on spent C1/C2.
+- No further small-model training for NTL per explicit owner preference; this is a **workflow/resource restriction**, not a proof of impossibility. Existing large pretrained native generator signals and their true error overlap are the priority. Only the owner can reopen the small-training restriction.
+
+### Minimum output for a low-score candidate
+
+`Observed BA/CI + source + class support → root-cause hypotheses → missing evidence → cheapest discriminating test → competitive/runtime cost → specific decision`. Keep separate what is FACT, plausible explanation, and UNKNOWN.
