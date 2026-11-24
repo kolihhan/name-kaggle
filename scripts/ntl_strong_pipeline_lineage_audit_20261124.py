@@ -121,11 +121,11 @@ def reachability(a,b):
 def embedded_stage_diff(b):
     """Compare actual payload V1 base with the installed prefix_variant_stage source."""
     import ast,base64,difflib,io,tarfile
-    candidate=[c for c in b["cell_texts"] if c.startswith("%%writefile /kaggle/working/prefix_variant_stage.py\\n")]
+    candidate=[c for c in b["cell_texts"] if c.startswith("%%writefile /kaggle/working/prefix_variant_stage.py\n")]
     setup=[c for c in b["cell_texts"] if "V1_PAYLOAD =" in c]
     if len(candidate)!=1 or len(setup)!=1:
         raise ValueError("stage source or compressed base ambiguous")
-    variant=candidate[0].split("\\n",1)[1]
+    variant=candidate[0].split("\n",1)[1]
     # Find a literal payload without running the notebook's install statements.
     payload=None
     for node in ast.parse(setup[0]).body:
