@@ -1,0 +1,67 @@
+name: NTL SCaL one-time private Kaggle scientific result reader
+on:
+  push:
+    branches: [research/ntl-source-contrastive-likelihood-20261124]
+    paths: [.github/workflows/ntl-scal-one-time-kaggle-result-read-20261124.yml]
+permissions: {contents: read}
+jobs:
+  read_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Safely read existing private GPU job status and aggregate-only output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,os,re,subprocess,tempfile
+          from pathlib import Path
+          ref="kolihhan/ntl-scal-source-contrastive-fold0-20261124"
+          status=subprocess.run(["kaggle","kernels","status",ref],text=True,capture_output=True,timeout=85)
+          if status.returncode:
+              print("NTL_SCAL_STATUS_LOOKUP_FAILED=TRUE")
+              raise SystemExit(1)
+          values=re.findall(r"KernelWorkerStatus[.][A-Z_]+",status.stdout)
+          state=values[0] if values else "UNKNOWN"
+          print("NTL_SCAL_READONLY_WORKER="+state,flush=True)
+          if state not in ("KernelWorkerStatus.COMPLETE","KernelWorkerStatus.ERROR"):
+              print("NTL_SCAL_READONLY_NO_RESULT_YET=TRUE",flush=True)
+              raise SystemExit(0)
+          with tempfile.TemporaryDirectory(prefix="ntl-scal-readonly-") as d:
+              p=subprocess.run(["kaggle","kernels","logs",ref,"-p",d],capture_output=True,text=True,timeout=120)
+              print("NTL_SCAL_READONLY_LOGS_STATUS="+str(p.returncode),flush=True)
+              if p.returncode==0:
+                  for f in Path(d).rglob("*"):
+                      if not f.is_file() or f.stat().st_size>5_000_000:continue
+                      try: text=f.read_text(errors="replace")
+                      except:continue
+                      for line in text.splitlines():
+                          if "NTL_SCAL_REAL_FOLD0_RESULT=" in line:
+                              try:
+                                  payload=line.split("NTL_SCAL_REAL_FOLD0_RESULT=",1)[1]
+                                  payload=payload.split("\\n",1)[0].strip()
+                                  obj=json.loads(payload)
+                                  allowed={k:obj.get(k) for k in ("experiment","scores","delta_vs_source_nll","prompt_bootstrap95","rescues","regressions","changed_labels","num_train_docs","num_valid_docs","pilot_gate","competition_submission")}
+                                  print("NTL_SCAL_READONLY_REAL_RESULT="+json.dumps(allowed,sort_keys=True),flush=True)
+                                  raise SystemExit(0)
+                              except (ValueError,TypeError):
+                                  pass
+                          if re.search(r"(ModuleNotFoundError|ImportError|CUDA out of memory|AssertionError|Traceback)",line):
+                              print("NTL_SCAL_READONLY_ERROR_CLASS="+re.findall(r"(ModuleNotFoundError|ImportError|CUDA out of memory|AssertionError|Traceback)",line)[0],flush=True)
+              if state=="KernelWorkerStatus.COMPLETE":
+                  out=Path(d)/"outputs";out.mkdir(exist_ok=True)
+                  o=subprocess.run(["kaggle","kernels","output",ref,"-p",str(out)],capture_output=True,text=True,timeout=180)
+                  report=list(out.rglob("ntl_scal_aggregate.json"))
+                  if o.returncode==0 and len(report)==1:
+                      obj=json.loads(report[0].read_text())
+                      allowed={k:obj.get(k) for k in ("experiment","scores","delta_vs_source_nll","prompt_bootstrap95","rescues","regressions","changed_labels","num_train_docs","num_valid_docs","pilot_gate","competition_submission")}
+                      print("NTL_SCAL_READONLY_REAL_RESULT="+json.dumps(allowed,sort_keys=True),flush=True)
+                  else:
+                      print("NTL_SCAL_READONLY_AGGREGATE_NOT_FOUND=TRUE",flush=True)
+          PY
