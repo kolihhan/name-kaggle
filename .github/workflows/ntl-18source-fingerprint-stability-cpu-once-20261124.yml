@@ -2,7 +2,9 @@ name: NTL all18 cross-source original fingerprint stability — real CPU once
 on:
   push:
     branches: [research/ntl-cross-source-fingerprint-invariance-20261124]
-    paths: [.github/workflows/ntl-18source-fingerprint-stability-cpu-once-20261124.yml]
+    paths:
+      - .github/workflows/ntl-18source-fingerprint-stability-cpu-once-20261124.yml
+      - scripts/ntl_18source_fingerprint_invariance_20261124.py
 permissions: {contents: read}
 concurrency: {group: ntl-18source-fingerprint-cpu-one-shot-20261124, cancel-in-progress: false}
 jobs:
