@@ -22,7 +22,9 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/ntl_18source_fingerprint_invariance_20261124.py
+            scripts/ntl_publisher_c1_c2_fingerprint_replication_20261124.py
             docs/research/ntl-18-source-invariance-frozen-contract-20261124.md
+            docs/research/ntl-beroli-publisher-fingerprint-transfer-precommit-20261124.md
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
@@ -67,6 +69,20 @@ jobs:
             --official /tmp/ntl-fingerprint/official/train.csv \
             --external /tmp/ntl-fingerprint/external/generations.csv
           echo NTL_18SOURCE_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE
+      - name: Replicate with different publisher C1/C2, same features no fitting
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-fingerprint/c1 /tmp/ntl-fingerprint/c2
+          kaggle datasets download -d beroli/ntl-benchmark-c1-generated-panels -f passages.csv \
+            -p /tmp/ntl-fingerprint/c1 --unzip -o -q >/dev/null
+          kaggle datasets download -d beroli/ntl-benchmark-c2-generated-panels -f passages.csv \
+            -p /tmp/ntl-fingerprint/c2 --unzip -o -q >/dev/null
+          python -m scripts.ntl_publisher_c1_c2_fingerprint_replication_20261124 \
+            --official /tmp/ntl-fingerprint/official/train.csv \
+            --c1 /tmp/ntl-fingerprint/c1/passages.csv \
+            --c2 /tmp/ntl-fingerprint/c2/passages.csv
+          echo NTL_18SOURCE_SECOND_PUBLISHER_EVALUATION_NO_TRAINING=TRUE
       - name: Delete all actual text and private ephemeral inputs
         if: always()
         shell: bash
