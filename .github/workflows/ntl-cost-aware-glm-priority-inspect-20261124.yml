@@ -29,7 +29,7 @@ jobs:
               cs=[''.join(c['source']) for c in nb['cells'] if c['cell_type']=='code']
               sha=hashlib.sha256('\n'.join(cs).encode()).hexdigest()
               print('NTL_BUDGET_BASE_SHA='+sha)
-              assert sha=='85b472b84211f58b26e870f552047e329bdf64958fc2c343ec0952a51f47cf68','source changed'
+              assert sha=='f36faa76126819e799b9a70b79b76c4c21f3fc7498e9e60d5106a8c654eceaa9','source changed'
               for i,c in enumerate(cs):
                   if c.startswith('%%writefile /kaggle/working/prefix_variant_stage.py'):
                       body=c.split('\n',1)[1]
