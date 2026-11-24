@@ -1,0 +1,92 @@
+name: NTL Fable252 Kaggle ERROR output and source read-only inspection
+on:
+  push:
+    branches: [research/ntl-qwen14b-promptfree-gpt-triad-icl-20261124]
+    paths: [.github/workflows/ntl-fable252-output-source-forensics-readonly-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read archived Kaggle kernel outputs and metadata, no inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,tempfile,pathlib,re,hashlib,collections
+          ref="kolihhan/ntl-fable-preservation-252-20261124"
+          def cli(*args,timeout=120):
+              return subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=timeout)
+          with tempfile.TemporaryDirectory(prefix="ntl-fable-error-") as p:
+              root=pathlib.Path(p)
+              (root/"out").mkdir()
+              (root/"src").mkdir()
+              output=cli("kernels","output",ref,"-p",str(root/"out"),"-o",timeout=220)
+              source=cli("kernels","pull",ref,"-p",str(root/"src"),"-m",timeout=190)
+              logs=cli("kernels","logs",ref,timeout=180)
+              print("FABLE_ERROR_OUTPUT_EXIT="+str(output.returncode),flush=True)
+              print("FABLE_ERROR_SOURCE_PULL_EXIT="+str(source.returncode),flush=True)
+              print("FABLE_ERROR_LOGS_EXIT="+str(logs.returncode),flush=True)
+              print("FABLE_ERROR_LOG_BYTE_COUNTS="+json.dumps({"stdout":len(logs.stdout),
+                "stderr":len(logs.stderr),"out_stdout":len(output.stdout),
+                "out_stderr":len(output.stderr)}),flush=True)
+              print("FABLE_ERROR_LOG_SIGNAL_WORDS="+json.dumps({x:bool(re.search(x,logs.stdout+" "+logs.stderr,re.I))
+                   for x in ("Traceback","Notebook Threw Exception","ERROR","ValueError","NameError",
+                      "FileNotFoundError","Failed","mount","CUDA","quota","No such file",
+                      "KernelWorkerStatus","Cell In","ImportError","WorkerStatus")},sort_keys=True),flush=True)
+              files=[x for x in (root/"out").rglob("*") if x.is_file()]
+              print("FABLE_ERROR_OUTPUT_BASENAMES="+json.dumps(
+                  [{"name":f.name if f.suffix in (".ipynb",".json",".parquet",".log",".txt") else "other",
+                    "bytes":f.stat().st_size} for f in files][:50]),flush=True)
+              ipynb=[x for x in files if x.suffix==".ipynb"]
+              for notebook in ipynb:
+                  try:nb=json.loads(notebook.read_text())
+                  except Exception:
+                      print("FABLE_ERROR_IPYNB_PARSE=FAILED",flush=True)
+                      continue
+                  counts=collections.Counter()
+                  errors=[]
+                  for i,c in enumerate(nb.get("cells",[])):
+                      counts[c.get("cell_type","?")]+=1
+                      for o in c.get("outputs",[]):
+                          counts["out_"+o.get("output_type","?")]+=1
+                          if o.get("output_type")=="error":
+                              val=o.get("evalue","")
+                              # Only report safe error class and fixed error signatures;
+                              # never print raw Kaggle text or source passages.
+                              kind=o.get("ename","Unknown")
+                              tags=[tag for tag in ("pinned","schema","panel","duplicate","align",
+                                    "model","test","FileNotFound","ValueError","NameError",
+                                    "CUDA","memory","package","module","type","data","source",
+                                    "permission","missing","assert") if tag.lower() in str(val).lower()]
+                              errors.append({"cell_index":i,"type":kind,"tags":tags,
+                                             "message_len":len(str(val))})
+                  print("FABLE_ERROR_NOTEBOOK_OUTPUTS="+json.dumps({"cells":len(nb.get("cells",[])),
+                      "type_counts":dict(counts),"errors":errors[-12:]},sort_keys=True),flush=True)
+              ipys=list((root/"src").glob("*.ipynb"))
+              if len(ipys)==1:
+                  nb=json.loads(ipys[0].read_text())
+                  cells=["".join(c.get("source",[])) for c in nb.get("cells",[]) if c.get("cell_type")=="code"]
+                  flags={"has_prepare_call":any("ntl_fable_probe.prepare(DATA)" in z for z in cells),
+                     "has_helper_writer":any("ntl_fable_probe.py" in z for z in cells),
+                     "has_snapshot":any("snapshot_pre_apex(DATA,OUT)" in z for z in cells),
+                     "has_evaluate":any("ntl_fable_probe.evaluate" in z for z in cells),
+                     "source_cells":len(cells),
+                     "metadata_cpu_gpu":None}
+                  md=(root/"src")/"kernel-metadata.json"
+                  if md.exists():
+                      obj=json.loads(md.read_text())
+                      flags["metadata_cpu_gpu"]=obj.get("enable_gpu")
+                      flags["mounted_dataset_count"]=len(obj.get("dataset_sources") or [])
+                  print("FABLE_ERROR_SUBMITTED_SOURCE_FLAGS="+json.dumps(flags,sort_keys=True),flush=True)
+              else:
+                  print("FABLE_ERROR_NOTEBOOK_SOURCE_FILES_FOUND="+str(len(ipys)),flush=True)
+              print("FABLE_ERROR_NO_NEW_GPU_SUBMISSION=TRUE",flush=True)
+          PY
