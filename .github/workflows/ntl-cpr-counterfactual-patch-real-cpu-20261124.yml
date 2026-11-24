@@ -1,0 +1,79 @@
+name: NTL CPR original counterfactual patch identity — real 18way + C1/C2 transfer
+on:
+  push:
+    branches: [research/ntl-counterfactual-patch-retrieval-20261124]
+    paths:
+      - .github/workflows/ntl-cpr-counterfactual-patch-real-cpu-20261124.yml
+permissions: {contents: read}
+concurrency: {group: ntl-cpr-original-once-20261124, cancel-in-progress: false}
+jobs:
+  falsify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_counterfactual_patch_retrieval_v0_20261124.py
+            scripts/run_strong_sparse_anchor.py
+            scripts/run_style_baseline.py
+            scripts/ntl_glm_distributed_evidence_20261122.py
+            docs/research/ntl-cpr-patch-counterfactual-contract-20261124.md
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install bounded CPU dependencies and smoke-test exact code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3' 'pandas>=2,<3' 'scikit-learn>=1.4,<2' 'scipy>=1.11,<2' 'threadpoolctl>=3,<5'
+          python -m py_compile scripts/ntl_counterfactual_patch_retrieval_v0_20261124.py
+          python -m scripts.ntl_counterfactual_patch_retrieval_v0_20261124 --smoke
+      - name: Retrieve pinned official train and independently labelled C1/C2 inputs ephemerally
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-cpr/official /tmp/ntl-cpr/c1 /tmp/ntl-cpr/c2
+          kaggle competitions download name-that-llm -f train.csv -p /tmp/ntl-cpr/official >/dev/null
+          kaggle datasets download -d beroli/ntl-benchmark-c1-generated-panels -f passages.csv -p /tmp/ntl-cpr/c1 --unzip -o -q
+          kaggle datasets download -d beroli/ntl-benchmark-c2-generated-panels -f passages.csv -p /tmp/ntl-cpr/c2 --unzip -o -q
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          root=Path('/tmp/ntl-cpr/official')
+          z=root/'train.csv.zip'
+          if z.exists():
+              with ZipFile(z) as f:
+                  assert set(f.namelist())=={'train.csv'}
+                  f.extractall(root)
+          assert (root/'train.csv').is_file()
+          assert Path('/tmp/ntl-cpr/c1/passages.csv').is_file()
+          assert Path('/tmp/ntl-cpr/c2/passages.csv').is_file()
+          print('NTL_CPR_PINNED_DOWNLOADS_READY_NO_DATA_LOGGED=TRUE',flush=True)
+          PY
+      - name: Test new retrieval weighting vs placebo and same-data strong SVC on real panels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_counterfactual_patch_retrieval_v0_20261124 \
+            --train /tmp/ntl-cpr/official/train.csv \
+            --folds artifacts/phase1/folds.csv \
+            --c1 /tmp/ntl-cpr/c1/passages.csv \
+            --c2 /tmp/ntl-cpr/c2/passages.csv
+          echo NTL_CPR_NO_GPU_NO_HIDDEN_TEST_NO_SUBMISSION=TRUE
+      - name: Delete ephemeral official train, publishers' text, and transformed features
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/ntl-cpr
+          echo NTL_CPR_PRIVATE_INPUTS_SCRUBBED=TRUE
