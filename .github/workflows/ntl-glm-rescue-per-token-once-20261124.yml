@@ -1,0 +1,51 @@
+name: NTL GLM rescue-per-token ONE-SHOT private preview and official submission
+on:
+  push:
+    branches: [research/ntl-cost-aware-glm-priority-20261124]
+    paths:
+      - .github/workflows/ntl-glm-rescue-per-token-once-20261124.yml
+permissions:
+  contents: read
+concurrency:
+  group: ntl-glm-rescue-per-token-once-20261124
+  cancel-in-progress: false
+jobs:
+  run_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_glm_rescue_per_token_once_20261124.py
+            docs/research/ntl-glm-rescue-per-token-contract-20261124.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies and verify frozen ranking test and no official data checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          test -f docs/research/ntl-glm-rescue-per-token-contract-20261124.md
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 'numpy>=1.26,<3' 'pandas>=2,<3' 'pyarrow>=15,<26'
+          python -m py_compile scripts/ntl_glm_rescue_per_token_once_20261124.py
+          python -m scripts.ntl_glm_rescue_per_token_once_20261124 --selftest
+      - name: Actual one-time private candidate launch, bounded completion and gated official code submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_glm_rescue_per_token_once_20261124 --execute --max-wait-minutes 30
+          echo NTL_GLM_RESCUE_ONESHOT_WORKFLOW_ENDED_NO_SCHEDULER=TRUE
+      - name: Remove temporary notebook sources and outputs on any exit
+        if: always()
+        shell: bash
+        run: rm -rf /tmp/ntl-glm-rescue-once-*
