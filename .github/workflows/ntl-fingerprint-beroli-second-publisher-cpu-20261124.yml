@@ -2,7 +2,9 @@ name: NTL fingerprint style signal second publisher C1/C2 — real CPU
 on:
   push:
     branches: [research/ntl-cross-source-fingerprint-invariance-20261124]
-    paths: [.github/workflows/ntl-fingerprint-beroli-second-publisher-cpu-20261124.yml]
+    paths:
+      - .github/workflows/ntl-fingerprint-beroli-second-publisher-cpu-20261124.yml
+      - scripts/ntl_publisher_c1_c2_fingerprint_replication_20261124.py
 permissions: {contents: read}
 jobs:
   verify:
