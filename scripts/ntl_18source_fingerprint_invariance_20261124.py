@@ -147,7 +147,7 @@ def main(path1,path2):
       "external_complete_prompt_blocks":len(external),
       "official_complete_rows":int(len(official)*18),
       "external_selected_rows":int(len(external)*18),
-      "external_selected_versions":dict(pd.Series(versions).value_counts()),
+      "external_selected_versions":{str(k):int(v) for k,v in pd.Series(versions).value_counts().items()},
       "truth_classes":18,
       "source_publisher_reported_not_authenticated":True,
       "official_historical_prompt_data_spent":True,
