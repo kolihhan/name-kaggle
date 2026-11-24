@@ -1,0 +1,47 @@
+name: NTL Fable existing notebook source output contract — read only
+on:
+  push:
+    branches: [research/ntl-expert-preservation-same-row-evidence-20261124]
+    paths: [.github/workflows/ntl-fable-source-output-contract-audit-20261124.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read exact previously scored 0.718 source; inspect NPZ write/read key contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/fable-keys-audit
+          kaggle kernels pull kolihhan/ntl-evgen-forensic-eda-repro-20261123 -p /tmp/fable-keys-audit -m >/dev/null
+          python - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          root=Path('/tmp/fable-keys-audit')
+          md=json.loads((root/'kernel-metadata.json').read_text())
+          nbpath=root/Path(md['code_file']).name
+          assert hashlib.sha256(nbpath.read_bytes()).hexdigest()=='74d86affa9f55464ab39f735f392b54e47e2d8a2b631a0bca45de9435c600c56'
+          nb=json.loads(nbpath.read_text())
+          cells=[''.join(c['source']) for c in nb['cells'] if c.get('cell_type')=='code']
+          hits=[s for s in cells if s.lstrip().startswith('%%writefile infer.py')]
+          if len(hits)!=1:raise ValueError('Expected one scoring infer.py cell')
+          s=hits[0]
+          terms=['save_final_logits','np.savez','np.savez_compressed','logits=','ids=','labels=']
+          print('NTL_FABLE_SOURCE_INFER_SAVE_CONTRACT='+json.dumps({
+            'infer_text_chars':len(s),'token_occurrences':{k:s.count(k) for k in terms},
+            'direct_writer_sites':[{ 'line_index':i,'line':line.strip()[:240] }
+             for i,line in enumerate(s.splitlines()) if 'save_final_logits' in line or
+             'np.savez' in line or 'labels=' in line and 'save' in line][:12],
+            'readers_want_ids':True,'readers_want_labels':True,'readers_want_logits':True,
+            'source_is_exact_scored_reproduction':True,
+            'no_GPU_no_submission':True
+          },sort_keys=True),flush=True)
+          PY
+          rm -rf /tmp/fable-keys-audit
