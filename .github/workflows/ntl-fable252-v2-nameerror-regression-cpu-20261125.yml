@@ -1,0 +1,75 @@
+name: NTL Fable252 first-DATA NameError CPU regression and exact donor contract
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths:
+      - .github/workflows/ntl-fable252-v2-nameerror-regression-cpu-20261125.yml
+      - scripts/build_ntl_fable_preservation252_private_20261124.py
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/build_ntl_fable_preservation252_private_20261124.py
+            scripts/ntl_fable_preservation252_runtime_20261124.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Execute the exact first-DATA assignment regression without Kaggle GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m py_compile scripts/build_ntl_fable_preservation252_private_20261124.py scripts/ntl_fable_preservation252_runtime_20261124.py
+          python scripts/build_ntl_fable_preservation252_private_20261124.py --smoke
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('scripts/build_ntl_fable_preservation252_private_20261124.py').read_text()
+          assert 'patch_data_assignment(originalcode)' in s
+          assert 'DEST="kolihhan/ntl-fable-preservation-252-v2-20261125"' in s
+          assert 'DATA_PATTERN.subn(replace,source)' in s
+          assert 'DATA = str(ntl_fable_probe.prepare(DATA))' in s
+          print('FABLE252_V2_FIRST_USE_DATA_RUNTIME_TEST=PASS',flush=True)
+          PY
+      - name: Rebuild actual pinned original 0.718 source CPU only and verify code order
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          mkdir -p /tmp/fable252-v2-source
+          kaggle kernels pull kolihhan/ntl-evgen-forensic-eda-repro-20261123 -p /tmp/fable252-v2-source -m >/dev/null
+          python scripts/build_ntl_fable_preservation252_private_20261124.py \
+            --source /tmp/fable252-v2-source --out /tmp/fable252-v2-private
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          d=Path('/tmp/fable252-v2-private')
+          md=json.loads((d/'kernel-metadata.json').read_text())
+          nb=json.loads((d/md['code_file']).read_text())
+          cells=[''.join(x.get('source',[])) for x in nb['cells'] if x.get('cell_type')=='code']
+          data=[x for x in cells if 'ntl_fable_probe.prepare(DATA)' in x]
+          assert len(data)==1
+          src=data[0]
+          start=src.index('DATA = next(')
+          call=src.index('DATA = str(ntl_fable_probe.prepare(DATA))')
+          fast=src.index('FAST_COMMIT =')
+          assert 0<=start<call<fast
+          compile(src,'<actual-0.718-original-DATA-cell>', 'exec')
+          assert md['is_private'] and md['enable_gpu']
+          assert len(nb['cells'])==61
+          assert md['id']=='kolihhan/ntl-fable-preservation-252-v2-20261125'
+          assert not any('Data = prepare(DATA)' in x for x in cells)
+          print('FABLE252_V2_ACTUAL_DONOR_NOTEBOOK_DATA_ORDER=PASS',flush=True)
+          print('FABLE252_V2_REAL_61CELL_CPU_PREFLIGHT=PASS',flush=True)
+          PY
+      - name: Remove source and private program files
+        if: always()
+        run: rm -rf /tmp/fable252-v2-source /tmp/fable252-v2-private
