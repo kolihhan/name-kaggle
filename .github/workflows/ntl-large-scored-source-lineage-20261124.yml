@@ -2,7 +2,7 @@ name: NTL read-only scored 0.715 vs 0.718 large-model source lineage
 on:
   push:
     branches: [research/ntl-strong-pipeline-causal-diagnosis-20261124]
-    paths: [.github/workflows/ntl-large-scored-source-lineage-20261124.yml]
+    paths:\n      - .github/workflows/ntl-large-scored-source-lineage-20261124.yml\n      - scripts/ntl_strong_pipeline_lineage_audit_20261124.py
 permissions: {contents: read}
 concurrency: {group: ntl-scored-lineage-readonly-once-20261124, cancel-in-progress: false}
 jobs:
