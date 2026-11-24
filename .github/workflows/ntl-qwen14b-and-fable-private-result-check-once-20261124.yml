@@ -1,0 +1,75 @@
+name: NTL two existing strong-model private experiments — read-only status once
+on:
+  push:
+    branches: [research/ntl-qwen14b-promptfree-gpt-triad-icl-20261124]
+    paths: [.github/workflows/ntl-qwen14b-and-fable-private-result-check-once-20261124.yml]
+permissions: {contents: read}
+jobs:
+  result_once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read existing private kernels and authenticated aggregate only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,re,tempfile
+          from pathlib import Path
+          refs={
+             "GPT14B":"kolihhan/ntl-qwen14b-gpt-triad-icl-private-20261124",
+             "FABLE252":"kolihhan/ntl-fable-preservation-252-20261124"
+          }
+          outputs={
+             "GPT14B":"ntl_qwen14b_gpt_icl_aggregate.json",
+             "FABLE252":"ntl_fable_preservation_252_aggregate.json"
+          }
+          def cli(*cmd,timeout=130):
+              return subprocess.run(["kaggle",*cmd],capture_output=True,text=True,timeout=timeout)
+          for tag,ref in refs.items():
+              stat=cli("kernels","status",ref)
+              matches=re.findall(r"KernelWorkerStatus[.][A-Z_]+",stat.stdout+" "+stat.stderr)
+              if stat.returncode or not matches:
+                  print("NTL_CHECK_"+tag+"_STATUS_NOT_VERIFIABLE=TRUE",flush=True)
+                  continue
+              worker=matches[-1]
+              print("NTL_CHECK_"+tag+"_WORKER="+worker,flush=True)
+              if worker=="KernelWorkerStatus.COMPLETE":
+                  with tempfile.TemporaryDirectory(prefix="ntl-strong-reader-") as d:
+                      q=cli("kernels","output",ref,"-p",d,"--file-pattern","^"+re.escape(outputs[tag])+"$","-o",timeout=220)
+                      z=list(Path(d).rglob(outputs[tag]))
+                      if q.returncode or len(z)!=1:
+                          print("NTL_CHECK_"+tag+"_REAL_RESULT_NOT_FOUND=TRUE",flush=True)
+                      else:
+                          data=json.loads(z[0].read_text())
+                          if tag=="GPT14B":
+                              allowed=("scope","labelled_total","same_row_comparisons",
+                                 "total_forward_calls","median_forward_seconds",
+                                 "p95_forward_seconds","largest_input_tokens",
+                                 "elapsed_seconds","no_new_model_training",
+                                 "official_competition_submission",
+                                 "naive_full_4000_rows_single_arm_hours")
+                          else:
+                              allowed=("status","v1_status","source_rows",
+                                 "fable_protection_eligible_rows",
+                                 "protected_final_predictions_changed",
+                                 "old_unprotected_balanced_accuracy",
+                                 "new_protected_balanced_accuracy",
+                                 "paired_old_unprotected_to_real_protected",
+                                 "paired_pre_apex_to_real_protected")
+                          print("NTL_CHECK_"+tag+"_VERIFIED_AGGREGATE="+json.dumps(
+                              {k:data.get(k) for k in allowed},sort_keys=True),flush=True)
+              elif worker in ("KernelWorkerStatus.ERROR","KernelWorkerStatus.CANCELLED","KernelWorkerStatus.FAILED"):
+                  q=cli("kernels","logs",ref,timeout=120)
+                  errors=re.findall(r"\b(?:FileNotFoundError|ValueError|AssertionError|RuntimeError|ModuleNotFoundError|KeyError|OSError|NameError|OutOfMemoryError|CUDA out of memory)\b",q.stdout+" "+q.stderr)
+                  print("NTL_CHECK_"+tag+"_ERROR_CLASSES="+json.dumps(errors[-6:]),flush=True)
+              else:
+                  print("NTL_CHECK_"+tag+"_NO_REAL_RESULT_YET=TRUE",flush=True)
+          print("NTL_CHECK_NO_TRAIN_NO_GPU_NO_NEW_SUBMISSION=TRUE",flush=True)
+          PY
