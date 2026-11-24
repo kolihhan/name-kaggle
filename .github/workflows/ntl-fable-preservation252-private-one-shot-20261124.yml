@@ -4,6 +4,7 @@ on:
     branches: [research/ntl-expert-preservation-same-row-evidence-20261124]
     paths:
       - .github/workflows/ntl-fable-preservation252-private-one-shot-20261124.yml
+      - scripts/build_ntl_fable_preservation252_private_20261124.py
 permissions: {contents: read}
 concurrency:
   group: ntl-fable-preservation-exact252-20261124
