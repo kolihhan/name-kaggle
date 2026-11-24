@@ -1,0 +1,112 @@
+name: NTL top leaderboard and public notebook solution archaeology — read only
+on:
+  push:
+    branches: [research/ntl-public-top-solution-recon-20261124]
+    paths:
+      - .github/workflows/ntl-public-top-solutions-readonly-20261124.yml
+permissions: {contents: read}
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify leaderboard and retrieve exact PUBLIC notebook implementations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import subprocess,json,hashlib,re,csv,io,tempfile
+          from pathlib import Path
+          def cli(cmd,timeout=160):
+              return subprocess.run(['kaggle',*cmd],capture_output=True,text=True,timeout=timeout)
+          # Exact rows reported by authenticated Kaggle at this snapshot, not title-derived scores.
+          lb=cli(['competitions','leaderboard','name-that-llm','--show','-v'],timeout=180)
+          if lb.returncode:
+              print('NTL_TOP_LIVE_BOARD_READABLE=FALSE',flush=True)
+              print('NTL_TOP_LIVE_BOARD_ERROR_CLASS='+('forbidden' if '403' in lb.stderr else 'other'),flush=True)
+          else:
+              raw=lb.stdout.lstrip('\\ufeff').splitlines()
+              header=next((i for i,l in enumerate(raw) if 'team' in l.lower() and ('score' in l.lower() or 'public' in l.lower())),None)
+              if header is not None:
+                  try:
+                      rows=list(csv.DictReader(io.StringIO('\\n'.join(raw[header:]))))
+                      picks=rows[:15]
+                      print('NTL_TOP_LIVE_BOARD_HEADER='+json.dumps(list(picks[0]) if picks else []),flush=True)
+                      print('NTL_TOP_LIVE_BOARD_FIRST15='+json.dumps(picks,sort_keys=True)[:10000],flush=True)
+                  except Exception:
+                      print('NTL_TOP_LIVE_BOARD_LINES='+json.dumps(raw[:18])[:9000],flush=True)
+              else:
+                  print('NTL_TOP_LIVE_BOARD_LINES='+json.dumps(raw[:20])[:9000],flush=True)
+          refs={
+              'public_0721_zayd':['zayd88903/0-721-name-that-llm'],
+              'public_0721_areeb':['areebbb/0-721-preserve-glm-to-fable-corrections','areebbb/0-720-preserve-glm-to-fable-corrections'],
+              'public_0719_alex':['alexchilton/name-that-llm-0-719-what-moved-the-board'],
+          }
+          terms={
+              'glm_likelihood':('glm-5.3','glm-5.3-flash','v1_stage.py','prefix-votes'),
+              'large_models':('qwen3.8-27b','qwen3.8-max','llama-3.1','deberta-v3-large','qwen3-8b'),
+              'train_fit':('Trainer(','fit(','LoRAConfig','LoraConfig','optim.AdamW','backward('),
+              'style_residual':('pngy_residual.py','Residual(','typographic','em_dash','sinkhorn'),
+              'fable_guard':('fable_return(','prefix_decisions.py','sibling_agreement('),
+              'data_external':('open_pool','train.csv','external','dataset_sources'),
+              'native_model_evidence':('lp_mean','perplexity','logp_member','native_q8','prefix'),
+              'runtime_safety':('FAST_COMMIT','KAGGLE_IS_COMPETITION_RERUN','deadline','max_text_tokens')
+          }
+          with tempfile.TemporaryDirectory(prefix='ntl-public-top-') as td:
+            results={}
+            for tag,candidates in refs.items():
+              entry={'score_only_as_claimed_in_title':True,'source_fetched':False}
+              for name in candidates:
+                dest=Path(td)/tag;dest.mkdir(exist_ok=True)
+                r=cli(['kernels','pull',name,'-p',str(dest),'-m'],timeout=160)
+                if r.returncode:continue
+                metas=list(dest.glob('kernel-metadata.json'))
+                if len(metas)!=1:continue
+                md=json.loads(metas[0].read_text())
+                files=list(dest.glob('*.ipynb'))
+                if not files:
+                  codefile=dest/Path(md.get('code_file','')).name
+                  if codefile.is_file():files=[codefile]
+                if len(files)!=1:continue
+                raw=files[0].read_bytes()
+                if files[0].suffix=='.ipynb':
+                  nb=json.loads(raw)
+                  cells=[''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source',''))
+                         for c in nb.get('cells',[]) if c.get('cell_type')=='code']
+                  joined='\\n'.join(cells)
+                else:cells=[raw.decode('utf-8')];joined=cells[0]
+                mods={}
+                for idx,t in enumerate(cells):
+                  m=re.search(r'(?m)^%%writefile[ ]+([^\\n ]+)',t)
+                  if m:
+                    basename=Path(m.group(1)).name
+                    mods[basename]={'sha':hashlib.sha256(t.encode()).hexdigest(),'cell_index':idx}
+                entry={
+                  'source_fetched':True,'public_ref':name,
+                  'metadata_id':md.get('id'),'private':md.get('is_private'),
+                  'notebook_source_sha256':hashlib.sha256(raw).hexdigest(),
+                  'code_cells':len(cells),'code_chars':len(joined),
+                  'script_modules_written':mods,
+                  'models':md.get('model_sources',[]),
+                  'datasets':md.get('dataset_sources',[]),
+                  'kernel_inputs':md.get('kernel_sources',[]),
+                  'module_count':len(mods),
+                  'signal_counts':{family:{t:joined.lower().count(t.lower()) for t in needles}
+                                   for family,needles in terms.items()},
+                  'submission_command_present':'submission.parquet' in joined,
+                  'training_run_not_invoked':True,
+                  'official_score_not_verified_from_title':True,
+                  'license_needs_check_before_reusing_code':True,
+                }
+                break
+              results[tag]=entry
+            print('NTL_TOP_PUBLIC_IMPLEMENTATIONS='+json.dumps(results,sort_keys=True)[:29000],flush=True)
+          print('NTL_TOP_READONLY_NO_TRAIN_NO_INFERENCE_NO_SUBMISSION=TRUE',flush=True)
+          PY
