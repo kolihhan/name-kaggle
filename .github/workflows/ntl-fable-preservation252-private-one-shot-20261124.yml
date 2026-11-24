@@ -77,9 +77,7 @@ jobs:
               if p.returncode:
                   print('NTL_FABLE_PUSH_REJECTED_EXIT='+str(p.returncode),flush=True)
                   print('NTL_FABLE_PUSH_FAIL_CLASS='+('quota' if 'quota' in p.stderr.lower() else 'metadata_or_kaggle'),flush=True)
-                  safe=re.sub(r'(KGAT_[A-Za-z0-9_-]+|Bearer\\s+[^\\s]+|(?i:Authorization):[^\
-]*|https?://[^\\s]+)', '[REDACTED]', (p.stdout+'\
-'+p.stderr))
+                  safe=re.sub(r'KGAT_[A-Za-z0-9_-]+|Bearer[ ]+[^ ]+|https?://[^ ]+', '[REDACTED]',p.stdout+' '+p.stderr)
                   print('NTL_FABLE_PUSH_SAFE_REASON='+repr(safe[-1300:]),flush=True)
                   raise RuntimeError('Private 252 source-frozen push failed')
               print('NTL_FABLE_ONE_REAL_PRIVATE_GPU_KERNEL_ACCEPTED=TRUE',flush=True)
