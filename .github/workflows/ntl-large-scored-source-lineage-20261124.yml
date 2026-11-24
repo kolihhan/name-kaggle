@@ -1,0 +1,55 @@
+name: NTL read-only scored 0.715 vs 0.718 large-model source lineage
+on:
+  push:
+    branches: [research/ntl-strong-pipeline-causal-diagnosis-20261124]
+    paths: [.github/workflows/ntl-large-scored-source-lineage-20261124.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-scored-lineage-readonly-once-20261124, cancel-in-progress: false}
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_strong_pipeline_lineage_audit_20261124.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify no official data present and self-test static scanner
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m py_compile scripts/ntl_strong_pipeline_lineage_audit_20261124.py
+          python -m scripts.ntl_strong_pipeline_lineage_audit_20261124 --smoke
+      - name: Fetch exactly TWO owned previously scored notebook sources READ ONLY
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/ntl-strong-lineage/old /tmp/ntl-strong-lineage/new
+          python - <<'PY'
+          import subprocess
+          refs=[('kolihhan/ntl-estopadilla-glm53-0716-repro-20261122','/tmp/ntl-strong-lineage/old'),
+                ('kolihhan/ntl-evgen-forensic-eda-repro-20261123','/tmp/ntl-strong-lineage/new')]
+          for ref,path in refs:
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',path,'-m'],
+                               capture_output=True,text=True,timeout=180)
+              if p.returncode:raise RuntimeError('PINNED_PRIVATE_NOTEBOOK_PULL_FAILED_'+ref.rsplit('/',1)[-1])
+          print('NTL_LARGE_LINEAGE_TWO_OWNED_SCORED_NOTEBOOKS_LOADED_PRIVATE=TRUE',flush=True)
+          PY
+      - name: Aggregate source lineage and stage deltas, NEVER train, submit or print source
+        run: |
+          set -euo pipefail
+          python -m scripts.ntl_strong_pipeline_lineage_audit_20261124 \
+            --old /tmp/ntl-strong-lineage/old --new /tmp/ntl-strong-lineage/new
+          echo NTL_LARGE_LINEAGE_NO_TRAINING_NO_GPU_NO_OFFICIAL_SUBMISSION=TRUE
+      - name: Scrub downloaded owned code
+        if: always()
+        run: rm -rf /tmp/ntl-strong-lineage
