@@ -164,6 +164,35 @@ def embedded_stage_diff(b):
         "evidence_is_static_code_only_not_a_paired_accuracy_test":True
     }
 
+
+def final_postprocess_diff(a,b):
+    """Check old/new Apex scorer code cell, not merely the helper file."""
+    import difflib
+    marker="V2 Post-Processing Complete"
+    aa=[c for c in a["cell_texts"] if marker in c]
+    bb=[c for c in b["cell_texts"] if marker in c]
+    if len(aa)!=1 or len(bb)!=1:
+        return {"status":"COMPARABLE_APEX_CELLS_NOT_FOUND",
+                "old_matches":len(aa),"new_matches":len(bb)}
+    old,new=aa[0].splitlines(),bb[0].splitlines()
+    diff=list(difflib.unified_diff(old,new,n=0))
+    added=[x[1:] for x in diff if x.startswith("+") and not x.startswith("+++")]
+    removed=[x[1:] for x in diff if x.startswith("-") and not x.startswith("---")]
+    keywords=("protect","prefix","fable","_report","glm_mask","current_preds",
+              "refined_preds","likelihood","prefix-votes")
+    changed=[{"side":side,"line":x.strip()[:170]} for side,lines in (("added",added),("removed",removed))
+             for x in lines if any(k in x.lower() for k in keywords) and len(x)<400]
+    return {
+       "status":"APEX_SCORED_CELL_COMPARED",
+       "original_apex_source_sha":sha(aa[0].encode()),
+       "new_apex_source_sha":sha(bb[0].encode()),
+       "lines_added":len(added),"lines_removed":len(removed),
+       "decision_logic_changed_lines_sample":changed[:25],
+       "original_apex_has_fable_protection": "from prefix_decisions import fable_return" in aa[0],
+       "new_apex_has_fable_protection": "from prefix_decisions import fable_return" in bb[0],
+       "other_non_apex_scoring_changes_not_ruled_out":True
+    }
+
 def summary(a,b):
     ma,mb=a["modules"],b["modules"]
     commons=sorted(set(ma)&set(mb))
@@ -192,6 +221,7 @@ def summary(a,b):
        "scope":"read_only_source_lineage_no_accuracy_attribution",
        "direct_execution_reachability":reachability(a,b),
        "embedded_stage_mechanism_diff":embedded_stage_diff(b),
+       "final_postprocessing_diff":final_postprocess_diff(a,b),
        "scored_notebooks":facts,
        "older_scored_code_sha_verified":True,
        "newer_notebook_sha_matches_original_public_code_file":
