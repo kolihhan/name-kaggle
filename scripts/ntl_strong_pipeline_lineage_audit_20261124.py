@@ -100,6 +100,8 @@ def reachability(a,b):
     return {
         "new_prefix_variant_file_write_references":variant,
         "variant_direct_reference_outside_write_cell":len(variant)>1,
+        "variant_setup_use_context":[{"code_cell":i,"snippet":source[max(0,source.index("prefix_variant_stage.py")-150):source.index("prefix_variant_stage.py")+210]}
+             for i,source in enumerate(cells) if "prefix_variant_stage.py" in source and not source.lstrip().startswith("%%writefile /kaggle/working/prefix_variant_stage.py")],
         "sibling_agreement_occurrences":sibling,
         "sibling_agreement_direct_invocation_outside_definition":len(sibling)>1,
         "fable_return_import_sites":fable_call,
