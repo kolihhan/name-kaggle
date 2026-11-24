@@ -1,5 +1,5 @@
 name: NTL Fable 252 exact private GPU — one-time read-only status and result
-# Read-only refresh requested 2026-11-24 21:30 MYT; no model re-run.
+# Read-only refresh requested 2026-11-24 23:00 MYT; no model re-run.
 on:
   push:
     branches: [research/ntl-expert-preservation-same-row-evidence-20261124]
