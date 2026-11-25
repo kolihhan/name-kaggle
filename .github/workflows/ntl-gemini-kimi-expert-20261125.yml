@@ -1,0 +1,81 @@
+name: NTL Gemini Kimi independent expert source discovery and mechanism comparison
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-gemini-kimi-expert-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compare actual ranked and specialist notebook sources, not titles
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,re,hashlib,tempfile
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          def pull(ref):
+              with tempfile.TemporaryDirectory() as td:
+                  p=subprocess.run(['kaggle','kernels','pull',ref,'-p',td,'-m'],capture_output=True,text=True,timeout=90)
+                  if p.returncode: return None
+                  base=Path(td)
+                  nb=list(base.glob('*.ipynb'))
+                  if len(nb)!=1:return None
+                  raw=nb[0].read_bytes(); obj=json.loads(raw)
+                  cells=[''.join(c.get('source',[])) for c in obj['cells'] if c.get('cell_type')=='code']
+                  meta=json.loads((base/'kernel-metadata.json').read_text())
+                  return cells,meta,hashlib.sha256(raw).hexdigest()
+          base=pull('lumibee/ntl-kiro-v66-pb115-hybrid-apex')
+          assert base is not None
+          def modules(cells):
+              return {re.match(r'%%writefile\s+([^\n]+)',c).group(1):hashlib.sha256(c.encode()).hexdigest()
+                  for c in cells if re.match(r'%%writefile\s+([^\n]+)',c)}
+          bm=modules(base[0]); assets=lambda m:set(m.get('dataset_sources',[])+m.get('model_sources',[])+m.get('kernel_sources',[]))
+          basset=assets(base[1])
+          print('NTL_BASE_EXPERT_ASSETS='+json.dumps(sorted(basset)),flush=True)
+          # Ranked output is real Kaggle metadata; no claim that title encodes score.
+          ranking=subprocess.run(['kaggle','kernels','list','--competition','name-that-llm','--sort-by','scoreDescending','--page-size','25','-v'],capture_output=True,text=True,timeout=90)
+          assert ranking.returncode==0
+          print('NTL_ACTUAL_RANKED_REGISTRY='+ranking.stdout[:18000],flush=True)
+          import csv,io
+          refs=[]
+          for row in csv.DictReader(io.StringIO(ranking.stdout)):
+              ref=row.get('ref')
+              if ref and '/' in ref and ref not in refs:refs.append(ref)
+          for search in ['gemini','kimi','fingerprint','likelihood']:
+              try:
+                  rows=api.kernels_list(competition='name-that-llm',search=search,page=1,page_size=20) or []
+                  for x in rows[:3]:
+                      ref=getattr(x,'ref',None)
+                      if ref and ref not in refs:refs.append(ref)
+              except Exception as e: print('NTL_SEARCH_ERROR='+search+':'+type(e).__name__)
+          # Five highest actual ranked notebooks plus six targeted sources.
+          chosen=list(dict.fromkeys(refs[:5]+refs[25:31])) if len(refs)>25 else refs[:11]
+          for ref in chosen:
+              if ref=='lumibee/ntl-kiro-v66-pb115-hybrid-apex':continue
+              try: item=pull(ref)
+              except Exception as e:
+                  print('NTL_SOURCE_FAILURE='+ref+':'+type(e).__name__);continue
+              if item is None:continue
+              cells,meta,sha=item; mm=modules(cells)
+              distinct={k:v for k,v in mm.items() if bm.get(k)!=v}
+              relevant=[]
+              for i,c in enumerate(cells):
+                  name=re.match(r'%%writefile\s+([^\n]+)',c)
+                  if name and name.group(1) not in distinct:continue
+                  for line in c.splitlines():
+                      if re.search(r'(?i)(gemini|kimi)',line) and re.search(r'(?i)(logit|likelihood|logp|expert|score|margin|residual|gate|head|model_path|weight|checkpoint|calib)',line):
+                          if len(relevant)<22:relevant.append({'cell':i,'line':line.strip()[:240]})
+              print('NTL_EXPERT_SOURCE='+json.dumps({'ref':ref,'sha':sha,'new_assets':sorted(assets(meta)-basset),'different_modules':list(distinct),'shared_modules':sum(bm.get(k)==v for k,v in mm.items()),'target_mechanism_lines':relevant},ensure_ascii=False),flush=True)
+          print('NTL_NO_FIT_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
