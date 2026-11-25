@@ -33,7 +33,7 @@ jobs:
               t=src.splitlines()[1:]
               selected=set()
               for i,line in enumerate(t):
-                  if name=='infer.py' and (i<550 or i>610):continue
+                  if name=='infer.py' and (i<605 or i>665):continue
                   if name=='gsq_stage.py' and not re.search(r'run|return|prob|sum|result|array|zeros|load|try|except|subprocess',line,re.I):continue
                   selected.update(range(max(0,i-2),min(len(t),i+3)))
               excerpts=[{'line':i+1,'src':t[i][:260]} for i in sorted(selected)]
