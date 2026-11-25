@@ -138,12 +138,19 @@ def build(folder):
     nb["cells"][i]["source"]=(header+"\n"+changed).splitlines(keepends=True)
     assert sum("".join(c.get("source",[]))!=s for c,s in zip(nb["cells"],originals))==1
 
+    # Recover the verified historical dependency inventory from our OWN
+    # successfully executed 252-row v36 clone, not Evgen's mutable latest v38.
     with tempfile.TemporaryDirectory(prefix="ntl-fusion-donor-") as d:
-        cli("kernels","pull","evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie",
+        cli("kernels","pull","kolihhan/ntl-confidence-fusion-real252-20261125",
             "-p",d,"-m")
         path=Path(d)/"kernel-metadata.json"
         meta=json.loads(path.read_text())
+    assert meta["id"]=="kolihhan/ntl-confidence-fusion-real252-20261125"
+    panel="nischaydnk/ntl-topic-synthetic-18llms"
+    assert meta["dataset_sources"].count(panel)==1
     assert meta["competition_sources"]==[COMP]
+    assert [len(meta[k]) for k in ("model_sources","dataset_sources","kernel_sources")]==[9,27,10]
+    meta["dataset_sources"]=[x for x in meta["dataset_sources"] if x!=panel]
     assert [len(meta[k]) for k in ("model_sources","dataset_sources","kernel_sources")]==[9,26,10]
     assert meta.get("enable_gpu") is True
     meta["id"]=KERNEL
