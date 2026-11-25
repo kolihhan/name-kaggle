@@ -1,0 +1,78 @@
+name: NTL 0.718 frozen Evgen historical Kaggle-version source recovery — read only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-0718-archived-public-version-source-readonly-20261125.yml]
+permissions: {contents: read}
+jobs:
+  recover_versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Check historical exact 0.718 public notebook revisions, no GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check httpx==0.28.1
+          python - <<'PY'
+          import os,httpx,json,hashlib,time
+          TARGET='74d86affa9f55464ab39f735f392b54e47e2d8a2b631a0bca45de9435c600c56'
+          SOURCE='kernels.KernelsService/GetKernelSessionSource'
+          VIEW='kernels.LegacyKernelsService/GetKernelViewModel'
+          VERS='kernels.KernelsService/ListKernelVersions'
+          url='https://www.kaggle.com/api/i/'
+          with httpx.Client(follow_redirects=True,timeout=55,
+              headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as sess:
+            response=sess.get('https://www.kaggle.com')
+            xsrf=sess.cookies.get('XSRF-TOKEN','')
+            if not xsrf:raise RuntimeError('KAGGLE_BROWSER_XSRF_UNAVAILABLE')
+            headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],
+                     'Content-Type':'application/json','X-XSRF-TOKEN':xsrf}
+            def post(name,body):
+                r=sess.post(url+name,json=body,headers=headers,timeout=55)
+                r.raise_for_status()
+                return r
+            vm=post(VIEW,{'authorUserName':'evgendvorkin',
+              'kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie',
+              'tab':'output'}).json()
+            kid=(vm.get('kernel') or {}).get('id')
+            if not kid:raise RuntimeError('PUBLIC_EVGEN_KERNEL_ID_MISSING')
+            d=post(VERS,{'kernelId':int(kid),'sortOption':'VERSION_ID',
+                  'pageSize':max(200,int(vm.get('totalVersionCount') or 0))}).json()
+            versions=[]
+            for entry in d.get('items',[]):
+                v=entry.get('version') or {}
+                run=entry.get('run') or {}
+                if v.get('versionNumber') and run.get('id'):
+                    versions.append({'n':int(v['versionNumber']),
+                                     'session':int(run['id'])})
+            versions.sort(key=lambda x:x['n'])
+            print('FABLE0718_KAGGLE_WEB_VERSIONS='+str(len(versions)),flush=True)
+            matches=[]
+            diagnostics=[]
+            for v in versions[-30:]:
+                res=post(SOURCE,{'kernelSessionId':v['session'],
+                      'includeOutputIfAvailable':False})
+                src=res.text
+                h=hashlib.sha256(src.encode()).hexdigest()
+                try:
+                    nb=json.loads(src)
+                    cells=nb.get('cells',[])
+                    ncode=sum(c.get('cell_type')=='code' for c in cells)
+                    shape=[len(cells),ncode]
+                except (ValueError,AttributeError,TypeError):
+                    shape=None
+                exact=(h==TARGET)
+                if exact:matches.append(v['n'])
+                diagnostics.append({'version':v['n'],'sha256':h,
+                       'notebook_cells_code':shape,'exact':exact})
+            print('FABLE0718_HISTORICAL_MATCH_VERSIONS='+json.dumps(matches),flush=True)
+            print('FABLE0718_HISTORICAL_SOURCE_DIAGNOSTICS='+json.dumps(diagnostics[-22:],sort_keys=True),flush=True)
+            print('FABLE0718_READONLY_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
