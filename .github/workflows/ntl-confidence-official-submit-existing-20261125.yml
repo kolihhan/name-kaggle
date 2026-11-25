@@ -1,14 +1,15 @@
 name: NTL owner direct official submission for existing confidence code notebook
 on:
-  push:
-    branches: [research/ntl-fable252-nameerror-recovery-20261125]
-    paths: [.github/workflows/ntl-confidence-official-submit-existing-20261125.yml]
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency:
   group: ntl-official-confidence-submit-existing-20261125
   cancel-in-progress: false
 jobs:
   submit:
+    # RETIRED after Kaggle zero-byte format failures 58885053 / 58891677.
+    # Do not run this submission workflow again.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 14
     env:
