@@ -115,6 +115,46 @@ jobs:
           print('FABLE252_V2_ACTUAL_DONOR_NOTEBOOK_DATA_ORDER=PASS',flush=True)
           print('FABLE252_V2_REAL_61CELL_CPU_PREFLIGHT=PASS',flush=True)
           PY
+      - name: One-shot launch of CPU-proven historical Fable252 v2 private GPU, never submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,re,json
+          from pathlib import Path
+          ref="kolihhan/ntl-fable-preservation-252-v2-20261125"
+          md=json.loads(Path('/tmp/fable252-v2-private/kernel-metadata.json').read_text())
+          if md.get("id")!=ref or not md.get("is_private") or not md.get("enable_gpu"):
+              raise RuntimeError("preflight private v2 metadata failed")
+          cmd=lambda args:subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=180)
+          quota=cmd(["quota","--format","json"])
+          if quota.returncode:raise RuntimeError("cannot inspect available Kaggle GPU quota")
+          q=json.loads(quota.stdout)
+          hours=[float(str(x["remaining"]).rstrip("h")) for x in q if x.get("resource")=="GPU"]
+          if len(hours)!=1:raise RuntimeError("unrecognized GPU quota format")
+          print("FABLE252_V2_GPU_QUOTA_REMAINING_H="+str(hours[0]),flush=True)
+          if hours[0]<9.5:raise RuntimeError("insufficient quota for original 8.8h scored pipeline")
+          listing=cmd(["kernels","list","--mine","--search","ntl-fable-preservation-252-v2-20261125","-v"])
+          if listing.returncode:raise RuntimeError("kernel idempotency lookup failed")
+          if ref not in listing.stdout:
+              p=subprocess.run(["kaggle","kernels","push","-p",
+                 "/tmp/fable252-v2-private","--accelerator","NvidiaTeslaT4",
+                 "--timeout","32400"],capture_output=True,text=True,timeout=420)
+              if p.returncode:
+                  why="quota" if "quota" in (p.stderr+p.stdout).lower() else (
+                      "metadata" if "400 Client Error" in (p.stderr+p.stdout) else "other")
+                  print("FABLE252_V2_PUSH_FAIL_CATEGORY="+why,flush=True)
+                  raise RuntimeError("private GPU v2 push rejected")
+              print("FABLE252_V2_ONE_PRIVATE_GPU_KERNEL_ACCEPTED=TRUE",flush=True)
+          else:
+              print("FABLE252_V2_ALREADY_EXISTS_NO_DUPLICATE=TRUE",flush=True)
+          status=cmd(["kernels","status",ref])
+          if status.returncode:raise RuntimeError("pushed private v2 inaccessible")
+          a=re.findall(r"KernelWorkerStatus[.][A-Z_]+",status.stdout+status.stderr)
+          print("FABLE252_V2_GPU_WORKER="+(a[-1] if a else "UNKNOWN"),flush=True)
+          print("FABLE252_V2_NO_MODEL_TRAINING=TRUE",flush=True)
+          print("FABLE252_V2_OFFICIAL_SUBMISSION=FALSE",flush=True)
+          PY
       - name: Remove source and private program files
         if: always()
         run: rm -rf /tmp/fable252-v2-source /tmp/fable252-v2-private
