@@ -1,0 +1,38 @@
+name: NTL official fusion submission preflight 20261125
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-official-preflight-20261125.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Verify real official slots, ledger, active submission, GPU quota
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv,io,json,subprocess
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          l=api.competition_get_submission_limits('name-that-llm')
+          c=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=80)
+          assert c.returncode==0,'official ledger unavailable'
+          rows=list(csv.DictReader(io.StringIO(c.stdout.lstrip('\ufeff'))))
+          latest=[{k:r.get(k) for k in ('ref','date','status','publicScore','description')} for r in rows[:10]]
+          active=[r.get('ref') for r in rows if (r.get('status') or '').upper().split('.')[-1] in ('PENDING','QUEUED','RUNNING','EVALUATING','SCORING')]
+          quota=subprocess.run(['kaggle','quota','--format','json'],capture_output=True,text=True,timeout=80)
+          h=None
+          if quota.returncode==0:
+              q=json.loads(quota.stdout)
+              gs=[float(str(x['remaining']).rstrip('h')) for x in q if x.get('resource')=='GPU']
+              if len(gs)==1:h=gs[0]
+          print('NTL_FUSION_OFFICIAL_PREFLIGHT='+json.dumps({'allowed_now':int(l.num_allowed_now),'limited_by_total':bool(l.limited_by_total),'active':active,'gpu_remaining_h':h,'latest':latest},sort_keys=True),flush=True)
+          PY
