@@ -1,0 +1,37 @@
+name: NTL owner direct official submission for existing confidence code notebook
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-official-submit-existing-20261125.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-official-confidence-submit-existing-20261125
+  cancel-in-progress: false
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_submit_existing_confidence_official_20261125.py
+            scripts/ntl_confidence_fusion_official_once_20261125.py
+            scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install and compile pinned official scorer validator
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'httpx==0.28.1' 'numpy==2.3.4'
+          python -m py_compile scripts/ntl_submit_existing_confidence_official_20261125.py
+          test ! -f data/train.csv
+      - name: Submit existing immutable version to official Kaggle scoring once
+        run: |
+          set -euo pipefail
+          python scripts/ntl_submit_existing_confidence_official_20261125.py
+          echo NTL_FUSION_OFFICIAL_SUBMIT_ONE_ATTEMPT_FINISHED=TRUE
