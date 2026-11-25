@@ -1,0 +1,42 @@
+name: NTL confidence failure source audit CPU only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-failure-source-audit.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Inspect source excerpts, no submission or GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ntl-c
+          kaggle kernels pull kolihhan/ntl-frozen-confidence-gsq-fusion-20261125 -p /tmp/ntl-c -m >/dev/null
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          d=Path('/tmp/ntl-c');m=json.loads((d/'kernel-metadata.json').read_text())
+          n=json.loads((d/m['code_file']).read_text())
+          for c in n['cells']:
+              src=''.join(c.get('source',[]))
+              if not src.startswith('%%writefile '):continue
+              name=src.splitlines()[0].split('/')[-1].strip()
+              if name not in ('infer.py','gsq_stage.py'):continue
+              t=src.splitlines()[1:]
+              selected=set()
+              for i,line in enumerate(t):
+                  if name=='infer.py' and (i<550 or i>610):continue
+                  if name=='gsq_stage.py' and not re.search(r'run|return|prob|sum|result|array|zeros|load|try|except|subprocess',line,re.I):continue
+                  selected.update(range(max(0,i-2),min(len(t),i+3)))
+              excerpts=[{'line':i+1,'src':t[i][:260]} for i in sorted(selected)]
+              print('NTL_DEBUG_SOURCE='+json.dumps({'file':name,'excerpts':excerpts[:150]}),flush=True)
+          print('NTL_AUDIT_READ_ONLY_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
