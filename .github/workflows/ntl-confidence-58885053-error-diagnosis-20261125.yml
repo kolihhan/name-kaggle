@@ -1,0 +1,47 @@
+name: NTL official confidence 58885053 error diagnosis Nov25
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-58885053-error-diagnosis-20261125.yml]
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0
+      - name: Official score and actual notebook failure without re-running
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,csv,io,json,re
+          def call(*args):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=110)
+          r=call('competitions','submissions','name-that-llm','-v')
+          assert r.returncode==0,'AUTHENTICATED_SUBMISSION_LEDGER_UNAVAILABLE'
+          entries=list(csv.DictReader(io.StringIO(r.stdout.lstrip('\ufeff'))))
+          a=[e for e in entries if e.get('ref')=='58885053']
+          assert len(a)==1,'SUBMISSION_NOT_EXACTLY_ONCE'
+          print('NTL_58885053_OFFICIAL='+json.dumps(
+              {k:a[0].get(k) for k in ('ref','date','description','status','publicScore','privateScore')},sort_keys=True),flush=True)
+          ref='kolihhan/ntl-frozen-confidence-gsq-fusion-20261125'
+          st=call('kernels','status',ref)
+          states=re.findall(r'KernelWorkerStatus\.[A-Z_]+',st.stdout+st.stderr)
+          print('NTL_58885053_WORKER='+json.dumps({'exit':st.returncode,'state':states[-1] if states else 'UNKNOWN'}),flush=True)
+          log=call('kernels','logs',ref)
+          lines=(log.stdout+'\n'+log.stderr).splitlines()
+          terms=re.compile(r'(?i)(Traceback|exception|error|cuda out of memory|memoryerror|cannot import|module not found|failed|timeout|NTL_CONFIDENCE|Error during|kernel execution)')
+          hits=[]
+          for i,l in enumerate(lines):
+              if terms.search(l):
+                  trimmed=' '.join(l.split())[:250]
+                  trimmed=re.sub(r'(?:KGAT_[A-Za-z0-9_-]+|Bearer\s+\S+|https?://\S+)', '[REDACTED]',trimmed)
+                  hits.append({'line':i+1,'snippet':trimmed})
+          print('NTL_58885053_LOG='+json.dumps({'exit':log.returncode,'line_count':len(lines),'error_hits':hits[-65:]}),flush=True)
+          print('NTL_58885053_READONLY=TRUE',flush=True)
+          PY
