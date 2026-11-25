@@ -34,7 +34,7 @@ jobs:
               hdr=lines[0] if lines else ''
               data=[]
               if p.returncode==0 and '-v' in cmd:
-                  data=list(csv.DictReader(io.StringIO(out.lstrip('\ufeff'))))[:70]
+                  data=[{str(k):v for k,v in row.items()} for row in list(csv.DictReader(io.StringIO(out.lstrip('\ufeff'))))[:70]]
               if p.returncode==0 and '-v' not in cmd:
                   data=lines[:50]
               print('NTL_PUBLIC_RESEARCH_SNAPSHOT='+json.dumps({
