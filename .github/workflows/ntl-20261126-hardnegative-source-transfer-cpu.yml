@@ -1,0 +1,134 @@
+name: NTL independent prompt paired model fingerprints transfer on real examples CPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-hardnegative-source-transfer-cpu.yml]
+permissions: {contents: read}
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Test predeclared 10 attribution traces across OFFICIAL and external unseen prompts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 scipy==1.16.3
+          python - <<'PY'
+          import pandas as pd,numpy as np,scipy.stats as st
+          from pathlib import Path
+          import subprocess,tempfile,zipfile,io,json,re,collections
+          def read_sources():
+              with tempfile.TemporaryDirectory() as td:
+                  p=subprocess.run(['kaggle','datasets','download','-d','prvsiyan/prvsiyans-extended-name-that-llm-dataset','-f','passages_clean.csv','-p',td,'--unzip'],capture_output=True,text=True,timeout=120)
+                  assert p.returncode==0
+                  src=pd.read_csv(Path(td)/'passages_clean.csv')
+              with tempfile.TemporaryDirectory() as td:
+                  p=subprocess.run(['kaggle','competitions','download','name-that-llm','-p',td],capture_output=True,text=True,timeout=120)
+                  assert p.returncode==0
+                  z=list(Path(td).glob('*.zip'))
+                  assert len(z)==1
+                  with zipfile.ZipFile(z[0]) as f:
+                      train=pd.read_csv(io.BytesIO(f.read('train.csv')))
+              return src,train
+          source,official=read_sources()
+          source=source[source.split.isin(['new','new2'])].copy()
+          assert len(source)==4302
+          # For source identity, use only model-served rows with a provider
+          # name that isn't Kaggle's opaque proxy. Restrict Google sibling
+          # to Vertex, Kimi to Moonshot, GPT to OpenAI.
+          masks={
+             'gemini-3.7-flash':source.served_provider.astype(str).str.contains('first-party'),
+             'gemini-3.8-flash':source.served_provider.astype(str).str.contains('first-party'),
+             'kimi-k3':source.served_provider.eq('Moonshot AI'),
+             'gpt-5.5':source.served_provider.str.contains('OpenAI \(first-party API\)',regex=True),
+             'gpt-5.6-luna':source.served_provider.str.contains('OpenAI \(first-party API\)',regex=True),
+             'gpt-5.6-sol':source.served_provider.str.contains('OpenAI \(first-party API\)',regex=True)
+          }
+          source=source[source.apply(lambda x: bool(masks.get(x.model,pd.Series(True,index=source.index)).loc[x.name]),axis=1)]
+          pairs=[
+            ('gemini-3.7-flash','gemini-3.8-flash'),
+            ('kimi-k3','gpt-5.5'),
+            ('kimi-k3','gpt-5.6-luna'),
+            ('gpt-5.6-luna','gpt-5.6-sol')
+          ]
+          feats=('emdash','curly_apostrophe','curly_quote','semicolon','comma','colon','digit','longword','avg_token_chars','word_count')
+          def extract(s):
+              t=str(s)
+              ws=t.split()
+              n=max(1,len(ws))
+              alpha=re.findall(r"[A-Za-z]+",t)
+              return {
+                'emdash':100*t.count('—')/n,
+                'curly_apostrophe':100*t.count('’')/n,
+                'curly_quote':100*(t.count('“')+t.count('”'))/n,
+                'semicolon':100*t.count(';')/n,
+                'comma':100*t.count(',')/n,
+                'colon':100*t.count(':')/n,
+                'digit':100*len(re.findall(r'\d',t))/n,
+                'longword':sum(len(z)>=9 for z in alpha)/max(1,len(alpha)),
+                'avg_token_chars':sum(len(z) for z in ws)/n,
+                'word_count':len(ws)
+              }
+          records=[]
+          for domain,df in [('official',official),('external_firstparty',source)]:
+              assert {'prompt_id','model','text'}<=set(df.columns)
+              assert not df.duplicated(['prompt_id','model']).any()
+              v=pd.DataFrame.from_records(df.text.map(extract))
+              v.index=df.index
+              frame=pd.concat([df[['prompt_id','model']],v],axis=1)
+              for a,b in pairs:
+                  x=frame[frame.model==a].set_index('prompt_id')
+                  y=frame[frame.model==b].set_index('prompt_id')
+                  shared=x.index.intersection(y.index)
+                  assert len(shared)>=100,(domain,a,b,len(shared))
+                  for f in feats:
+                      delta=x.loc[shared,f].to_numpy()-y.loc[shared,f].to_numpy()
+                      nz=delta[delta!=0]
+                      p=st.binomtest(int((nz>0).sum()),len(nz),.5).pvalue if len(nz) else 1.
+                      r={'domain':domain,'pair':a+' vs '+b,'feature':f,'matched_prompts':len(shared),
+                         'positive':int((delta>0).sum()),'negative':int((delta<0).sum()),'ties':int((delta==0).sum()),
+                         'median_diff':round(float(np.median(delta)),6),'mean_diff':round(float(delta.mean()),6),
+                         'p_sign':float(p)}
+                      records.append(r)
+          table=pd.DataFrame(records)
+          group=table.pivot(index=['pair','feature'],columns='domain',values=['p_sign','mean_diff','matched_prompts'])
+          results=[]
+          for (pair,feat),row in group.iterrows():
+              po=float(row[('p_sign','official')]);pe=float(row[('p_sign','external_firstparty')])
+              eo=float(row[('mean_diff','official')]);ee=float(row[('mean_diff','external_firstparty')])
+              results.append({'pair':pair,'feature':feat,
+                  'n_official':int(row[('matched_prompts','official')]),
+                  'n_external':int(row[('matched_prompts','external_firstparty')]),
+                  'official_mean_diff':round(eo,5),
+                  'external_mean_diff':round(ee,5),
+                  'same_sign':bool((eo>0)==(ee>0)),
+                  'official_sign_p':round(po,8),'external_sign_p':round(pe,8),
+                  'joint_max_p':max(po,pe)})
+          # Select nothing. BH correction across all predeclared 4*10
+          n=len(results)
+          order=sorted(range(n),key=lambda i:results[i]['joint_max_p'])
+          q=[0.]*n
+          cur=1.
+          for ix in range(n-1,-1,-1):
+              i=order[ix]
+              cur=min(cur,results[i]['joint_max_p']*n/(ix+1))
+              q[i]=cur
+          for i in range(n):results[i]['joint_bh_q']=round(float(q[i]),8)
+          stable=[r for r in results if r['same_sign'] and r['joint_bh_q']<.05]
+          print('NTL_TRANSFER_PANEL='+json.dumps({
+              'official_rows':len(official),'official_prompts':int(official.prompt_id.nunique()),
+              'external_source_rows':len(source),'external_prompts':int(source.prompt_id.nunique()),
+              'predeclared_tests':n,'stable_tests':len(stable),
+              'by_pair':{pair:{'stable':sum(r['pair']==pair for r in stable),'tested':10,
+                  'n_external':max(r['n_external'] for r in results if r['pair']==pair)}
+                for pair in sorted(set(r['pair'] for r in results))}
+          },sort_keys=True),flush=True)
+          for r in sorted(results,key=lambda z:z['joint_max_p']):
+              print('NTL_TRANSFER_RESULT='+json.dumps(r,sort_keys=True),flush=True)
+          print('NTL_TRANSFER_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
