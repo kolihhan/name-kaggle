@@ -1,0 +1,103 @@
+name: NTL PB115 conditional token evidence CPU diagnostic
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-pb115-token-evidence-20261125.yml]
+permissions: {contents: read}
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Measure actual 54 vs 61-feature conditional information; no fit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy pandas pyarrow
+          mkdir -p /tmp/pb115/data /tmp/pb115/train
+          kaggle datasets download -d lumibee/ntl-prefixb-full-115 -p /tmp/pb115/data --unzip -q
+          kaggle competitions download -c name-that-llm -f train.csv -p /tmp/pb115/train -q
+          python - <<'PY'
+          import hashlib,json,zipfile
+          from pathlib import Path
+          import numpy as np
+          import pandas as pd
+          root=Path('/tmp/pb115')
+          if not (root/'train/train.csv').exists():
+              z=list((root/'train').glob('*.zip'))
+              assert len(z)==1
+              with zipfile.ZipFile(z[0]) as f:
+                  (root/'train/train.csv').write_bytes(f.read('train.csv'))
+          train=pd.read_csv(root/'train/train.csv',dtype={'id':str})
+          assert len(train)==2699 and train.model.nunique()==18 and train.prompt_id.nunique()==150
+          assert train.id.is_unique and not train[['id','model','prompt_id']].isna().any().any()
+          d=root/'data'
+          paths={n:next(d.rglob(n)) for n in ['spec.json','flash_features.csv','glm53_features.csv','paired_token_features.parquet']}
+          spec=json.loads(paths['spec.json'].read_text())
+          assert spec['format']=='ntl-prefixb-115-v1'
+          cols=spec['features_61']
+          assert len(cols)==len(set(cols))==61
+          assert len(spec['features_54'])==54
+          def align(f):
+              if 'id' in f.columns:f=f.set_index('id')
+              f.index=f.index.astype(str)
+              assert f.index.is_unique and set(f.index)==set(train.id)
+              return f.loc[train.id]
+          flash=align(pd.read_csv(paths['flash_features.csv'],dtype={'id':str}))
+          full=align(pd.read_csv(paths['glm53_features.csv'],dtype={'id':str}))
+          tok=align(pd.read_parquet(paths['paired_token_features.parquet']))
+          assert np.isfinite(tok[cols].to_numpy(float)).all()
+          assert np.isfinite(full.lp_mean).all() and np.isfinite(flash.lp_mean).all()
+          if 'n_tok' in full and 'n_tok' in flash:
+              assert np.array_equal(full.n_tok,flash.n_tok)
+          # Fixed old scalar controls: sibling signed LLR, GLM-vs-other maximum likelihood.
+          # Neither is the full historical 54-D fitted head. No classifier or threshold fit.
+          llr=full.lp_mean.to_numpy()-flash.lp_mean.to_numpy()
+          affinity=np.maximum(full.lp_mean.to_numpy(),flash.lp_mean.to_numpy())
+          labels=train.model.to_numpy()
+          glm=['glm-5.3','glm-5.3-flash']
+          assert set(glm)<=set(labels)
+          groups=train.groupby('prompt_id',sort=True).indices
+          # All contrasts are within-prompt; report all 61 features, never choose a winning feature.
+          # Orientation-free ranks are diagnostic only and are optimistically biased.
+          s1=[];s2=[];c1=[];c2=[];cg=[]
+          for key,idx in groups.items():
+              a=idx[labels[idx]==glm[0]]; b=idx[labels[idx]==glm[1]]
+              if len(a)==len(b)==1:s1.append(a[0]);s2.append(b[0])
+              g=idx[np.isin(labels[idx],glm)];o=idx[~np.isin(labels[idx],glm)]
+              for x in g:
+                  for y in o:c1.append(x);c2.append(y);cg.append(str(key))
+          s1,s2,c1,c2=np.array(s1),np.array(s2),np.array(c1),np.array(c2)
+          assert len(s1)>=100 and len(c1)>3000
+          def sign(x):return np.sign(x)
+          def rank(v,a,b):return sign(v[a]-v[b])
+          def rate(x):return round(float(np.mean((x+1)/2)),6) if len(x) else None
+          sb=rank(llr,s1,s2);cb=rank(affinity,c1,c2)
+          # Group-bootstrap uncertainty not asserted; report prompt count, not pairs as independent n.
+          def desc(v,a,b,base):
+              z=rank(v,a,b)
+              # Both orientations disclosed explicitly, no direction selection used for predictions.
+              return {'positive_rank':rate(z),'negative_rank':rate(-z),
+                  'positive_on_old_wrong':rate(z[base<0]),
+                  'negative_on_old_wrong':rate(-z[base<0]),
+                  'positive_on_old_right':rate(z[base>0]),
+                  'negative_on_old_right':rate(-z[base>0]),
+                  'ties':int(np.sum(z==0))}
+          report={'scope':'spent official train; descriptive within-prompt contrasts; not OOF or 18-way accuracy',
+                  'rows':len(train),'groups':len(groups),'sibling_pairs':len(s1),
+                  'glm_other_pairs':len(c1),'glm_other_prompt_groups':len(set(cg)),
+                  'old_sibling_rank':rate(sb),'old_sibling_wrong':int(np.sum(sb<0)),
+                  'old_glm_other_rank':rate(cb),'old_glm_other_wrong':int(np.sum(cb<0)),
+                  'source_sha256':{k:hashlib.file_digest(p.open('rb'),'sha256').hexdigest() for k,p in paths.items()},
+                  'features':[]}
+          for name in cols:
+              v=tok[name].to_numpy(float)
+              report['features'].append({'feature':name,'sibling':desc(v,s1,s2,sb),'glm_other':desc(v,c1,c2,cb)})
+          print('NTL_PB115_TOKEN_EVIDENCE='+json.dumps(report,sort_keys=True),flush=True)
+          print('NTL_NO_FIT_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
