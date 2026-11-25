@@ -1,0 +1,34 @@
+name: NTL 58885053 exact submission bytes and format mechanism
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-58885053-exact-bytes-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Read authenticated submission object and compare successful control
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          import json,re
+          api=KaggleApi();api.authenticate()
+          for id in (58885053,58755304):
+              obj=api.get_submission(id)
+              d=obj.to_dict() if hasattr(obj,'to_dict') else vars(obj)
+              a={}
+              for k,v in d.items():
+                  if re.search(r'(?i)(user|email|token|key|secret|password|url|data|digest)',k):
+                      continue
+                  a[k]=str(v)[:350] if v is not None else None
+              print('NTL_SUBMISSION_FULL_METADATA_SAFE='+json.dumps({'id':id,'metadata':a},sort_keys=True),flush=True)
+          PY
