@@ -1,0 +1,67 @@
+name: NTL 58885053 detect hidden rerun vs preview branch
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-58885053-preview-rerun-rootcause-20261125.yml]
+permissions: {contents: read}
+jobs:
+  rootcause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read submission metadata, preview branch, actual Kaggle output logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'httpx==0.28.1'
+          python - <<'PY'
+          import subprocess,inspect,re,json,tempfile
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          print('NTL_SUBMISSION_GET_SIGNATURE='+str(inspect.signature(api.get_submission)),flush=True)
+          try:
+              x=api.get_submission(58885053)
+              val=x.to_dict() if hasattr(x,'to_dict') else vars(x)
+              clean={}
+              for k,v in val.items():
+                  if re.search(r'(?i)(error|status|kernel|script|score|id|version|submiss|log)',str(k)):
+                      st=str(v)
+                      clean[k]=st[:300] if len(st)<2000 else '<long>'
+              print('NTL_SUBMISSION_DETAILED_RECORD='+json.dumps(clean,sort_keys=True),flush=True)
+          except Exception as e:
+              print('NTL_SUBMISSION_DETAIL_EXCEPTION='+type(e).__name__,flush=True)
+          with tempfile.TemporaryDirectory() as td:
+              p=subprocess.run(['kaggle','kernels','pull','kolihhan/ntl-frozen-confidence-gsq-fusion-20261125','-p',td,'-m'],capture_output=True,text=True,timeout=130)
+              assert p.returncode==0
+              root=Path(td)
+              md=json.loads((root/'kernel-metadata.json').read_text())
+              nb=json.loads((root/md['code_file']).read_text())
+              lines=[]
+              for ci,c in enumerate(nb['cells']):
+                  if c.get('cell_type')!='code':continue
+                  s=''.join(c.get('source',[]))
+                  if s.startswith('%%writefile'):continue
+                  for n,l in enumerate(s.splitlines(),1):
+                      if re.search(r'KAGGLE_IS_COMPETITION_RERUN|FAST_COMMIT|preview|sample_submission|submission.parquet|KAGGLE|test.csv',l,re.I):
+                          l=l.strip()
+                          if len(l)<350 and not re.search(r'(?i)(token|secret|password|api_key|bearer)',l):
+                              lines.append({'cell':ci,'line':n,'value':l[:240]})
+              print('NTL_FUSION_TOPLEVEL_SCORER_BRANCH='+json.dumps(lines[:110]),flush=True)
+          with tempfile.TemporaryDirectory() as td:
+              p=subprocess.run(['kaggle','kernels','output','kolihhan/ntl-frozen-confidence-gsq-fusion-20261125','-p',td,'--file-pattern','.*\\.log'],capture_output=True,text=True,timeout=120)
+              lg=list(Path(td).glob('*.log'))
+              if lg:
+                  z=lg[0].read_text(errors='replace')
+                  text=[]
+                  for ln in z.splitlines():
+                      if re.search(r'(?i)(FAST_COMMIT|PREVIEW|RERUN|COMPETITION|submission|rows|test csv|guard|finished|time)',ln):
+                          if len(ln)<400 and not re.search(r'(?i)(token|secret|password|api_key|bearer)',ln):
+                              text.append(' '.join(ln.split())[:240])
+                  print('NTL_FUSION_PREVIEW_LOG_MARKERS='+json.dumps(text[-70:]),flush=True)
+          print('NTL_58885053_READONLY=TRUE',flush=True)
+          PY
