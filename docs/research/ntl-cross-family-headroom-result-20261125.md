@@ -1,0 +1,12 @@
+# Actual full18 error headroom, 2026-11-25
+
+[Executed CPU run #45565106275](https://github.com/kolihhan/name-kaggle/actions/runs/45565106275), job 139037878216. Verified frozen external panel source SHA and exact 252 prediction IDs, 18 labels x14, matched prior completed v2 aggregate (151/252). No new GPU, model training, or submission. Source is historically spent, publisher-declared identity (not provider-authenticated), and results describe 0.718 lineage with Fable protection, not hidden leaderboard rows.
+
+## Results
+- Exact BA 0.5992063; provider identity correct 201/252 (79.76%); 51 cross-provider errors, 50 sibling errors. Fixing either entire group is an unrealizable oracle, not an expected gain.
+- Google 23/56 exact, 21 sibling errors, 12 cross. Gemini 3.7 Flash 0/14, 8 -> 3.8 Flash; Gemini 3.6 Flash 4/14, 4 -> 3.1 Pro. OpenAI 49/70, 20 sibling, 1 cross. Kimi 1/14, 13 cross (10 to GPT labels). GLM 12/28, 12 cross, 4 sibling; 8 GLM truths predicted Claude Opus 5. Anthropic 55/70, 10 cross, 5 sibling. Qwen 11/14, 3 cross.
+- Short texts 60/126 exact, 39 sibling and 27 cross errors; median 49/72 exact, 8 sibling and 15 cross; long 42/54 exact, 3 sibling and 9 cross. Length groups are confounded with topic, not causal.
+- Only final hard predictions and aggregate are downloadable; pre-Apex snapshot not accessible. No row-aligned logits or independent likelihood measurements verified here. Cannot claim a candidate correction or replay real calibration without additional evidence.
+
+## Research decision
+Do not assume cross-family dominates globally; errors are almost equally split. Google sibling identification and Kimi->GPT dominate this particular cohort; Kimi source/thinking-protocol shift is a strong rival hypothesis (prior Kimi protocol work and publisher provenance caveats). GLM->Claude Opus 5 is a high-value cross-family hypothesis, but PB115 individual features have not shown superiority over scalar likelihood; broader Fable protection can worsen false GLM rejection and must not be assumed beneficial. Distinguish provider-specific evidence from publisher protocol before any candidate. Closed models cannot be treated as directly accessible likelihood experts. Preserve 0.718; no score-facing change from this descriptive run. Prior distributed GLM features experiment (Nov 22) was negative against matched permutation control, so do not repeat it. Next candidate should use actual complementary strong-model evidence, not a new weak classifier or hard routing from these 14-per-label outcomes.
