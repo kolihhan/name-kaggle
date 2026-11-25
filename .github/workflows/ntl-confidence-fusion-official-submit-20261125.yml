@@ -2,7 +2,9 @@ name: NTL owner-authorized one-shot official confidence fusion submission
 on:
   push:
     branches: [research/ntl-fable252-nameerror-recovery-20261125]
-    paths: [.github/workflows/ntl-confidence-fusion-official-submit-20261125.yml]
+    paths:
+      - .github/workflows/ntl-confidence-fusion-official-submit-20261125.yml
+      - scripts/ntl_confidence_fusion_official_once_20261125.py
 permissions: {contents: read}
 concurrency:
   group: ntl-official-confidence-20261125-once
