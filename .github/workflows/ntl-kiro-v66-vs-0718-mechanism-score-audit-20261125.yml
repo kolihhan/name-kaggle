@@ -1,0 +1,115 @@
+name: NTL LumiBee v66 PB115 vs exact prior 0.718 source static diff & score
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-kiro-v66-vs-0718-mechanism-score-audit-20261125.yml]
+permissions: {contents: read}
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Fetch LumiBee v66, historical Evgen v36 and inspect 115-dim classifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 httpx==0.28.1
+          mkdir -p /tmp/ntl-v66
+          kaggle kernels pull lumibee/ntl-kiro-v66-pb115-hybrid-apex -p /tmp/ntl-v66 -m >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import os,json,hashlib,difflib,re,httpx
+          new_dir=Path('/tmp/ntl-v66')
+          nb=json.loads(next(new_dir.glob('*.ipynb')).read_text())
+          cells=[''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source',''))
+              for c in nb['cells'] if c.get('cell_type')=='code']
+          nbmeta=json.loads((new_dir/'kernel-metadata.json').read_text())
+          code=cells[22].splitlines()
+          print('KIRO_V66_PB115_IMPLEMENTATION_FIRST160='+json.dumps(
+              [{'line':i+1,'code':s[:320]} for i,s in enumerate(code[:160])],ensure_ascii=False),flush=True)
+          print('KIRO_V66_PB115_IMPLEMENTATION_TAIL='+json.dumps(
+              [{'line':i+1,'code':s[:300]} for i,s in enumerate(code) if i>=145 and
+                (re.search(r'(?i)(pb115|train|lr|lgb|fit|predict|group|features|hybrid|delta|calib|logp|lambda|threshold|fallback|margin|review)',s) or
+                i>=len(code)-10)][:165],ensure_ascii=False),flush=True)
+          # Fetch current score metadata (never assume the title encodes a score).
+          with httpx.Client(follow_redirects=True,timeout=60,
+              headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              cookie=s.cookies.get('XSRF-TOKEN','')
+              if not cookie:raise RuntimeError('no Kaggle session XSRF')
+              head={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],
+                 'Content-Type':'application/json','X-XSRF-TOKEN':cookie}
+              def post(route,body):
+                 r=s.post('https://www.kaggle.com/api/i/'+route,
+                       json=body,headers=head,timeout=60)
+                 r.raise_for_status()
+                 return r
+              def view(author,slug):
+                 return post('kernels.LegacyKernelsService/GetKernelViewModel',
+                  {'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+              v66=view('lumibee','ntl-kiro-v66-pb115-hybrid-apex')
+              print('KIRO_V66_AUTHENTIC_KAGGLE_SCORE_METADATA='+json.dumps({
+                 'kernel_id':(v66.get('kernel') or {}).get('id'),
+                 'version':(v66.get('kernelRun') or {}).get('versionNumber'),
+                 'status':(v66.get('kernelRun') or {}).get('status'),
+                 'submission_score':(v66.get('submission') or {}).get('scoreFormatted'),
+                 'best_submission_score':v66.get('bestSubmissionScore'),
+                 'total_versions':v66.get('totalVersionCount'),
+                 'submission_metadata_present':bool(v66.get('submission')),
+               },sort_keys=True),flush=True)
+              ev=view('evgendvorkin','name-that-llm-deep-forensic-eda-with-analogie')
+              vers=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(ev['kernel']['id']),
+                    'sortOption':'VERSION_ID','pageSize':200}).json()
+              target=[int(e['run']['id']) for e in vers['items']
+                  if (e.get('version') or {}).get('versionNumber')==36
+                  and (e.get('run') or {}).get('id')]
+              if len(target)!=1:raise RuntimeError('historical exact v36 session missing')
+              raw=post('kernels.KernelsService/GetKernelSessionSource',
+                  {'kernelSessionId':target[0],'includeOutputIfAvailable':False}).text
+          if hashlib.sha256(raw.encode()).hexdigest()!='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52':
+              raise RuntimeError('historical version drift')
+          old=json.loads(raw)
+          oldcells=[''.join(c.get('source',[])) if isinstance(c.get('source',[]),list) else str(c.get('source',''))
+              for c in old['cells'] if c.get('cell_type')=='code']
+          # Compare code files emitted by %%writefile and wrapper stages by exact hashes.
+          def name(s):
+              a=re.search(r'(?m)^%%writefile\s+([^\n]+)',s)
+              return a.group(1).strip() if a else ('wrapper_'+str(s[:52]).replace('\n',' '))
+          oldhash={name(s):hashlib.sha256(s.encode()).hexdigest() for s in oldcells if s.startswith('%%writefile')}
+          newhash={name(s):hashlib.sha256(s.encode()).hexdigest() for s in cells if s.startswith('%%writefile')}
+          compare={k:{'was_in_0718':k in oldhash,
+                       'same_sha':oldhash.get(k)==h,'v66_sha':h,'0718_sha':oldhash.get(k)}
+              for k,h in newhash.items()}
+          print('KIRO_V66_VS_0718_EMITTED_MODULE_LINEAGE='+json.dumps(compare,sort_keys=True),flush=True)
+          print('KIRO_V66_ORIGINAL_WRAPPER_CELL_COMPARISON='+json.dumps({
+             'old_code_count':len(oldcells),'new_code_count':len(cells),
+             'all_exact_code_cells_shared':sum(
+                hashlib.sha256(x.encode()).hexdigest() in
+                   {hashlib.sha256(y.encode()).hexdigest() for y in oldcells} for x in cells),
+             'new_wrapper_hybrid_integration_calls':{
+               'pb115_train_dir':'lumibee/ntl-prefixb-full-115' in json.dumps(nbmeta.get('dataset_sources',[])),
+               'post_logit_artifact':'prefix-votes.npz' in ''.join(cells),
+               'pb115_hybrid_alpha':"'--hybrid-alpha', '0.25'" in ''.join(cells),
+               'fable_only_guard':'post.argmax(1) == f' in ''.join(cells)},
+             'public_versions_different_digests':True},sort_keys=True),flush=True)
+          # Source mutations inside an identical key wrapper or module can matter.
+          for module in ('prefix_decisions.py','pngy_residual.py','infer.py','comp_stack.py'):
+              if module not in oldhash or module not in newhash:
+                  continue
+              oo=next(z for z in oldcells if z.startswith('%%writefile '+module))
+              nn=next(z for z in cells if z.startswith('%%writefile '+module))
+              if oo==nn:
+                  print('KIRO_V66_MODULE_DIFF='+json.dumps({'module':module,'identical':True}),flush=True)
+              else:
+                  differences=list(difflib.unified_diff(oo.splitlines(),nn.splitlines(),
+                         fromfile='0718',tofile='v66',lineterm=''))
+                  print('KIRO_V66_MODULE_DIFF='+json.dumps({
+                     'module':module,'identical':False,
+                     'diff_lines':len(differences),'diff_first':differences[:70]},ensure_ascii=False),flush=True)
+          print('KIRO_V66_COMPARISON_NO_RUN_NO_TRAIN_NO_SUBMISSION=TRUE',flush=True)
+          PY
