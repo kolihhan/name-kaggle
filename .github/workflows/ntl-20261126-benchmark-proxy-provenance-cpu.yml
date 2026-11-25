@@ -1,0 +1,88 @@
+name: NTL benchmark-proxy independent Gemini identity CPU admission Nov26
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-benchmark-proxy-provenance-cpu.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read 834 published rows and independently audit class/protocol/prompt counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3' 'numpy==2.3.4' 'pyarrow==22.0.0'
+          python - <<'PY'
+          import os,csv,io,json,subprocess,tempfile,hashlib,re,zipfile
+          from pathlib import Path
+          import pandas as pd
+          ref='zakirkhanaleemi/name-that-llm-benchmarks-proxy-generations'
+          def cli(*args,timeout=120):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          with tempfile.TemporaryDirectory(prefix='ntl-proxy-provenance-') as td:
+              root=Path(td)
+              p=cli('datasets','download','-d',ref,'-p',td,'--unzip',timeout=150)
+              print('NTL_PROXY_DOWNLOAD='+json.dumps({'exit':p.returncode,'dataset':ref,'files':[x.name for x in root.iterdir() if x.is_file()]},sort_keys=True),flush=True)
+              if p.returncode: raise SystemExit(0)
+              parts=[]
+              for path in root.rglob('*'):
+                  if path.is_file() and path.suffix.lower()=='.csv':
+                      try: parts.append((path.name,pd.read_csv(path,low_memory=False)))
+                      except Exception:pass
+              print('NTL_PROXY_DATASET_PARTS='+json.dumps([{'file':k,'rows':len(f),'columns':f.columns.tolist()} for k,f in parts],sort_keys=True),flush=True)
+              if not parts:raise SystemExit(0)
+              c=[(k,v) for k,v in parts if 'model' in v.columns and ('text' in v.columns or 'response' in v.columns)]
+              if not c:raise SystemExit(0)
+              file,df=max(c,key=lambda p:len(p[1]))
+              label=df['model'].astype(str).str.strip()
+              txt_col='text' if 'text' in df else 'response'
+              txt=df[txt_col].fillna('').astype(str)
+              prompt_candidates=[k for k in df if ('prompt' in k.lower()) and not ('source' in k.lower())]
+              answer={'rows':len(df),'file':file,'label_counts':label.value_counts().to_dict(),
+                     'columns':df.columns.tolist(),'empty_text':int((txt.str.strip()=='').sum()),
+                     'duplicate_texts':int(txt.str.strip().duplicated().sum()),
+                     'word_count_quantiles':[int(txt.str.split().str.len().quantile(q)) for q in (0,.25,.5,.75,1)],
+                     'prompt_candidates':prompt_candidates}
+              for k in ['provider','served_model','model_slug','proxy_model','prompt_id','run','source','reasoning','temperature','target_words','finish_reason']:
+                  if k in df:
+                      z=df[k].fillna('<missing>').astype(str)
+                      answer[k]={'unique':int(z.nunique()),'missing':int((z=='<missing>').sum()),'top':z.value_counts().head(14).to_dict()}
+              print('NTL_PROXY_PROVENANCE_AUDIT='+json.dumps(answer,sort_keys=True),flush=True)
+              if prompt_candidates:
+                  pcol=next((x for x in prompt_candidates if x in ('prompt_id','prompt')),prompt_candidates[0])
+                  z=df.assign(_label=label,_prompt=df[pcol].astype(str))
+                  full=z.groupby('_prompt')._label.nunique()
+                  counts={}
+                  for pair in [('gemini-3.7-flash','gemini-3.8-flash'),
+                               ('gemini-3.6-flash','gemini-3.7-flash'),
+                               ('gpt-5.6-luna','gpt-5.6-sol')]:
+                      a=set(z.loc[z._label==pair[0],'_prompt'])
+                      b=set(z.loc[z._label==pair[1],'_prompt'])
+                      counts[' vs '.join(pair)]={'a':len(a),'b':len(b),'matched_prompt_count':len(a&b)}
+                  print('NTL_PROXY_MATCHED_PROMPTS='+json.dumps({'prompt_col':pcol,'distinct_prompts':int(full.size),'groups_2plus_labels':int((full>=2).sum()),'pair_counts':counts},sort_keys=True),flush=True)
+              if 'model_slug' in df:
+                  for lab,x in df.assign(_label=label).groupby('_label'):
+                      print('NTL_PROXY_LABEL_SLUG='+json.dumps({'model':lab,'slugs':x.model_slug.astype(str).value_counts().head(12).to_dict()}),flush=True)
+              with tempfile.TemporaryDirectory(prefix='ntl-official-train-') as od:
+                  p=cli('competitions','download','name-that-llm','-p',od,timeout=150)
+                  if p.returncode:
+                      print('NTL_PROXY_OFFICIAL_OVERLAP_UNAVAILABLE=TRUE',flush=True)
+                  else:
+                      fs=list(Path(od).glob('*.zip'))
+                      if fs:
+                          with zipfile.ZipFile(fs[0]) as zf:
+                              names=zf.namelist()
+                              if 'train.csv' in names:
+                                  official=pd.read_csv(io.BytesIO(zf.read('train.csv')),usecols=['text'])
+                                  normalize=lambda s:hashlib.sha256(' '.join(str(s).casefold().split()).encode()).hexdigest()
+                                  hashes=set(official.text.map(normalize))
+                                  overlap=int(txt.map(normalize).isin(hashes).sum())
+                                  print('NTL_PROXY_TRAIN_EXACT_OVERLAP='+json.dumps({'proxy_rows':len(df),'official_train_rows':len(official),'exact_normalized_duplicate_rows':overlap}),flush=True)
+          print('NTL_PROXY_READONLY_NO_GPU_NO_SUBMISSION_NO_TRAINING=TRUE',flush=True)
+          PY
