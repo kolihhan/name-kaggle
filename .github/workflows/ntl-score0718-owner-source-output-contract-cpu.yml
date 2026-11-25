@@ -1,0 +1,78 @@
+name: NTL exact scored 0718 source identity and output contract read-only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-score0718-owner-source-output-contract-cpu.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Find score-proven owner kernel and inspect output writer without executing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,io,csv,re,tempfile,hashlib
+          from pathlib import Path
+          def cli(*args):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=110)
+          found=[]
+          for pattern in ('evgen','forensic','0-718','0718'):
+              r=cli('kernels','list','--mine','--search',pattern,'-v')
+              if r.returncode:
+                  print('NTL_CONTROL_DISCOVERY_FAILED='+pattern,flush=True)
+                  continue
+              rows=list(csv.DictReader(io.StringIO(r.stdout.lstrip('\ufeff'))))
+              refs=[x.get('ref','') for x in rows if x.get('ref','').startswith('kolihhan/') and re.search(r'evgen|forensic|718|0718',x.get('ref',''),re.I)]
+              found.extend(refs)
+              print('NTL_CONTROL_DISCOVERY='+json.dumps({'pattern':pattern,'matches':refs[:25]}),flush=True)
+          found=list(dict.fromkeys(found))
+          found=[x for x in found if 'confidence' not in x][:16]
+          for key,slug in enumerate(found):
+              with tempfile.TemporaryDirectory() as td:
+                  p=cli('kernels','pull',slug,'-p',td,'-m')
+                  if p.returncode:
+                      print('NTL_CONTROL_PULL='+json.dumps({'slug':slug,'ok':False}),flush=True)
+                      continue
+                  root=Path(td)
+                  md=json.loads((root/'kernel-metadata.json').read_text())
+                  nb=json.loads((root/md['code_file']).read_text())
+                  code=[''.join(x.get('source',[])) for x in nb['cells']]
+                  modules=[c for c in code if c.startswith('%%writefile infer.py\n')]
+                  all_md={
+                      k:md.get(k) for k in ('machine_shape','enable_gpu','enable_internet','competition_sources','is_private')
+                  }
+                  print('NTL_CONTROL_IDENTIFIED='+json.dumps({
+                      'slug':slug,'source_sha':hashlib.sha256((root/md['code_file']).read_bytes()).hexdigest(),
+                      'cells':len(code),'infer_files':len(modules),
+                      'counts':{x:len(md.get(x) or []) for x in ('model_sources','dataset_sources','kernel_sources')},
+                      'runtime':all_md},sort_keys=True),flush=True)
+          # Verify path ownership, writer shape/columns, and whether main call
+          # is protected by the hidden rerun flag in FAILED immutable source.
+          with tempfile.TemporaryDirectory() as td:
+              p=cli('kernels','pull','kolihhan/ntl-frozen-confidence-gsq-fusion-20261125','-p',td,'-m')
+              assert p.returncode==0
+              md=json.loads((Path(td)/'kernel-metadata.json').read_text())
+              nb=json.loads((Path(td)/md['code_file']).read_text())
+              code=[''.join(x.get('source',[])) for x in nb['cells']]
+              infer=[s.split('\n',1)[1] for s in code if s.startswith('%%writefile infer.py\n')]
+              assert len(infer)==1
+              lines=infer[0].splitlines()
+              result=[{'line':i+1,'source':lines[i].strip()[:240]} for i in range(464,min(508,len(lines)))]
+              main=[]
+              for ci,s in enumerate(code):
+                  if s.startswith('%%writefile '):continue
+                  for j,l in enumerate(s.splitlines()):
+                      if re.search(r'(^|\s)(FAST_COMMIT\s*=|--out|submission.parquet|to_parquet\(|KAGGLE_IS_COMPETITION_RERUN|infer.py|if not FAST_COMMIT)',l):
+                          main.append({'cell':ci,'line':j+1,'code':l.strip()[:220]})
+              print('NTL_FAILED_OUTPUT_WRITER='+json.dumps(result),flush=True)
+              print('NTL_FAILED_MAIN_AND_FAST_COMMIT='+json.dumps(main[:90]),flush=True)
+          print('NTL_NO_GITHUB_ACTION_KAGGLE_WRITE_NO_SUBMISSION_NO_GPU=TRUE',flush=True)
+          PY
