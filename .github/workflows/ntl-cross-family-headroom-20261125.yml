@@ -1,0 +1,44 @@
+name: NTL actual 0.718 lineage cross-family error headroom
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-cross-family-headroom-20261125.yml]
+permissions: {contents: read}
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_fable252_full18_error_profile_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Actual same-row full18 diagnosis, no fit or inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy pandas pyarrow
+          python scripts/ntl_fable252_full18_error_profile_20261125.py --selftest
+          mkdir -p /tmp/ntl-crossfamily/{panel,pred}
+          kaggle datasets download -d nischaydnk/ntl-topic-synthetic-18llms -p /tmp/ntl-crossfamily/panel --unzip -q
+          kaggle kernels output kolihhan/ntl-fable-preservation-252-v2-20261125 -p /tmp/ntl-crossfamily/pred --file-pattern '^(submission[.]parquet|ntl_fable_preservation_252_aggregate[.]json|pre_apex_submission[.]parquet)$' -o >/dev/null
+          PANEL=$(find /tmp/ntl-crossfamily/panel -name generations.csv -type f)
+          PRED=$(find /tmp/ntl-crossfamily/pred -name submission.parquet -type f)
+          AGG=$(find /tmp/ntl-crossfamily/pred -name ntl_fable_preservation_252_aggregate.json -type f)
+          python scripts/ntl_fable252_full18_error_profile_20261125.py --panel "$PANEL" --submission "$PRED" --aggregate "$AGG"
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/ntl-crossfamily/pred')
+          print('NTL_CACHE_AVAILABILITY='+json.dumps({k:any(p.rglob(k)) for k in ['pre_apex_submission.parquet','submission.parquet','ntl_fable_preservation_252_aggregate.json']}))
+          PY
+      - name: Remove temporary inputs
+        if: always()
+        run: rm -rf /tmp/ntl-crossfamily
