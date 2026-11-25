@@ -38,14 +38,14 @@ jobs:
           assert 'DATA = str(ntl_fable_probe.prepare(DATA))' in s
           print('FABLE252_V2_FIRST_USE_DATA_RUNTIME_TEST=PASS',flush=True)
           PY
-      - name: Rebuild actual pinned original 0.718 source CPU only and verify code order
+      - name: Rebuild SHA-exact 0.718 source from public Evgen original CPU only and verify code order
         shell: bash
         run: |
           set -euo pipefail
           test -n "${KAGGLE_API_TOKEN:-}"
           python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
           mkdir -p /tmp/fable252-v2-source
-          kaggle kernels pull kolihhan/ntl-evgen-forensic-eda-repro-20261123 -p /tmp/fable252-v2-source -m >/dev/null
+          kaggle kernels pull evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie -p /tmp/fable252-v2-source -m >/dev/null
           python scripts/build_ntl_fable_preservation252_private_20261124.py \
             --source /tmp/fable252-v2-source --out /tmp/fable252-v2-private
           python - <<'PY'
@@ -66,6 +66,9 @@ jobs:
           assert md['is_private'] and md['enable_gpu']
           assert len(nb['cells'])==61
           assert md['id']=='kolihhan/ntl-fable-preservation-252-v2-20261125'
+          assert 'nischaydnk/ntl-topic-synthetic-18llms' in md['dataset_sources']
+          assert len(md['model_sources'])==9 and len(md['kernel_sources'])==10
+          print('FABLE252_V2_SHA_EXACT_PUBLIC_DONOR_VERIFIED=PASS',flush=True)
           assert not any('Data = prepare(DATA)' in x for x in cells)
           print('FABLE252_V2_ACTUAL_DONOR_NOTEBOOK_DATA_ORDER=PASS',flush=True)
           print('FABLE252_V2_REAL_61CELL_CPU_PREFLIGHT=PASS',flush=True)
