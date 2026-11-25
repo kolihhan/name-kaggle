@@ -1,0 +1,48 @@
+name: NTL confidence real252 read-only worker status
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-real252-status-20261125.yml]
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Actual private Kaggle worker status and aggregate-only result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,re,tempfile
+          from pathlib import Path
+          ref='kolihhan/ntl-confidence-fusion-real252-20261125'
+          def run(*args):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=100)
+          p=run('kernels','status',ref)
+          assert p.returncode==0
+          states=re.findall(r'KernelWorkerStatus\.[A-Z_]+',p.stdout+p.stderr)
+          assert states
+          state=states[-1]
+          print('NTL_CONFIDENCE_CURRENT_WORKER='+state,flush=True)
+          if state.endswith('COMPLETE'):
+              with tempfile.TemporaryDirectory() as td:
+                  p=run('kernels','output',ref,'-p',td,'--file-pattern','.*ntl_confidence_real252_aggregate.json')
+                  files=list(Path(td).rglob('ntl_confidence_real252_aggregate.json'))
+                  if p.returncode or len(files)!=1:
+                      print('NTL_CONFIDENCE_AGGREGATE_UNAVAILABLE=TRUE',flush=True)
+                  else:
+                      a=json.loads(files[0].read_text())
+                      assert a['rows']==252 and a['official_submission'] is False
+                      print('NTL_CONFIDENCE_VERIFIED_AGGREGATE='+json.dumps(a),flush=True)
+          elif state.endswith('ERROR'):
+              p=run('kernels','logs',ref)
+              lines=(p.stdout+'\n'+p.stderr).splitlines()
+              errors=[x[:300] for x in lines if re.search(r'(?:AssertionError|NameError|RuntimeError|ValueError|FileNotFoundError|TimeoutError|Traceback|CUDA out of memory|NTL_CONFIDENCE_REAL_GSQ)',x)]
+              print('NTL_CONFIDENCE_ERROR_MARKERS='+json.dumps(errors[-12:]),flush=True)
+          PY
