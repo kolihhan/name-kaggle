@@ -1,0 +1,157 @@
+name: NTL confidence fusion official single score test 20261125
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-fusion-official-once-20261125.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-confidence-fusion-official-once-20261125
+  cancel-in-progress: false
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Frozen one-shot user-authorized score test, no tuning
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1 numpy pandas pyarrow
+          python scripts/ntl_confidence_expert_fusion_20261125.py
+          python - <<'PY'
+          import ast,csv,io,json,hashlib,os,re,subprocess,tempfile,time,httpx
+          from pathlib import Path
+          import pandas as pd
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          COMP='name-that-llm'
+          DEST='kolihhan/ntl-confidence-fusion-official-20261125'
+          MARK='ntl-confidence-fusion-0718-one-shot-20261125'
+          DONOR='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+          def cli(*args,timeout=150):
+              p=subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+              if p.returncode:raise RuntimeError('KAGGLE_CLI_FAILED '+str(args[:2])+' exit='+str(p.returncode))
+              return p.stdout+'\n'+p.stderr
+          def ledger():
+              p=subprocess.run(['kaggle','competitions','submissions',COMP,'-v'],capture_output=True,text=True,timeout=90)
+              assert p.returncode==0
+              return list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          def safe():
+              rows=ledger()
+              old=[r for r in rows if MARK in (r.get('description') or '')]
+              if old:
+                  print('NTL_CONFIDENCE_EXISTING_RECEIPT='+json.dumps([{k:r.get(k) for k in ('ref','status','publicScore','date')} for r in old]),flush=True)
+                  return False
+              assert any(r.get('publicScore')=='0.718' and 'COMPLETE' in (r.get('status') or '') for r in rows),'0.718 receipt missing'
+              active=[r.get('ref') for r in rows if (r.get('status') or '').upper().split('.')[-1] in ('PENDING','QUEUED','RUNNING','EVALUATING','SCORING')]
+              api=KaggleApi();api.authenticate()
+              q=api.competition_get_submission_limits(COMP)
+              print('NTL_CONFIDENCE_OFFICIAL_GATE='+json.dumps({'remaining':int(q.num_allowed_now),'limited_by_total':bool(q.limited_by_total),'active':active,'reserve_one':True}),flush=True)
+              if active or int(q.num_allowed_now)<2 or bool(q.limited_by_total):
+                  print('NTL_CONFIDENCE_NO_SAFE_SLOT=TRUE',flush=True);return False
+              return True
+          # User explicitly requests a one-shot test after seeing negative paired evidence.
+          # Expectation: near 0.718 (rough directional expectation -0.002, not calibrated).
+          # Kill if <=0.718, error or unchanged; no score-driven follow-up tuning.
+          if not safe():raise SystemExit(0)
+          status=cli('kernels','status','kolihhan/ntl-confidence-fusion-real252-20261125')
+          assert 'KernelWorkerStatus.COMPLETE' in status
+          with tempfile.TemporaryDirectory() as td:
+              root=Path(td)
+              cli('kernels','pull',DONOR,'-p',td,'-m')
+              md=json.loads((root/'kernel-metadata.json').read_text())
+              assert md['id']==DONOR and md['competition_sources']==[COMP]
+              assert all(len(md.get(k,[]))==n for k,n in [('model_sources',9),('kernel_sources',10),('dataset_sources',26)])
+              assert md.get('enable_internet') is False
+              assert 'nischaydnk/ntl-topic-synthetic-18llms' not in md.get('dataset_sources',[])
+              with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+                  s.get('https://www.kaggle.com')
+                  h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+                  def post(route,body):
+                      r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'evgendvorkin','kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+                  es=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  ids=[e['run']['id'] for e in es if (e.get('version') or {}).get('versionNumber')==36]
+                  assert len(ids)==1
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(ids[0]),'includeOutputIfAvailable':False}).text
+              assert hashlib.sha256(raw.encode()).hexdigest()=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+              nb=json.loads(raw)
+              cells=[''.join(c.get('source',[])) for c in nb['cells']]
+              assert len(cells)==58
+              idx=[i for i,c in enumerate(cells) if c.startswith('%%writefile infer.py\n')]
+              assert len(idx)==1
+              i=idx[0];header,body=cells[i].split('\n',1)
+              anchor='            P = (1 - a.gsq_share) * P + a.gsq_share * Q27'
+              point='if a.gsq_share > 0 and a.gsq_dir:'
+              assert body.count(anchor)==body.count(point)==1
+              src=Path('scripts/ntl_confidence_expert_fusion_20261125.py').read_text()
+              helper='\n\n'.join(ast.get_source_segment(src,n) for n in ast.parse(src).body if isinstance(n,ast.FunctionDef) and n.name in ('validate','fuse'))
+              helper=helper.replace('def validate(', 'def _ntl_validate(').replace('p,q=validate(p,q)', 'p,q=_ntl_validate(p,q)').replace('def fuse(', 'def _ntl_fuse(')
+              # Exact real252 intervention, minus private diagnostic score dump.
+              insert='\n'.join(' '*12+x for x in [
+                  'if abs(a.gsq_share - 0.03) > 1e-12: raise ValueError("unexpected GSQ share")',
+                  '_fixed, _adaptive, _gate = _ntl_fuse(P, Q27)',
+                  '_original = (1 - a.gsq_share) * P + a.gsq_share * Q27',
+                  'assert np.allclose(_original, _fixed, atol=1e-7, rtol=1e-6)',
+                  '_new = _original.copy()',
+                  '_new[_gate] = _adaptive[_gate].astype(_original.dtype, copy=False)',
+                  'log(f"NTL_CONFIDENCE_REAL_GSQ gate={int(_gate.sum())} changed={int((_original.argmax(1)!=_new.argmax(1)).sum())}")',
+                  'P = _new'])
+              modified=body.replace(point,helper+'\n\n'+point,1).replace(anchor,insert,1)
+              compile(modified,'infer.py','exec')
+              nb['cells'][i]['source']=(header+'\n'+modified).splitlines(keepends=True)
+              assert sum(''.join(c.get('source',[]))!=s for c,s in zip(nb['cells'],cells))==1
+              assert not any('ntl_fable_probe' in ''.join(c.get('source',[])) for c in nb['cells'])
+              for c in nb['cells']:
+                  if c.get('cell_type')=='code':
+                      c['outputs']=[];c['execution_count']=None
+              md.pop('id_no',None)
+              md.update(id=DEST,title=DEST.split('/')[1],is_private=True,enable_internet=False,enable_gpu=True,machine_shape='NvidiaTeslaT4')
+              out=root/Path(md['code_file']).name
+              out.write_text(json.dumps(nb,ensure_ascii=False))
+              (root/'kernel-metadata.json').write_text(json.dumps(md))
+              print('NTL_CONFIDENCE_OFFICIAL_SOURCE='+json.dumps({'sha':hashlib.sha256(out.read_bytes()).hexdigest(),'changed_cells':1,'original_58_cells':True,'external_panel_removed':True,'source_attribution':DONOR,'runtime_cap_seconds':32400}),flush=True)
+              registry=cli('kernels','list','--mine','--search',DEST.split('/')[1],'-v')
+              if DEST in registry:raise RuntimeError('destination already exists; no duplicate push')
+              if not safe():raise SystemExit(0)
+              r=cli('kernels','push','-p',td,'--accelerator','NvidiaTeslaT4','--timeout','32400',timeout=420)
+              assert re.search(r'Kernel version\s+1\s+successfully pushed',r,re.I),'version 1 push not confirmed'
+              print('NTL_CONFIDENCE_OFFICIAL_PREVIEW_ACCEPTED='+DEST,flush=True)
+          for n in range(150):
+              r=cli('kernels','status',DEST,timeout=80)
+              state=re.findall(r'KernelWorkerStatus\.([A-Z_]+)',r)[-1]
+              if n==0 or n%10==0 or state in ('COMPLETE','ERROR','FAILED','CANCELLED'):
+                  print('NTL_CONFIDENCE_OFFICIAL_PREVIEW='+state,flush=True)
+              if state=='COMPLETE':break
+              if state in ('ERROR','FAILED','CANCELLED'):raise RuntimeError('preview terminal '+state)
+              time.sleep(30)
+          else:raise RuntimeError('preview timeout; no official submit')
+          with tempfile.TemporaryDirectory() as td:
+              cli('kernels','output',DEST,'-p',td,'--file-pattern','.*submission.parquet')
+              files=list(Path(td).rglob('submission.parquet'))
+              assert len(files)==1
+              d=pd.read_parquet(files[0])
+              assert d.columns.tolist()==['id','model'] and len(d)==3 and d.id.is_unique and d.model.notna().all()
+              assert all(re.match(r'^(claude-|gemini-|gpt-|glm-|kimi-|qwen)',str(x)) for x in d.model)
+              print('NTL_CONFIDENCE_OFFICIAL_PREVIEW_FORMAT_PASS=TRUE',flush=True)
+          if not safe():raise SystemExit(0)
+          r=cli('competitions','submit',COMP,'-k',DEST,'-v','1','-f','submission.parquet','-m',MARK,timeout=240)
+          m=re.findall(r'Submission ref:\s*(\d+)',r,re.I)
+          if len(m)!=1:raise RuntimeError('submit receipt uncertain: no automatic retry')
+          print('NTL_CONFIDENCE_OFFICIAL_REF='+m[0],flush=True)
+          for n in range(5):
+              records=[x for x in ledger() if x.get('ref')==m[0] and MARK in (x.get('description') or '')]
+              if records:
+                  print('NTL_CONFIDENCE_OFFICIAL_RECEIPT='+json.dumps({k:records[0].get(k) for k in ('ref','status','publicScore','date','description')}),flush=True);break
+              time.sleep(10)
+          else:print('NTL_CONFIDENCE_RECEIPT_UNCONFIRMED_NO_RETRY=TRUE',flush=True)
+          PY
