@@ -1,0 +1,44 @@
+name: NTL research live board and public-method snapshot CPU only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-public-research-snapshot-cpu.yml]
+permissions: {contents: read}
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Public leaderboard and public code list without submissions or GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import subprocess,csv,io,json
+          def run(*args):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=90)
+          for cmd in [
+              ['competitions','leaderboard','name-that-llm','--show','-v'],
+              ['competitions','leaderboard','name-that-llm','--show'],
+              ['kernels','list','--competition','name-that-llm','--sort-by','mostRecent','-v'],
+              ['kernels','list','--competition','name-that-llm','--sort-by','voteCount','-v']
+          ]:
+              p=run(*cmd)
+              out=p.stdout.strip()
+              lines=out.splitlines()
+              hdr=lines[0] if lines else ''
+              data=[]
+              if p.returncode==0 and '-v' in cmd:
+                  data=list(csv.DictReader(io.StringIO(out.lstrip('\ufeff'))))[:70]
+              if p.returncode==0 and '-v' not in cmd:
+                  data=lines[:50]
+              print('NTL_PUBLIC_RESEARCH_SNAPSHOT='+json.dumps({
+                  'cmd':' '.join(cmd),'exit':p.returncode,'header':hdr[:230],
+                  'rows':data,'error_type':'unsupported_or_unavailable' if p.returncode else None},sort_keys=True),flush=True)
+          print('NTL_NO_GPU_NO_SUBMISSION_NO_NOTEBOOK_PUSH=TRUE',flush=True)
+          PY
