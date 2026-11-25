@@ -1,0 +1,248 @@
+name: NTL confidence fusion real 252 same-row GPU one shot
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths:
+      - .github/workflows/ntl-confidence-fusion-real252-one-shot-20261125.yml
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/build_ntl_fable_preservation252_private_20261124.py
+            scripts/ntl_fable_preservation252_runtime_20261124.py
+            scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Execute the exact first-DATA assignment regression without Kaggle GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m py_compile scripts/build_ntl_fable_preservation252_private_20261124.py scripts/ntl_fable_preservation252_runtime_20261124.py
+          python scripts/build_ntl_fable_preservation252_private_20261124.py --smoke
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('scripts/build_ntl_fable_preservation252_private_20261124.py').read_text()
+          assert 'patch_data_assignment(originalcode)' in s
+          assert 'DEST="kolihhan/ntl-fable-preservation-252-v2-20261125"' in s
+          assert 'DATA_PATTERN.subn(replace,source)' in s
+          assert 'DATA = str(ntl_fable_probe.prepare(DATA))' in s
+          print('FABLE252_V2_FIRST_USE_DATA_RUNTIME_TEST=PASS',flush=True)
+          PY
+      - name: Rebuild SHA-exact 0.718 source from public Evgen original CPU only and verify code order
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy>=1.26,<3'
+          mkdir -p /tmp/fable252-v2-source
+          python -m pip install -q --disable-pip-version-check httpx==0.28.1
+          kaggle kernels pull evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie -p /tmp/fable252-v2-source -m >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import os,hashlib,json,httpx
+          root=Path('/tmp/fable252-v2-source')
+          md=json.loads((root/'kernel-metadata.json').read_text())
+          assert md['id']=='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+          base='https://www.kaggle.com/api/i/'
+          with httpx.Client(follow_redirects=True,timeout=60,
+                  headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              xsrf=s.cookies.get('XSRF-TOKEN')
+              if not xsrf:raise RuntimeError('historical source XSRF unavailable')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],
+                   'Content-Type':'application/json','X-XSRF-TOKEN':xsrf}
+              def post(method,body):
+                  r=s.post(base+method,json=body,headers=hdr,timeout=60)
+                  r.raise_for_status()
+                  return r
+              vm=post('kernels.LegacyKernelsService/GetKernelViewModel',
+                  {'authorUserName':'evgendvorkin',
+                   'kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+              versions=post('kernels.KernelsService/ListKernelVersions',
+                  {'kernelId':int(vm['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()
+              matches=[int(row['run']['id']) for row in versions['items']
+                       if (row.get('version') or {}).get('versionNumber')==36 and
+                          (row.get('run') or {}).get('id')]
+              if len(matches)!=1:raise RuntimeError('author version 36 no longer uniquely resolvable')
+              source=post('kernels.KernelsService/GetKernelSessionSource',
+                  {'kernelSessionId':matches[0],'includeOutputIfAvailable':False}).text
+          digest=hashlib.sha256(source.encode()).hexdigest()
+          assert digest=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+          nb=json.loads(source)
+          assert len(nb['cells'])==58 and sum(x.get('cell_type')=='code' for x in nb['cells'])==35
+          (root/md['code_file']).write_text(source)
+          print('FABLE252_V2_HISTORICAL_V36_SOURCE_SHA_AND_STRUCTURE=PASS',flush=True)
+          print('FABLE252_V2_SOURCE_INPUT_MOUNTS='+json.dumps({
+              'models':len(md.get('model_sources',[])),
+              'datasets':len(md.get('dataset_sources',[])),
+              'kernels':len(md.get('kernel_sources',[])),
+              'competition':md.get('competition_sources')},sort_keys=True),flush=True)
+          PY
+          python scripts/build_ntl_fable_preservation252_private_20261124.py \
+            --source /tmp/fable252-v2-source --out /tmp/fable252-v2-private
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          d=Path('/tmp/fable252-v2-private')
+          md=json.loads((d/'kernel-metadata.json').read_text())
+          nb=json.loads((d/md['code_file']).read_text())
+          cells=[''.join(x.get('source',[])) for x in nb['cells'] if x.get('cell_type')=='code']
+          data=[x for x in cells if 'ntl_fable_probe.prepare(DATA)' in x]
+          assert len(data)==1
+          src=data[0]
+          start=src.index('DATA = next(')
+          call=src.index('DATA = str(ntl_fable_probe.prepare(DATA))')
+          fast=src.index('FAST_COMMIT =')
+          assert 0<=start<call<fast
+          compile(src,'<actual-0.718-original-DATA-cell>', 'exec')
+          assert md['is_private'] and md['enable_gpu']
+          assert len(nb['cells'])==61
+          assert md['id']=='kolihhan/ntl-fable-preservation-252-v2-20261125'
+          assert 'nischaydnk/ntl-topic-synthetic-18llms' in md['dataset_sources']
+          assert len(md['model_sources'])==9 and len(md['kernel_sources'])==10
+          print('FABLE252_V2_SHA_EXACT_PUBLIC_DONOR_VERIFIED=PASS',flush=True)
+          assert not any('Data = prepare(DATA)' in x for x in cells)
+          print('FABLE252_V2_ACTUAL_DONOR_NOTEBOOK_DATA_ORDER=PASS',flush=True)
+          print('FABLE252_V2_REAL_61CELL_CPU_PREFLIGHT=PASS',flush=True)
+          PY
+      - name: Inject exact CPU-tested fusion into frozen 61-cell panel and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ntl_confidence_expert_fusion_20261125.py
+          python - <<'PY'
+          import ast,hashlib,json,textwrap
+          from pathlib import Path
+          import numpy as np
+          from types import SimpleNamespace
+          d=Path('/tmp/fable252-v2-private')
+          md=json.loads((d/'kernel-metadata.json').read_text())
+          nbp=d/md['code_file']
+          nb=json.loads(nbp.read_text())
+          cells=[''.join(c.get('source',[])) for c in nb['cells']]
+          indices=[i for i,c in enumerate(cells) if c.startswith('%%writefile infer.py\n')]
+          assert len(indices)==1
+          i=indices[0]
+          header,body=cells[i].split('\n',1)
+          anchor='            P = (1 - a.gsq_share) * P + a.gsq_share * Q27'
+          point='if a.gsq_share > 0 and a.gsq_dir:'
+          assert body.count(anchor)==body.count(point)==1
+          src=Path('scripts/ntl_confidence_expert_fusion_20261125.py').read_text()
+          helper='\n\n'.join(ast.get_source_segment(src,n) for n in ast.parse(src).body if isinstance(n,ast.FunctionDef) and n.name in ('validate','fuse'))
+          helper=helper.replace('def validate(', 'def _ntl_validate(').replace('p,q=validate(p,q)', 'p,q=_ntl_validate(p,q)').replace('def fuse(', 'def _ntl_fuse(')
+          insert='\n'.join(' '*12+x for x in [
+              'if abs(a.gsq_share - 0.03) > 1e-12: raise ValueError("unexpected GSQ share")',
+              '_fixed, _adaptive, _gate = _ntl_fuse(P, Q27)',
+              '_original = (1 - a.gsq_share) * P + a.gsq_share * Q27',
+              'assert np.allclose(_original, _fixed, atol=1e-7, rtol=1e-6)',
+              '_new = _original.copy()',
+              '_new[_gate] = _adaptive[_gate].astype(_original.dtype, copy=False)',
+              'np.savez_compressed("/kaggle/temp/ntl_confidence_stage.npz", ids=np.asarray(test["id"].astype(str).tolist(),dtype=str), labels=np.asarray(LABELS,dtype=str), original=_original, candidate=_new, gate=_gate, p=P, q=Q27)',
+              'log(f"NTL_CONFIDENCE_REAL_GSQ gate={int(_gate.sum())} changed={int((_original.argmax(1)!=_new.argmax(1)).sum())}")',
+              'P = _new'])
+          modified=body.replace(point,helper+'\n\n'+point,1).replace(anchor,insert,1)
+          compile(modified,'infer.py','exec')
+          nb['cells'][i]['source']=(header+'\n'+modified).splitlines(keepends=True)
+          assert sum(''.join(c.get('source',[]))!=s for c,s in zip(nb['cells'],cells))==1
+          # Exercise the exact insertion, keeping the original dtype and IDs.
+          import tempfile
+          from unittest.mock import patch
+          p=np.full((2,18),.01,dtype=np.float32);p[:,0]=.44;p[:,1]=.40
+          q=p.copy();q[0,0]=.20;q[0,1]=.64
+          ns={'np':np};exec(helper,ns)
+          class ID:
+              def astype(self,x):return self
+              def tolist(self):return ['x','y']
+          ns.update(P=p.copy(),Q27=q,a=SimpleNamespace(gsq_share=.03),test={'id':ID()},LABELS=[str(i) for i in range(18)],log=print)
+          with patch.object(np,'savez_compressed') as save:
+              exec(textwrap.dedent(insert),ns)
+              assert ns['P'].dtype==p.dtype and ns['P'].argmax(1).tolist()==[1,0] and save.call_count==1
+          # Read truth only AFTER original final scoring, aggregate only.
+          evaluation="""import json
+          import numpy as np
+          import pandas as pd
+          from pathlib import Path
+          if not FAST_COMMIT:
+              zpath=Path('/kaggle/temp/ntl_confidence_stage.npz')
+              assert zpath.exists(), 'GSQ did not execute: no treatment evidence'
+              with np.load(zpath,allow_pickle=False) as z:
+                  ids=z['ids'].astype(str)
+                  labs=z['labels'].astype(str)
+                  a,b=z['original'].argmax(1),z['candidate'].argmax(1)
+                  gate=z['gate']
+                  assert z['original'].shape==z['candidate'].shape==(252,18)
+                  assert len(set(ids))==252 and len(set(labs))==18
+              truth=pd.read_csv(ntl_fable_probe.WORK/'truth.csv',dtype={'id':str,'model':str}).set_index('id')
+              assert set(ids)==set(truth.index)
+              y=truth.loc[ids,'model'].to_numpy(str)
+              assert set(y)==set(labs) and all(truth.model.value_counts()==14)
+              final=pd.read_parquet(OUT).assign(id=lambda x:x.id.astype(str)).set_index('id')
+              assert set(final.index)==set(ids) and len(final)==252
+              end=final.loc[ids,'model'].to_numpy(str)
+              assert set(end).issubset(set(labs))
+              report={'status':'ACTUAL_GSQ_SAME_ROW_STAGE_COMPARISON','rows':252,'gate_rows':int(gate.sum()),'changed_at_gsq':int((a!=b).sum()),'original_stage_correct':int((labs[a]==y).sum()),'candidate_stage_correct':int((labs[b]==y).sum()),'stage_rescues':int(((labs[a]!=y)&(labs[b]==y)).sum()),'stage_regressions':int(((labs[a]==y)&(labs[b]!=y)).sum()),'candidate_final_correct':int((end==y).sum()),'candidate_final_ba':float((end==y).mean()),'historical_control_final_correct':151,'historical_control_same_panel_not_same_execution':True,'publisher_panel_spent':True,'official_submission':False}
+              Path('/kaggle/working/ntl_confidence_real252_aggregate.json').write_text(json.dumps(report,indent=2))
+              print('NTL_CONFIDENCE_REAL252='+json.dumps(report),flush=True)
+          """
+          compile(evaluation,'confidence_final','exec')
+          nb['cells'].append({'cell_type':'code','source':evaluation.splitlines(keepends=True),'metadata':{},'execution_count':None,'outputs':[]})
+          nbp.write_text(json.dumps(nb,ensure_ascii=False))
+          md['id']='kolihhan/ntl-confidence-fusion-real252-20261125'
+          md['title']='ntl-confidence-fusion-real252-20261125'
+          assert md['is_private'] and md['enable_gpu'] and len(nb['cells'])==62
+          (d/'kernel-metadata.json').write_text(json.dumps(md))
+          print('NTL_CONFIDENCE_REAL252_PREFLIGHT='+json.dumps({'source_cells':62,'mutated_scoring_cells':1,'candidate_sha':hashlib.sha256(nbp.read_bytes()).hexdigest(),'same_panel':True,'no_training':True,'official_submission':False}),flush=True)
+          PY
+      - name: One-shot launch private real confidence fusion GPU, never submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,re,json
+          from pathlib import Path
+          ref="kolihhan/ntl-confidence-fusion-real252-20261125"
+          md=json.loads(Path('/tmp/fable252-v2-private/kernel-metadata.json').read_text())
+          if md.get("id")!=ref or not md.get("is_private") or not md.get("enable_gpu"):
+              raise RuntimeError("preflight private v2 metadata failed")
+          cmd=lambda args:subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=180)
+          quota=cmd(["quota","--format","json"])
+          if quota.returncode:raise RuntimeError("cannot inspect available Kaggle GPU quota")
+          q=json.loads(quota.stdout)
+          hours=[float(str(x["remaining"]).rstrip("h")) for x in q if x.get("resource")=="GPU"]
+          if len(hours)!=1:raise RuntimeError("unrecognized GPU quota format")
+          print("NTL_CONFIDENCE_GPU_QUOTA_REMAINING_H="+str(hours[0]),flush=True)
+          if hours[0]<9.5:raise RuntimeError("insufficient quota for original 8.8h scored pipeline")
+          listing=cmd(["kernels","list","--mine","--search","ntl-confidence-fusion-real252-20261125","-v"])
+          if listing.returncode:raise RuntimeError("kernel idempotency lookup failed")
+          if ref not in listing.stdout:
+              p=subprocess.run(["kaggle","kernels","push","-p",
+                 "/tmp/fable252-v2-private","--accelerator","NvidiaTeslaT4",
+                 "--timeout","32400"],capture_output=True,text=True,timeout=420)
+              if p.returncode:
+                  why="quota" if "quota" in (p.stderr+p.stdout).lower() else (
+                      "metadata" if "400 Client Error" in (p.stderr+p.stdout) else "other")
+                  print("NTL_CONFIDENCE_PUSH_FAIL_CATEGORY="+why,flush=True)
+                  raise RuntimeError("private GPU v2 push rejected")
+              print("NTL_CONFIDENCE_ONE_PRIVATE_GPU_KERNEL_ACCEPTED=TRUE",flush=True)
+          else:
+              print("NTL_CONFIDENCE_ALREADY_EXISTS_NO_DUPLICATE=TRUE",flush=True)
+          status=cmd(["kernels","status",ref])
+          if status.returncode:raise RuntimeError("pushed private v2 inaccessible")
+          a=re.findall(r"KernelWorkerStatus[.][A-Z_]+",status.stdout+status.stderr)
+          print("NTL_CONFIDENCE_GPU_WORKER="+(a[-1] if a else "UNKNOWN"),flush=True)
+          print("NTL_CONFIDENCE_NO_MODEL_TRAINING=TRUE",flush=True)
+          print("NTL_CONFIDENCE_OFFICIAL_SUBMISSION=FALSE",flush=True)
+          PY
+      - name: Remove source and private program files
+        if: always()
+        run: rm -rf /tmp/fable252-v2-source /tmp/fable252-v2-private
