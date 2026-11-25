@@ -1,14 +1,13 @@
-name: NTL confidence one format-error retry AFTER notebook COMPLETE
+name: NTL confidence retry RETIRED after two failed official submissions
 on:
-  push:
-    branches: [research/ntl-fable252-nameerror-recovery-20261125]
-    paths: [.github/workflows/ntl-58885053-after-complete-one-retry-20261125.yml]
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency:
   group: ntl-confidence-format-one-retry-after-complete-20261125
   cancel-in-progress: false
 jobs:
   retry:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
