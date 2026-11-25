@@ -1,0 +1,80 @@
+name: NTL Kiro v66 PB115 Hybrid Apex — authentic public notebook read-only source audit
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-kiro-v66-real-source-audit-once-20261125.yml]
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Pull actual Kaggle notebook, dependencies, score metadata without execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          mkdir -p /tmp/kiro-v66
+          kaggle kernels pull lumibee/ntl-kiro-v66-pb115-hybrid-apex -p /tmp/kiro-v66 -m >/tmp/kiro-status.txt
+          python - <<'PY'
+          from pathlib import Path
+          import re,hashlib,json,collections,subprocess
+          root=Path('/tmp/kiro-v66')
+          meta=json.loads((root/'kernel-metadata.json').read_text())
+          files=[p for p in root.iterdir() if p.suffix in ('.py','.ipynb')]
+          if len(files)!=1:raise RuntimeError('not exactly one source')
+          f=files[0]
+          raw=f.read_bytes();digest=hashlib.sha256(raw).hexdigest()
+          if f.suffix=='.ipynb':
+              nb=json.loads(raw)
+              cells=[(''.join(c.get('source',[])) if isinstance(c.get('source',[]),list)
+                      else str(c.get('source',''))) for c in nb['cells']
+                      if c['cell_type']=='code']
+          else:cells=[raw.decode()]
+          print('KIRO_V66_PINNED_SOURCE_SHA='+digest,flush=True)
+          print('KIRO_V66_REAL_METADATA='+json.dumps({
+              k:meta.get(k) for k in ('id','title','code_file','language','kernel_type',
+              'is_private','enable_gpu','enable_internet','competition_sources',
+              'model_sources','dataset_sources','kernel_sources')},sort_keys=True),flush=True)
+          print('KIRO_V66_REAL_NOTEBOOK_CELL_COUNTS='+json.dumps({
+              'code':len(cells),'total':len(nb['cells']) if f.suffix=='.ipynb' else 1,
+              'code_lengths':[len(s) for s in cells]},sort_keys=True),flush=True)
+          patterns=['inference','blend','route','decision','apex','predict','score',
+             'residual','weight','fable','glm','prefix','proba','classifier',
+             'select','native','sigmoid','softmax','sinkhorn','post_process',
+             'refine','ensemble','merger','mask','threshold','pb115','hybrid']
+          for i,src in enumerate(cells):
+              start=src[:230].replace('\n',' ')
+              hits=[p for p in patterns if re.search(p,src,re.I)]
+              defs=re.findall(r'(?m)^\s*(?:async )?def\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(',src)
+              conf=re.findall(r'(?m)^(?:[A-Z][A-Z_0-9]{2,}|CONFIG(?:\[[^\]]+\])?)\s*=\s*[^\n]{1,160}',src)
+              print('KIRO_V66_CELL_INVENTORY='+json.dumps({
+                 'idx':i,'chars':len(src),'sha':hashlib.sha256(src.encode()).hexdigest(),
+                 'start':start,'keywords':hits,'functions':defs[:45],
+                 'constants':conf[:20]},sort_keys=True),flush=True)
+              if len(src)<=11000 and (any(x in hits for x in
+                     ('blend','route','apex','fable','glm','prefix','hybrid','pb115'))):
+                  print('KIRO_V66_SELECTED_CODE_CELL='+json.dumps({'idx':i,'code':src[:11000]},ensure_ascii=False),flush=True)
+              elif len(src)>11000:
+                  matches=[]
+                  ll=src.splitlines()
+                  ix=[j for j,l in enumerate(ll) if re.search(
+                      r'(?i)(fable|apex|hybrid|pb115|balance|blend|routing|weight|sinkhorn|llama|qwen|glm|residual|threshold)',l)]
+                  seen=set()
+                  for j in ix[:70]:
+                      if j in seen:continue
+                      seen.add(j)
+                      matches.append({'line':j+1,'snippet':ll[j][:220]})
+                  print('KIRO_V66_LONG_CODE_HIGHLIGHTS='+json.dumps({'idx':i,'lines':matches},ensure_ascii=False),flush=True)
+          s=subprocess.run(['kaggle','kernels','status','lumibee/ntl-kiro-v66-pb115-hybrid-apex'],
+              capture_output=True,text=True,timeout=60)
+          print('KIRO_V66_ACTUAL_KERNEL_STATUS='+json.dumps({
+              'exit_code':s.returncode,'status':s.stdout[-900:],'stderr_class':(
+                'notfound' if '404' in s.stderr else 'none' if not s.stderr else 'other')},sort_keys=True),flush=True)
+          print('KIRO_V66_NO_MODEL_TRAIN_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
