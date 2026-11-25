@@ -1,0 +1,35 @@
+name: NTL Kimi Gemini high-coverage source admission inventory CPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-kimi-gemini-source-inventory.yml]
+permissions: {contents: read}
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect dataset files and metadata only, never GPU or score
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import subprocess,io,csv,json,re
+          refs=['prvsiyan/prvsiyans-extended-name-that-llm-dataset',
+                'crtproduction/name-that-llm-open-pool',
+                'seyitkaangunes/ntl-extra-api-passages',
+                'maniceet/name-that-llm-openrouter-openai-generations']
+          for ref in refs:
+              p=subprocess.run(['kaggle','datasets','files',ref,'-v'],capture_output=True,text=True,timeout=100)
+              print('NTL_KG_SOURCE_INVENTORY='+json.dumps({
+                'dataset':ref,'exit':p.returncode,
+                'file_lines':p.stdout.splitlines()[:35] if p.returncode==0 else [],
+                'stderr_category': 'not_available_or_forbidden' if p.returncode else None
+              }),flush=True)
+          print('NTL_KG_INVENTORY_READONLY=TRUE',flush=True)
+          PY
