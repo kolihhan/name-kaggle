@@ -1,0 +1,81 @@
+name: NTL confidence one format-error retry AFTER notebook COMPLETE
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-58885053-after-complete-one-retry-20261125.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-confidence-format-one-retry-after-complete-20261125
+  cancel-in-progress: false
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify immutable source, COMPLETE state, quota and zero-byte prior
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,subprocess,tempfile,re,sys
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          ref='kolihhan/ntl-frozen-confidence-gsq-fusion-20261125'
+          marker='ntl-confidence-fusion-v36-after-complete-one-retry-20261125'
+          api=KaggleApi();api.authenticate()
+          prev=api.get_submission(58885053).to_dict()
+          assert str(prev.get('totalBytes'))=='0'
+          assert 'incorrect format' in prev.get('errorDescription','')
+          print('NTL_CONFIDENCE_PRIOR_FAILURE_BYTES_ZERO=TRUE',flush=True)
+          q=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=100)
+          assert q.returncode==0 and 'KernelWorkerStatus.COMPLETE' in q.stdout+q.stderr
+          print('NTL_CONFIDENCE_BEFORE_RETRY_WORKER_COMPLETE=TRUE',flush=True)
+          with tempfile.TemporaryDirectory() as d:
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',d,'-m'],capture_output=True,text=True,timeout=120)
+              assert p.returncode==0
+              meta=json.loads((Path(d)/'kernel-metadata.json').read_text())
+              nb=json.loads((Path(d)/meta['code_file']).read_text())
+              code=[''.join(c.get('source',[])) for c in nb['cells']]
+              assert len(code)==58 and sum('_ntl_fuse(P, Q27)' in x for x in code)==1
+              assert meta['is_private'] and meta['enable_gpu'] and meta['competition_sources']==['name-that-llm']
+              assert len(meta['model_sources'])==9 and len(meta['dataset_sources'])==26 and len(meta['kernel_sources'])==10
+              assert not any('ntl-topic-synthetic-18llms' in v for v in meta['dataset_sources'])
+              print('NTL_CONFIDENCE_V1_FROZEN_SOURCE_PRESERVED=TRUE',flush=True)
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=85)
+          assert p.returncode==0
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          old=[r for r in rows if marker in (r.get('description') or '')]
+          if old:
+              print('NTL_CONFIDENCE_RETRY_ALREADY_EXISTS='+json.dumps([{k:r.get(k) for k in ('ref','status','publicScore')} for r in old]),flush=True)
+              sys.exit(0)
+          active=[r.get('ref') for r in rows if (r.get('status','').upper().split('.')[-1] in ('PENDING','RUNNING','QUEUED','SCORING','EVALUATING'))]
+          lim=api.competition_get_submission_limits('name-that-llm')
+          quota=subprocess.run(['kaggle','quota','--format','json'],capture_output=True,text=True,timeout=75)
+          assert quota.returncode==0
+          gpu=[float(str(x['remaining']).rstrip('h')) for x in json.loads(quota.stdout) if x.get('resource')=='GPU']
+          assert len(gpu)==1
+          print('NTL_CONFIDENCE_ONE_RETRY_GATE='+json.dumps({'allowed_now':int(lim.num_allowed_now),'active':active,'gpu_h':gpu[0]}),flush=True)
+          if int(lim.num_allowed_now)<2 or bool(lim.limited_by_total) or active or gpu[0]<9.5:
+              print('NTL_CONFIDENCE_RETRY_BLOCKED_SAFETY_GATE=TRUE',flush=True)
+              sys.exit(0)
+          args=['kaggle','competitions','submit','name-that-llm','-f','submission.parquet','-k',ref,'-v','1','-m',marker]
+          result=subprocess.run(args,capture_output=True,text=True,timeout=240)
+          if result.returncode:
+              print('NTL_CONFIDENCE_ONE_RETRY_SUBMIT_REJECTED=TRUE',flush=True)
+              sys.exit(0)
+          print('NTL_CONFIDENCE_ONE_RETRY_SUBMIT_ACCEPTED=TRUE',flush=True)
+          ids=re.findall(r'Submission ref:\s*(\d+)',result.stdout)
+          if ids: print('NTL_CONFIDENCE_ONE_RETRY_ID='+ids[-1],flush=True)
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=75)
+          if p.returncode==0:
+              rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+              matched=[r for r in rows if marker in (r.get('description') or '')]
+              if matched:
+                  print('NTL_CONFIDENCE_ONE_RETRY_RECEIPT='+json.dumps({k:matched[0].get(k) for k in ('ref','date','status','publicScore')}),flush=True)
+          print('NTL_CONFIDENCE_NO_AUTOMATIC_SECOND_RETRY=TRUE',flush=True)
+          PY
