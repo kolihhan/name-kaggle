@@ -1,16 +1,15 @@
 name: NTL owner-authorized one-shot official confidence fusion submission
 on:
-  push:
-    branches: [research/ntl-fable252-nameerror-recovery-20261125]
-    paths:
-      - .github/workflows/ntl-confidence-fusion-official-submit-20261125.yml
-      - scripts/ntl_confidence_fusion_official_once_20261125.py
+  workflow_dispatch:
 permissions: {contents: read}
 concurrency:
   group: ntl-official-confidence-20261125-once
   cancel-in-progress: false
 jobs:
   official:
+    # RETIRED after Kaggle zero-byte format failures 58885053 / 58891677.
+    # Do not run this submission workflow again.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
