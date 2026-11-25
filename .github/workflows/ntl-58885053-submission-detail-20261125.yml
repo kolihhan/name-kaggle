@@ -1,0 +1,38 @@
+name: NTL 58885053 official single-submission error explanation
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-58885053-submission-detail-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read Kaggle's submission error details, not just ledger status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import subprocess,json,re
+          ref='58885053'
+          for cmd in [
+              ['kaggle','competitions','submission',ref],
+              ['kaggle','competitions','submission',ref,'--format','json'],
+          ]:
+              p=subprocess.run(cmd,capture_output=True,text=True,timeout=100)
+              out=(p.stdout+'\n'+p.stderr)
+              out=re.sub(r'(?:KGAT_[A-Za-z0-9_-]+|Bearer\s+\S+|https?://\S+)', '[REDACTED]',out)
+              print('NTL_58885053_SUBMISSION_DETAIL='+json.dumps({'command':' '.join(cmd[2:]),'exit':p.returncode,'body':out[:3500]}),flush=True)
+          # Read the object fields from the same authenticated Kaggle SDK,
+          # because a populated errorDescription may not appear in CSV listing.
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          funcs=[n for n in dir(api) if 'submission' in n.lower() and ('get' in n.lower() or 'detail' in n.lower())]
+          print('NTL_58885053_SDK_METHODS='+json.dumps(funcs[:40]),flush=True)
+          PY
