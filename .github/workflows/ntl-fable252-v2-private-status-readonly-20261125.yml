@@ -1,0 +1,67 @@
+name: NTL Fable252 v2 private GPU real status and aggregate — read only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-fable252-v2-private-status-readonly-20261125.yml]
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Authenticate and read v2 kernel status/results only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,re,tempfile
+          from pathlib import Path
+          ref='kolihhan/ntl-fable-preservation-252-v2-20261125'
+          output='ntl_fable_preservation_252_aggregate.json'
+          def cmd(*args,timeout=125):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          p=cmd('kernels','status',ref)
+          matches=re.findall(r'KernelWorkerStatus[.][A-Z_]+',p.stdout+' '+p.stderr)
+          if p.returncode or not matches:
+              print('NTL_FABLE_V2_STATUS_UNVERIFIABLE=TRUE',flush=True)
+              print('NTL_FABLE_V2_STATUS_ERROR_TYPE='+('NOT_FOUND' if '404' in p.stdout+p.stderr else 'OTHER'),flush=True)
+              raise SystemExit(1)
+          state=matches[-1]
+          print('NTL_FABLE_V2_REAL_KAGGLE_STATUS='+state,flush=True)
+          if state=='KernelWorkerStatus.COMPLETE':
+              with tempfile.TemporaryDirectory(prefix='ntl-fable252-v2-results-') as td:
+                  d=cmd('kernels','output',ref,'-p',td,'--file-pattern','^'+output+'$','-o',timeout=200)
+                  files=list(Path(td).rglob(output))
+                  if d.returncode or len(files)!=1:
+                      print('NTL_FABLE_V2_COMPLETE_BUT_AGGREGATE_MISSING=TRUE',flush=True)
+                  else:
+                      data=json.loads(files[0].read_text())
+                      keys=['status','source_rows','truth_rows_per_label','v1_status',
+                            'v1_glm_mask_count','fable_protection_eligible_rows',
+                            'protected_final_predictions_changed','old_unprotected_balanced_accuracy',
+                            'new_protected_balanced_accuracy','pre_apex_balanced_accuracy',
+                            'paired_old_unprotected_to_real_protected','paired_pre_apex_to_real_protected',
+                            'specific_truth_classes','candidate_promote','real_glm_stage_run']
+                      print('NTL_FABLE_V2_REAL_AGGREGATE='+json.dumps({k:data.get(k) for k in keys},sort_keys=True),flush=True)
+          else:
+              logs=cmd('kernels','logs',ref,timeout=120)
+              s=logs.stdout+'\n'+logs.stderr
+              flags={k:s.count(k) for k in ('NTL_FABLE_252_PREPARED=',
+                'NTL_FABLE_252_PRE_APEX_SNAPSHOT=','NTL_FABLE_PRESERVATION_REAL252=',
+                'Starting Apex Grandmaster V2 Post-Processing Stage...')}
+              print('NTL_FABLE_V2_STAGE_MARKERS='+json.dumps(flags,sort_keys=True),flush=True)
+              if state=='KernelWorkerStatus.ERROR':
+                  classes={k:bool(re.search(k,s)) for k in ('NameError','ValueError',
+                    'RuntimeError','CUDA out of memory','FileNotFoundError','AssertionError',
+                    'ModuleNotFoundError','Traceback','TimeoutError')}
+                  print('NTL_FABLE_V2_ERROR_CLASSES='+json.dumps(classes,sort_keys=True),flush=True)
+              else:
+                  print('NTL_FABLE_V2_NO_FINAL_SCORE_YET=TRUE',flush=True)
+          print('NTL_FABLE_V2_CHECK_NO_NEW_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
