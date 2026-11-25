@@ -1,0 +1,67 @@
+name: NTL Lightning 0724 actual score and isolated sibling odds mechanism
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-lightning-0724-mechanism-20261125.yml]
+permissions: {contents: read}
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Authenticate score and inspect real code differences
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1
+          python - <<'PY'
+          import os,json,re,hashlib,difflib,tempfile,subprocess,httpx
+          from pathlib import Path
+          refs=['lightningv08/0-724-glm-pb115-sibling-odds-qwen3-8-27b','lumibee/ntl-kiro-v66-pb115-hybrid-apex','ranjeet258/name-that-llm-sibling-odds']
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              cookie=s.cookies.get('XSRF-TOKEN','')
+              assert cookie
+              headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':cookie}
+              for ref in refs:
+                  a,b=ref.split('/')
+                  r=s.post('https://www.kaggle.com/api/i/kernels.LegacyKernelsService/GetKernelViewModel',json={'authorUserName':a,'kernelSlug':b,'tab':'output'},headers=headers)
+                  r.raise_for_status();v=r.json()
+                  print('NTL_SCORE='+json.dumps({'ref':ref,'version':(v.get('kernelRun') or {}).get('versionNumber'),'status':(v.get('kernelRun') or {}).get('status'),'score':(v.get('submission') or {}).get('scoreFormatted'),'best':v.get('bestSubmissionScore'),'versions':v.get('totalVersionCount')}),flush=True)
+          def pull(ref):
+              with tempfile.TemporaryDirectory() as td:
+                  subprocess.run(['kaggle','kernels','pull',ref,'-p',td,'-m'],check=True,capture_output=True,timeout=100)
+                  p=Path(td); raw=next(p.glob('*.ipynb')).read_bytes(); nb=json.loads(raw)
+                  cells=[''.join(c.get('source',[])) for c in nb['cells'] if c.get('cell_type')=='code']
+                  # Normalize emitted paths so moved files aren't falsely counted as changes.
+                  modules={}
+                  for c in cells:
+                      m=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                      if m:
+                          name=Path(m.group(1).strip()).name
+                          assert name not in modules
+                          modules[name]=c[m.end():]
+                  return cells,modules,json.loads((p/'kernel-metadata.json').read_text()),hashlib.sha256(raw).hexdigest()
+          lightning,lm,la,lh=pull(refs[0]); lumi,um,ua,uh=pull(refs[1]); sibling,sm,sa,sh=pull(refs[2])
+          print('NTL_SOURCE_SHA='+json.dumps(dict(zip(refs,[lh,uh,sh]))),flush=True)
+          for name in sorted(set(lm)|set(um)):
+              a=um.get(name,'');b=lm.get(name,'')
+              if a==b:continue
+              d=list(difflib.unified_diff(a.splitlines(),b.splitlines(),fromfile='lumi',tofile='lightning',n=2,lineterm=''))
+              print('NTL_MODULE_DELTA='+json.dumps({'module':name,'diff_lines':len(d),'shared_with_sibling':b==sm.get(name),'diff':d[:180]},ensure_ascii=False),flush=True)
+          # Examine only relevant unwrapped notebook orchestration lines, no execution.
+          for tag,cells in [('lightning',lightning),('lumi',lumi),('sibling',sibling)]:
+              matches=[]
+              for i,c in enumerate(cells):
+                  if c.startswith('%%writefile'):continue
+                  for line in c.splitlines():
+                      if len(line)<600 and re.search(r'(?i)(sibling|pngy|gsq|hybrid.alpha|prefix.variant|fable|qwen3.8|27b|residual)',line):
+                          matches.append({'cell':i,'line':line[:350]})
+              print('NTL_WRAPPER='+json.dumps({'tag':tag,'lines':matches[:125]},ensure_ascii=False),flush=True)
+          print('NTL_NO_GPU_NO_TRAIN_NO_SUBMISSION=TRUE',flush=True)
+          PY
