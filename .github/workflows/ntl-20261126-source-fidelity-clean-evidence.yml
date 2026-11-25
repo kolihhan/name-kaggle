@@ -1,0 +1,86 @@
+name: NTL fresh v11 source-fidelity vs prvsiyan verified clean samples CPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-source-fidelity-clean-evidence.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Audit fresh actual per-label fidelity and 18-class clean-source counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3' 'numpy==2.3.4'
+          python - <<'PY'
+          import pandas as pd,subprocess,os,json,re,hashlib,tempfile,io,zipfile
+          from pathlib import Path
+          sources={
+            'prvsiyan/prvsiyans-extended-name-that-llm-dataset':['passages_clean.csv','label_summary.csv','provenance_summary.json','train_vs_dataset_stats.csv'],
+            'crtproduction/name-that-llm-open-pool':['fidelity_by_label.csv','fidelity_by_source.csv','fidelity_by_reasoning.csv','removal_summary.csv','per_model.csv','source_protocol.csv','dataq4_paired.csv']
+          }
+          def safe(x):
+              return json.dumps(x,sort_keys=True,default=str,ensure_ascii=False)
+          with tempfile.TemporaryDirectory(prefix='ntl-source-fidelity-') as td:
+              root=Path(td)
+              tables={}
+              for ref,names in sources.items():
+                  for name in names:
+                      dest=root / ('prvsiyan' if ref.startswith('prvsiyan') else 'open-pool')
+                      dest.mkdir(exist_ok=True)
+                      p=subprocess.run(['kaggle','datasets','download','-d',ref,'-f',name,'-p',str(dest),'--unzip'],capture_output=True,text=True,timeout=130)
+                      paths=[x for x in dest.glob(name) if x.is_file()]
+                      if not paths:
+                          # Kaggle sometimes returns a ZIP for single file downloads.
+                          for z in dest.glob('*.zip'):
+                              try:
+                                  with zipfile.ZipFile(z) as arc:
+                                      if name in arc.namelist():
+                                          (dest/name).write_bytes(arc.read(name))
+                                          paths=[dest/name]
+                              except Exception: pass
+                      print('NTL_SOURCE_FILE='+safe({'ref':ref,'file':name,'exit':p.returncode,'downloaded':bool(paths),'bytes':paths[0].stat().st_size if paths else None}),flush=True)
+                      if not paths:continue
+                      path=paths[0]
+                      if name.endswith('.csv'):
+                          t=pd.read_csv(path,low_memory=False)
+                          tables[(ref,name)]=t
+                          print('NTL_SOURCE_CSV_SHAPE='+safe({'file':name,'rows':len(t),'columns':t.columns.tolist(),'head_aggregate_rows':t.head(15).fillna('').astype(str).to_dict('records') if name!='passages_clean.csv' else None}),flush=True)
+                      if name=='provenance_summary.json':
+                          obj=json.loads(path.read_text())
+                          print('NTL_SOURCE_PROVENANCE_SUMMARY='+safe(obj)[:14000],flush=True)
+              key=('prvsiyan/prvsiyans-extended-name-that-llm-dataset','passages_clean.csv')
+              if key in tables:
+                  df=tables[key]
+                  labels=next((k for k in ('model','label','model_name','target_model') if k in df),None)
+                  texts=next((k for k in ('text','response','passage') if k in df),None)
+                  groups=[k for k in df.columns if re.search(r'(?i)(prompt|source|provider|route|served|generated|version|model)',k)]
+                  meta={'rows':len(df),'columns':df.columns.tolist(),
+                        'label_column':labels,'text_column':texts,'metadata_columns':groups}
+                  if labels:
+                      v=df[labels].fillna('').astype(str)
+                      meta['class_counts']=v.value_counts().to_dict()
+                      meta['distinct_classes']=int(v.nunique())
+                      for target in ('kimi-k3','gemini-3.7-flash','gemini-3.8-flash','gpt-5.6-luna','gpt-5.6-sol'):
+                          subset=df.loc[v==target]
+                          temp={'rows':len(subset)}
+                          for col in groups:
+                              if col==labels: continue
+                              if col.lower() in ('prompt','prompt_text','request'):continue
+                              z=subset[col].astype(str)
+                              temp[col]={'unique':int(z.nunique()),'top_counts':z.value_counts().head(8).to_dict()}
+                          meta[target]=temp
+                  if texts:
+                      x=df[texts].fillna('').astype(str)
+                      meta['empty_texts']=int((x.str.strip()=='').sum())
+                      meta['duplicate_texts']=int(x.str.strip().duplicated().sum())
+                      meta['median_words']=float(x.str.split().str.len().median())
+                  print('NTL_PRVSIYAN_CLEAN_ROWS='+safe(meta)[:18000],flush=True)
+              print('NTL_PUBLIC_SOURCE_READONLY_CPU_NO_TRAIN_NO_SUBMIT=TRUE',flush=True)
+          PY
