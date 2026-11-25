@@ -193,7 +193,15 @@ def execute():
     # Attempt a direct code competition submission on the immutable v1.
     # If the Kaggle host requires notebook COMPLETE first, this will be a
     # separate blocked state, not misreported as an accepted submission.
-    if not gate(api):return
+    # GPU quota was checked before the private push; here require an official
+    # slot, not an additional 9.5h of unreserved development GPU.
+    remaining=api.competition_get_submission_limits(COMP)
+    ledger=rows()
+    pending=[q.get("ref") for q in ledger if (q.get("status") or "").upper().split(".")[-1] in
+             ("PENDING","RUNNING","QUEUED","EVALUATING","SCORING")]
+    if int(remaining.num_allowed_now)<2 or bool(remaining.limited_by_total) or pending:
+        print("NTL_CONFIDENCE_OFFICIAL_SUBMIT_BLOCKED_QUOTA_OR_ACTIVE=TRUE",flush=True)
+        return
     p=cli("competitions","submit",COMP,"-f","submission.parquet","-k",KERNEL,"-v","1",
           "-m",MARKER,timeout=240,check=False)
     if p.returncode:
