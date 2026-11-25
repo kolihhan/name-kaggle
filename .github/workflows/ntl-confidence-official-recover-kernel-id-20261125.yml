@@ -1,0 +1,38 @@
+name: NTL official confidence candidate exact kernel identity recovery
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-official-recover-kernel-id-20261125.yml]
+permissions: {contents: read}
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Find the accepted kernel without pushing or submitting anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,csv,io,json,re
+          refs=[
+             'kolihhan/ntl-confidence-fusion-official-once-20261125',
+             'kolihhan/ntl-frozen-confidence-gsq-fusion-20261125',
+             'kolihhan/ntl-confidence-fusion-real252-20261125']
+          for ref in refs:
+              p=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=45)
+              states=re.findall(r'KernelWorkerStatus\.[A-Z_]+',p.stdout+p.stderr)
+              print('NTL_FUSION_CANDIDATE_STATUS='+json.dumps({'ref':ref,'exit':p.returncode,'state':states[-1] if states else None}),flush=True)
+          for search in ('ntl-confidence','frozen-confidence'):
+              p=subprocess.run(['kaggle','kernels','list','--mine','--search',search,'-v'],capture_output=True,text=True,timeout=80)
+              refs=[]
+              if p.returncode==0:
+                  lines=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+                  refs=[r.get('ref') for r in lines][:30]
+              print('NTL_FUSION_CANDIDATE_LIST='+json.dumps({'search':search,'exit':p.returncode,'refs':refs}),flush=True)
+          PY
