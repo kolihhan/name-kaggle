@@ -1,0 +1,89 @@
+name: NTL provenance audit of newly published 10-model generation corpus (CPU)
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-generation-provenance-cpu.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect public metadata and ephemerally assess served-model identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import subprocess,json,tempfile,re,hashlib,collections,statistics
+          from pathlib import Path
+          import pandas as pd
+          ref='maniceet/name-that-llm-openrouter-openai-generations'
+          def call(*args,t=150):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=t)
+          x=call('datasets','files',ref,'-v')
+          print('NTL_NEW_CORPUS_FILES='+json.dumps({'exit':x.returncode,'data':x.stdout[:6000]},sort_keys=True),flush=True)
+          with tempfile.TemporaryDirectory() as td:
+              p=call('datasets','download','-d',ref,'-p',td,'--unzip',t=180)
+              if p.returncode:
+                  print('NTL_NEW_CORPUS_DOWNLOAD_UNAVAILABLE=TRUE',flush=True);raise SystemExit(0)
+              root=Path(td)
+              sizes=[{'name':i.name,'bytes':i.stat().st_size} for i in root.rglob('*') if i.is_file()]
+              print('NTL_NEW_CORPUS_LOCAL_FILE_COUNTS='+json.dumps(sizes[:35]),flush=True)
+              parts=[]
+              for path in root.rglob('*'):
+                  if not path.is_file():continue
+                  if path.suffix=='.csv': 
+                      try:parts.append(pd.read_csv(path,low_memory=False))
+                      except Exception:continue
+                  if path.suffix=='.parquet':
+                      try:parts.append(pd.read_parquet(path))
+                      except Exception:continue
+              data=[z for z in parts if {'text','model'}.issubset(z.columns)]
+              print('NTL_NEW_CORPUS_TABULAR_PARTS='+json.dumps([{'rows':len(z),'columns':z.columns.tolist()} for z in data]),flush=True)
+              if not data:raise SystemExit(0)
+              frame=max(data,key=len).copy()
+              labels=frame.model.astype(str)
+              col='served_model' if 'served_model' in frame else None
+              known=['gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra','gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.7-flash','gemini-3.8-flash','claude-fable-5','claude-opus-4-6','claude-opus-4-8','claude-opus-5','claude-sonnet-5','qwen3.8-max','glm-5.3','glm-5.3-flash','kimi-k3']
+              def nz(z):
+                  return z.astype(str).replace(['nan','None','','null','NaN'],pd.NA)
+              out={'rows':len(frame),'unique_labels':labels.nunique(),'label_counts':labels.value_counts().to_dict(),
+                   'noncompetition_labels':sorted(set(labels)-set(known)),
+                   'text_duplicates':int(frame.text.astype(str).duplicated().sum()),
+                   'median_words':float(frame.text.astype(str).str.split().map(len).median()),
+                   'columns':frame.columns.tolist(),
+                   'missing_counts':{c:int(frame[c].isna().sum()) for c in frame.columns},
+                   'input_only':True,'provider_served_identity_not_authenticated':True}
+              if col:
+                  s=nz(frame[col])
+                  out['served_present']=int(s.notna().sum())
+                  out['served_missing']=int(s.isna().sum())
+                  # Literal matches are a strict proxy; differences may be aliases.
+                  out['exact_served_matches']=int((s.str.casefold()==labels.str.casefold()).fillna(False).sum())
+                  out['served_examples_by_target']={
+                      str(k):{'rows':len(z),'served_present':int(nz(z[col]).notna().sum()),
+                          'literal_exact':int((nz(z[col]).str.casefold()==z.model.astype(str).str.casefold()).fillna(False).sum()),
+                          'common_served_ids':nz(z[col]).value_counts().head(5).to_dict()}
+                      for k,z in frame.groupby('model')}
+              for col in ('api_route','provider','source','prompt_id','generation_date'):
+                  if col in frame:
+                      out[col+'_counts']={str(k):int(v) for k,v in frame[col].astype(str).value_counts().head(24).items()}
+              print('NTL_NEW_CORPUS_PROVENANCE='+json.dumps(out,sort_keys=True,default=str),flush=True)
+              # Official 2,699 train exact normalized overlap, just counts.
+              with tempfile.TemporaryDirectory() as off:
+                  p=call('competitions','download','name-that-llm','-f','train.csv','-p',off,'--unzip',t=150)
+                  fs=list(Path(off).rglob('train.csv'))
+                  if p.returncode or not fs:
+                      print('NTL_NEW_CORPUS_OFFICIAL_OVERLAP=NOT_AVAILABLE',flush=True)
+                  else:
+                      x=pd.read_csv(fs[0],usecols=['text'])
+                      fn=lambda y:hashlib.sha256(' '.join(str(y).split()).casefold().encode()).hexdigest()
+                      ov=len(set(frame.text.map(fn))&set(x.text.map(fn)))
+                      print('NTL_NEW_CORPUS_OFFICIAL_OVERLAP='+json.dumps({'overlap':ov,'corpus':len(frame),'official_train':len(x)}),flush=True)
+          print('NTL_NO_SUBMISSIONS_NO_GPU_NO_TRAINING=TRUE',flush=True)
+          PY
