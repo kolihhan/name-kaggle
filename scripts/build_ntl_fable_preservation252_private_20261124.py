@@ -14,6 +14,8 @@ import re
 DONOR="kolihhan/ntl-evgen-forensic-eda-repro-20261123"
 PUBLIC_RECOVERY="evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie"
 DONOR_FILE_SHA="74d86affa9f55464ab39f735f392b54e47e2d8a2b631a0bca45de9435c600c56"
+RECOVERY_V36_SOURCE_SHA="5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52"
+RECOVERY_SOURCE_VERSION=36
 DEST="kolihhan/ntl-fable-preservation-252-v2-20261125"
 PANEL="nischaydnk/ntl-topic-synthetic-18llms"
 RUNNER=Path("scripts/ntl_fable_preservation252_runtime_20261124.py")
@@ -58,8 +60,15 @@ def build(inp,out):
     if PANEL in (md.get("dataset_sources") or []):
         raise ValueError("external panel already mounted in original donor")
     notebook_path=inp/Path(md["code_file"]).name
-    if hashlib.sha256(notebook_path.read_bytes()).hexdigest()!=DONOR_FILE_SHA:
-        raise ValueError("0.718 scored public reproduction source file drift")
+    source_sha=hashlib.sha256(notebook_path.read_bytes()).hexdigest()
+    if source_sha not in (DONOR_FILE_SHA,RECOVERY_V36_SOURCE_SHA):
+        raise ValueError("0.718 historical source not pinned to reviewed v36")
+    if source_sha==RECOVERY_V36_SOURCE_SHA and md["id"]!=PUBLIC_RECOVERY:
+        raise ValueError("v36 source must be from verified author public notebook")
+    if (len(md.get("model_sources") or [])!=9 or
+        len(md.get("dataset_sources") or [])!=26 or
+        len(md.get("kernel_sources") or [])!=10):
+        raise ValueError("0.718 original 9/26/10 mount contract drift")
     nb=json.loads(notebook_path.read_text())
     original=nb["cells"]
     if len(original)!=58:raise ValueError("original notebook cell count drift")
@@ -107,10 +116,11 @@ def build(inp,out):
             # Source-scoped 18-label truth is stored only in temp and not passed to the scorer.
             c=dict(c);c["source"]=changed.splitlines(keepends=True)
         if i==v:
-            originalcode=text(c)
-            changed,count=DEADLINE_PATTERN.subn("V1_DEADLINE_H = 5.8  # bounded research-only",originalcode)
-            if count!=1:raise ValueError("5.8h V1 research cap failed")
-            c=dict(c);c["source"]=changed.splitlines(keepends=True)
+            # Preserve the scored source's original 8.8h GLM deadline.
+            # Truncating this to 5.8h pre-V1 could suppress real GLM/Fable
+            # evidence when the native stage uses its 7h budget.
+            if not DEADLINE_PATTERN.search(text(c)):
+                raise ValueError("original native/GLM time budget changed")
         out_cells.append(c)
     out_cells.append(after)
     if len(out_cells)!=len(original)+3:raise AssertionError("exact three sidecars")
@@ -131,9 +141,12 @@ def build(inp,out):
     newmd["code_file"]=notebook_path.name
     (out/"kernel-metadata.json").write_text(json.dumps(newmd,indent=1,ensure_ascii=False)+"\n")
     report={
-      "one_private_kernel":DEST,"donor_source_exact_sha":DONOR_FILE_SHA,
+      "one_private_kernel":DEST,"historical_notebook_sha":source_sha,
+      "original_scored_pull_sha":DONOR_FILE_SHA,
       "source_ref_used":md["id"],"public_recovery_ref_used":md["id"]==PUBLIC_RECOVERY,
-      "original_cells":len(original),"sidecars":3,"mutated_original_cells":2,
+      "historical_source_version":RECOVERY_SOURCE_VERSION if source_sha==RECOVERY_V36_SOURCE_SHA else None,
+      "source_cell_content_prefixes_verified":58 if source_sha==RECOVERY_V36_SOURCE_SHA else None,
+      "original_cells":len(original),"sidecars":3,"mutated_original_cells":1,
       "original_data_cell_index":d,"original_glm_config_cell_index":v,
       "original_apex_cell_index":a,
       "source_mounts_original":{"models":len(md["model_sources"]),
@@ -141,7 +154,7 @@ def build(inp,out):
       "added_pinned_publisher_panel":PANEL,"rows":252,"classes":18,
       "real_training_started":False,"reused_existing_pretrained_pipeline":True,
       "official_submit":False,"use_gpu":True,
-      "max_v1_h":5.8,"no_raw_dataset_in_github":True
+      "max_v1_h":8.8,"original_glm_deadline_preserved":True,"no_raw_dataset_in_github":True
     }
     print("NTL_FABLE_252_ONE_SHOT_BUILD="+json.dumps(report,sort_keys=True),flush=True)
     return report
