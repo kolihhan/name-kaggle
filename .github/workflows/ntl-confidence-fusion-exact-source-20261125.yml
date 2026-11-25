@@ -1,0 +1,92 @@
+name: NTL confidence fusion exact 0718 source candidate build
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-fusion-exact-source-20261125.yml]
+permissions: {contents: read}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Build one exact source candidate in temporary storage and exercise actual fusion insertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1 numpy
+          python scripts/ntl_confidence_expert_fusion_20261125.py
+          python - <<'PY'
+          import ast,os,json,re,hashlib,httpx,sys
+          import numpy as np
+          from pathlib import Path
+          sys.path.insert(0,'scripts')
+          from ntl_confidence_expert_fusion_20261125 import fuse
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'evgendvorkin','kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+              es=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+              ids=[e['run']['id'] for e in es if (e.get('version') or {}).get('versionNumber')==36]
+              assert len(ids)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(ids[0]),'includeOutputIfAvailable':False}).text
+          assert hashlib.sha256(raw.encode()).hexdigest()=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+          nb=json.loads(raw)
+          old=[ ''.join(c.get('source',[])) for c in nb['cells']]
+          idx=[i for i,c in enumerate(old) if c.startswith('%%writefile infer.py\n')]
+          assert len(idx)==1
+          i=idx[0]
+          header,body=old[i].split('\n',1)
+          anchor='            P = (1 - a.gsq_share) * P + a.gsq_share * Q27'
+          assert body.count(anchor)==1
+          # Inline the exact tested function without introducing a dependency or training.
+          helper=Path('scripts/ntl_confidence_expert_fusion_20261125.py').read_text()
+          nodes=ast.parse(helper).body
+          helper_code='\n\n'.join(ast.get_source_segment(helper,n) for n in nodes if isinstance(n,ast.FunctionDef) and n.name in ('validate','fuse'))
+          replacement='''            if abs(a.gsq_share - 0.03) > 1e-12:
+                  raise ValueError("confidence fusion is frozen to exact 0.718 share")
+              _fixed, _adaptive, _gate = _ntl_fuse(P, Q27)
+              log(f"NTL_CONFIDENCE_FUSION gate={int(_gate.sum())} changed={int((_fixed.argmax(1)!=_adaptive.argmax(1)).sum())}")
+              P = _adaptive'''
+          # Keep the insertion at the original GSQ call site only.
+          replacement='\n'.join('            '+x if n==0 else '            '+x[2:] for n,x in enumerate(replacement.strip().splitlines())) if False else replacement
+          # Indent replacement explicitly to exact existing try-block depth.
+          replacement='\n'.join(' '*12+x for x in [
+              'if abs(a.gsq_share - 0.03) > 1e-12:',
+              '    raise ValueError("confidence fusion is frozen to exact 0.718 share")',
+              '_fixed, _adaptive, _gate = _ntl_fuse(P, Q27)',
+              'log(f"NTL_CONFIDENCE_FUSION gate={int(_gate.sum())} changed={int((_fixed.argmax(1)!=_adaptive.argmax(1)).sum())}")',
+              'P = _adaptive'])
+          # Wrap local helper definitions to avoid collision with donor symbols.
+          helper_code=helper_code.replace('def validate(', 'def _ntl_validate(').replace('p,q=validate(p,q)', 'p,q=_ntl_validate(p,q)').replace('def fuse(', 'def _ntl_fuse(')
+          # Inject directly before the GSQ conditional, after donor imports.
+          point='if a.gsq_share > 0 and a.gsq_dir:'
+          assert body.count(point)==1
+          modified=body.replace(point,helper_code+'\n\n'+point,1).replace(anchor,replacement,1)
+          compile(modified,'infer.py','exec')
+          nb['cells'][i]['source']=(header+'\n'+modified).splitlines(keepends=True)
+          assert sum(''.join(c.get('source',[]))!=s for c,s in zip(nb['cells'],old))==1
+          # Execute exact candidate insertion on a tiny deterministic probability fixture,
+          # not the full GPU pipeline, and compare to the standalone implementation.
+          ns={'np':np};exec(helper_code,ns)
+          from types import SimpleNamespace
+          p=np.full((2,18),.01);p[:,0]=.44;p[:,1]=.40
+          q=p.copy();q[0,0]=.20;q[0,1]=.64
+          ns.update(P=p.copy(),Q27=q,a=SimpleNamespace(gsq_share=.03),log=lambda x:print(x))
+          import textwrap
+          exec(textwrap.dedent(replacement),ns)
+          assert np.array_equal(ns['P'],fuse(p,q)[1])
+          assert ns['P'].argmax(1).tolist()==[1,0]
+          out=json.dumps(nb,ensure_ascii=False).encode()
+          print('NTL_EXACT_0718_CONFIDENCE_CANDIDATE='+json.dumps({'source_sha':hashlib.sha256(raw.encode()).hexdigest(),'candidate_sha':hashlib.sha256(out).hexdigest(),'changed_source_cells':1,'all_other_source_cells_preserved':True,'integration_compile_and_fixture_passed':True,'real_expert_inference':False,'official_submission':False}),flush=True)
+          PY
