@@ -28,7 +28,7 @@ jobs:
           for c in n['cells']:
               src=''.join(c.get('source',[]))
               if not src.startswith('%%writefile '):continue
-              name=src.splitlines()[0].split('/')[-1].strip()
+              name=src.splitlines()[0].split(None,1)[1].split('/')[-1].strip()
               if name not in ('infer.py','gsq_stage.py'):continue
               t=src.splitlines()[1:]
               selected=set()
