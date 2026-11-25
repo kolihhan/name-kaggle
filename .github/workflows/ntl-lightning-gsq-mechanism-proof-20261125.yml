@@ -1,0 +1,58 @@
+name: NTL scored v52 actual GSQ routing and runtime evidence
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-lightning-gsq-mechanism-proof-20261125.yml]
+permissions: {contents: read}
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Exact source routing and visible runtime markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,json,hashlib,re,subprocess,httpx
+          from pathlib import Path
+          refs=[('lightningv08','0-724-glm-pb115-sibling-odds-qwen3-8-27b',52),('lumibee','ntl-kiro-v66-pb115-hybrid-apex',1),('evgendvorkin','name-that-llm-deep-forensic-eda-with-analogie',36)]
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r
+              for a,b,n in refs:
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':a,'kernelSlug':b,'tab':'output'}).json()
+                  e=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  e=[x for x in e if (x.get('version') or {}).get('versionNumber')==n]
+                  assert len(e)==1
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(e[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  nb=json.loads(raw)
+                  cells=[''.join(c.get('source',[])) for c in nb['cells'] if c.get('cell_type')=='code']
+                  mods={}
+                  for c in cells:
+                      m=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                      if m:mods[Path(m.group(1)).name]=c[m.end():]
+                  route={}
+                  for name in ['infer.py','gsq_stage.py','gsq_infer.py','gsq_infer_model.py','prefix_decisions.py']:
+                      if name not in mods:continue
+                      lines=mods[name].splitlines()
+                      ids=set()
+                      for i,line in enumerate(lines):
+                          if re.search(r'(?i)(gsq_share|gsq_deadline|gsq_timeout|Q27\s*=|def.*select|def.*route|def.*budget|deadline|argpartition|argsort|selected|def.*sibling|def fable_return)',line):
+                              ids.update(range(max(0,i-3),min(len(lines),i+4)))
+                      route[name]=[{'n':i+1,'code':lines[i][:250]} for i in sorted(ids)][:130]
+                  print('NTL_ROUTE='+json.dumps({'ref':a+'/'+b,'v':n,'source_sha':hashlib.sha256(raw.encode()).hexdigest(),'route':route}),flush=True)
+                  # Public logs are not the hidden scoring trace; count markers only.
+                  p=subprocess.run(['kaggle','kernels','logs',a+'/'+b],capture_output=True,text=True,timeout=100)
+                  z=p.stdout+'\n'+p.stderr
+                  markers=['GSQ stage exceeded','GSQ','pb115_lr_lgb_direct3','PB115 head failed','smoke','Applied mass-preserving sibling updates','Additional protected decisions']
+                  print('NTL_VISIBLE_LOGS='+json.dumps({'ref':a+'/'+b,'returncode':p.returncode,'markers':{m:z.lower().count(m.lower()) for m in markers},'hidden_trace_verified':False}),flush=True)
+          print('NTL_NO_GPU_NO_TRAIN_NO_SUBMISSION=TRUE',flush=True)
+          PY
