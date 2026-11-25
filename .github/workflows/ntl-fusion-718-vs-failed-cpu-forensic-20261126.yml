@@ -1,0 +1,94 @@
+name: NTL 0.718 vs failed fusion forensic CPU (no Kaggle write)
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-fusion-718-vs-failed-cpu-forensic-20261126.yml]
+permissions: {contents: read}
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compare source and source mounts with scored 0718 + test full-size fusion on CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4
+          python scripts/ntl_confidence_expert_fusion_20261125.py
+          python - <<'PY'
+          import subprocess,tempfile,json,hashlib,re,sys,time
+          from pathlib import Path
+          import numpy as np
+          sys.path.insert(0,'scripts')
+          from ntl_confidence_expert_fusion_20261125 import fuse
+          paths={
+            'failed': 'kolihhan/ntl-frozen-confidence-gsq-fusion-20261125',
+            'successful': 'kolihhan/ntl-evgen-forensic-eda-repro-20261123',
+          }
+          records={}
+          with tempfile.TemporaryDirectory() as td:
+              for key,slug in paths.items():
+                  d=Path(td)/key;d.mkdir()
+                  p=subprocess.run(['kaggle','kernels','pull',slug,'-p',str(d),'-m'],capture_output=True,text=True,timeout=150)
+                  if p.returncode:
+                      print('NTL_FUSION_DONOR_FETCH='+json.dumps({'key':key,'fetch_ok':False,'exit':p.returncode}),flush=True)
+                      continue
+                  meta=json.loads((d/'kernel-metadata.json').read_text())
+                  nb=json.loads((d/meta['code_file']).read_text())
+                  source=[''.join(c.get('source',[])) for c in nb['cells']]
+                  records[key]=(meta,nb,source)
+                  markers={}
+                  for k in ('enable_gpu','enable_internet','machine_shape','competition_sources','is_private','language','kernel_type'):
+                      markers[k]=meta.get(k)
+                  for k in ('model_sources','dataset_sources','kernel_sources'):
+                      markers[k+'_count']=len(meta.get(k) or [])
+                  markers['cells']=len(source)
+                  markers['sha256']=hashlib.sha256((d/meta['code_file']).read_bytes()).hexdigest()
+                  print('NTL_FUSION_NOTEBOOK_METADATA='+json.dumps({'key':key,'markers':markers},sort_keys=True),flush=True)
+          if 'successful' in records and 'failed' in records:
+              a,b=records['successful'],records['failed']
+              delta={}
+              for field in ('model_sources','dataset_sources','kernel_sources','competition_sources'):
+                  aa=set(a[0].get(field) or []);bb=set(b[0].get(field) or [])
+                  delta[field]={'same':aa==bb,'added_count':len(bb-aa),'removed_count':len(aa-bb)}
+              aa=a[2];bb=b[2]
+              if len(aa)==len(bb):
+                  changes=[{'cell':i,'old_sha':hashlib.sha256(x.encode()).hexdigest(),'new_sha':hashlib.sha256(y.encode()).hexdigest()} for i,(x,y) in enumerate(zip(aa,bb)) if x!=y]
+              else:changes=None
+              print('NTL_FUSION_SCORED_CONTROL_DIFF='+json.dumps({'metadata_set_diff':delta,'cells_old':len(aa),'cells_new':len(bb),'changed_cells':changes,'same_run_source_provenance_unconfirmed':True},sort_keys=True),flush=True)
+          # Check the actual full-size shape and probability contracts. A simulated
+          # fixture CAN rule out shape-only errors but cannot prove hidden accuracy.
+          rng=np.random.default_rng(20261126)
+          for n in (3,252,4000,4500,6500):
+              z=rng.gamma(1.7,1.,size=(n,18))
+              q=rng.gamma(1.7,1.,size=(n,18))
+              p=z/z.sum(1,keepdims=True)
+              q=q/q.sum(1,keepdims=True)
+              st=time.monotonic()
+              base,cand,mask=fuse(p,q)
+              assert base.shape==cand.shape==(n,18)
+              assert np.isfinite(cand).all()
+              assert np.allclose(cand.sum(1),1,atol=1e-6)
+              assert np.array_equal(cand[~mask],base[~mask])
+              assert np.all(cand>=0) and np.all(cand<=1)
+              print('NTL_FUSION_CPU_SYNTHETIC_SCALE='+json.dumps({'n':n,'gate_rows':int(mask.sum()),'decision_changes':int((base.argmax(1)!=cand.argmax(1)).sum()),'elapsed_s':round(time.monotonic()-st,4),'checks_pass':True}),flush=True)
+          if 'failed' in records:
+              srcs=records['failed'][2]
+              infer=[s.split('\n',1)[1] for s in srcs if s.startswith('%%writefile infer.py\n')]
+              assert len(infer)==1
+              matches=[]
+              for index,line in enumerate(infer[0].splitlines(),1):
+                  if re.search(r'(?i)(def write\(|to_parquet|GSQ SKIPPED|P = _new|KAGGLE_IS_COMPETITION_RERUN|len\(test\)|def main\()',line):
+                      matches.append({'n':index,'line':line.strip()[:180]})
+              print('NTL_FUSION_OUTPUT_SITES='+json.dumps(matches[:55]),flush=True)
+          print('NTL_NO_KAGGLE_SUBMIT_NO_NOTEBOOK_PUSH_NO_GPU=TRUE',flush=True)
+          PY
