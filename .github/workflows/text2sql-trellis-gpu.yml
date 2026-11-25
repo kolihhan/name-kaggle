@@ -1,0 +1,104 @@
+name: Text2SQL Trellis E GPU - authenticated bridge
+on:
+  workflow_dispatch:
+  push:
+    branches: [exp/text2sql-trellis-gpu-20261125]
+    paths: [.github/workflows/text2sql-trellis-gpu.yml]
+permissions:
+  contents: read
+concurrency:
+  group: trellis-integrated-kaggle
+  cancel-in-progress: false
+jobs:
+  kaggle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      KERNEL_REF: kolihhan/text2sql-trellis-integrated-dev300
+      KERNEL_DIR: /tmp/t2s-kernel
+      OUTPUT_DIR: exported
+    steps:
+      - name: Checkout exact public Text2SQL source, not Name-that-LLM code
+        uses: actions/checkout@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          ref: 55a915893ba7095fde82af0c153bd8395bc91b01
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify real integrated pipeline before spending GPU quota
+        run: |
+          set -euo pipefail
+          python -m pip install -q -e '.[dev]'
+          python -m pytest -q tests/test_trellis_integrated.py tests/test_direct.py tests/test_baseline_calibration.py tests/test_sql_statement_timeout.py
+          python -m py_compile scripts/kaggle_trellis.py scripts/kaggle_trellis_launcher.py evaluation/trellis_projection_comparison.py
+      - name: Render private Kaggle script from exact commit
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 55a915893ba7095fde82af0c153bd8395bc91b01
+          python -m pip install -q --upgrade kaggle
+          if [[ -z "$KAGGLE_API_TOKEN" && ( -z "$KAGGLE_USERNAME" || -z "$KAGGLE_KEY" ) ]]; then
+            echo 'KAGGLE_SECRET_NOT_CONFIGURED_IN_THIS_REPO'; exit 75
+          fi
+          mkdir -p "$KERNEL_DIR" "$OUTPUT_DIR"
+          git archive --format=tar HEAD src evaluation scripts manifests pyproject.toml | gzip -1 > /tmp/trellis.tar.gz
+          python - <<'PY'
+          import base64,json,os
+          from pathlib import Path
+          p=Path(os.environ["KERNEL_DIR"])
+          archive=base64.b64encode(Path("/tmp/trellis.tar.gz").read_bytes()).decode()
+          script=Path("scripts/kaggle_trellis_launcher.py").read_text()
+          assert script.count("__SOURCE_B64__")==1
+          (p/"run.py").write_text(script.replace("__SOURCE_B64__",archive))
+          (p/"kernel-metadata.json").write_text(json.dumps({
+              "id":os.environ["KERNEL_REF"],"title":"Text2SQL Trellis Integrated DEV300",
+              "code_file":"run.py","language":"python","kernel_type":"script",
+              "is_private":True,"enable_gpu":True,"enable_tpu":False,"enable_internet":True,
+              "machine_shape":"NvidiaL4","dataset_sources":[],"competition_sources":[],"kernel_sources":[],"model_sources":[]
+          }))
+          PY
+      - name: Start real Kaggle GPU kernel
+        id: push
+        run: kaggle kernels push -p "$KERNEL_DIR" --accelerator NvidiaL4 -t 14400
+      - name: Poll real Kaggle kernel
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 450); do
+            status="$(kaggle kernels status "$KERNEL_REF")"
+            echo "$status"
+            if grep -Eiq 'complete|completed' <<<"$status"; then exit 0; fi
+            if grep -Eiq 'error|failed|cancelled|canceled' <<<"$status"; then exit 1; fi
+            sleep 30
+          done
+          exit 75
+      - name: Collect actual logs and outputs
+        if: always() && steps.push.outcome == 'success'
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          kaggle kernels logs "$KERNEL_REF" > "$OUTPUT_DIR/kernel.log" 2>&1 || true
+          kaggle kernels output "$KERNEL_REF" -p "$OUTPUT_DIR" -o
+      - name: Require complete paired DEV300 and fixed model
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path("exported/baseline-calibration.json").read_text())
+          runtime=json.loads(Path("exported/runtime.json").read_text())
+          assert runtime["ps"]["models"][0]["size_vram"]>0
+          assert x["profile"]=="trellis_integrated_v1" and x["summary"]["primary_complete"]
+          assert len(x["cases"])==len(set(row["case_id"] for row in x["cases"]))==300
+          assert all(set(row["arms"])=={"baseline","combined"} and row["gold_scorable"] for row in x["cases"])
+          assert all(row["arms"]["baseline"]["schema_sha256"]==row["arms"]["combined"]["schema_sha256"] for row in x["cases"])
+          assert all(1<=rec["model_calls"]<=3 for row in x["cases"] for rec in row["arms"].values())
+          print("KAGGLE_TRELLIS_INTEGRATED_RESULT",json.dumps(x["summary"],sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trellis-integrated-kaggle-dev300
+          path: exported/
+          if-no-files-found: warn
