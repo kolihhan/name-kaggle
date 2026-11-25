@@ -1,0 +1,72 @@
+name: NTL Lightning exact scored v52 vs v53 and LumiBee mechanism
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-lightning-v52-scored-source-20261125.yml]
+permissions: {contents: read}
+jobs:
+  exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Historical score-source identity and exact decisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1
+          python - <<'PY'
+          import os,json,hashlib,re,difflib,httpx
+          from pathlib import Path
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r
+              def source(author,slug,nums):
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  out={}
+                  for n in nums:
+                      e=[e for e in items if (e.get('version') or {}).get('versionNumber')==n]
+                      assert len(e)==1 and e[0].get('run',{}).get('id')
+                      r=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(e[0]['run']['id']),'includeOutputIfAvailable':False})
+                      raw=r.text;nb=json.loads(raw)
+                      c=[''.join(x.get('source',[])) for x in nb['cells'] if x.get('cell_type')=='code']
+                      out[n]=c
+                      print('NTL_EXACT_SOURCE='+json.dumps({'ref':author+'/'+slug,'version':n,'sha256':hashlib.sha256(raw.encode()).hexdigest(),'cells':len(c),'best_metadata':v.get('bestSubmissionScore')}),flush=True)
+                  return out
+              l=source('lightningv08','0-724-glm-pb115-sibling-odds-qwen3-8-27b',[52,53])
+              u=source('lumibee','ntl-kiro-v66-pb115-hybrid-apex',[1])[1]
+              old=source('evgendvorkin','name-that-llm-deep-forensic-eda-with-analogie',[36])[36]
+          def blocks(cells):
+              m={}
+              for c in cells:
+                  a=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                  if a:
+                      n=Path(a.group(1).strip()).name
+                      assert n not in m
+                      m[n]=c[a.end():].strip()
+              return m
+          for tag,a,b in [('lumi1_to_light52',u,l[52]),('light52_to_53',l[52],l[53]),('evgen36_to_light52',old,l[52])]:
+              am,bm=blocks(a),blocks(b)
+              print('NTL_MODULE_SUMMARY='+json.dumps({'pair':tag,'same':sorted(k for k in am.keys()&bm.keys() if am[k]==bm[k]),'changed':sorted(k for k in am.keys()&bm.keys() if am[k]!=bm[k]),'added':sorted(bm.keys()-am.keys()),'removed':sorted(am.keys()-bm.keys())}),flush=True)
+              for k in sorted(am.keys()&bm.keys()):
+                  if am[k]==bm[k]:continue
+                  d=list(difflib.unified_diff(am[k].splitlines(),bm[k].splitlines(),n=1,lineterm=''))
+                  lines=[x[:280] for x in d if x.startswith(('+','-')) and len(x)<500]
+                  print('NTL_EXACT_DELTA='+json.dumps({'pair':tag,'file':k,'lines':len(d),'edits':lines[:65]}),flush=True)
+          for tag,c in [('light52',l[52]),('light53',l[53]),('lumi1',u),('evgen36',old)]:
+              # Extract actual executable orchestration lines, excluding large embedded payloads.
+              matches=[]
+              for i,x in enumerate(c):
+                  if x.startswith('%%writefile'):continue
+                  for line in x.splitlines():
+                      if len(line)<320 and re.search(r'(?i)(sibling|_protect|_margin|_odds|_delta|gsq_share|gsq_timeout|gsq_deadline|hybrid-alpha|prefix-votes|fable_return|RUN_LIMIT_S)',line):
+                          matches.append({'cell':i,'line':line})
+              print('NTL_DECISIONS='+json.dumps({'tag':tag,'lines':matches[-100:]}),flush=True)
+          print('NTL_NO_FIT_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
