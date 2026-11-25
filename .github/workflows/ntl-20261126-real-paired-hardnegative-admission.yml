@@ -1,0 +1,82 @@
+name: NTL 18-class real clean-prompt paired hard-negative admission CPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-real-paired-hardnegative-admission.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify 18 labels, exact served IDs, train-regens and prospective unseen prompts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3
+          python - <<'PY'
+          import pandas as pd,subprocess,io,csv,json,tempfile
+          from pathlib import Path
+          ref='prvsiyan/prvsiyans-extended-name-that-llm-dataset'
+          with tempfile.TemporaryDirectory() as td:
+              p=subprocess.run(['kaggle','datasets','download','-d',ref,'-f','passages_clean.csv','-p',td,'--unzip'],capture_output=True,text=True,timeout=120)
+              assert p.returncode==0
+              d=pd.read_csv(Path(td)/'passages_clean.csv')
+              assert len(d)==5070 and d.model.nunique()==18
+              clean=d[d.split.isin(['new','new2'])].copy()
+              assert not clean.empty
+              names=['kimi-k3','gemini-3.7-flash','gemini-3.8-flash','gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra']
+              prep=lambda z: str(z).strip().casefold().split('/')[-1].replace('@default','')
+              verified=d.apply(lambda x:prep(x.model)==prep(x.served_model_id),axis=1)
+              first_party=d.served_provider.astype(str).str.contains('first-party',case=False)
+              print('NTL_HARDNEG_FULL_VERIFIED='+json.dumps({
+                'rows':len(d),'canonical_label_count':d.model.nunique(),
+                'split_counts':d.split.astype(str).value_counts().to_dict(),
+                'served_id_exact_normalized':int(verified.sum()),
+                'served_id_not_equal_count':int((~verified).sum()),
+                'first_party_rows':int(first_party.sum()),
+                'route_counts':d.provider_route.astype(str).value_counts().to_dict(),
+                'unique_prompt_ids':int(d.prompt_id.nunique()),
+                'duplicates_normalized':int(d.text.astype(str).str.casefold().str.split().str.join(' ').duplicated().sum())
+              },sort_keys=True),flush=True)
+              for name in names:
+                  z=d[d.model==name]
+                  q=clean[clean.model==name]
+                  print('NTL_HARDNEG_IDENTITY='+json.dumps({
+                     'label':name,'all':len(z),'new_prompt':len(q),
+                     'new_split_counts':q.split.value_counts().to_dict(),
+                     'first_party_all':int(z.served_provider.astype(str).str.contains('first-party',case=False).sum()),
+                     'first_party_new':int(q.served_provider.astype(str).str.contains('first-party',case=False).sum()),
+                     'served_model_new':q.served_model_id.astype(str).value_counts().to_dict(),
+                     'served_provider_new':q.served_provider.astype(str).value_counts().to_dict(),
+                     'new_unique_prompts':int(q.prompt_id.nunique()),
+                     'regenerated_train_rows':int((z.split=='train_regen').sum()),
+                     'finish_reason_new':q.finish_reason_norm.astype(str).value_counts().head(5).to_dict()
+                  },sort_keys=True),flush=True)
+              for a,b in [('gemini-3.7-flash','gemini-3.8-flash'),
+                          ('gemini-3.7-flash','gemini-3.6-flash'),
+                          ('kimi-k3','gpt-5.6-luna'),
+                          ('kimi-k3','gpt-5.5'),
+                          ('gpt-5.6-luna','gpt-5.6-sol'),
+                          ('glm-5.3','glm-5.3-flash')]:
+                  x=clean[clean.model==a]
+                  y=clean[clean.model==b]
+                  xx=set(x.prompt_id.astype(str));yy=set(y.prompt_id.astype(str))
+                  mat=xx&yy
+                  pair=clean[clean.prompt_id.astype(str).isin(mat)&clean.model.isin([a,b])]
+                  joint=pair.groupby('prompt_id').model.nunique()
+                  print('NTL_HARDNEG_REAL_PAIR='+json.dumps({
+                    'pair':[a,b],'eligible_source_rows':len(x)+len(y),
+                    'matched_distinct_prompts':int((joint==2).sum()),
+                    'paired_rows':int(len(pair)), 'new_prompts_only':True},sort_keys=True),flush=True)
+              train_regen=d[d.split.astype(str).str.contains('train',case=False)]
+              print('NTL_HARDNEG_REGEN_EXCLUSION='+json.dumps({
+                'rows_excluded':len(train_regen),'model_counts':train_regen.model.value_counts().to_dict(),
+                'new_eligible_rows':len(clean),'new_eligible_18_class_counts':clean.model.value_counts().to_dict()
+              },sort_keys=True),flush=True)
+          print('NTL_HARDNEG_NO_TRAIN_NO_SUBMISSION_NO_GPU=TRUE',flush=True)
+          PY
