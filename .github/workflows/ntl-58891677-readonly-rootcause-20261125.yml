@@ -1,0 +1,57 @@
+name: NTL 58891677 read-only root cause inspection (NO submit, NO push, NO GPU)
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-58891677-readonly-rootcause-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read BOTH official failure receipts and source state only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import json,re,subprocess,tempfile,hashlib,ast
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          for ref in (58885053,58891677,58755304):
+              s=api.get_submission(ref).to_dict()
+              print('NTL_OFFICIAL_READONLY_RECEIPT='+json.dumps({
+                'ref':ref,'status':s.get('status'),'error':s.get('errorDescription'),
+                'score':s.get('publicScore'),'bytes':s.get('totalBytes'),
+                'date':str(s.get('date'))},sort_keys=True),flush=True)
+          # Inspect the exact scorer branch without leaking any competition input.
+          kernel="kolihhan/ntl-frozen-confidence-gsq-fusion-20261125"
+          with tempfile.TemporaryDirectory() as td:
+              p=subprocess.run(["kaggle","kernels","pull",kernel,"-p",td,"-m"],capture_output=True,text=True,timeout=100)
+              if p.returncode:raise RuntimeError('private source fetch failed')
+              meta=json.loads((Path(td)/"kernel-metadata.json").read_text())
+              nb=json.loads((Path(td)/meta["code_file"]).read_text())
+              texts=["".join(c.get("source",[])) for c in nb["cells"]]
+              for i,s in enumerate(texts):
+                  if "FAST_COMMIT =" in s or "KAGGLE_IS_COMPETITION_RERUN" in s:
+                      lines=s.splitlines()
+                      for n,l in enumerate(lines):
+                          if ("FAST_COMMIT =" in l or "KAGGLE_IS_COMPETITION_RERUN" in l):
+                              print('NTL_SOURCE_ENV_BRANCH='+json.dumps({
+                                  'cell':i,'line':n+1,'snippet':lines[max(0,n-2):min(len(lines),n+4)]},sort_keys=True),flush=True)
+              infer=[s for s in texts if s.startswith("%%writefile infer.py\n")]
+              assert len(infer)==1
+              t=infer[0]
+              important=['_ntl_fuse(P, Q27)','GSQ share drift','_original =','P = _new',
+                        'if a.gsq_share > 0 and a.gsq_dir:']
+              print('NTL_SOURCE_CONTRACT='+json.dumps({'cells':len(texts),'code_file_sha':hashlib.sha256(
+                 (Path(td)/meta["code_file"]).read_bytes()).hexdigest(),
+                 'infer_markers':{k:t.count(k) for k in important},'model_mounts':len(meta.get('model_sources',[])),
+                 'dataset_mounts':len(meta.get('dataset_sources',[]))},sort_keys=True),flush=True)
+          print('NTL_READONLY_ONLY_NO_SUBMIT_NO_PUSH_NO_KERNEL_RUN=TRUE',flush=True)
+          PY
