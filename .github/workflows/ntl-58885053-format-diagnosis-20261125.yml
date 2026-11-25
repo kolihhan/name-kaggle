@@ -1,0 +1,50 @@
+name: NTL 58885053 format failure read-only artifact inspection
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-58885053-format-diagnosis-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify actual submitted file and preview schema/shape, no raw data logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3' 'pyarrow==22.0.0'
+          python - <<'PY'
+          import subprocess,tempfile,json,hashlib
+          from pathlib import Path
+          import pandas as pd
+          refs={'new':'kolihhan/ntl-frozen-confidence-gsq-fusion-20261125',
+                'original':'kolihhan/ntl-evgen-forensic-eda-repro-20261123'}
+          def scan(root,tag):
+              files=[{'path':str(p.relative_to(root)),'size':p.stat().st_size} for p in root.rglob('*') if p.is_file()]
+              out={'tag':tag,'files':files[:50]}
+              for f in root.rglob('*'):
+                  if f.is_file() and f.name=='submission.parquet':
+                      z=pd.read_parquet(f)
+                      out['output']={'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),
+                          'rows':len(z),'columns':z.columns.tolist(),'dtypes':{str(k):str(v) for k,v in z.dtypes.items()},
+                          'id_nulls':int(z['id'].isna().sum()) if 'id' in z else None,
+                          'model_nulls':int(z['model'].isna().sum()) if 'model' in z else None,
+                          'model_unique_count':int(z['model'].nunique()) if 'model' in z else None,
+                          'id_unique':bool(z['id'].is_unique) if 'id' in z else None}
+              return out
+          for tag,ref in refs.items():
+              with tempfile.TemporaryDirectory() as d:
+                  p=subprocess.run(['kaggle','kernels','output',ref,'-p',d,'--file-pattern','.*submission.parquet'],
+                      capture_output=True,text=True,timeout=150)
+                  print('NTL_SUBMISSION_PREVIEW='+json.dumps({**scan(Path(d),tag),'exit':p.returncode}),flush=True)
+          with tempfile.TemporaryDirectory() as d:
+              p=subprocess.run(['kaggle','competitions','submission-download','58885053','-p',d],
+                  capture_output=True,text=True,timeout=150)
+              out=scan(Path(d),'official_58885053')
+              print('NTL_OFFICIAL_FAILED_SUBMISSION_DOWNLOAD='+json.dumps({**out,'exit':p.returncode}),flush=True)
+          PY
