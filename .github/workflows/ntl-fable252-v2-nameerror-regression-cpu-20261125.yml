@@ -45,7 +45,49 @@ jobs:
           test -n "${KAGGLE_API_TOKEN:-}"
           python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0'
           mkdir -p /tmp/fable252-v2-source
+          python -m pip install -q --disable-pip-version-check httpx==0.28.1
           kaggle kernels pull evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie -p /tmp/fable252-v2-source -m >/dev/null
+          python - <<'PY'
+          from pathlib import Path
+          import os,hashlib,json,httpx
+          root=Path('/tmp/fable252-v2-source')
+          md=json.loads((root/'kernel-metadata.json').read_text())
+          assert md['id']=='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+          base='https://www.kaggle.com/api/i/'
+          with httpx.Client(follow_redirects=True,timeout=60,
+                  headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              xsrf=s.cookies.get('XSRF-TOKEN')
+              if not xsrf:raise RuntimeError('historical source XSRF unavailable')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],
+                   'Content-Type':'application/json','X-XSRF-TOKEN':xsrf}
+              def post(method,body):
+                  r=s.post(base+method,json=body,headers=hdr,timeout=60)
+                  r.raise_for_status()
+                  return r
+              vm=post('kernels.LegacyKernelsService/GetKernelViewModel',
+                  {'authorUserName':'evgendvorkin',
+                   'kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+              versions=post('kernels.KernelsService/ListKernelVersions',
+                  {'kernelId':int(vm['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()
+              matches=[int(row['run']['id']) for row in versions['items']
+                       if (row.get('version') or {}).get('versionNumber')==36 and
+                          (row.get('run') or {}).get('id')]
+              if len(matches)!=1:raise RuntimeError('author version 36 no longer uniquely resolvable')
+              source=post('kernels.KernelsService/GetKernelSessionSource',
+                  {'kernelSessionId':matches[0],'includeOutputIfAvailable':False}).text
+          digest=hashlib.sha256(source.encode()).hexdigest()
+          assert digest=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+          nb=json.loads(source)
+          assert len(nb['cells'])==58 and sum(x.get('cell_type')=='code' for x in nb['cells'])==35
+          (root/md['code_file']).write_text(source)
+          print('FABLE252_V2_HISTORICAL_V36_SOURCE_SHA_AND_STRUCTURE=PASS',flush=True)
+          print('FABLE252_V2_SOURCE_INPUT_MOUNTS='+json.dumps({
+              'models':len(md.get('model_sources',[])),
+              'datasets':len(md.get('dataset_sources',[])),
+              'kernels':len(md.get('kernel_sources',[])),
+              'competition':md.get('competition_sources')},sort_keys=True),flush=True)
+          PY
           python scripts/build_ntl_fable_preservation252_private_20261124.py \
             --source /tmp/fable252-v2-source --out /tmp/fable252-v2-private
           python - <<'PY'
