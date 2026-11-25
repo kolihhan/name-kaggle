@@ -1,0 +1,58 @@
+name: NTL Kiro v66 PB115 actual execution branch and dataset provenance — read only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-kiro-v66-pb115-executed-branch-audit-20261125.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify actual v66 logs, saved output and PB115 training dataset shape only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,re,hashlib,json,tempfile
+          from pathlib import Path
+          ref='lumibee/ntl-kiro-v66-pb115-hybrid-apex'
+          data='lumibee/ntl-prefixb-full-115'
+          def run(args,timeout=90):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          st=run(['kernels','status',ref])
+          print('KIRO_V66_KERNEL_STATE='+re.sub(r'[^A-Za-z0-9_.]','',st.stdout.strip())[-150:],flush=True)
+          logs=run(['kernels','logs',ref],timeout=180)
+          s=logs.stdout+'\n'+logs.stderr
+          words=['PB115','pb115_lr_lgb_direct3','PB115 head failed','0.719-base',
+                 'fallback_s10','V1 stage failed','V1 status','V2 Post-Processing Complete',
+                 'Starting Apex Grandmaster','KAGGLE_IS_COMPETITION_RERUN']
+          print('KIRO_V66_LOG_SIGNAL_COUNTS='+json.dumps({
+              x:s.lower().count(x.lower()) for x in words},sort_keys=True),flush=True)
+          print('KIRO_V66_KAGGLE_LOG_API_SUCCESS='+str(logs.returncode==0),flush=True)
+          for match in re.findall(r'PB115.{0,120}',s):
+              # Never emit raw generated passages, only presence/class of PB115 marker.
+              if 'smoke' in match.lower() or 'fallback' in match.lower():
+                  print('KIRO_V66_LOG_PB115_MARKER_CLASS='+('smoke' if 'smoke' in match.lower() else 'fallback'),flush=True)
+          files=run(['kernels','files',ref],timeout=125)
+          keep=[]
+          for line in files.stdout.splitlines():
+              if re.search(r'(?i)(report[.]json|submission[.]parquet|variant-proof[.]json|\.log$|prefix|pb115)',line):
+                  keep.append({'has_report':bool(re.search('report[.]json',line)),
+                               'has_submission':bool(re.search('submission[.]parquet',line)),
+                               'has_variant_proof':bool(re.search('variant-proof',line)),
+                               'logfile':line.strip().endswith('.log')})
+          print('KIRO_V66_PUBLIC_OUTPUT_CATEGORIES='+json.dumps(keep[:30]),flush=True)
+          d=run(['datasets','files',data],timeout=120)
+          print('KIRO_V66_PB115_DATASET_FILES_API_SUCCESS='+str(d.returncode==0),flush=True)
+          print('KIRO_V66_PB115_EXPECTED_DATA_FILES='+json.dumps({
+              k:k in d.stdout for k in ('spec.json','flash_features.csv',
+                    'glm53_features.csv','paired_token_features.parquet')},sort_keys=True),flush=True)
+          print('KIRO_V66_NO_GPU_NO_TRAIN_NO_SUBMISSION=TRUE',flush=True)
+          PY
