@@ -1,0 +1,40 @@
+name: NTL owner-authorized one-shot official confidence fusion submission
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-fusion-official-submit-20261125.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-official-confidence-20261125-once
+  cancel-in-progress: false
+jobs:
+  official:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_confidence_fusion_official_once_20261125.py
+            scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compile and test frozen fusion against same CPU fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q 'kaggle==2.2.5' 'six==1.17.0' 'httpx==0.28.1' 'numpy==2.3.4'
+          python -m py_compile scripts/ntl_confidence_fusion_official_once_20261125.py scripts/ntl_confidence_expert_fusion_20261125.py
+          python scripts/ntl_confidence_expert_fusion_20261125.py
+          test ! -f data/train.csv
+          test ! -f data/test.csv
+      - name: One official candidate only (verify slots, build pinned v36, push, attempt code submission)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ntl_confidence_fusion_official_once_20261125.py
+          echo NTL_OFFICIAL_ONE_SHOT_ATTEMPT_FINISHED=TRUE
