@@ -1,0 +1,42 @@
+name: NTL confidence expert fusion CPU implementation and real cached-score feasibility
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-confidence-fusion-cpu-20261125.yml]
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_confidence_expert_fusion_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Test candidate invariants and inspect authentic reusable cache contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy kaggle==2.2.5 six==1.17.0
+          python scripts/ntl_confidence_expert_fusion_20261125.py
+          python - <<'PY'
+          import subprocess,json,csv,io,re
+          refs=['lightningv08/ntl-olmo2-native24-final-inference-assets','cosmorin/name-that-llm-0-622-reproduction-svc-cache','dhruvtibarewal/nlm-l24-adapters-v5']
+          for ref in refs:
+              p=subprocess.run(['kaggle','datasets','files',ref,'-v'],capture_output=True,text=True,timeout=120)
+              if p.returncode:
+                  print('NTL_CACHE_INVENTORY_FAILED='+ref,flush=True);continue
+              rows=list(csv.DictReader(io.StringIO(p.stdout)))
+              selected=[]
+              for row in rows:
+                  name=row.get('name') or row.get('ref') or ''
+                  if re.search(r'(?i)(oof|logit|prob|predic|cache.*manifest|gsq.*\.np[yz]|readout.*\.np[yz])',name):
+                      selected.append({k:row.get(k) for k in ['name','ref','size','totalBytes'] if row.get(k) is not None})
+              print('NTL_EXPERT_ASSET_INVENTORY='+json.dumps({'ref':ref,'rows_returned':len(rows),'candidates':selected[:80],'not_exhaustive':True}),flush=True)
+          print('NTL_REAL_ALIGNED_EXPERT_SCORES_NOT_YET_VERIFIED=TRUE',flush=True)
+          PY
