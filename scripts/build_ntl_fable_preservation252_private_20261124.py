@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 
 DONOR="kolihhan/ntl-evgen-forensic-eda-repro-20261123"
+PUBLIC_RECOVERY="evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie"
 DONOR_FILE_SHA="74d86affa9f55464ab39f735f392b54e47e2d8a2b631a0bca45de9435c600c56"
 DEST="kolihhan/ntl-fable-preservation-252-v2-20261125"
 PANEL="nischaydnk/ntl-topic-synthetic-18llms"
@@ -47,8 +48,11 @@ def patch_data_assignment(source):
 def build(inp,out):
     if out.exists():raise FileExistsError("one-shot destination already exists")
     md=json.loads((inp/"kernel-metadata.json").read_text())
-    if md["id"]!=DONOR or not md["is_private"] or not md.get("enable_gpu",False):
-        raise ValueError("not exact private 0.718 T4 parent")
+    # Kaggle returns 404 for the private scored copy. The publicly published
+    # author's notebook was previously SHA-verified as the byte-identical
+    # code source of that 0.718 reproduction. Keep the SHA guard below.
+    if md.get("id") not in (DONOR,PUBLIC_RECOVERY) or not md.get("enable_gpu",False):
+        raise ValueError("not the frozen 0.718 source or verified public recovery")
     if not md.get("competition_sources")==["name-that-llm"]:
         raise ValueError("unexpected original competition contract")
     if PANEL in (md.get("dataset_sources") or []):
@@ -128,6 +132,7 @@ def build(inp,out):
     (out/"kernel-metadata.json").write_text(json.dumps(newmd,indent=1,ensure_ascii=False)+"\n")
     report={
       "one_private_kernel":DEST,"donor_source_exact_sha":DONOR_FILE_SHA,
+      "source_ref_used":md["id"],"public_recovery_ref_used":md["id"]==PUBLIC_RECOVERY,
       "original_cells":len(original),"sidecars":3,"mutated_original_cells":2,
       "original_data_cell_index":d,"original_glm_config_cell_index":v,
       "original_apex_cell_index":a,
