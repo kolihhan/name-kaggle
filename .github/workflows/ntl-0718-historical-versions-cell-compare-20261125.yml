@@ -1,0 +1,110 @@
+name: NTL frozen 0.718 historical source cell-by-cell proof — no GPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-0718-historical-versions-cell-compare-20261125.yml]
+permissions: {contents: read, actions: read}
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GH_READ_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compare archived frozen 58 cells with Kaggle versions 34-36
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check httpx==0.28.1
+          python - <<'PY'
+          import os,httpx,json,re,hashlib,zipfile,io
+          expected_sha='74d86affa9f55464ab39f735f392b54e47e2d8a2b631a0bca45de9435c600c56'
+          base='https://www.kaggle.com/api/i/'
+          historical_log='https://api.github.com/repos/kolihhan/name-kaggle/actions/jobs/137455300611/logs'
+          with httpx.Client(follow_redirects=True,timeout=65) as gh:
+              x=gh.get(historical_log,headers={'Authorization':'Bearer '+os.environ['GH_READ_TOKEN'],
+                  'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+              print('FABLE_ARCHIVE_GITHUB_STATUS='+str(x.status_code),flush=True)
+              x.raise_for_status()
+              blob=x.content
+              if blob[:2]==b'PK':
+                  with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                      blob=b'\n'.join(z.read(name) for name in z.namelist() if name.endswith(('.txt','.log')))
+              log=blob.decode('utf-8',errors='replace')
+          archived={}
+          for line in log.splitlines():
+              m=re.search(r'NTL_EVGEN_(CODE|MARKDOWN)_CELL=',line)
+              if not m:continue
+              try:obj=json.loads(line[m.end():])
+              except ValueError:continue
+              i=int(obj['cell'])
+              if i in archived:continue
+              kind='code' if m[1]=='CODE' else 'markdown'
+              archived[i]={'type':kind,'value':obj['code' if kind=='code' else 'prose'],
+                           'declared':int(obj['chars'])}
+          print('FABLE_ARCHIVE_LOGGED_UNIQUE_CELLS='+str(len(archived)),flush=True)
+          if len(archived)!=58 or sorted(archived)!=list(range(58)):
+              print('FABLE_ARCHIVE_INCOMPLETE=TRUE',flush=True)
+              raise SystemExit(0)
+          with httpx.Client(follow_redirects=True,timeout=55,
+                headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              cookie=s.cookies.get('XSRF-TOKEN','')
+              if not cookie:raise RuntimeError('no XSRF')
+              headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],
+                       'Content-Type':'application/json','X-XSRF-TOKEN':cookie}
+              def post(method,body):
+                  q=s.post(base+method,json=body,headers=headers,timeout=55)
+                  q.raise_for_status()
+                  return q
+              vm=post('kernels.LegacyKernelsService/GetKernelViewModel',
+                  {'authorUserName':'evgendvorkin',
+                   'kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+              kid=int(vm['kernel']['id'])
+              dat=post('kernels.KernelsService/ListKernelVersions',
+                  {'kernelId':kid,'sortOption':'VERSION_ID','pageSize':200}).json()
+              versions={int(v['version']['versionNumber']):int(v['run']['id'])
+                  for v in dat['items'] if v.get('version') and v.get('run') and
+                       v['version'].get('versionNumber') and v['run'].get('id')}
+              out=[]
+              for num in [33,34,35,36,37,38]:
+                  if num not in versions:continue
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',
+                          {'kernelSessionId':versions[num],'includeOutputIfAvailable':False}).text
+                  try:nb=json.loads(raw)
+                  except ValueError:
+                      out.append({'version':num,'parse':'bad'});continue
+                  cells=nb['cells']
+                  matches=[];length_matches=[];errors=[]
+                  for idx,c in enumerate(cells):
+                      if idx not in archived:continue
+                      src=c.get('source',[])
+                      content=''.join(src) if isinstance(src,list) else str(src)
+                      pre=archived[idx]['value']
+                      same=content.startswith(pre) or content.rstrip('\n')==pre.rstrip('\n')
+                      matches.append(same)
+                      len_ok=abs(len(content)-archived[idx]['declared'])<=1
+                      length_matches.append(len_ok)
+                      if not same or not len_ok:
+                          errors.append({'cell':idx,'prefix_match':same,
+                                         'length_match':len_ok,'expected_len':archived[idx]['declared'],
+                                         'candidate_len':len(content)})
+                  result={'version':num,'cells':len(cells),'code':sum(c.get('cell_type')=='code' for c in cells),
+                          'logged_prefix_matches':sum(matches),'logged_length_matches':sum(length_matches),
+                          'prefix_mismatches':errors[:15],
+                          'source_sha':hashlib.sha256(raw.encode()).hexdigest()}
+                  hashes=[]
+                  for indent in [1,2,4,None]:
+                    for ensure in [False,True]:
+                      for newline in ['', '\n']:
+                        txt=json.dumps(nb,ensure_ascii=ensure,indent=indent)+newline
+                        if hashlib.sha256(txt.encode()).hexdigest()==expected_sha:
+                            hashes.append({'indent':indent,'ensure_ascii':ensure,'newline':bool(newline)})
+                  result['exact_hash_via_reserialization']=hashes
+                  out.append(result)
+              print('FABLE_ARCHIVE_VERSION_CODE_COMPARISON='+json.dumps(out,sort_keys=True),flush=True)
+          print('FABLE_ARCHIVE_READONLY_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
