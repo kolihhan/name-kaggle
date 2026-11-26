@@ -1,0 +1,37 @@
+name: NTL Gemma31B actual CUDA llama-server crash log read-only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31b-v2-llama-crash-output-20261126.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Pull actual failed Kaggle output artifact only, no new kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess, tempfile, pathlib,json
+          ref='kolihhan/ntl-gemma4-31b-ensemble-no-train-20261126'
+          with tempfile.TemporaryDirectory() as root:
+              p=subprocess.run(['kaggle','kernels','output',ref,'-p',root,'-o',
+                '--file-pattern','^ntl31_llama_server.log$'],text=True,capture_output=True,timeout=150)
+              files=[x for x in pathlib.Path(root).rglob('*') if x.is_file()]
+              print('NTL31_LLAMA_OUTPUT_FETCH='+json.dumps({'rc':p.returncode,
+                 'files':[{'name':f.name,'size':f.stat().st_size} for f in files],
+                 'summary':(p.stdout+p.stderr)[-350:]}),flush=True)
+              for f in files:
+                  if f.name=='ntl31_llama_server.log':
+                      raw=f.read_text(errors='replace')
+                      lines=[s[:450] for s in raw.splitlines()]
+                      print('NTL31_LLAMA_CRASH_TAIL='+json.dumps(lines[-110:]),flush=True)
+          print('NTL31_READONLY_NO_GPU_NO_TRAIN_NO_SUBMISSION=TRUE',flush=True)
+          PY
