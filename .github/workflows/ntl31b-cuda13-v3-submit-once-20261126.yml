@@ -43,7 +43,7 @@ jobs:
           for marker in (
               'server_bin=locate("llama-cpp-turing-sm75","llama-server")',
               "server_bin.chmod(server_bin.stat().st_mode|0o111)",
-              "    env=os.environ.copy()"):
+              "    server=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT)"):
               assert marker in source,repr(marker)
           print('NTL31_V3_CUDA13_INVARIANTS_PASS=TRUE',flush=True)
           PY
