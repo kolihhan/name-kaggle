@@ -13,8 +13,10 @@ import time
 from pathlib import Path
 from scripts import ntl_gemma4_31b_ensemble_submit_once_20261126 as original
 
+BASE_BUILD=original.build
+
 def fixed_build():
-    folder,_ = original.build()
+    folder,_ = BASE_BUILD()
     meta=json.loads((folder/"kernel-metadata.json").read_text())
     notebook_path=folder/meta["code_file"]
     nb=json.loads(notebook_path.read_text())
@@ -28,18 +30,23 @@ def fixed_build():
             src=src.replace("str(NB_T0),'1' if FAST_COMMIT else '0'",
                 "str(globals().get('NB_T0',time.monotonic())),'1' if FAST_COMMIT else '0'")
             count_timer+=1
-        # The original code writes the stage into an embedded string. Change
-        # only the exact executable permission operation, not the scorer.
-        needle="server_bin.chmod(server_bin.stat().st_mode|0o111)"
-        if needle in src:
+        if "Path('/kaggle/working/ntl31_stage.py').write_text(" in src:
+            stage=original.STAGE_PATH.read_text(encoding="utf-8")
+            needle="    server_bin.chmod(server_bin.stat().st_mode|0o111)"
+            if stage.count(needle)!=1:
+                raise RuntimeError("expected one original binary permission operation")
             replacement=(
-                'import shutil\n'
+                '    import shutil\n'
                 '    writable_bin=Path("/kaggle/working/ntl31_llama_server")\n'
                 '    shutil.copy2(server_bin,writable_bin)\n'
                 '    writable_bin.chmod(writable_bin.stat().st_mode|0o111)\n'
                 '    server_bin=writable_bin'
             )
-            src=src.replace(needle,replacement)
+            stage=stage.replace(needle,replacement)
+            compile(stage,"ntl31_stage.py","exec")
+            src=("from pathlib import Path\n"
+                 "Path('/kaggle/working/ntl31_stage.py').write_text("+
+                 repr(stage)+",encoding='utf-8')\n")
             count_perm+=1
         cell["source"]=src.splitlines(keepends=True)
     if count_timer!=1 or count_perm!=1:
