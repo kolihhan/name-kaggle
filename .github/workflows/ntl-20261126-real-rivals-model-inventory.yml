@@ -1,0 +1,77 @@
+name: NTL rivals real public notebook model inventory read-only 20261126
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-real-rivals-model-inventory.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Pull source, read actual model dependency list and usage evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,tempfile,json,re,hashlib
+          from pathlib import Path
+          refs=[
+            'lightningv08/0-724-glm-pb115-sibling-odds-qwen3-8-27b',
+            'lumibee/ntl-kiro-v66-pb115-hybrid-apex',
+            'alexchilton/name-that-llm-0-702-all-public-what-failed',
+            'xiewenwei29/name-that-llm',
+            'angelojun2k/name-that-llm-grandmaster-champion'
+          ]
+          key=re.compile(r'(Qwen(?:2[.]5|3|3[.]8)?[^\s\"']{0,25}|GLM[^\s\"']{0,22}|UltraBERT|DeBERTa|ModernBERT|electra|roberta|llama[^\s\"']{0,25}|ATLAS|PB115|GSQ|likelihood|lora|LightGBM|LogisticRegression)',re.I)
+          for ref in refs:
+              with tempfile.TemporaryDirectory(prefix='ntl-real-rivals-') as root:
+                  dest=Path(root)
+                  pull=subprocess.run(['kaggle','kernels','pull',ref,'-p',root,'-m'],
+                    capture_output=True,text=True,timeout=150)
+                  if pull.returncode:
+                      print('NTL_RIVAL_SOURCE='+json.dumps({'ref':ref,'pull_exit':pull.returncode,
+                          'source_retrievable':False}),flush=True)
+                      continue
+                  m=json.loads((dest/'kernel-metadata.json').read_text())
+                  code=dest/m['code_file']
+                  body=code.read_text(encoding='utf8')
+                  if code.suffix=='.ipynb':
+                      nb=json.loads(body)
+                      cells=[''.join(c['source']) if isinstance(c.get('source'),list) else str(c.get('source',''))
+                           for c in nb['cells'] if c.get('cell_type')=='code']
+                  else:cells=[body]
+                  modules={}
+                  for c in cells:
+                      match=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                      if match:
+                          modules[Path(match.group(1).strip()).name]=c[match.end():]
+                  # Only counts and explicit names: never echo raw generated text or secrets.
+                  hits={}
+                  mentions={}
+                  for term in ['Qwen3-8B','Qwen2.5-14B','qwen3.8-27b','Qwen3.8-27B','GLM-4-9B','glm53',
+                               'Ultrabert','electra','deberta','LogisticRegression','LGBMClassifier','LightGBM',
+                               'LoRA','ATLAS','GSQ','PB115','from_pretrained','model_sources']:
+                      n=sum(c.lower().count(term.lower()) for c in cells)
+                      if n:hits[term]=n
+                  model_names=m.get('model_sources',[])
+                  ds=m.get('dataset_sources',[])
+                  ks=m.get('kernel_sources',[])
+                  markers=[s for s in ds+ks if re.search(r'(qwen|glm|atlas|lora|encoder|bert|sibling|likelihood|pb115|token)',str(s),re.I)]
+                  print('NTL_RIVAL_SOURCE='+json.dumps({
+                     'ref':ref,'source_retrievable':True,
+                     'sha256':hashlib.sha256(body.encode()).hexdigest(),
+                     'code_cells':len(cells),'emitted_modules':sorted(modules)[:40],
+                     'model_sources':model_names,'model_mount_count':len(model_names),
+                     'dataset_count':len(ds),'kernel_count':len(ks),
+                     'model_related_external_mounted':markers[:45],
+                     'source_usage_mentions':hits,
+                     'model_mount_is_not_execution_proof':True
+                  },sort_keys=True),flush=True)
+          print('NTL_RIVALS_READONLY_NO_MODEL_TRAIN_NO_GPU_NO_KAGGLE_SUBMIT=TRUE',flush=True)
+          PY
