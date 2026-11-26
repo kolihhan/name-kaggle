@@ -1,5 +1,5 @@
 name: NTL 31B actual Kaggle candidate and submission receipt read-only
-# Second read-only status check during CUDA13 v3 actual 31B private GPU run; do not interrupt.
+# Read-only check of constrained JSON Gemma31B v4 while the unique one-shot workflow handles actual submission.
 on:
   push:
     branches: [research/ntl-fable252-nameerror-recovery-20261125]
