@@ -1,0 +1,32 @@
+name: NTL 31B CUDA13 T4 complete runtime file manifest read-only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31b-cuda13-full-manifest-20261126.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Get paginated complete CUDA13 binary manifests, no GPU used
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json
+          for ref in ('shymsk/llama-cpp-cuda13-t4-v3','artp2011/llama-cpp-bin-cuda13-sm75'):
+              p=subprocess.run(['kaggle','datasets','files',ref,'-v','--page-size','200'],
+                capture_output=True,text=True,timeout=95)
+              lines=p.stdout.splitlines()
+              keep=[x for x in lines if any(s in x.lower() for s in
+                ('llama-server','libllama','libggml','libcudart','readme','libggml-cuda','libcuda'))]
+              print('NTL31_CUDA13_COMPLETE='+json.dumps({'ref':ref,'rc':p.returncode,
+                'line_count':len(lines),'matches':keep[-90:],'has_more':any('Next Page Token' in s for s in lines)}),flush=True)
+          print('NTL31_CUDA13_READONLY=TRUE',flush=True)
+          PY
