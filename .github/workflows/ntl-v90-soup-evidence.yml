@@ -1,0 +1,74 @@
+name: NTL V90 soup manifest and arbitration evidence
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-v90-soup-evidence.yml']
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read exact source, public manifest and version metadata, no weights
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,json,hashlib,re,httpx,subprocess,tempfile
+          from pathlib import Path
+          ref='jnliang/ntl-v90-locked-v1-warm-soup'
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r.json()
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'jnliang','kernelSlug':'ntl-v90-locked-v1-warm-soup','tab':'output'})
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200})['items']
+              for e in items:
+                  print('VERSION_META='+json.dumps({'version':e.get('version',{}).get('versionNumber'),'keys':sorted(e.keys()),'run_keys':sorted((e.get('run') or {}).keys())}),flush=True)
+                  n=e['version']['versionNumber']
+                  raw=s.post('https://www.kaggle.com/api/i/kernels.KernelsService/GetKernelSessionSource',json={'kernelSessionId':int(e['run']['id']),'includeOutputIfAvailable':False},headers=h)
+                  raw.raise_for_status()
+                  digest=hashlib.sha256(raw.text.encode()).hexdigest()
+                  if n==2: assert digest=='cd1d195676498f8cc7a8b4bef10badf39249d99d0b4b226dc78a1310e8ff0d85'
+                  cells=[''.join(x.get('source',[])) for x in raw.json()['cells'] if x.get('cell_type')=='code']
+                  if n!=2:
+                      print('V1_SOURCE='+json.dumps({'sha':digest,'cells':len(cells)}),flush=True)
+                      continue
+                  for c in cells:
+                      if c.startswith('%%writefile') and any(x in c.splitlines()[0] for x in ['v52_extended_arbitration.py','v52_ca_assignment.py','v51_bt_arbitration.py','v52_runtime.py']):
+                          # summarize code constants and executable conditions, no data
+                          keep=[]
+                          for i,x in enumerate(c.splitlines()):
+                              if len(x)<250 and re.search(r'(?i)(^\s*[A-Z_]{3,}\s*=|eligible|support|agree|margin|threshold|argmax|family|cost|mass|odds|return |assignment|candidate|ballot|capacity)',x):keep.append([i,x.strip()])
+                          print('ARBITRATION='+json.dumps({'module':Path(c.splitlines()[0].split()[-1]).name,'lines':keep[:100]}),flush=True)
+                      if not c.startswith('%%writefile') and 'V90 Warm-Start' in c:
+                          sub=c[c.index('# ---- V90 Warm-Start'):]
+                          lines=[x.strip()[:240] for x in sub.splitlines() if len(x)<400 and re.search(r'(?i)(soup|alpha|native|adapter|head|assert|manifest|spec|redirect|locked|sha)',x)]
+                          print('SOUP_REDIRECT='+json.dumps(lines[:100]),flush=True)
+          with tempfile.TemporaryDirectory() as tmp:
+              dataset='jnliang/ntl-hc-v90-warm-soup'
+              p=subprocess.run(['kaggle','datasets','files',dataset,'--csv'],capture_output=True,text=True,timeout=60)
+              print('SOUP_FILES='+json.dumps({'rc':p.returncode,'listing':p.stdout[:8000]}),flush=True)
+              p=subprocess.run(['kaggle','datasets','download',dataset,'-f','v90_soup_manifest.json','-p',tmp,'-q'],capture_output=True,text=True,timeout=60)
+              if p.returncode==0:
+                  import zipfile
+                  for f in Path(tmp).glob('*.zip'):
+                      with zipfile.ZipFile(f) as z:
+                          for name in z.namelist():
+                              if name.endswith('v90_soup_manifest.json'):
+                                  (Path(tmp)/'v90_soup_manifest.json').write_bytes(z.read(name))
+                  path=Path(tmp)/'v90_soup_manifest.json'
+                  if path.exists():
+                      m=json.loads(path.read_text())
+                      # Manifest only; no weights or raw datasets.
+                      print('SOUP_MANIFEST='+json.dumps(m,sort_keys=True)[:26000],flush=True)
+                  else: print('SOUP_MANIFEST_UNAVAILABLE=missing_file',flush=True)
+              else: print('SOUP_MANIFEST_UNAVAILABLE=download_failed',flush=True)
+          print('NO_GPU_NO_TRAINING_NO_SUBMISSION',flush=True)
+          PY
