@@ -1,0 +1,62 @@
+name: NTL C1 prompt-matched supervised contrastive real 2699 18-label CPU study
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-c1-official18-contrastive-cpu-once-20261126.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-c1-official18-contrastive-real-cpu-20261126
+  cancel-in-progress: false
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      HF_HUB_DISABLE_XET: '1'
+      HF_HUB_ENABLE_HF_TRANSFER: '0'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/__init__.py
+            scripts/ntl_kimi_e5_frozen_transfer_20261126.py
+            scripts/ntl_c1_prompt_contrastive_20261126.py
+            scripts/ntl_c1_official18_prompt_oof_20261126.py
+            tests/test_ntl_c1_prompt_contrastive_20261126.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install pinned CPU-only environment and prevent GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'torch==2.5.1+cpu' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q --disable-pip-version-check 'transformers==4.46.3' 'numpy==1.26.4' 'pandas==2.2.3' 'scikit-learn==1.5.2' 'scipy==1.14.1' 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import torch
+          assert not torch.cuda.is_available()
+          print('NTL_C1_ONLY_CPU=TRUE',flush=True)
+          PY
+      - name: Verify actual TDD contrastive behavior, grouping and leakage controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p test_ntl_c1_prompt_contrastive_20261126.py -v
+          python -m py_compile scripts/ntl_c1_official18_prompt_oof_20261126.py
+          echo NTL_C1_CORE_TESTS_PASS=TRUE
+      - name: One-off frozen 335M encoder 2699 TRAIN row 3-fold paired 18-class OOF
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python -m scripts.ntl_c1_official18_prompt_oof_20261126
+          echo NTL_C1_RESEARCH_ONLY_NO_KAGGLE_SUBMIT_NO_GPU_NO_EXTERNAL_DATA=TRUE
