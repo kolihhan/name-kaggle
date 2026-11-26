@@ -1,0 +1,63 @@
+name: NTL 0.718 upstream provenance recovery from verified public donor CPU read only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-public-donor-training-lineage-audit.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Recover old-lineage dataset/model mounts and prefit references (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import subprocess,json,tempfile,hashlib,re
+          from pathlib import Path
+          refs=[
+            ('failed_immutable','kolihhan/ntl-frozen-confidence-gsq-fusion-20261125'),
+            ('public_donor','evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'),
+            ('published_0724','lightningv08/0-724-glm-pb115-sibling-odds-qwen3-8-27b')
+          ]
+          def call(*a):
+              return subprocess.run(['kaggle',*a],capture_output=True,text=True,timeout=150)
+          for typ,ref in refs:
+              with tempfile.TemporaryDirectory() as td:
+                  p=call('kernels','pull',ref,'-p',td,'-m')
+                  if p.returncode:
+                      stat=call('kernels','status',ref)
+                      print('NTL_DONOR_PROVENANCE_STATUS='+json.dumps({'type':typ,'source':ref,'pull_exit':p.returncode,
+                        'status_exit':stat.returncode,'not_found_or_forbidden':True}),flush=True)
+                      continue
+                  d=Path(td)
+                  meta=json.loads((d/'kernel-metadata.json').read_text())
+                  nb=json.loads((d/meta['code_file']).read_text())
+                  mounts={k:meta.get(k) or [] for k in ('model_sources','dataset_sources','kernel_sources','competition_sources')}
+                  code=[''.join(c.get('source',[])) for c in nb['cells']]
+                  matches={'prvsiyan':[], 'open_pool':[], 'prompts':[], 'checkpoint_or_weights':[]}
+                  for i,s in enumerate(code):
+                      if s.startswith('%%writefile '):continue
+                      for j,l in enumerate(s.splitlines()):
+                          if len(l)>350 or re.search(r'(?i)(api_key|password|bearer|secret|token=)',l):continue
+                          if 'prvsiyan' in l.lower():matches['prvsiyan'].append((i,j+1,l.strip()[:180]))
+                          if 'open-pool' in l.lower() or 'open_pool' in l.lower():matches['open_pool'].append((i,j+1,l.strip()[:180]))
+                          if 'prompt_id' in l.lower() and re.search(r'(train|split|fit|group)',l,re.I):matches['prompts'].append((i,j+1,l.strip()[:180]))
+                          if re.search(r'(?:\.fit\(|\.fit_transform\(|load_state_dict\(|from_pretrained\(|\.safetensors|\.gguf|\.pkl)',l,re.I):
+                              matches['checkpoint_or_weights'].append((i,j+1,l.strip()[:180]))
+                  print('NTL_DONOR_PROVENANCE_SOURCES='+json.dumps({
+                    'type':typ,'source':ref,'source_sha256':hashlib.sha256((d/meta['code_file']).read_bytes()).hexdigest(),
+                    'cells':len(code),'mounts':mounts,
+                    'direct_prvsiyan_mount':any('prvsiyan' in x for x in mounts['dataset_sources']),
+                    'direct_openpool_mount':any('open-pool' in x for x in mounts['dataset_sources']),
+                    'notebook_mentions':{k:v[:14] for k,v in matches.items()},
+                    'prefit_history_externally_unknown':True
+                  },sort_keys=True),flush=True)
+          print('NTL_PROVENANCE_NO_SUBMISSION_NO_TRAINING_NO_GPU=TRUE',flush=True)
+          PY
