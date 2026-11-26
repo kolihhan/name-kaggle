@@ -1,0 +1,36 @@
+# Name That LLM — one-shot candidate-to-submission decision, 2026-11-26
+
+**Status: engineering PRE-FLIGHT PASS; scientific new candidate NOT YET BUILT; official new submission = NONE.** This is a prospective decision document, not evidence of a leaderboard improvement.
+
+## Verified factual baseline
+- Current account best: **0.718**, official submission **#58755304** COMPLETE, nonzero 60,069 byte artifact. Authenticated [readiness Action #45751742419](https://github.com/kolihhan/name-kaggle/actions/runs/45751742419).
+- Account has **5 official submissions allowed now**, not limited by total. This does not justify wasting any slot.
+- At 2026-11-26 latest verified public leader 0.813, approximately #20 0.761, best accessible public-score recipe **0.724**. Do not pretend public 0.724 is an original 0.760+ breakthrough.
+- The owner's 0.718 is an attributed Evgen v36 public-source reproduction, not an independently trained solution.
+- E5 frozen Kimi/GPT 2-class 70% BA tied em-dash-only 70% on external source; the **full 18-class fixed E5 override reduced a historically spent 252-row panel 151→148** (4 rescues, 7 regressions). This mechanism is RETIRED, as are Confidence Fusion (two official zero-byte format errors), forced-Hungarian prompt quotas, minor PB115/GQS weight tweaks, and repeated spent-panel threshold tuning.
+- Kaggle [official code requirements](https://www.kaggle.com/competitions/name-that-llm/overview/description): Internet OFF; GPU/CPU notebook <=9h; hidden ~4000 responses; required `submission.parquet` with exactly `id,model` and 18 legal class strings; hidden test model mix unequal.
+- Actual strict 18-class file contract code: `scripts/ntl_submission_contract_20261126.py` + ten actual negative/roundtrip tests `tests/test_ntl_submission_contract_20261126.py`; [GH Actions #45751742419](https://github.com/kolihhan/name-kaggle/actions/runs/45751742419) **SUCCESS**, including 1/3/252/4000/4500-row real Parquet writes/reads, duplicate/null/illegal label/zero-byte/incorrect filename fail closed. **This does not test GPU inference or a hidden scorer.**
+
+## C1: genuinely new model class before another slot
+
+**Candidate research direction:** **source-robust, prompt-matched 18-generator supervised contrastive attribution** on a strong encoder (prospective Qwen3-Embedding-4B LoRA or equivalent), with a predeclared strong historical ensemble control. This is a *model representation and objective change*, not calibration, E5 binary-switching or copying Kiro/Lightning.
+
+**Scientific hypothesis H1:** conditioning the training loss on *same-original-prompt, different-generators* negatives and holding whole prompt groups out teaches generator fingerprints while reducing topical shortcuts, improving true 18-class generalization. **Competing H0:** those fingerprints are dominated by provider routing and synthetic response protocol, so strong embedding training loses to the existing 0.718 stack on hidden prompts. A stronger encoder or more data alone is not evidence.
+
+**Data and rights gate BEFORE fitting:** Official `train.csv` 2,699 rows/150 prompt groups; prospective external `prvsiyan` 4,302 new/new2 passages/239 prompts/18 labels is *quarantined pending provider-output training rights*. Older Open Pool contains **173/239 identical Gemini3.7 passages** from current prvsiyan version and may overlap pretrained checkpoints. External GLM training data must be excluded absent explicit Z.ai license clearance; Kimi/Vertex and third-party routed records require original-provider permission/route review. Do not assume CC BY publisher upload overrides generator ToS. If a full, class-balanced, rights-cleared 18-class external train panel cannot be admitted, **C1 must not be trained or scored as if it exists**.
+
+**Training design when admitted:** 4-bit LoRA strong encoder, a single supervised CE + prompt-matched contrastive loss; output exactly 18 class scores. Use grouped-by-prompt split, never random response split; hold a complete original source/provider route out as a stress test where feasible; preserve balanced macro recall, confusion rescues/regressions, and group-bootstrap uncertainty. Same-source 5-fold CV remains DEV only, not hidden-score evidence. Compare a frozen strong non-LoRA model with same evaluation data and a shuffled-pair negative control. Do not invent incumbent 0.718 OOF if upstream prefits saw official labels.
+
+**Operational feasibility gate:** A 4B model inserted additively into the near-9h v36 pipeline is NOT presumed feasible. Prefer a *drop-in replacement* for a profiled expensive stage, or a standalone checkpoint scorer only if standalone 18-class validation justifies its strength. Measure model+tokenizer+data load, 4,000×250-word throughput under actual Kaggle accelerator and full offline mounts; set a safe budget <9h with margin. No new 8.8h notebook blindly plus a 4B head.
+
+## Single new official submission: predeclared acceptance gate
+1. **FROZEN**: one precise architecture, permitted data list and checkpoint SHA, exactly one change in model identity evidence. No more Public-LB parameter search.
+2. **SCIENTIFIC**: actual trained 18-class model, label/source/prompt/rights audit, unseen-prompt and source stress results, and honest comparison to strongest available same-row benchmark. Old 252 and official train examples are DEV/falsification only.
+3. **ENGINEERING**: no network in scoring; 18 exact labels; full-size 4k dummy file plus true model-powered preview and measured full-size runtime; test ID equality; output roundtrip; final file at `/kaggle/working/submission.parquet`; no hidden-row assumptions or test-prior class quotas. Run strict `scripts/ntl_submission_contract_20261126.py --test-csv ... --submission ...` on real pipeline output.
+4. **ACCOUNT**: verify daily quota again at launch, ensure no active scorer, preserve the 0.718 winning kernel/version, reserve at least one slot. Submission only for a *new* score-worthy candidate; no duplicate version retries.
+5. **SCORE**: execute exactly one official Kaggle code submission when gates 1–4 pass. Record notebook slug+version+SHA, unique submission ID, terminal COMPLETE status, numeric Public BA; champion remains 0.718 unless new numeric score >0.718. If format error, 0 bytes, timeout, or lower score: stop and investigate; no second blind retry.
+
+## Current hard truth and next executable work
+**Engineering is ready, but there is currently NO evidence-backed C1 checkpoint or complete 18-class source-licensed training cohort.** Do not submit an empty candidate, retired E5, broken Confidence Fusion, or a rebranded 0.724 public notebook in order to produce a submission receipt. The next real experiment is provenance/rights admission and a *single bounded strong-encoder training/holdout* (not another typography experiment). Once it demonstrates distinct 18-way signal, package and run the exact admission gate above. No official Kaggle submit or GPU was launched in this Nov26 preflight.
+
+**Scientific kill condition:** any trained model whose source-disjoint evaluation does not improve meaningfully over its same-data strong control, or whose rescues are cancelled by regressions, is rejected. The Public target ~0.761 is a goal, not a forecast.
