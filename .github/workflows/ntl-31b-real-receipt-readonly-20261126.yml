@@ -1,5 +1,5 @@
 name: NTL 31B actual Kaggle candidate and submission receipt read-only
-# One read-only check after repaired private notebook v2 was pushed.
+# One read-only check during CUDA13 v3 actual 31B runtime; do not interrupt GPU.
 on:
   push:
     branches: [research/ntl-fable252-nameerror-recovery-20261125]
