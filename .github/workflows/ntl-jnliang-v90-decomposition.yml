@@ -1,0 +1,70 @@
+name: NTL Jnliang v90 warm soup scored-source decomposition
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-jnliang-v90-decomposition.yml']
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Exact scored version, configuration, source genealogy and score-cache availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,json,hashlib,re,ast,httpx,subprocess,tempfile
+          from pathlib import Path
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r
+              def get(author,slug,requested=None):
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+                  best=v.get('bestSubmissionScore') or {}
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  latest=max(e['version']['versionNumber'] for e in items if e.get('version',{}).get('versionNumber') is not None)
+                  n=requested or best.get('kernelVersionNumber') or latest
+                  e=[e for e in items if (e.get('version') or {}).get('versionNumber')==n]
+                  assert len(e)==1 and e[0].get('run',{}).get('id')
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(e[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  cells=[''.join(x.get('source',[])) for x in json.loads(raw)['cells'] if x.get('cell_type')=='code']
+                  print('SOURCE='+json.dumps({'ref':author+'/'+slug,'version':n,'latest':latest,'sha256':hashlib.sha256(raw.encode()).hexdigest(),'cells':len(cells),'best_metadata':best}),flush=True)
+                  return cells
+              j=get('jnliang','ntl-v90-locked-v1-warm-soup')
+              l=get('lightningv08','0-724-glm-pb115-sibling-odds-qwen3-8-27b',52)
+          def blocks(cells):
+              m={}
+              for c in cells:
+                  a=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                  if a:
+                      name=Path(a.group(1).strip()).name
+                      if name in m:name=a.group(1)
+                      m[name]=c[a.end():].strip()
+              return m
+          jm,lm=blocks(j),blocks(l)
+          print('MODULE_COMPARISON='+json.dumps({'jn_modules':sorted(jm),'light_modules':sorted(lm),'same':sorted(k for k in jm.keys()&lm.keys() if jm[k]==lm[k]),'changed':sorted(k for k in jm.keys()&lm.keys() if jm[k]!=lm[k]),'jn_only':sorted(jm.keys()-lm.keys())}),flush=True)
+          pat=re.compile(r'(?i)(warm|soup|blend|weights?|share|atlas|gsq|native|pb115|prefix|sibling|gauss|comp_stack|temperature|centering|sinkhorn|ensemble|logits|deadline|\.fit\(|savez|parquet|checkpoint)')
+          for i,c in enumerate(j):
+              if c.startswith('%%writefile'):continue
+              lines=[x.strip()[:220] for x in c.splitlines() if len(x)<400 and pat.search(x)]
+              print('JN_CELL='+json.dumps({'cell':i,'chars':len(c),'matches':lines[:24]}),flush=True)
+          for name,c in jm.items():
+              if name in lm and c==lm[name]:continue
+              lines=[{'line':i+1,'code':x.strip()[:220]} for i,x in enumerate(c.splitlines()) if len(x)<400 and pat.search(x)]
+              print('JN_MODULE='+json.dumps({'module':name,'chars':len(c),'matches':lines[:45]}),flush=True)
+          refs=['kolihhan/ntl-fable-preservation-252-v2-20261125','kolihhan/ntl-oleg216-final18-diagnostic-nov17','kolihhan/ntl-lightning0694-scale1200-nov15']
+          for ref in refs:
+              with tempfile.TemporaryDirectory() as d:
+                  p=subprocess.run(['kaggle','kernels','files',ref,'--csv'],capture_output=True,text=True,timeout=60)
+                  # only filenames and sizes, not content
+                  print('CACHE_INVENTORY='+json.dumps({'ref':ref,'returncode':p.returncode,'metadata':p.stdout[:5000] if p.returncode==0 else 'listing unavailable'}),flush=True)
+          print('NO_GPU_NO_FIT_NO_SUBMISSION',flush=True)
+          PY
