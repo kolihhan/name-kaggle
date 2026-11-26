@@ -1,0 +1,56 @@
+name: NTL Gemma31B CUDA13 v3 genuine inference then one official submit
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31b-cuda13-v3-submit-once-20261126.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-gemma4-31b-no-train-official-unique-20261126
+  cancel-in-progress: false
+jobs:
+  one-shot-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/__init__.py
+            scripts/ntl_gemma4_31b_ensemble_stage_20261126.py
+            scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py
+            scripts/ntl31b_cuda13_v3_preview_submit_once.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Validate exact CUDA13 v3 no-train code and Kaggle API before GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.2.3 numpy==1.26.4 pyarrow==17.0.0
+          python -m py_compile scripts/ntl_gemma4_31b_ensemble_stage_20261126.py scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py scripts/ntl31b_cuda13_v3_preview_submit_once.py
+          python - <<'PY'
+          from scripts import ntl_gemma4_31b_ensemble_submit_once_20261126 as b
+          from scripts import ntl31b_cuda13_v3_preview_submit_once as v3
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          assert v3.BASE_BUILD is b.build
+          assert v3.NEW_RUNTIME=="artp2011/llama-cpp-bin-cuda13-sm75"
+          assert hasattr(KaggleApi,"competition_submit_code")
+          source=b.STAGE_PATH.read_text()
+          for marker in (
+              'server_bin=locate("llama-cpp-turing-sm75","llama-server")',
+              "server_bin.chmod(server_bin.stat().st_mode|0o111)",
+              "    env=os.environ.copy()"):
+              assert marker in source,repr(marker)
+          print('NTL31_V3_CUDA13_INVARIANTS_PASS=TRUE',flush=True)
+          PY
+      - name: Exact Kaggle v3 repaired preview then one official no-training code submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f data/train.csv
+          test ! -f data/test.csv
+          python -u -m scripts.ntl31b_cuda13_v3_preview_submit_once
