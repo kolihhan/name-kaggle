@@ -1,0 +1,47 @@
+name: NTL CGF frozen counterfactual CPU pilot
+on:
+  push:
+    branches: [research/ntl-cgf-cpu-20261127]
+    paths: ['.github/workflows/ntl-cgf-cpu-20261127.yml']
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CUDA_VISIBLE_DEVICES: ''
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/cgf.py
+            scripts/test_cgf.py
+            scripts/ntl_cgf_cpu_20261127.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: CPU runtime and tests
+        run: |
+          python -m pip install -q torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q transformers==4.51.3 pandas pytest kaggle==2.2.5 six==1.17.0
+          python -m pytest -q scripts/test_cgf.py
+          python -m py_compile scripts/ntl_cgf_cpu_20261127.py
+      - name: Actual frozen 18-way diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}"
+          test ! -e data/train.csv
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          kaggle competitions download -c name-that-llm -f train.csv -p "$work" -q
+          if [ -f "$work/train.csv.zip" ]; then unzip -q "$work/train.csv.zip" -d "$work"; fi
+          python -u scripts/ntl_cgf_cpu_20261127.py "$work/train.csv" artifacts/phase1/folds.csv
