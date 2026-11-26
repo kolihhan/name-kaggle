@@ -1,0 +1,44 @@
+name: NTL 31B v4 hidden no-score failure preflight source audit
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31b-v4-v52-exact-npz-contract-20261126.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify actual 0.724-v52 hidden final-logits NPZ fields before candidate scores
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,tempfile,pathlib,json,re
+          ref='lightningv08/0-724-glm-pb115-sibling-odds-qwen3-8-27b/52'
+          with tempfile.TemporaryDirectory() as td:
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',td,'-m'],
+                  capture_output=True,text=True,timeout=100)
+              if p.returncode:raise RuntimeError('cannot inspect exact frozen source')
+              root=pathlib.Path(td);m=json.loads((root/'kernel-metadata.json').read_text())
+              nb=json.loads((root/m['code_file']).read_text())
+              cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source',''))
+                     for c in nb['cells'] if c.get('cell_type')=='code']
+              for i,cell in enumerate(cells):
+                  lines=cell.splitlines()
+                  for j,line in enumerate(lines):
+                      if 'def save_final_logits(' in line:
+                          print('NTL31_DONOR_NPZ_WRITER='+json.dumps({
+                             'cell':i,'line':j+1,'code':lines[j:j+22]},ensure_ascii=False),flush=True)
+                      if 'np.savez(' in line and 'a.save_final_logits' in line:
+                          print('NTL31_NPZ_SAVE_KWARGS='+json.dumps({
+                             'cell':i,'line':j+1,'code':lines[max(0,j-2):j+11]},ensure_ascii=False),flush=True)
+                      if 'FINAL_LOGITS' in line and ('=' in line or '--save_final_logits' in line):
+                          print('NTL31_FINAL_NPZ_LIFECYCLE='+json.dumps({'cell':i,'line':j+1,'code':line[:250]}),flush=True)
+          print('NTL31_READONLY_DONOR_NPZ_AUDIT_DONE=TRUE',flush=True)
+          PY
