@@ -1,0 +1,59 @@
+name: NTL patch CPU input provenance diagnostic
+on:
+  push:
+    branches: [research/ntl-style-patch-cpu-20261127]
+    paths: ['.github/workflows/ntl-style-patch-input-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compare authenticated input and frozen fold metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          mkdir "$work/a" "$work/b"
+          kaggle competitions download name-that-llm -f train.csv -p "$work/a" >/dev/null
+          kaggle competitions download -c name-that-llm -f train.csv -p "$work/b" -q
+          python - "$work" <<'PY'
+          import csv,hashlib,json,sys,urllib.request,zipfile,collections
+          from pathlib import Path
+          root=Path(sys.argv[1])
+          expected="40a22ce8d88c5f46feb4637a099db815f713ffe53e89dbe1b7b21de77707"
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          for mode in ("a","b"):
+              d=root/mode
+              z=d/"train.csv.zip"
+              if z.exists():
+                  with zipfile.ZipFile(z) as f:
+                      assert f.namelist()==["train.csv"]
+                      (d/"train.csv").write_bytes(f.read("train.csv"))
+              p=d/"train.csv"
+              raw=p.read_bytes()
+              with p.open(encoding="utf-8-sig",newline="") as f:
+                  rr=csv.DictReader(f); rows=list(rr); columns=rr.fieldnames
+              variants={"raw":raw,"LF":raw.replace(b"\r\n",b"\n"),"CRLF":raw.replace(b"\r\n",b"\n").replace(b"\n",b"\r\n"),"no_BOM":raw.removeprefix(b"\xef\xbb\xbf")}
+              folds=Path("artifacts/phase1/folds.csv")
+              with folds.open(newline="",encoding="utf-8-sig") as f: fr=list(csv.DictReader(f))
+              ident=lambda x:(x["id"],x["prompt_id"],x["model"])
+              print("INPUT_AUDIT="+json.dumps({"mode":mode,"bytes":len(raw),"hashes":{k:sha(v) for k,v in variants.items()},"matches_old":[k for k,v in variants.items() if sha(v)==expected],"columns":columns,"rows":len(rows),"labels":len({r["model"] for r in rows}),"prompts":len({r["prompt_id"] for r in rows}),"unique_ids":len({r["id"] for r in rows}),"folds_sha":sha(folds.read_bytes()),"fold_identity_equal":collections.Counter(map(ident,rows))==collections.Counter(map(ident,fr))}),flush=True)
+          url="https://huggingface.co/api/models/StyleDistance/styledistance"
+          with urllib.request.urlopen(url,timeout=20) as f: model=json.load(f)
+          print("MODEL_AUDIT="+json.dumps({"id":model.get("id"),"sha":model.get("sha"),"files":[s["rfilename"] for s in model.get("siblings",[])]}),flush=True)
+          PY
