@@ -104,7 +104,7 @@ def build():
     codefile=str(meta["code_file"])
     (dest/codefile).write_text(json.dumps(nb,ensure_ascii=False),encoding="utf-8")
     meta.pop("id_no",None)
-    meta.update(id=DEST,title="NTL 31B Inference-Only Top2 Ensemble One Shot",
+    meta.update(id=DEST,title="NTL Gemma4 31B Ensemble No Train 20261126",
                 is_private=True,enable_gpu=True,enable_internet=False,
                 machine_shape="NvidiaTeslaT4")
     origins=list(meta.get("dataset_sources") or [])
