@@ -1,4 +1,5 @@
 name: NTL 31B genuine no-new-training Kaggle one-official-submission
+# Manual user request 2026-11-26: submit this candidate once; prior push rejected by GPU concurrency, no notebook created. Only retry if account and no-duplicate gates pass.
 on:
   push:
     branches: [research/ntl-fable252-nameerror-recovery-20261125]
