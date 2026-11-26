@@ -1,0 +1,50 @@
+name: NTL frozen E5 vs v36 main 18-class spent252 falsifier CPU-only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-e5-main18-spent252-falsifier.yml]
+permissions: {contents: read}
+concurrency: {group: ntl-e5-main18-spent252-falsifier-once, cancel-in-progress: false}
+jobs:
+  falsify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 27
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      HF_HUB_DISABLE_XET: '1'
+      HF_HUB_ENABLE_HF_TRANSFER: '0'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_kimi_e5_frozen_transfer_20261126.py
+            scripts/ntl_e5_vs_main18_spent252_falsifier_20261126.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install frozen CPU-only runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'torch==2.5.1+cpu' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q --disable-pip-version-check 'transformers==4.46.3' 'numpy==1.26.4' 'pandas==2.2.3' 'kaggle==2.2.5' 'six==1.17.0' 'pyarrow==17.0.0'
+          python -m py_compile scripts/ntl_e5_vs_main18_spent252_falsifier_20261126.py
+          python - <<'PY'
+          import torch
+          assert not torch.cuda.is_available()
+          print('NTL_E5_MAIN18_CPU_ONLY=TRUE',flush=True)
+          PY
+      - name: Execute one predetermined 18-class counterfactual on prior spent test (no promotion)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          test ! -e data/test.csv
+          python scripts/ntl_e5_vs_main18_spent252_falsifier_20261126.py
+          echo NTL_E5_MAIN18_NO_GPU_NO_TRAINING_NO_COMPETITION_SUBMIT=TRUE
