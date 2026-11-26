@@ -1,0 +1,58 @@
+name: NTL Jnliang v90 v2 direct official reproduction (no personal GPU run)
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-jnliang-v90-v2-direct-submit-once-20261127.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ntl-jnliang-v90-v2-direct-20261127
+  cancel-in-progress: false
+jobs:
+  submit-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+      - name: Submit exact public scored notebook version, no kernel push or personal GPU run
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, subprocess, re
+          comp = 'name-that-llm'
+          kernel = 'jnliang/ntl-v90-locked-v1-warm-soup'
+          marker = 'jnliang-v90-v2-0730-direct-20261127'
+          token = os.environ.get('KAGGLE_API_TOKEN')
+          if not token:
+              raise SystemExit('KAGGLE_API_TOKEN_MISSING')
+          def call(args):
+              p = subprocess.run(['kaggle', *args], capture_output=True, text=True, timeout=180)
+              def clean(s):
+                  return re.sub(r'KGAT_[A-Za-z0-9_-]+', '[REDACTED]', s.replace(token, '[REDACTED]'))
+              return p.returncode, clean(p.stdout), clean(p.stderr)
+          code, ledger, err = call(['competitions','submissions',comp,'-v'])
+          if code:
+              raise SystemExit('LEDGER_QUERY_FAILED '+err[-700:])
+          if marker in ledger or 'ntl-v90-locked-v1-warm-soup' in ledger or 'jnliang v90' in ledger.lower():
+              print('ALREADY_SUBMITTED', '\n'.join(x for x in ledger.splitlines() if marker in x or 'jnliang' in x.lower())[-1500:])
+              raise SystemExit(0)
+          code, status, err = call(['kernels','status',kernel])
+          print('SOURCE_STATUS', status[:300])
+          if code or 'COMPLETE' not in status.upper():
+              raise SystemExit('SOURCE_NOT_COMPLETE_NO_SUBMISSION')
+          print('NO_PERSONAL_GPU_RUN_NO_KERNEL_PUSH', flush=True)
+          code, out, err = call(['competitions','submit',comp,'-k',kernel,'-v','2','-f','submission.parquet','-m','Exact public Jnliang v90 v2 reproduction '+marker])
+          print('OFFICIAL_SUBMIT_EXIT',code)
+          print('OFFICIAL_SUBMIT_RESPONSE',out[-1400:])
+          if code:
+              raise SystemExit('OFFICIAL_SUBMIT_REJECTED '+err[-1400:])
+          code, ledger, err = call(['competitions','submissions',comp,'-v'])
+          if code:
+              print('LEDGER_RECHECK_FAILED',err[-400:])
+          else:
+              print('OFFICIAL_LEDGER_MATCHES','\n'.join(x for x in ledger.splitlines() if marker in x)[-1500:])
+          PY
