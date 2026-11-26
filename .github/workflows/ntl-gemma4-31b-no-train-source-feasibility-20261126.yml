@@ -1,0 +1,64 @@
+name: NTL Gemma4 31B plus frozen 0718 no-train real submission feasibility
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-gemma4-31b-no-train-source-feasibility-20261126.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Kaggle assets and quota — no training, no GPU and no notebook push
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0'
+          python - <<'PY'
+          import subprocess,json,tempfile,re,io,csv,hashlib
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          def call(*args,timeout=90):
+              return subprocess.run(['kaggle',*args],text=True,capture_output=True,timeout=timeout)
+          for search in ["gemma-4-31b","gemma4-31b","gemma-4","gemma4"]:
+              for kind in ("models","datasets"):
+                  p=call(kind,"list","-s",search,"-v")
+                  print("NTL31_KAGGLE_ASSET_SEARCH="+json.dumps({
+                     "kind":kind,"search":search,"status":p.returncode,
+                     "results_lines":p.stdout.splitlines()[:32],
+                     "stderr_tail":p.stderr[-300:] if p.returncode else ""
+                  },sort_keys=True),flush=True)
+          api=KaggleApi();api.authenticate()
+          champion=api.get_submission(58755304).to_dict()
+          limits=api.competition_get_submission_limits("name-that-llm")
+          print("NTL31_ACCOUNT="+json.dumps({
+              "champion_status":str(champion.get("status")),
+              "champion_public":str(champion.get("publicScore")),
+              "slots_allowed_now":int(limits.num_allowed_now),
+              "competition":"name-that-llm"
+          },sort_keys=True),flush=True)
+          for ref in ["kolihhan/ntl-evgen-forensic-eda-repro-20261123",
+                      "kolihhan/ntl-fable-preservation-252-v2-20261125"]:
+              with tempfile.TemporaryDirectory(prefix="ntl31-champion-pull-") as tmp:
+                  p=call("kernels","pull",ref,"-p",tmp,"-m",timeout=125)
+                  if p.returncode:
+                      print("NTL31_CHAMPION_PULL="+json.dumps({"ref":ref,"success":False,"exit":p.returncode}),flush=True)
+                  else:
+                      path=Path(tmp)
+                      meta=json.loads((path/"kernel-metadata.json").read_text())
+                      raw=(path/meta["code_file"]).read_bytes()
+                      print("NTL31_CHAMPION_PULL="+json.dumps({
+                        "ref":ref,"success":True,"code_sha":hashlib.sha256(raw).hexdigest(),
+                        "model_sources":meta.get("model_sources",[]),
+                        "dataset_count":len(meta.get("dataset_sources",[])),
+                        "kernel_count":len(meta.get("kernel_sources",[])),
+                        "is_private":meta.get("is_private"),
+                        "competition_sources":meta.get("competition_sources",[])
+                      },sort_keys=True),flush=True)
+          print("NTL31_PREFLIGHT_READ_ONLY_TRUE=TRUE",flush=True)
+          PY
