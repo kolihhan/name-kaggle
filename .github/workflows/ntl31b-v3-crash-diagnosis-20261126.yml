@@ -1,0 +1,50 @@
+name: NTL Gemma31B v3 exact launcher error and CUDA13 log read-only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31b-v3-crash-diagnosis-20261126.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Download original Kaggle v3 failed run output and decode root cause
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,tempfile,pathlib,json,re
+          ref='kolihhan/ntl-gemma4-31b-ensemble-no-train-20261126'
+          with tempfile.TemporaryDirectory(prefix='ntl31-readonly-') as td:
+              p=subprocess.run(['kaggle','kernels','output',ref,'-p',td,'-o'],
+                  capture_output=True,text=True,timeout=150)
+              found=list(pathlib.Path(td).rglob('*'))
+              print('NTL31_V3_DOWNLOAD='+json.dumps({'returncode':p.returncode,
+                  'files':[{'name':x.name,'bytes':x.stat().st_size} for x in found if x.is_file()][:70],
+                  'error':p.stderr[-500:] if p.returncode else ''}),flush=True)
+              for f in found:
+                  if f.is_file() and (f.name in ('ntl31_llama_server.log','ntl31_proof.json') or f.name.endswith('.log')):
+                      txt=f.read_text(errors='replace')
+                      lines=txt.splitlines()
+                      print('NTL31_V3_FILE_DETAIL='+json.dumps({'file':f.name,'size':len(txt),
+                          'first':lines[:22], 'last':lines[-120:]},ensure_ascii=False),flush=True)
+          p=subprocess.run(['kaggle','kernels','logs',ref],capture_output=True,text=True,timeout=80)
+          if p.returncode==0:
+              try:
+                  obj=json.loads(p.stdout)
+                  selected=[]
+                  for row in obj if isinstance(obj,list) else []:
+                      msg=row.get('data','')
+                      if isinstance(msg,str) and re.search(r'(?i)(NTL31|error|exception|traceback|failed|server|model|llama)',msg):
+                          selected.append(msg.strip()[:700])
+                  print('NTL31_V3_LOG_EXCEPTIONS='+json.dumps(selected[-70:],ensure_ascii=False),flush=True)
+              except (ValueError,TypeError) as e:
+                  print('NTL31_V3_LOG_RAW_LAST='+json.dumps(p.stdout[-7500:]),flush=True)
+          print('NTL31_V3_DIAGNOSIS_READ_ONLY=TRUE',flush=True)
+          PY
