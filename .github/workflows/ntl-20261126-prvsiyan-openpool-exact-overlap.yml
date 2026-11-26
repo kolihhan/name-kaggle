@@ -1,0 +1,82 @@
+name: NTL real 4302 candidate vs incumbent OpenPool exact overlap CPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-prvsiyan-openpool-exact-overlap.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compare actual hash-aligned responses against OpenPool input of owner 0.718
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3' 'pyarrow==22.0.0'
+          python - <<'PY'
+          import pandas as pd,subprocess,tempfile,json,hashlib,re
+          from pathlib import Path
+          import pyarrow.parquet as pq
+          def get(ref,file,d):
+              p=subprocess.run(['kaggle','datasets','download','-d',ref,'-f',file,'-p',str(d),'--unzip'],
+                   capture_output=True,text=True,timeout=180)
+              assert p.returncode==0,(ref,file,p.returncode)
+              a=d/file
+              assert a.is_file(),(ref,file)
+              return a
+          norm=lambda s: ' '.join(str(s).casefold().split())
+          def digest(s):return hashlib.sha256(norm(s).encode()).hexdigest()
+          with tempfile.TemporaryDirectory(prefix='ntl-0718-source-overlap-') as root:
+              d=Path(root)
+              src=get('prvsiyan/prvsiyans-extended-name-that-llm-dataset','passages_clean.csv',d)
+              ext=pd.read_csv(src)
+              ext=ext[ext.split.isin(['new','new2'])].copy()
+              assert len(ext)==4302 and ext.model.nunique()==18
+              ext['_hash']=ext.text.astype(str).map(digest)
+              pool_path=get('crtproduction/name-that-llm-open-pool','ntl_open_pool.parquet',d)
+              pf=pq.ParquetFile(pool_path)
+              print('NTL_OVERLAP_POOL_FILE_METADATA='+json.dumps({
+                 'rows':pf.metadata.num_rows,'row_groups':pf.metadata.num_row_groups,
+                 'columns':pf.schema_arrow.names,'bytes':pool_path.stat().st_size
+              },sort_keys=True),flush=True)
+              fields=pf.schema_arrow.names
+              columns=[c for c in fields if c in ['text','model','source','source_dataset','source_id','dataset','dataset_id','origin','flag_train_prompt_regen','match_weight']]
+              assert {'text','model','flag_train_prompt_regen'}.issubset(columns)
+              pool=pf.read(columns=columns).to_pandas()
+              assert not pool.empty
+              pool['_hash']=pool.text.astype(str).map(digest)
+              unique=set(pool._hash)
+              active=pool.loc[~pool.flag_train_prompt_regen.astype(bool)]
+              eligible=set(active._hash)
+              ext['_raw_overlap']=ext._hash.isin(unique)
+              ext['_active_overlap']=ext._hash.isin(eligible)
+              print('NTL_0718_OPENPOOL_OVERLAP_MAIN='+json.dumps({
+                  'new_candidate_rows':len(ext),
+                  'current_openpool_rows':len(pool),
+                  'current_openpool_active_rows':len(active),
+                  'all_exact_overlaps':int(ext._raw_overlap.sum()),
+                  'active_exact_overlaps':int(ext._active_overlap.sum()),
+                  'prvsiyan_nonoverlap_current_pool':int((~ext._raw_overlap).sum()),
+                  'per_label':{str(name):{'new_rows':len(z),'all_pool_overlap':int(z._raw_overlap.sum()),
+                        'active_pool_overlap':int(z._active_overlap.sum())} for name,z in ext.groupby('model')},
+                  'must_not_interpret_as_frozen_nov23_scored_mount':True
+              },sort_keys=True),flush=True)
+              meta=[c for c in columns if c not in ('text','model','match_weight','flag_train_prompt_regen')]
+              for col in meta:
+                  z=pool.loc[pool._hash.isin(set(ext._hash)),col].astype(str)
+                  print('NTL_0718_OPENPOOL_OVERLAP_SOURCE='+json.dumps({'column':col,
+                      'top':z.value_counts().head(18).to_dict()},sort_keys=True),flush=True)
+              # Audit directly mounted third-party prefit head files, without downloading weights.
+              for ref in ['nuridudak/ntl-svc-prefit-pool-v4n','nishantdahal/ntl-two-stage-lora',
+                          'nishantdahal/ntl-handwriting-blend']:
+                  p=subprocess.run(['kaggle','datasets','files',ref,'-v'],capture_output=True,text=True,timeout=75)
+                  print('NTL_0718_PREFIT_MANIFEST_STATUS='+json.dumps({
+                    'ref':ref,'exit':p.returncode,'file_names':[s.split(',')[0] for s in p.stdout.splitlines()[1:28]] if p.returncode==0 else None
+                  },sort_keys=True),flush=True)
+          print('NTL_EXACT_CONTAMINATION_AUDIT_NO_GPU_NO_TRAIN_NO_SUBMIT=TRUE',flush=True)
+          PY
