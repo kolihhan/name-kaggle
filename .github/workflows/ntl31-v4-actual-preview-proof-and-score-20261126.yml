@@ -1,0 +1,44 @@
+name: NTL 31B v4 score receipt and actual preview proof read only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31-v4-actual-preview-proof-and-score-20261126.yml]
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read proof of real model inference and exact unique official score
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,tempfile,pathlib,csv,io
+          target='kolihhan/ntl-gemma4-31b-ensemble-no-train-20261126'
+          ref='58935812'
+          with tempfile.TemporaryDirectory() as td:
+              p=subprocess.run(['kaggle','kernels','output',target,'-p',td,'-o',
+                  '--file-pattern','^ntl31_proof.json$'],capture_output=True,text=True,timeout=140)
+              files=list(pathlib.Path(td).rglob('ntl31_proof.json'))
+              if p.returncode or len(files)!=1:
+                  print('NTL31_V4_PREVIEW_PROOF='+json.dumps({'verified':False,
+                     'returncode':p.returncode,'files':len(files)}),flush=True)
+              else:
+                  proof=json.loads(files[0].read_text())
+                  print('NTL31_V4_PREVIEW_PROOF='+json.dumps(proof,sort_keys=True),flush=True)
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],
+              capture_output=True,text=True,timeout=90)
+          if p.returncode:raise RuntimeError('cannot check Kaggle official submissions')
+          matches=[x for x in csv.DictReader(io.StringIO(p.stdout))
+                   if str(x.get('ref'))==ref]
+          print('NTL31_V4_OFFICIAL_STATUS='+json.dumps({'count':len(matches),
+             'submissions':[{k:x.get(k) for k in ('ref','date','description','status','publicScore')}
+                 for x in matches]},sort_keys=True),flush=True)
+          print('NTL31_V4_READ_ONLY_NO_SUBMIT=TRUE',flush=True)
+          PY
