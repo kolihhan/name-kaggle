@@ -20,13 +20,22 @@ jobs:
           python -m pip install -q kaggle==2.2.5 six==1.17.0
           python - <<'PY'
           import subprocess,json,csv,io
-          for query in ["gemma","ntl","kaggle"]:
-              p=subprocess.run(["kaggle","kernels","list","--mine","--search",query,"-v"],
-                               capture_output=True,text=True,timeout=70)
-              rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip("\ufeff")))) if p.returncode==0 else []
-              out=[{"ref":r.get("ref"),"status":r.get("status"),"lastRunTime":r.get("lastRunTime")}
-                   for r in rows if str(r.get("ref","")).startswith("kolihhan/")]
-              print("NTL31_GPU_SESSIONS="+json.dumps({"query":query,"exit":p.returncode,
-                    "owner_count":len(out),"owner_kernels":out[:60]},sort_keys=True),flush=True)
-          print("NTL31_READ_ONLY_NO_CANCEL_NO_PUSH=TRUE",flush=True)
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          def call(*a):
+              return subprocess.run(["kaggle",*a],capture_output=True,text=True,timeout=45)
+          dest="kolihhan/ntl-gemma4-31b-ensemble-no-train-20261126"
+          p=call("kernels","status",dest)
+          print("CANDIDATE="+json.dumps({"exit":p.returncode,"status":(p.stdout+p.stderr)[-500:]}))
+          lim=api.competition_get_submission_limits("name-that-llm")
+          p=call("competitions","submissions","name-that-llm","-v")
+          rows=list(csv.DictReader(io.StringIO(p.stdout))) if p.returncode==0 else []
+          print("LEDGER="+json.dumps({"slots":int(lim.num_allowed_now),"exit":p.returncode,"candidate":[r for r in rows if "Gemma4 31B Q4 zero-finetune" in str(r)],"active":[r for r in rows if str(r.get("status","")).upper() in ("PENDING","RUNNING","QUEUED","PROCESSING")]}))
+          p=call("kernels","list","--mine","--sort-by","dateRun","-v")
+          rows=list(csv.DictReader(io.StringIO(p.stdout))) if p.returncode==0 else []
+          print("RECENT="+json.dumps({"exit":p.returncode,"rows":[{"ref":r.get("ref"),"last":r.get("lastRunTime")} for r in rows[:20]]}))
+          for r in rows[:12]:
+              if not r.get("ref"):continue
+              q=call("kernels","status",r["ref"])
+              print("SESSION="+json.dumps({"ref":r["ref"],"status":(q.stdout+q.stderr)[-300:]}),flush=True)
           PY
