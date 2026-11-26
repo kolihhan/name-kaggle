@@ -58,7 +58,7 @@ def embed(texts):
     from transformers import AutoTokenizer,AutoModel
     torch.set_num_threads(2)
     tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION)
-    enc=AutoModel.from_pretrained(MODEL,revision=REVISION,use_safetensors=True).eval().to("cpu")
+    enc=AutoModel.from_pretrained(MODEL,revision=REVISION,use_safetensors=False).eval().to("cpu")
     assert not enc.training
     out=[]
     started=time.monotonic()
