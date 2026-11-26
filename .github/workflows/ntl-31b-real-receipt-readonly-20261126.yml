@@ -1,0 +1,43 @@
+name: NTL 31B actual Kaggle candidate and submission receipt read-only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-31b-real-receipt-readonly-20261126.yml]
+permissions: {contents: read}
+jobs:
+  receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Exact actual Kaggle status and submissions (NO changes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,csv,io
+          target="kolihhan/ntl-gemma4-31b-ensemble-no-train-20261126"
+          def cli(*args):
+              return subprocess.run(["kaggle",*args],capture_output=True,text=True,timeout=95)
+          p=cli("kernels","status",target)
+          print("NTL31_ACTUAL_TARGET_KERNEL="+json.dumps({
+               "ref":target,"exists":p.returncode==0,
+               "status":p.stdout.strip()[:500] if p.returncode==0 else None,
+               "error_kind":"not_found_or_not_allowed" if p.returncode else None
+          }),flush=True)
+          p=cli("competitions","submissions","name-that-llm","-v")
+          if p.returncode:raise RuntimeError("Kaggle submission ledger unavailable")
+          records=list(csv.DictReader(io.StringIO(p.stdout)))
+          target_rows=[{k:r.get(k) for k in ("ref","date","description","status","publicScore")}
+            for r in records if "Gemma4 31B Q4 zero-finetune top2 rival" in (r.get("description") or "")]
+          print("NTL31_ACTUAL_SUBMISSIONS="+json.dumps({
+             "candidate_rows":target_rows,
+             "recent": [{k:r.get(k) for k in ("ref","date","status","publicScore")}
+                for r in records[:6]]
+          },sort_keys=True),flush=True)
+          print("NTL31_RECEIPT_READ_ONLY_NO_SUBMIT_NO_KAGGLE_PUSH=TRUE",flush=True)
+          PY
