@@ -1,0 +1,49 @@
+name: NTL 31B genuine no-new-training Kaggle one-official-submission
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-gemma4-31b-one-official-submit-20261126.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-gemma4-31b-no-train-official-unique-20261126
+  cancel-in-progress: false
+jobs:
+  one-shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 250
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/__init__.py
+            scripts/ntl_gemma4_31b_ensemble_stage_20261126.py
+            scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Prepare strictly pinned authenticated Code submission client
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.2.3 numpy==1.26.4 pyarrow==17.0.0
+          python -m py_compile scripts/ntl_gemma4_31b_ensemble_stage_20261126.py scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py
+          python - <<'PY'
+          from scripts.ntl_gemma4_31b_ensemble_stage_20261126 import parse_label, LABELS
+          assert len(LABELS)==18
+          assert parse_label('glm-5.3')=='glm-5.3'
+          assert parse_label('Label: gpt-5.6-luna')=='gpt-5.6-luna'
+          assert parse_label('gpt-5.5 and gpt-5.6-luna') is None
+          assert parse_label('illegal') is None
+          print('NTL31_PRE_SUBMISSION_PYTHON_TESTS_PASS=TRUE',flush=True)
+          PY
+      - name: One Kaggle notebook version, REAL 31B GPU preview, then one official code submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f data/test.csv
+          test ! -f data/train.csv
+          python -u scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py
