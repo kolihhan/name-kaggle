@@ -1,0 +1,65 @@
+name: NTL 31B offline runtime package and source hook static audit
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-31b-offline-runtime-static-20261126.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect actual GGUF, runtime wheels, scored notebook hook, no model execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,subprocess,tempfile,re,hashlib
+          from pathlib import Path
+          def run(*argv,timeout=130):
+              return subprocess.run(['kaggle',*argv],capture_output=True,text=True,timeout=timeout)
+          assets=['batuhankska/gemma-4-31b-it-q4-k-m',
+                  'spiritofvishwakarma/gemma4-31b-q4-with-mmprojq8-gguf',
+                  'nctuan/gemma4-offline-package',
+                  'dmitriigluzdov/gemma-4-serving-and-lora-verification-kit',
+                  'ipgleg/gemma4-test-deps']
+          for a in assets:
+              p=run('datasets','files',a,'-v')
+              print('NTL31_ASSET_FILES='+json.dumps({'ref':a,'exit':p.returncode,
+                  'manifest':p.stdout.splitlines()[:40] if p.returncode==0 else [],
+                  'error':p.stderr[-240:] if p.returncode else None},sort_keys=True),flush=True)
+          for name in ('llama-cpp-python','llama-cpp-cuda','llama-cpp','llama-server','gemma4-offline'):
+              p=run('datasets','list','-s',name,'-v')
+              print('NTL31_RUNTIME_PACKAGE_DISCOVERY='+json.dumps({
+                  'query':name,'exit':p.returncode,'lines':p.stdout.splitlines()[:20] if p.returncode==0 else [],
+              },sort_keys=True),flush=True)
+          with tempfile.TemporaryDirectory() as td:
+              p=run('kernels','pull','evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie','-p',td,'-m')
+              if p.returncode:
+                  print('NTL31_BASELINE_SOURCE_FETCH='+json.dumps({'success':False,'exit':p.returncode}),flush=True)
+              else:
+                  d=Path(td);meta=json.loads((d/'kernel-metadata.json').read_text())
+                  raw=(d/meta['code_file']).read_text()
+                  nb=json.loads(raw)
+                  cells=[''.join(c.get('source',[])) if isinstance(c.get('source'),list) else str(c.get('source',''))
+                         for c in nb['cells'] if c.get('cell_type')=='code']
+                  matches=[]
+                  for i,s in enumerate(cells):
+                      for ln in s.splitlines():
+                          if len(ln)>280 or re.search(r'(bearer|token=|secret)',ln,re.I):continue
+                          if re.search(r'(?i)(submission\.parquet|FAST_COMMIT|emit_known_preview|preview\s*=|Run_limit|time_budget|gsq_share|final-logits\.npz|print\(.{0,12}done)',ln):
+                              matches.append({'cell':i,'line':ln.strip()[:250]})
+                  print('NTL31_BASELINE_SOURCE_FETCH='+json.dumps({
+                      'success':True,'sha':hashlib.sha256(raw.encode()).hexdigest(),
+                      'id':meta.get('id'),'code_cells':len(cells),
+                      'model_mounts':len(meta.get('model_sources',[])),
+                      'dataset_mounts':len(meta.get('dataset_sources',[])),
+                      'target_cues':matches[-100:]
+                  },sort_keys=True),flush=True)
+          print('NTL31_STATIC_INSPECTION_DONE_NO_TRAIN_NO_GPU_NO_SUBMIT=TRUE',flush=True)
+          PY
