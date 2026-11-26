@@ -1,0 +1,57 @@
+name: NTL frozen 0718 actual component lineage versus new paired cohort CPU no submit
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-0718-frozen-lineage-vs-prvsiyan.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read frozen source metadata and upstream references only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3'
+          python - <<'PY'
+          import subprocess, json, hashlib, tempfile, re
+          from pathlib import Path
+          owner='kolihhan/ntl-confidence-fusion-real252-20261125'
+          source='prvsiyan/prvsiyans-extended-name-that-llm-dataset'
+          with tempfile.TemporaryDirectory(prefix="ntl-real0718-lineage-") as td:
+              p=subprocess.run(['kaggle','kernels','pull',owner,'-p',td,'-m'],capture_output=True,text=True,timeout=130)
+              assert p.returncode==0,'frozen copy unavailable'
+              meta=json.loads((Path(td)/'kernel-metadata.json').read_text())
+              sources={k:meta.get(k) or [] for k in ('model_sources','dataset_sources','kernel_sources','competition_sources')}
+              print('NTL_FROZEN_0718_LINEAGE_MOUNTS='+json.dumps({
+                  'reference':'v36 0718 lineage cloned from successful real252',
+                  'model_sources':sources['model_sources'],
+                  'dataset_sources':sources['dataset_sources'],
+                  'kernel_sources':sources['kernel_sources'],
+                  'competition_sources':sources['competition_sources'],
+                  'direct_prvsiyan_mount':source in sources['dataset_sources'],
+                  'direct_openpool_mount':any('open-pool' in x for x in sources['dataset_sources'])
+              },sort_keys=True),flush=True)
+              nb=json.loads((Path(td)/meta['code_file']).read_text())
+              blocks=[''.join(c.get('source',[])) for c in nb['cells']]
+              needles=('prvsiyan','crtproduction','nishantdahal','lightningv08','glm53','pb115',
+                       'trained','pool','finetun','lora','load_dataset','hf_hub','pretrained','model_sources')
+              cites=[]
+              for i,code in enumerate(blocks):
+                  lines=code.splitlines()
+                  for j,x in enumerate(lines):
+                      if any(needle in x.lower() for needle in needles):
+                          # no source body / prompts; just references and safe evidence,
+                          # avoiding embedded large base64 payload.
+                          if len(x)<320 and re.search(r'(?:/kaggle/input/|prvsiyan|crtproduction|nishantdahal|lightningv08|\.fit\(|load_dataset|pretrained|model_sources|training data|trained on|fine.?tun)',x,re.I):
+                              if not re.search(r'(?i)(bearer|password|token=|authorization|secret)',x):
+                                  cites.append({'cell':i,'line':j+1,'text':x.strip()[:220]})
+              print('NTL_FROZEN_0718_ACTIVE_INPUT_MENTIONS='+json.dumps(cites[:115],sort_keys=True),flush=True)
+              print('NTL_FROZEN_0718_COMPONENT_LINEAGE_UNKNOWN_IF_PREFIT=TRUE',flush=True)
+          print('NTL_FROZEN_0718_READ_ONLY_NO_GPU_NO_SUBMISSION=TRUE',flush=True)
+          PY
