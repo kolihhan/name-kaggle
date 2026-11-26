@@ -1,0 +1,109 @@
+name: NTL Gemma31B CGF real GPU pilot no submit
+on:
+  push:
+    branches: [research/ntl-cgf-gemma31b-gpu-20261127]
+    paths: ['.github/workflows/ntl-cgf-gemma31b-gpu-20261127.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ntl-cgf-gemma31b-gpu-once-20261127
+  cancel-in-progress: false
+jobs:
+  gpu-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/cgf.py
+            scripts/test_cgf.py
+            scripts/ntl_cgf_gemma31b_gpu_20261127.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test and assemble a unique private offline Kaggle diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy pandas pytest
+          python -m pytest -q scripts/test_cgf.py
+          python -m py_compile scripts/ntl_cgf_gemma31b_gpu_20261127.py
+          PYTHONPATH=scripts python - <<'PY'
+          from ntl_cgf_gemma31b_gpu_20261127 import parse_distribution
+          import math
+          x={"completion_probabilities":[{"top_logprobs":[{"id":4,"logprob":math.log(.6)},{"id":7,"logprob":math.log(.2)}]}]}
+          assert set(parse_distribution(x))=={4,7}
+          for bad in [0.1,float("nan")]:
+              x["completion_probabilities"][0]["top_logprobs"][0]["logprob"]=bad
+              try: parse_distribution(x)
+              except ValueError: pass
+              else: raise AssertionError("bad probability accepted")
+          print("CGF_GPU_PARSER_SYNTHETIC_PASS")
+          PY
+          python - <<'PY'
+          import hashlib,csv,json
+          from pathlib import Path
+          p=Path("artifacts/phase1/folds.csv")
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=="94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d"
+          lock={}
+          with p.open() as f:
+              for r in csv.DictReader(f):
+                  k=hashlib.sha256(r["prompt_id"].encode()).hexdigest()
+                  assert k not in lock or lock[k]==r["fold_id"]
+                  lock[k]=r["fold_id"]
+          assert len(lock)==150
+          src=Path("scripts/ntl_cgf_gemma31b_gpu_20261127.py").read_text()
+          src=src.replace("from cgf import contrast,predict,permute_within_prompt,sha_ok",Path("scripts/cgf.py").read_text())
+          src=src.replace('json.loads(Path("fold-lock.json").read_text())',repr(lock))
+          compile(src,"pilot.py","exec")
+          d=Path("/tmp/cgf31b");d.mkdir()
+          nb={"cells":[{"cell_type":"code","execution_count":None,"metadata":{},"outputs":[],"source":src.splitlines(keepends=True)}],"metadata":{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"}},"nbformat":4,"nbformat_minor":5}
+          (d/"pilot.ipynb").write_text(json.dumps(nb))
+          meta={"id":"kolihhan/ntl-cgf-gemma31b-gpu-pilot-20261127","title":"NTL CGF Gemma31B GPU Pilot 20261127","code_file":"pilot.ipynb","language":"python","kernel_type":"notebook","is_private":True,"enable_gpu":True,"enable_internet":False,"machine_shape":"NvidiaTeslaT4","dataset_sources":["batuhankska/gemma-4-31b-it-q4-k-m","artp2011/llama-cpp-bin-cuda13-sm75"],"competition_sources":["name-that-llm"],"kernel_sources":[],"model_sources":[]}
+          (d/"kernel-metadata.json").write_text(json.dumps(meta))
+          print("CGF_GPU_BUILD_SHA="+hashlib.sha256((d/"pilot.ipynb").read_bytes()).hexdigest())
+          PY
+      - name: Push exactly one private GPU notebook and verify receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref=kolihhan/ntl-cgf-gemma31b-gpu-pilot-20261127
+          if kaggle kernels status "$ref" >/dev/null 2>&1; then echo "Refuse duplicate"; exit 1; fi
+          kaggle kernels push -p /tmp/cgf31b --accelerator NvidiaTeslaT4 --timeout 2400 | tee /tmp/cgf-receipt
+          grep -E 'Kernel version 1 successfully pushed' /tmp/cgf-receipt
+          kaggle kernels status "$ref"
+      - name: Retrieve actual terminal result, no competition submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref=kolihhan/ntl-cgf-gemma31b-gpu-pilot-20261127
+          for i in $(seq 1 75); do
+            state=$(kaggle kernels status "$ref")
+            echo "$state"
+            if [[ "$state" == *COMPLETE* ]]; then
+              kaggle kernels output "$ref" -p /tmp/cgf-out -o
+              python - <<'PY'
+          import json
+          from pathlib import Path
+          p=list(Path("/tmp/cgf-out").rglob("cgf_result.json"))
+          assert len(p)==1
+          r=json.loads(p[0].read_text())
+          assert r["model"]=="Gemma 4 31B IT Q4_K_M" and r["gpu"]=="T4x2" and r["submission"] is False
+          print("CGF_GPU_VERIFIED_RESULT="+json.dumps(r,sort_keys=True))
+          PY
+              exit 0
+            fi
+            if [[ "$state" == *ERROR* || "$state" == *CANCELLED* || "$state" == *FAILED* ]]; then
+              echo "Private GPU pilot failed; inspect Kaggle logs"; exit 1
+            fi
+            sleep 30
+          done
+          echo "GPU result not yet confirmed"; exit 1
