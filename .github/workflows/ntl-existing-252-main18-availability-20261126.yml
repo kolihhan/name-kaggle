@@ -1,0 +1,46 @@
+name: NTL existing 252 18-class scored-output availability read-only CPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-existing-252-main18-availability-20261126.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inventory existing private 18-class artifacts; zero inference, zero submit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.2.3' 'pyarrow==17.0.0'
+          python - <<'PY'
+          import subprocess,tempfile,json,hashlib
+          from pathlib import Path
+          import pandas as pd
+          kernel='kolihhan/ntl-fable-preservation-252-v2-20261125'
+          panel='nischaydnk/ntl-topic-synthetic-18llms'
+          def run(*args):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=180)
+          with tempfile.TemporaryDirectory(prefix='ntl-existing-main18-') as td:
+              d=Path(td)
+              for pat in ('^submission.parquet$','^ntl_fable_preservation_252_aggregate.json$'):
+                  p=run('kernels','output',kernel,'-p',td,'--file-pattern',pat,'-o')
+                  print('NTL_MAIN18_EXISTING_OUTPUT_FETCH='+json.dumps({'pattern':pat,'exit':p.returncode,'files':[q.name for q in d.rglob('*') if q.is_file()]}),flush=True)
+              f=list(d.rglob('submission.parquet'))
+              if len(f)==1:
+                  df=pd.read_parquet(f[0])
+                  row={'rows':len(df),'columns':df.columns.tolist(),
+                       'unique_ids':df.id.nunique() if 'id' in df else None,
+                       'unique_labels':df.model.nunique() if 'model' in df else None,
+                       'prediction_sha256':hashlib.sha256(f[0].read_bytes()).hexdigest()}
+                  print('NTL_MAIN18_EXISTING_OUTPUT_CONTRACT='+json.dumps(row,sort_keys=True),flush=True)
+                  assert row['rows']==252 and row['columns']==['id','model'] and row['unique_ids']==252
+              files=run('datasets','files',panel,'-v')
+              print('NTL_MAIN18_FROZEN_PANEL_FILES='+json.dumps({'exit':files.returncode,'names':files.stdout.splitlines()[:12] if files.returncode==0 else []}),flush=True)
+          print('NTL_MAIN18_READ_ONLY_NO_NEW_KERNEL_NO_TRAIN_NO_GPU_NO_SUBMIT=TRUE',flush=True)
+          PY
