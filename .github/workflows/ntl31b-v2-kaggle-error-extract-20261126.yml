@@ -1,0 +1,34 @@
+name: NTL 31B Kaggle v2 precise root-cause logs read only
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl31b-v2-kaggle-error-extract-20261126.yml]
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read exact Kaggle v2 actual notebook root cause (no write or submit)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,json,re
+          ref="kolihhan/ntl-gemma4-31b-ensemble-no-train-20261126"
+          p=subprocess.run(["kaggle","kernels","logs",ref],capture_output=True,text=True,timeout=90)
+          print("NTL31_V2_LOGS_STATUS="+json.dumps({"exit":p.returncode,"stdout_len":len(p.stdout)}),flush=True)
+          if p.returncode:raise RuntimeError("Kaggle logs fetch failed")
+          lines=p.stdout.splitlines()
+          selected=[]
+          for i,line in enumerate(lines):
+              if re.search(r'(?i)(Traceback|Error|Exception|NameError|PermissionError|RuntimeError|OSError|No such file|NTL31_|stage\.py|SyntaxError|model.*load|llama|Unable to)',line):
+                  selected.append((i,line[:2000]))
+          print("NTL31_V2_REAL_ERROR_LINES="+json.dumps(selected[-75:],ensure_ascii=False),flush=True)
+          print("NTL31_V2_READONLY_NO_GPU_NO_PUSH_NO_SUBMISSION=TRUE",flush=True)
+          PY
