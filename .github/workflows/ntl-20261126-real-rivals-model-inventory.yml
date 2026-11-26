@@ -28,7 +28,6 @@ jobs:
             'xiewenwei29/name-that-llm',
             'angelojun2k/name-that-llm-grandmaster-champion'
           ]
-          key=re.compile(r'(Qwen(?:2[.]5|3|3[.]8)?[^\s\"']{0,25}|GLM[^\s\"']{0,22}|UltraBERT|DeBERTa|ModernBERT|electra|roberta|llama[^\s\"']{0,25}|ATLAS|PB115|GSQ|likelihood|lora|LightGBM|LogisticRegression)',re.I)
           for ref in refs:
               with tempfile.TemporaryDirectory(prefix='ntl-real-rivals-') as root:
                   dest=Path(root)
