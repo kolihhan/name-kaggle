@@ -1,0 +1,54 @@
+name: NTL Gemma31B one-time private preview v2 repair and official submit
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-31b-v2-repair-and-submit-20261126.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-gemma4-31b-no-train-official-unique-20261126
+  cancel-in-progress: false
+jobs:
+  repair-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/__init__.py
+            scripts/ntl_gemma4_31b_ensemble_stage_20261126.py
+            scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py
+            scripts/ntl_gemma31b_preview_v2_repair_once.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Check exact one-time preview patch, executable and code submission client
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check kaggle==2.2.5 six==1.17.0 pandas==2.2.3 numpy==1.26.4 pyarrow==17.0.0
+          python -m py_compile scripts/ntl_gemma4_31b_ensemble_stage_20261126.py scripts/ntl_gemma4_31b_ensemble_submit_once_20261126.py scripts/ntl_gemma31b_preview_v2_repair_once.py
+          python - <<'PY'
+          from scripts import ntl_gemma4_31b_ensemble_submit_once_20261126 as original
+          from scripts import ntl_gemma31b_preview_v2_repair_once as repair
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          import inspect
+          assert repair.BASE_BUILD is original.build
+          assert original.SOURCE_SHA=='b4c9715e32d27463a399f8715684c8403f057c83f1f77e0039ff0da2427df343'
+          method=getattr(KaggleApi,"competition_submit_code",None)
+          if method is None:
+              raise RuntimeError("Kaggle SDK lacks competition_submit_code: stop before v2 GPU")
+          print('NTL31_KAGGLE_SUBMIT_CODE_SIGNATURE='+str(inspect.signature(method)),flush=True)
+          print('NTL31_V2_STATIC_REPAIR_GATE_PASS=TRUE',flush=True)
+          PY
+      - name: Repair previous private ERROR notebook, REAL 31B GPU preview, then one official code submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f data/train.csv
+          test ! -f data/test.csv
+          python -u -m scripts.ntl_gemma31b_preview_v2_repair_once
