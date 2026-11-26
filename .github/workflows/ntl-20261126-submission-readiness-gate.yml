@@ -1,0 +1,55 @@
+name: NTL one-shot scoring readiness — no submission, no GPU
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-submission-readiness-gate.yml]
+permissions: {contents: read}
+jobs:
+  strict_contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_submission_contract_20261126.py
+            tests/test_ntl_submission_contract_20261126.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Validate 3-row preview, 4000-row hidden-sized output and 18-label contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check pandas==2.2.3 pyarrow==17.0.0 kaggle==2.2.5 six==1.17.0
+          python -m unittest discover -s tests -p test_ntl_submission_contract_20261126.py -v
+          python -m py_compile scripts/ntl_submission_contract_20261126.py
+          echo NTL_HIDDEN_SIZED_PREVIEW_AND_NEGATIVE_TESTS_PASS=TRUE
+      - name: Authenticate read-only quota and true champion receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          s=api.get_submission(58755304).to_dict()
+          out={'ref':58755304,
+               'status':str(s.get('status')),
+               'public_score':s.get('publicScore'),
+               'total_bytes':s.get('totalBytes')}
+          print('NTL_FROZEN_CHAMPION_SCORE='+json.dumps(out,sort_keys=True,default=str),flush=True)
+          assert str(s.get('publicScore')) in ('0.718','0.7180')
+          assert int(s.get('totalBytes') or 0)>0
+          limits=api.competition_get_submission_limits('name-that-llm')
+          print('NTL_SCORE_SUBMISSION_LIMITS='+json.dumps({
+             'allowed_now':int(limits.num_allowed_now),
+             'limited_by_total':bool(limits.limited_by_total),
+             'max_daily':getattr(limits,'max_daily_submissions',None),
+             'owner_submit_authorization_for_this_workflow':False,
+          },sort_keys=True,default=str),flush=True)
+          print('NTL_READINESS_CONTRACT_ONLY_NO_OFFICIAL_SUBMISSION_NO_GPU=TRUE',flush=True)
+          PY
