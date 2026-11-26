@@ -1,0 +1,39 @@
+name: NTL archived 0.718 true same-row independent panel inventory
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-independent-main18-archived-inventory.yml]
+permissions: {contents: read}
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Enumerate existing owner notebooks, no kernel creation or inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,csv,io,json
+          for term in ('fable','confidence','evgen','0718','real252','strong','preservation','matched'):
+              p=subprocess.run(['kaggle','kernels','list','--mine','--search',term,'-v'],
+                  capture_output=True,text=True,timeout=75)
+              rows=[]
+              if p.returncode==0:
+                  rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+              selected=[]
+              for row in rows:
+                  ref=row.get('ref') or row.get('kernelRef') or ''
+                  if ref.startswith('kolihhan/'):
+                      selected.append({'ref':ref,'title':str(row.get('title',''))[:90],
+                                       'lastRunTime':row.get('lastRunTime'),
+                                       'totalVotes':row.get('totalVotes')})
+              print('NTL_ARCHIVED_MAIN18_INVENTORY='+json.dumps({'term':term,'exit':p.returncode,
+                    'total_results':len(rows),'owner_matches':selected[:60]},sort_keys=True),flush=True)
+          print('NTL_ARCHIVED_INVENTORY_READ_ONLY_NO_GPU_NO_KAGGLE_SUBMIT=TRUE',flush=True)
+          PY
