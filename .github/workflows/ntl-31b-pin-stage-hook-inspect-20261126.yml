@@ -1,0 +1,55 @@
+name: NTL pinned Lightning52 and Gemma31B T4 llama.cpp exact hook facts
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-31b-pin-stage-hook-inspect-20261126.yml]
+permissions: {contents: read}
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env: {KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Download pinned public scorer V52 source and runtime inventory (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,re,hashlib,subprocess,tempfile
+          from pathlib import Path
+          cli=lambda *a:subprocess.run(["kaggle",*a],capture_output=True,text=True,timeout=130)
+          for asset in ["nixty2/llama-cpp-turing-sm75","shymsk/llama-cpp-cuda13-t4-v3",
+                         "artp2011/llama-cpp-bin-cuda13-sm75","alexandreev/llama-server-cuda-build-kaggle"]:
+              p=cli("datasets","files",asset,"-v")
+              print("NTL31_RUNTIME_EXACT_MANIFEST="+json.dumps({"ref":asset,
+                "exit":p.returncode,"files":p.stdout.splitlines()[:30] if p.returncode==0 else []}),flush=True)
+          with tempfile.TemporaryDirectory() as td:
+              ref="lightningv08/0-724-glm-pb115-sibling-odds-qwen3-8-27b/52"
+              p=cli("kernels","pull",ref,"-p",td,"-m")
+              if p.returncode:
+                  print("NTL31_052_SOURCE_FETCH="+json.dumps({"success":False,"exit":p.returncode,
+                    "error":(p.stdout+p.stderr)[-450:]}),flush=True)
+              else:
+                  root=Path(td);meta=json.loads((root/"kernel-metadata.json").read_text())
+                  code=(root/meta["code_file"]).read_text()
+                  cells=["".join(c.get("source",[])) if isinstance(c.get("source"),list) else str(c.get("source",""))
+                         for c in json.loads(code)["cells"] if c.get("cell_type")=="code"]
+                  hints=[]
+                  for i,c in enumerate(cells):
+                      for n,line in enumerate(c.splitlines(),1):
+                          if len(line)>220:continue
+                          if re.search(r'(FAST_COMMIT|RUN_LIMIT_S|GSQ_ASSETS|gsq_share|FINAL_LOGITS|final-logits\.npz|submission\.parquet|OUT\s*=|if not FAST_COMMIT|V1_ENABLED)',line,re.I):
+                              hints.append({"cell":i,"lineno":n,"code":line.strip()[:190]})
+                  print("NTL31_052_SOURCE_FETCH="+json.dumps({
+                    "success":True,"sha":hashlib.sha256(code.encode()).hexdigest(),
+                    "model_sources":len(meta.get("model_sources",[])),
+                    "data_sources":len(meta.get("dataset_sources",[])),
+                    "kernels":len(meta.get("kernel_sources",[])),
+                    "has_31b_mount":any("gemma-4" in s for s in meta.get("model_sources",[])+meta.get("dataset_sources",[])),
+                    "predecessor_hints":hints[-100:]
+                  }),flush=True)
+          print("NTL31_INSPECT_ONLY_NO_GPU_NO_TRAIN_NO_SUBMIT=TRUE",flush=True)
+          PY
