@@ -2,7 +2,9 @@ name: NTL real Kimi-GPT frozen E5-large cross-source probe CPU only
 on:
   push:
     branches: [research/ntl-fable252-nameerror-recovery-20261125]
-    paths: [.github/workflows/ntl-20261126-kimi-e5-large-cpu.yml]
+    paths:
+      - .github/workflows/ntl-20261126-kimi-e5-large-cpu.yml
+      - scripts/ntl_kimi_e5_frozen_transfer_20261126.py
 permissions: {contents: read}
 concurrency: {group: ntl-e5-kimi-gpt-cpu-20261126-once, cancel-in-progress: false}
 jobs:
