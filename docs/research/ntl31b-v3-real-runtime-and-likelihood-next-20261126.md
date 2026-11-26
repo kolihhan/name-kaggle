@@ -28,3 +28,14 @@ A genuinely distinct next experiment would freeze **the same 31B weights** and c
 **Feasibility gate:** Verify true **prompt-token log-probabilities** in the exact pinned runtime; generated label-token logprobs are not the same thing. Do not spend a full Kaggle scoring slot or claim score uplift based on model scale or small binary-only samples. Establish an independent or explicitly DEV-labeled same-row 18-class truth set and a within-Kaggle runtime estimate first.
 
 **Keep user constraints:** no further small-encoder research as the primary lane, no new training for the current submission, never silently re-enable the canceled scheduler, no second score submission for this v4 once a unique receipt exists.
+
+
+## v4 genuine Kaggle acceptance: verified UPDATE on 2026-11-26 16:08 MYT
+
+- v4 corrected only Gemma4 reasoning/response formatting via **llama.cpp JSON-schema enum** and `chat_template_kwargs.enable_thinking=false`, retaining Gemma 4 31B Q4 weights, frozen Lightning v52, no new model training.
+- Authentic Kaggle v4 private preview **COMPLETE**. Actual retrieved `ntl31_proof.json` records `loaded_and_inferred=true`, `inference_calls=3`, `valid_calls=3`, `preview=true`, `n_test=3`, `time_s=130`, `gguf_bytes=18323726560`. The 3-row preview `changed=0` is intentional; it has no labeled-truth evidence and does NOT estimate hidden score.
+- Authenticated official single competition code submission **#58935812**, created `2026-11-26 08:06:26 UTC`, description `Gemma4 31B Q4 zero-finetune top2 rival replacing GSQ27B on Lightning V52 once 20261126`.
+- Official score state at last audited check: **`SubmissionStatus.PENDING`**, Public BA empty. Do not report a 0.76 breakthrough, successful hidden 4,000-row completion, or an improvement over 0.718 until Kaggle returns a numeric Public BA.
+- Evidence: [read-only private 31B proof + unique official receipt #45780567819](https://github.com/kolihhan/name-kaggle/actions/runs/45780567819); [single launch & official request #45779905866](https://github.com/kolihhan/name-kaggle/actions/runs/45779905866).
+- The source's `final-logits.npz` is indeed `ids,labels,logits` with a single 18-column matrix. Confirmed against the frozen donor source in [GH Action #45780220459](https://github.com/kolihhan/name-kaggle/actions/runs/45780220459). Hidden runtime path and effective 31B improvement remain unknown pending scoring.
+- Do **not** resubmit this candidate or re-enable the user-cancelled scheduler. Next experiment must be new scientifically discriminating evidence, not replaying the same Public-LB hyperparameters.
