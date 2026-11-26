@@ -52,11 +52,12 @@ def build_v3():
                 '    shutil.copy2(server_bin,writable_bin)\n'
                 '    writable_bin.chmod(writable_bin.stat().st_mode|0o111)\n'
                 '    server_bin=writable_bin')
-            old='    env=os.environ.copy()'
-            if stage.count(old)!=1:raise RuntimeError("runtime env anchor drift")
+            old='    server=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT)'
+            if stage.count(old)!=1:raise RuntimeError("runtime subprocess anchor drift")
             stage=stage.replace(old,
                 '    env=os.environ.copy()\n'
-                '    env["LD_LIBRARY_PATH"]=runtime_libdir+":"+env.get("LD_LIBRARY_PATH","")')
+                '    env["LD_LIBRARY_PATH"]=runtime_libdir+":"+env.get("LD_LIBRARY_PATH","")\n'
+                '    server=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,env=env)')
             compile(stage,"ntl31_stage.py","exec")
             src=("from pathlib import Path\n"
                  "Path('/kaggle/working/ntl31_stage.py').write_text("+
