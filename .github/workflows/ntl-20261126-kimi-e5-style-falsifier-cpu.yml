@@ -1,0 +1,33 @@
+name: NTL E5 Kimi real cohort style falsifier CPU one-shot
+on:
+  push:
+    branches: [research/ntl-fable252-nameerror-recovery-20261125]
+    paths: [.github/workflows/ntl-20261126-kimi-e5-style-falsifier-cpu.yml]
+permissions: {contents: read}
+jobs:
+  falsify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_kimi_e5_frozen_transfer_20261126.py
+            scripts/ntl_kimi_e5_style_falsifier_20261126.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Check exact same cohorts and run predeclared weak-signal controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --disable-pip-version-check 'kaggle==2.2.5' 'six==1.17.0' 'numpy==1.26.4' 'pandas==2.2.3'
+          python -m py_compile scripts/ntl_kimi_e5_style_falsifier_20261126.py
+          test ! -f data/train.csv
+          test ! -f data/test.csv
+          python scripts/ntl_kimi_e5_style_falsifier_20261126.py
+          echo NTL_E5_STYLE_ONLY_NO_TRAIN_NO_GPU_NO_SUBMISSION=TRUE
