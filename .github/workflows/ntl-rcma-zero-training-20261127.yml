@@ -1,0 +1,55 @@
+name: NTL RCMA frozen Qwen14B anonymous verifier CPU pilot
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-rcma-zero-training-20261127.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-rcma-zero-training-20261127
+  cancel-in-progress: false
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      CUDA_VISIBLE_DEVICES: ""
+      OMP_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_rcma_zero_training_20261127.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Check code and CPU arithmetic
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3' 'numpy==2.3.4'
+          python -m py_compile scripts/ntl_rcma_zero_training_20261127.py
+          python -c 'from scripts.ntl_rcma_zero_training_20261127 import selftest; selftest()'
+          for f in data/train.csv data/test.csv data/sample_submission.parquet; do test ! -e "$f"; done
+      - name: Acquire checksum-pinned CPU runtime and official 14B weights
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rcma-runtime
+          curl -fL --retry 2 --max-time 300 -sS https://github.com/ggml-org/llama.cpp/releases/download/b12774/llama-b12774-bin-ubuntu-x64.tar.gz -o /tmp/rcma-runtime/bin.tgz
+          echo 'ab5837cca2317cfb7ecb5f85b550934e7355cd9df74cdde6e106581457034dbb  /tmp/rcma-runtime/bin.tgz' | sha256sum -c -
+          tar -xzf /tmp/rcma-runtime/bin.tgz -C /tmp/rcma-runtime
+          server=$(find /tmp/rcma-runtime -type f -name llama-server)
+          test -n "$server"
+          echo "RCMA_SERVER=$server" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(dirname "$server")" >> "$GITHUB_ENV"
+          curl -fL --retry 1 --max-time 900 -sS https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf -o /tmp/rcma-runtime/model.gguf
+          echo '500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0  /tmp/rcma-runtime/model.gguf' | sha256sum -c -
+          echo 'RCMA_MODEL=/tmp/rcma-runtime/model.gguf' >> "$GITHUB_ENV"
+      - name: Real 18-class reference comparison on CPU
+        run: python scripts/ntl_rcma_zero_training_20261127.py
+      - name: Remove temporary data and weights
+        if: always()
+        run: rm -rf /tmp/rcma-runtime /tmp/rcma14b-*
