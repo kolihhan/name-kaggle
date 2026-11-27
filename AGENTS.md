@@ -49,3 +49,14 @@ Do not restart from chat assumptions when repo state is available.
 ## Completion standard
 
 Before saying work is complete, inspect the resulting repo state and run the relevant checks. Separate verified facts, inference, and unknowns when material.
+
+## Evidence-gate enforcement (2026-11-28)
+
+| Repeated mistake | Enforcement |
+| --- | --- |
+| Runtime/cache acquisition failure reported as a failed scientific hypothesis | `scripts/ntl_evidence_gate.py`: incomplete or unverified outputs are BLOCKED_BY_EVIDENCE |
+| Green CI or cache recovery reported as model-quality improvement | `metric=none` is ENGINEERING_ONLY |
+| Prompt-level negative used to condemn a model family | `exact_intervention_failed` returns EXACT_INTERVENTION_RETIRED, with a named intervention |
+| Spent or mismatched benchmarks used to promote a new candidate | `require_promotion` requires pinned full-18 same-row baseline, independent verified source, paired CI, measured runtime and the active RCMA +.02 gate |
+
+For new RCMA candidate decisions call the shared gate, not another handwritten verdict. The gate validates declared evidence shape, not the truth of attestations; cite actual run artifacts. Regression checks are in `tests/test_ntl_evidence_gate.py`. This is not yet a required branch protection check or a wrapper on existing Kaggle launchers; do not claim all submission paths are mechanically blocked. Other lanes retain their own frozen predeclared thresholds.
