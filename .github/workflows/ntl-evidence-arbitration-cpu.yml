@@ -1,0 +1,71 @@
+name: NTL two-channel arbitration prototype and current-lineage identity recovery
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-evidence-arbitration-cpu.yml']
+permissions: {contents: read}
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_evidence_arbitration_20261127.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Test fail-closed arbitration and recover current-lineage token selection contract
+        run: |
+          set -euo pipefail
+          python -m pip install -q numpy pandas pyarrow httpx==0.28.1 kaggle==2.2.5 six==1.17.0
+          python scripts/ntl_evidence_arbitration_20261127.py
+          python - <<'PY'
+          import hashlib,json,os,re,subprocess,tempfile
+          from pathlib import Path
+          import httpx,numpy as np,pandas as pd
+          def log(k,x):print(k+'='+json.dumps(x,sort_keys=True),flush=True)
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              h={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=h);r.raise_for_status();return r
+              vm=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'evgendvorkin','kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(vm['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+              ids=[int(x['run']['id']) for x in items if (x.get('version') or {}).get('versionNumber')==36 and (x.get('run') or {}).get('id')]
+              assert len(ids)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':ids[0],'includeOutputIfAvailable':False}).text
+          assert hashlib.sha256(raw.encode()).hexdigest()=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+          cells=[''.join(c.get('source',[])) for c in json.loads(raw)['cells'] if c.get('cell_type')=='code']
+          matches=[c for c in cells if c.lstrip().startswith('%%writefile prefix_variant_stage.py')]
+          assert len(matches)==1
+          lines=matches[0].splitlines()
+          log('EXACT_V1_SELECTION_CONTRACT',{'source_sha':hashlib.sha256(raw.encode()).hexdigest(),'lines':[(i+1,x.strip()) for i,x in enumerate(lines) if len(x)<400 and re.search(r'(?i)(select|candidate|prefix|token|offset|savez|report|sort|deadline|texts|ids|score|indices|cache|jsonl)',x)][:160]})
+          with tempfile.TemporaryDirectory() as d:
+              root=Path(d)
+              ref='kolihhan/ntl-fable-preservation-252-v2-20261125'
+              p=subprocess.run(['kaggle','kernels','files',ref,'--csv','--page-size','100'],capture_output=True,text=True,timeout=60)
+              log('OUTPUT_INVENTORY',{'status':p.returncode,'files':p.stdout[:10000] if p.returncode==0 else None})
+              p=subprocess.run(['kaggle','kernels','output',ref,'-p',str(root),'--file-pattern','(^|/)(submission[.]parquet|report[.]json|flash_scores[.]npz|glm53_scores[.]npz)$','-o'],capture_output=True,text=True,timeout=120)
+              if p.returncode:
+                  log('BLOCKED','Kaggle output retrieval failed');raise SystemExit(0)
+              files={k:list(root.rglob(k)) for k in ('report.json','submission.parquet','flash_scores.npz','glm53_scores.npz')}
+              if not all(len(v)==1 for v in files.values()):
+                  log('BLOCKED','unique retained files unavailable');raise SystemExit(0)
+              ids=pd.read_parquet(files['submission.parquet'][0]).id.astype(str)
+              report=json.loads(files['report.json'][0].read_text())
+              def summarize(x):
+                  if isinstance(x,dict):return {k:summarize(v) for k,v in x.items()}
+                  if isinstance(x,list):return {'len':len(x),'item_type':type(x[0]).__name__ if x else None,'candidate_id_set':bool(len(x)>0 and all(isinstance(v,str) for v in x) and set(x)<=set(ids))}
+                  if isinstance(x,(int,float,bool)) or x is None:return x
+                  return type(x).__name__
+              log('RETAINED_REPORT_CONTRACT',summarize(report))
+              with np.load(files['flash_scores.npz'][0],allow_pickle=False) as a,np.load(files['glm53_scores.npz'][0],allow_pickle=False) as b:
+                  assert a['offsets'].shape==b['offsets'].shape and a['tokens'].shape==b['tokens'].shape
+                  log('PAIRED_TOKEN_ALIGNMENT',{'same_offsets':bool(np.array_equal(a['offsets'],b['offsets'])),'same_token_ids':bool(np.array_equal(a['tokens'],b['tokens'])),'n_sequences':len(a['offsets'])-1,'token_rows':len(a['tokens']),'explicit_sample_ids_in_both':bool('ids' in a.files and 'ids' in b.files)})
+              log('ADMISSION','No arbitration BA without explicit full18 stage scores and identity-qualified independent generation/attribution evidence')
+          PY
