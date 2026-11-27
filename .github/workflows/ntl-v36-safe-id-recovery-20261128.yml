@@ -65,13 +65,45 @@ jobs:
                   with np.load(f,allow_pickle=False) as z:
                       offsets=z['offsets'];n=z['n_prefix'];scores=z['scores'];tokens=z['tokens']
                       assert offsets.shape==(76,) and n.shape==(75,) and offsets[0]==0
-                      assert np.all(np.diff(offsets)>0) and np.array_equal(np.diff(offsets),n)
+                      assert np.all(np.diff(offsets)>0) and np.all(n>=0)
+                      # n_prefix is not proven to be the scored-token count. Validate offsets independently.
+                      print('CACHE_OFFSET_DIAGNOSTIC='+json.dumps({'file':name,'segment_min':int(np.diff(offsets).min()),'segment_max':int(np.diff(offsets).max()),'prefix_min':int(n.min()),'prefix_max':int(n.max()),'equal_rows':int((np.diff(offsets)==n).sum()),'prefix_le_segment_rows':int((n<=np.diff(offsets)).sum())}),flush=True)
                       assert offsets[-1]==len(scores)==len(tokens) and scores.shape==(len(tokens),4)
                       assert np.isfinite(scores).all()
                   files[name]=(ids,offsets,tokens,hashlib.sha256(f.read_bytes()).hexdigest())
               a,b=files.values()
               assert set(a[0])==set(b[0])
+              assert a[3]=='05dc6e5d51d9ef0d4f9aad3ff1727560272e9e991deeb1b5efcc352b51d5d16c'
+              assert b[3]=='6cc84f5dbb74c7435b64d7a6dc2a14afacbcc48ec8b91ae03c30df335f4de6d6'
               ia={v:i for i,v in enumerate(a[0])};ib={v:i for i,v in enumerate(b[0])}
               same_tokens=sum(np.array_equal(a[2][a[1][ia[k]]:a[1][ia[k]+1]],b[2][b[1][ib[k]]:b[1][ib[k]+1]]) for k in ia)
               print('V36_SAFE_ID_RECOVERY='+json.dumps({'rows':len(ia),'cohort_rows':252,'same_id_set':True,'same_id_order':a[0]==b[0],'same_token_sequence_rows':same_tokens,'total_token_positions':int(a[1][-1]),'cache_sha256':[a[3],b[3]],'pickle_executed':False,'raw_ids_exported':False,'score_column_semantics_unverified':True,'gpu':False,'training':False,'submission':False},sort_keys=True),flush=True)
+              # Recover selection coverage on the exact previously spent publisher-labelled panel.
+              panel=root/'panel';panel.mkdir()
+              p=subprocess.run(['kaggle','datasets','download','-d','nischaydnk/ntl-topic-synthetic-18llms','-f','generations.csv','-p',str(panel),'--unzip'],capture_output=True,timeout=180)
+              assert p.returncode==0
+              source=panel/'generations.csv'
+              assert hashlib.sha256(source.read_bytes()).hexdigest()=='bce34670f4d1170375e7baf85eec5577af4282d5f0ca6cf1573ce46e81c5a45c'
+              raw=pd.read_csv(source)
+              topics={'short':(98,25,65,83,16,61,68),'median':(77,54,99,37),'long':(72,63,87)}
+              blocks=[]
+              for version,tt in topics.items():
+                  for topic in tt:
+                      g=raw.loc[(raw.version==version)&(raw.topic_id==topic)].sort_values('model',kind='stable')
+                      assert len(g)==g.model.nunique()==18
+                      blocks.append(g[['model']])
+              truth=pd.concat(blocks,ignore_index=True)
+              truth.insert(0,'id',[f'fable-observation-{i:03d}' for i in range(252)])
+              d=truth.merge(s,on='id',suffixes=('_true','_pred'),validate='one_to_one')
+              assert len(d)==252 and d.model_true.value_counts().eq(14).all()
+              d['correct']=d.model_true==d.model_pred
+              assert int(d.correct.sum())==151
+              d['selected']=d.id.isin(ia)
+              fam=lambda x: 'openai' if x.startswith('gpt-') else 'qwen' if x.startswith('qwen') else x.split('-')[0]
+              d['family_correct']=d.model_true.map(fam)==d.model_pred.map(fam)
+              coverage={}
+              for flag,g in d.groupby('selected'):
+                  coverage[str(flag)]={'rows':len(g),'correct':int(g.correct.sum()),'within_family_errors':int((~g.correct&g.family_correct).sum()),'cross_family_errors':int((~g.family_correct).sum()),'true_glm':int(g.model_true.str.startswith('glm-').sum()),'pred_glm':int(g.model_pred.str.startswith('glm-').sum())}
+              bylabel={lab:{'selected':int(g.selected.sum()),'selected_wrong':int((g.selected&~g.correct).sum()),'unselected_wrong':int((~g.selected&~g.correct).sum())} for lab,g in d.groupby('model_true')}
+              print('V36_SELECTION_COVERAGE='+json.dumps({'coverage':coverage,'per_label':bylabel,'report_selected':report['n_selected'],'report_counts_native':report['counts_s10'],'report_counts_post_glm':report['counts_v1'],'scope':'spent observational panel, selection not causal treatment, no new predictor'},sort_keys=True),flush=True)
           PY
