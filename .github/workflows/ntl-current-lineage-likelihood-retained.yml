@@ -1,0 +1,30 @@
+name: NTL current champion retained likelihood evidence CPU
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-current-lineage-likelihood-retained.yml']
+permissions: {contents: read}
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_current_lineage_likelihood_retained_20261127.py
+            scripts/ntl_fable252_full18_error_profile_20261125.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect and evaluate retained current-lineage artifacts only
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy pandas pyarrow
+          python -m py_compile scripts/ntl_current_lineage_likelihood_retained_20261127.py
+          python scripts/ntl_current_lineage_likelihood_retained_20261127.py
