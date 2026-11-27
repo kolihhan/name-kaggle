@@ -1,0 +1,77 @@
+name: NTL recover actual 75-row likelihood IDs safely CPU
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-v36-safe-id-recovery-20261128.yml]
+permissions: {contents: read}
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Validate object-array ID axis by static pickle parsing, never unpickle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import io,json,pickletools,re,subprocess,tempfile,zipfile,hashlib
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from numpy.lib import format as fmt
+          def ids_static(blob,expected,n):
+              b=io.BytesIO(blob); version=fmt.read_magic(b)
+              if version==(1,0):shape,fort,dtype=fmt.read_array_header_1_0(b)
+              elif version==(2,0):shape,fort,dtype=fmt.read_array_header_2_0(b)
+              else:raise ValueError('unsupported npy version')
+              assert shape==(n,) and dtype==np.dtype('O') and not fort
+              ops=list(pickletools.genops(b.read()))
+              starts=[i for i,(op,arg,pos) in enumerate(ops) if op.name=='EMPTY_LIST']
+              ends=[i for i,(op,arg,pos) in enumerate(ops) if op.name=='APPENDS']
+              assert len(starts)==len(ends)==1 and starts[0]<ends[0]
+              payload=ops[starts[0]+1:ends[0]]
+              assert all(op.name in ('MARK','SHORT_BINUNICODE','BINUNICODE','BINUNICODE8','MEMOIZE','BINPUT','LONG_BINPUT') for op,arg,pos in payload)
+              assert sum(op.name=='MARK' for op,arg,pos in payload)==1
+              ids=[arg for op,arg,pos in payload if op.name in ('SHORT_BINUNICODE','BINUNICODE','BINUNICODE8')]
+              assert len(ids)==n and len(set(ids))==n and set(ids)<=expected
+              assert all(re.fullmatch(r'fable-observation-\d{3}',i) for i in ids)
+              assert [op.name for op,arg,pos in ops[ends[0]+1:] if op.name not in ('MEMOIZE','BINPUT','LONG_BINPUT')]==['TUPLE','BUILD','STOP']
+              return ids
+          b=io.BytesIO();np.save(b,np.array(['fable-observation-001','fable-observation-002'],dtype=object))
+          assert ids_static(b.getvalue(),{'fable-observation-001','fable-observation-002'},2)==['fable-observation-001','fable-observation-002']
+          try:ids_static(b.getvalue(),{'fable-observation-001'},2)
+          except AssertionError:pass
+          else:raise AssertionError('foreign ID accepted')
+          print('STATIC_PARSER_FIXTURES=PASS',flush=True)
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp)
+              p=subprocess.run(['kaggle','kernels','output','kolihhan/ntl-fable-preservation-252-v2-20261125','-p',tmp,'--file-pattern',r'(^|/)(submission\.parquet|flash_scores\.npz|glm53_scores\.npz|report\.json)$','-o'],capture_output=True,timeout=180)
+              assert p.returncode==0
+              s=pd.read_parquet(next(root.rglob('submission.parquet')))
+              expected=set(s.id.astype(str));assert len(expected)==len(s)==252
+              assert expected=={f'fable-observation-{i:03d}' for i in range(252)}
+              report=json.loads(next(root.rglob('report.json')).read_text())
+              assert report['status']=='applied' and report['n_selected']==75
+              files={}
+              for name in ('flash_scores.npz','glm53_scores.npz'):
+                  f=next(root.rglob(name))
+                  with zipfile.ZipFile(f) as z:
+                      assert z.getinfo('ids.npy').file_size<100_000
+                      ids=ids_static(z.read('ids.npy'),expected,75)
+                  with np.load(f,allow_pickle=False) as z:
+                      offsets=z['offsets'];n=z['n_prefix'];scores=z['scores'];tokens=z['tokens']
+                      assert offsets.shape==(76,) and n.shape==(75,) and offsets[0]==0
+                      assert np.all(np.diff(offsets)>0) and np.array_equal(np.diff(offsets),n)
+                      assert offsets[-1]==len(scores)==len(tokens) and scores.shape==(len(tokens),4)
+                      assert np.isfinite(scores).all()
+                  files[name]=(ids,offsets,tokens,hashlib.sha256(f.read_bytes()).hexdigest())
+              a,b=files.values()
+              assert set(a[0])==set(b[0])
+              ia={v:i for i,v in enumerate(a[0])};ib={v:i for i,v in enumerate(b[0])}
+              same_tokens=sum(np.array_equal(a[2][a[1][ia[k]]:a[1][ia[k]+1]],b[2][b[1][ib[k]]:b[1][ib[k]+1]]) for k in ia)
+              print('V36_SAFE_ID_RECOVERY='+json.dumps({'rows':len(ia),'cohort_rows':252,'same_id_set':True,'same_id_order':a[0]==b[0],'same_token_sequence_rows':same_tokens,'total_token_positions':int(a[1][-1]),'cache_sha256':[a[3],b[3]],'pickle_executed':False,'raw_ids_exported':False,'score_column_semantics_unverified':True,'gpu':False,'training':False,'submission':False},sort_keys=True),flush=True)
+          PY
