@@ -1,0 +1,86 @@
+name: NTL v36 exact source evidence-flow and retained ID recovery CPU
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-v36-evidence-flow-20261128.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read exact historical v36 and inspect surviving evidence without executing donor code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1 numpy==2.3.4
+          python - <<'PY'
+          import os,json,hashlib,httpx,re,ast,subprocess,tempfile
+          from pathlib import Path
+          import numpy as np
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True,default=str),flush=True)
+          with httpx.Client(follow_redirects=True,timeout=60,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies.get('XSRF-TOKEN','')}
+              assert hdr['X-XSRF-TOKEN']
+              def post(method,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+method,json=body,headers=hdr);r.raise_for_status();return r
+              vm=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'evgendvorkin','kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+              v=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(vm['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()
+              matches=[int(row['run']['id']) for row in v['items'] if (row.get('version') or {}).get('versionNumber')==36 and (row.get('run') or {}).get('id')]
+              assert len(matches)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':matches[0],'includeOutputIfAvailable':False}).text
+          digest=hashlib.sha256(raw.encode()).hexdigest()
+          assert digest=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+          nb=json.loads(raw)
+          assert len(nb['cells'])==58
+          cells=[(i,''.join(c.get('source',[]))) for i,c in enumerate(nb['cells']) if c.get('cell_type')=='code']
+          assert len(cells)==35
+          markers={'native':'final-logits.npz','post_glm':'prefix-votes.npz','submission':'submission.parquet','glm_cache':'scores.npz','residual':'refined_lp','candidate_ids':'selected_ids','report':'report.json','guard':'fable_return','cache_rows':'offsets','sibling':'sibling_agreement'}
+          modules={}
+          for i,src in cells:
+              m=re.match(r'^%%writefile\s+(\S+)\s*\n',src)
+              name=Path(m.group(1)).name if m else 'cell_'+str(i)
+              body=src[m.end():] if m else src
+              funcs=[]
+              try:funcs=[x.name for x in ast.walk(ast.parse(body)) if isinstance(x,(ast.FunctionDef,ast.AsyncFunctionDef))]
+              except SyntaxError:pass
+              hits={k:[j+1 for j,l in enumerate(body.splitlines()) if val in l] for k,val in markers.items()}
+              hits={k:v for k,v in hits.items() if v}
+              modules[name]={'cell':i,'sha256':hashlib.sha256(body.encode()).hexdigest(),'functions':funcs,'markers':hits}
+              if name=='prefix_variant_stage.py' or name=='infer.py' or 'refined_lp' in body:
+                  # Show only short source statements about writers, selection, and trace axis (no data).
+                  needles=r'np\.savez|to_parquet\(|to_csv\(|selected_ids|candidate_ids|selected_idx|\.argsort\(|\bids\s*=|\bidx\s*=|report\[|report\.json|scores\.npz|prefix-votes\.npz|final-logits\.npz|subprocess\.run|refined_lp\s*='
+                  lines=[{'line':j+1,'statement':l.strip()[:180]} for j,l in enumerate(body.splitlines()) if re.search(needles,l) and len(l)<400]
+                  log('V36_TRACE_SOURCE',{'module':name,'statements':lines[:95]})
+          log('V36_EXACT_SOURCE_MAP',{'sha256':digest,'modules':modules})
+          with tempfile.TemporaryDirectory(prefix='ntl-v36-id-') as tmp:
+              d=Path(tmp)
+              # Broaden previous narrow filename filter to look for ID and selection sidecars.
+              pattern=r'(^|/)([^/]*(manifest|report|select|index|ids|order|meta|logit|votes|scores)[^/]*\.(json|npz|npy|csv|parquet|txt)|submission\.parquet)$'
+              p=subprocess.run(['kaggle','kernels','output','kolihhan/ntl-fable-preservation-252-v2-20261125','-p',tmp,'--file-pattern',pattern,'-o'],capture_output=True,text=True,timeout=180)
+              log('RETAINED_FETCH',{'returncode':p.returncode})
+              if p.returncode:raise RuntimeError('RETAINED_METADATA_FETCH_FAILED')
+              fs=[f for f in d.rglob('*') if f.is_file()]
+              log('RETAINED_EVIDENCE_INVENTORY',[{'path':str(f.relative_to(d)),'bytes':f.stat().st_size} for f in fs])
+              def structure(v,depth=0):
+                  if depth>3:return type(v).__name__
+                  if isinstance(v,dict):return {k:structure(x,depth+1) for k,x in list(v.items())[:100]}
+                  if isinstance(v,list):return {'type':'list','length':len(v),'element_types':sorted({type(x).__name__ for x in v})}
+                  return type(v).__name__
+              for f in fs:
+                  if f.suffix=='.json' and f.stat().st_size<10_000_000:
+                      log('RETAINED_JSON_SCHEMA',{'file':str(f.relative_to(d)),'schema':structure(json.loads(f.read_text()))})
+                  elif f.suffix=='.npz':
+                      with np.load(f,allow_pickle=False) as z:
+                          a={}
+                          for k in z.files:
+                              try:x=z[k];a[k]={'shape':list(x.shape),'dtype':str(x.dtype)}
+                              except ValueError:a[k]={'object_refused':True}
+                          log('RETAINED_ARRAY_SCHEMA',{'file':str(f.relative_to(d)),'arrays':a})
+              log('V36_AUDIT_END',{'gpu':False,'training':False,'submission':False,'raw_outputs_exported':False,'mapping_recovered':False,'note':'Inventory/schema only; no positional join or inferred candidate IDs.'})
+          PY
