@@ -1,0 +1,103 @@
+name: NTL RCMA Stage 0 real data identifiability CPU
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-rcma-stage0-20261127.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Real metadata and matched prompt coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'kaggle==2.2.5' 'six==1.17.0' 'pandas==2.3.3' 'pyarrow==22.0.0'
+          python - <<'PY'
+          import hashlib, json, itertools, subprocess, tempfile
+          from collections import defaultdict
+          from pathlib import Path
+          import pandas as pd
+          import pyarrow.parquet as pq
+          FLAGS=['flag_kb_proxy','flag_gemini37_routing_risk','flag_near_train_prompt','flag_train_prompt_regen','flag_kb_proxy_after_ruling']
+          def norm(x):
+              return '' if pd.isna(x) else ' '.join(str(x).casefold().split())
+          def present(x):
+              return norm(x) not in ('','unknown','n/a','nan','null','none','unverified')
+          def analyze(d, labels, minimum=20):
+              # A matched prompt supplies an actual competing label within the same reported source and protocol.
+              pairs=defaultdict(lambda:defaultdict(set))
+              matched=defaultdict(lambda:defaultdict(set))
+              for (source, route, reasoning, prompt),g in d.groupby(['source_dataset','gen_route','gen_reasoning','prompt_key']):
+                  models=sorted(g.model.unique())
+                  cell=(source,route,reasoning)
+                  for a,b in itertools.combinations(models,2):
+                      pairs[(a,b)][cell].add(prompt)
+                      matched[a][cell].add(prompt)
+                      matched[b][cell].add(prompt)
+              def crossed(cells):
+                  items=[(cell,p) for cell,p in cells.items() if len(p)>=minimum]
+                  # Require distinct sources, protocols and enough distinct prompts in both cells.
+                  return any(a[0]!=b[0] and a[1:]!=b[1:] and len(pa-pb)>=minimum and len(pb-pa)>=minimum for (a,pa),(b,pb) in itertools.combinations(items,2))
+              qualifying=defaultdict(list)
+              for (a,b),cells in pairs.items():
+                  if crossed(cells):
+                      qualifying[a].append(b)
+                      qualifying[b].append(a)
+              report={}
+              for model in labels:
+                  g=d[d.model==model]
+                  report[model]=dict(rows=len(g),sources=int(g.source_dataset.nunique()),protocols=len(g[['gen_route','gen_reasoning']].drop_duplicates()),prompts=int(g.prompt_key.nunique()),matched_cells_20=sum(len(p)>=minimum for p in matched[model].values()),crossed_cells=crossed(matched[model]),same_negative_crossed_labels=sorted(qualifying[model]))
+              return report
+          # Controlled fixtures: shared prompt topics alone or source-only separation cannot pass.
+          def fixture(routes=('r1','r2'),same_prompts=False):
+              return pd.DataFrame([dict(source_dataset=s,gen_route=r,gen_reasoning='off',prompt_key=str(i if same_prompts else j*10+i),model=m) for j,(s,r) in enumerate(zip(['s1','s2'],routes)) for i in range(2) for m in ['a','b']])
+          assert analyze(fixture(),['a','b'],2)['a']['same_negative_crossed_labels']==['b']
+          assert not analyze(fixture(('r1','r1')),['a','b'],2)['a']['crossed_cells']
+          assert not analyze(fixture(same_prompts=True),['a','b'],2)['a']['crossed_cells']
+          assert not analyze(fixture().query("model=='a'"),['a','b'],2)['a']['crossed_cells']
+          print('RCMA_FIXTURE_TESTS=4_PASS',flush=True)
+          with tempfile.TemporaryDirectory(prefix='rcma-') as t:
+              p=Path(t)/'ntl_open_pool.parquet'
+              run=subprocess.run(['kaggle','datasets','download','-d','crtproduction/name-that-llm-open-pool','-f',p.name,'-p',t,'--unzip'],capture_output=True,timeout=180)
+              assert run.returncode==0 and p.is_file(), 'OPEN_POOL_DOWNLOAD_FAILED'
+              with p.open('rb') as f: sha=hashlib.file_digest(f,'sha256').hexdigest()
+              pf=pq.ParquetFile(p)
+              required=['model','text','source_dataset','source_license','source_file','also_in','prompt_canon','prompt_group','gen_route','gen_reasoning','gen_served_model',*FLAGS]
+              assert set(required).issubset(pf.schema_arrow.names),'REQUIRED_METADATA_MISSING'
+              d=pf.read(columns=required).to_pandas()
+              labels=sorted(d.model.dropna().unique())
+              assert len(labels)==18
+              raw={str(m):int(n) for m,n in d.model.value_counts().items()}
+              valid=pd.Series(True,index=d.index)
+              for c in ['model','text','source_dataset','source_license','source_file','prompt_canon','prompt_group','gen_route','gen_reasoning','gen_served_model']:
+                  valid &= d[c].map(present)
+              for c in FLAGS:
+                  # Null flags are unknown and not admitted by this strict screen.
+                  valid &= d[c].notna() & d[c].map(norm).isin(['false','0','no','0.0'])
+              d['text_hash']=d.text.map(lambda x:hashlib.sha256(norm(x).encode()).hexdigest())
+              conflict=d.groupby('text_hash').model.nunique()
+              conflict_keys=set(conflict[conflict>1].index)
+              candidate=d[valid & ~d.text_hash.isin(conflict_keys)].copy()
+              # Drop all repeated texts rather than selecting a source arbitrarily.
+              repeated=set(d.loc[d.text_hash.duplicated(keep=False),'text_hash'])
+              candidate=candidate[~candidate.text_hash.isin(repeated)].copy()
+              for c in ['source_dataset','gen_route','gen_reasoning','gen_served_model','prompt_canon']:
+                  candidate[c]=candidate[c].map(norm)
+              candidate['prompt_key']=candidate.prompt_canon
+              candidate=candidate.drop_duplicates(['source_dataset','gen_route','gen_reasoning','prompt_key','model'])
+              coverage=analyze(candidate,labels)
+              for m,x in coverage.items():
+                  x['raw_rows']=raw.get(m,0)
+                  g=candidate[candidate.model==m]
+                  x['served_exact_label_rows']=int((g.gen_served_model==norm(m)).sum())
+                  # also_in is not parsed as authoritative upstream lineage.
+                  x['source_files']=int(g.source_file.nunique())
+              result=dict(pool_rows=len(d),pool_sha256=sha,labels=len(labels),raw_sources=int(d.source_dataset.nunique()),candidate_rows=len(candidate),conflicting_hashes=len(conflict_keys),duplicate_hashes=len(repeated),crossed_labels=sum(x['crossed_cells'] for x in coverage.values()),shared_negative_crossed_labels=sum(bool(x['same_negative_crossed_labels']) for x in coverage.values()),coverage=coverage,rights_and_upstream_independence_not_verified=True,not_a_holdout=True,no_gpu=True,no_training=True,no_submission=True)
+              print('RCMA_STAGE0='+json.dumps(result,sort_keys=True),flush=True)
+          PY
