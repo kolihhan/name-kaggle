@@ -1,0 +1,29 @@
+name: NTL read actual V90 and Gemma31B official scores
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-v90-live-score-readonly-20261127.yml']
+permissions: {contents: read}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read-only official score receipts
+        run: |
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          import json
+          a=KaggleApi();a.authenticate()
+          for ref in [58958281,58935812,58755304]:
+              try:
+                  x=a.get_submission(ref).to_dict()
+                  print("ACTUAL_SCORE="+json.dumps({"ref":ref,"status":x.get("status"),"publicScore":x.get("publicScore"),"privateScore":x.get("privateScore"),"date":x.get("date")},default=str),flush=True)
+              except Exception as e:
+                  print("READ_ERROR="+json.dumps({"ref":ref,"type":type(e).__name__}),flush=True)
+          PY
