@@ -1,0 +1,30 @@
+name: NTL evidence gate historical regression checks
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths:
+      - scripts/ntl_evidence_gate.py
+      - tests/test_ntl_evidence_gate.py
+      - .github/workflows/ntl-evidence-gate-20261128.yml
+  pull_request:
+    paths:
+      - scripts/ntl_evidence_gate.py
+      - tests/test_ntl_evidence_gate.py
+      - .github/workflows/ntl-evidence-gate-20261128.yml
+permissions: {contents: read}
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts/ntl_evidence_gate.py
+            tests/test_ntl_evidence_gate.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest discover -s tests -p test_ntl_evidence_gate.py -v
