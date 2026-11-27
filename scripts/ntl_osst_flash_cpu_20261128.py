@@ -128,7 +128,8 @@ def main():
                     assert int(o)==len(results) and int(n)==len(jobs[int(o)][1])
                     results.append(float(m))
                     if len(results)%12==0:print("OSST_TEACHER_FORCED_PROGRESS="+str(len(results)),flush=True)
-                assert p.wait()==0
+                rc=p.wait()
+                if rc!=0:raise RuntimeError(f'NATIVE_SCORER_EXIT={rc}; completed_jobs={len(results)}')
             finally:
                 if p.poll() is None:p.kill();p.wait()
         assert len(results)==74
