@@ -61,9 +61,16 @@ jobs:
           lib=$(find /tmp/rcma-runtime -name 'libllama.so' -print -quit)
           test -n "$lib"
           libdir=$(dirname "$lib")
-          g++ -O3 -std=c++17 -I/tmp/rcma-llama-source/include -I/tmp/rcma-llama-source/ggml/include scripts/ntl_osst_token_score.cpp -L"$libdir" -Wl,-rpath,"$libdir" -lllama -o /tmp/rcma-runtime/ntl_osst_token_score
-          ldd /tmp/rcma-runtime/ntl_osst_token_score
-          echo "RCMA_OSST_SCORER=/tmp/rcma-runtime/ntl_osst_token_score" >> "$GITHUB_ENV"
+          g++ -O3 -std=c++17 -I/tmp/rcma-llama-source/include -I/tmp/rcma-llama-source/ggml/include scripts/ntl_osst_token_score.cpp -L"$libdir" -Wl,-rpath,"$libdir" -lllama -o $libdir/ntl_osst_token_score
+          ldd $libdir/ntl_osst_token_score
+          echo "RCMA_OSST_SCORER=$libdir/ntl_osst_token_score" >> "$GITHUB_ENV"
+      - name: Native runtime regression on synthetic tokens before private data
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '2 2 1 2 3 4\n2 2 1 2 3 4\n' >/tmp/rcma-runtime/synthetic.txt
+          "$RCMA_OSST_SCORER" "$RCMA_MODEL" /tmp/rcma-runtime/synthetic.txt >/tmp/rcma-runtime/synthetic.out
+          python -c 'import math; r=[x.split() for x in open("/tmp/rcma-runtime/synthetic.out")]; assert len(r)==2 and r[0][1:]==r[1][1:] and all(math.isfinite(float(x[1])) and int(x[3])==2 for x in r); print("NATIVE_SYNTHETIC_REPEAT=PASS")'
       - name: Actual neutralization and teacher-forced style reconstruction
         run: python -m scripts.ntl_osst_flash_cpu_20261128
       - name: Remove temporary data and weights
