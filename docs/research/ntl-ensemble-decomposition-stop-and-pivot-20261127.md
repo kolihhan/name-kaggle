@@ -1,0 +1,17 @@
+# NTL ensemble decomposition — stop / pivot record (2026-11-27)
+
+## Verified findings
+- Official owner best reproduced score .718 (58755304); Gemma31B v4 .710 (58935812); external V90 .730 (session 374177811). Direct V90 attempt 58958281: COMPLETE, totalBytes=0, hidden rerun error, no score. No claim of successful .730 reproduction.
+- V90 warm-soup dataset returned HTTP 403 and was missing from accessible mount metadata (empty source slot). This establishes an unavailable dependency, not proof of the exact hidden failure.
+- Historical OOF cache 2699 rows, 18 classes, 37 diverse and 28 finetuned outputs. Source-confirmed context scenarios cap replies per prompt at 1/3/6. Native aggregation is a weighted sum of log probabilities. The reference weights were selected using competition TRAIN; no independent hidden performance claim.
+- Real decomposition (45932439593): scenario 6 reference BA .562682, nested calibrated .574912, oracle union .901762, equal-backbone Borda .502662. Oracle depends on labels and is not achievable via known policy.
+- Context calibration proxy (45935935401): .481531/.533033/.553783; compared with stronger nested baseline .480062/.543798/.574912, mean delta -.010142. RETIRE this exact standardized-score + confusion/margin averaging version. Native score experiment 45934225025 rejected incompatible input, not a negative BA result.
+- Strict nested replay 45938080703 admitted 55/140 pinned files, 0/5 evaluable outer folds. Diagnostic retry 45938678359 admitted 56/140; remaining 84 HTTP 429 (Qwen14 4, Qwen8 20, RoBERTa 20, tail32 20, text 20). No SHA mismatch among reported failures. This is an acquisition-rate-limit blocker, not evidence of missing predictions or invalid nested research. End bulk retries now, per previous stopping rule. No metric was generated in either nested replay.
+
+## Decision
+STOP historical-cache acquisition/replay as the primary route. No repeated retries, no hash relaxation, no fitting on spent public score. Keep .718 unchanged.
+The useful research target is a full end-to-end comparison with current-lineage predictions, not another older OOF calibration variant.
+Existing owner .718-lineage 252-row published-label cohort has 151/252 exact, 51 cross-provider and 50 sibling errors (45565106275); already spent, uncertain external truth provenance. It must not be used for new model-specific thresholds or a promotion claim.
+V90's public source contains dual-27B arbitration, extended decision logic, prompt assignment and a private soup dependency. A public-only counterfactual using original accessible adapters would be a third-party architecture ablation, not an original breakthrough or proven .730 reproduction. Require exact public parent/donor asset admission, explicit runtime/fallback checks, and complete same-row stage outputs before any GPU or submission. Do not use inaccessible assets or blind retries.
+Next decisive experiment requires current champion stage-level scores plus independently qualified 18-label examples, or a specifically authorized single controlled end-to-end test with real runtime budget. Collect complete aligned core / likelihood / expert / final outputs once, compare interventions offline. Do not begin another standalone small-model classifier.
+No GPU, no new neural training, no Kaggle submission in this round.
