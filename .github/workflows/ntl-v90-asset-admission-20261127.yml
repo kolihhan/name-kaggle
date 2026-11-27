@@ -1,0 +1,108 @@
+name: NTL V90 real asset admission and existing expert-cache audit
+on:
+  push:
+    branches: [research/ntl-ensemble-decomposition-20261127]
+    paths: ['.github/workflows/ntl-v90-asset-admission-20261127.yml']
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_effective_delta_merge.py
+            scripts/test_ntl_effective_delta_merge.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify math implementation and inspect authentic authorized Kaggle inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy pytest
+          python -m pytest -q scripts/test_ntl_effective_delta_merge.py
+          python - <<'PY'
+          import csv,io,json,re,subprocess,tempfile,zipfile
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          for ref in (58958281,58935812,58755304):
+              try:
+                  x=api.get_submission(ref).to_dict()
+                  print('RECEIPT='+json.dumps({k:x.get(k) for k in ('ref','status','publicScore','totalBytes','errorDescription','date')},default=str),flush=True)
+              except Exception as e:print('RECEIPT_UNAVAILABLE='+str(ref)+' '+type(e).__name__,flush=True)
+          def cli(args,timeout=70):
+              return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          def error_category(p):
+              text=p.stdout+' '+p.stderr
+              if p.returncode==0:return 'ok'
+              for code in ('403','404','401','429'):
+                  if re.search(r'\b'+code+r'\b',text):return 'HTTP_'+code
+              if 'unrecognized arguments' in text:return 'CLI_ARGUMENT_ERROR'
+              return 'OTHER_ERROR'
+          def inventory(kind,ref):
+              # Respect actual CLI flags and normal access controls. Exhaust pagination when supported.
+              helptext=cli([kind,'files','--help']).stdout
+              verbose='-v' if '--csv' not in helptext else '--csv'
+              pagearg='--page-token' if '--page-token' in helptext else None
+              sizearg='--page-size' if '--page-size' in helptext else None
+              rows=[];seen=set();token=None;status='ok';complete=False
+              for _ in range(12):
+                  args=[kind,'files',ref,verbose]
+                  if sizearg:args += [sizearg,'100']
+                  if token and pagearg:args += [pagearg,token]
+                  p=cli(args);status=error_category(p)
+                  if p.returncode:break
+                  lines=p.stdout.splitlines()
+                  m=re.search(r'Next Page Token\s*=\s*(\S+)',p.stdout+'\n'+p.stderr)
+                  data='\n'.join(l for l in lines if not l.startswith('Next Page Token'))
+                  rows.extend(csv.DictReader(io.StringIO(data)))
+                  if not m:complete=True;break
+                  token=m.group(1)
+                  if not pagearg or token in seen:break
+                  seen.add(token)
+              result={'kind':kind,'ref':ref,'status':status,'rows':len(rows),'complete':complete}
+              names=[r.get('name') or r.get('ref') or '' for r in rows]
+              # Only metadata, never model weights, text, or row-level predictions.
+              candidates=[n for n in names if re.search(r'(?i)(manifest|adapter_config|adapter_model|trainables|heads\.pt|logits|preds|probs|\.npz$|submission\.parquet|report\.json)',n)]
+              result['candidates']=candidates[:100]
+              print('INVENTORY='+json.dumps(result),flush=True)
+              return result,names
+          with tempfile.TemporaryDirectory() as d:
+              p=cli(['kernels','pull','jnliang/ntl-v90-locked-v1-warm-soup','-p',d,'-m'])
+              if p.returncode==0:
+                  md=json.loads((Path(d)/'kernel-metadata.json').read_text())
+                  sources=md.get('dataset_sources',[])
+                  print('V90_DATASET_SOURCES='+json.dumps(sources),flush=True)
+                  print('V90_SOURCE_COUNTS='+json.dumps({k:len(md.get(k,[])) for k in ['dataset_sources','model_sources','kernel_sources']}),flush=True)
+                  soup=[r for r in sources if 'warm-soup' in r]
+              else:
+                  print('V90_MOUNTS_UNAVAILABLE='+error_category(p),flush=True);soup=[]
+              for ref in soup or ['jnliang/ntl-hc-v90-warm-soup']:
+                  info,names=inventory('datasets',ref)
+                  if info['status']!='ok':continue
+                  manifests=[x for x in names if x.endswith('v90_soup_manifest.json')]
+                  if len(manifests)!=1:
+                      print('SOUP_MANIFEST_NOT_UNIQUELY_LISTED',flush=True);continue
+                  p=cli(['datasets','download',ref,'-f',manifests[0],'-p',d,'-q'])
+                  if p.returncode:print('SOUP_MANIFEST_ACCESS='+error_category(p),flush=True);continue
+                  for f in Path(d).rglob('*'):
+                      if f.is_file() and f.name=='v90_soup_manifest.json':
+                          m=json.loads(f.read_text());print('REAL_SOUP_MANIFEST='+json.dumps(m,sort_keys=True)[:24000],flush=True)
+                      elif f.is_file() and f.suffix=='.zip':
+                          with zipfile.ZipFile(f) as z:
+                              hits=[n for n in z.namelist() if n.endswith('v90_soup_manifest.json')]
+                              if len(hits)==1:
+                                  m=json.loads(z.read(hits[0]));print('REAL_SOUP_MANIFEST='+json.dumps(m,sort_keys=True)[:24000],flush=True)
+          for ref in ['dhruvtibarewal/nlm-l24-adapters-v5','lightningv08/ntl-olmo2-native24-final-inference-assets']:
+              inventory('datasets',ref)
+          for ref in ['kolihhan/ntl-fable-preservation-252-v2-20261125','kolihhan/ntl-confidence-fusion-real252-20261125','kolihhan/ntl-lightning0694-scale1200-nov15','kolihhan/ntl-oleg216-final18-diagnostic-nov17']:
+              inventory('kernels',ref)
+          print('NO_NEW_GPU_NO_TRAINING_NO_SUBMISSION',flush=True)
+          PY
