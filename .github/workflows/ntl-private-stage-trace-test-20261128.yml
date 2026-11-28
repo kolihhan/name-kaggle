@@ -1,0 +1,80 @@
+name: NTL private trace synthetic contract and ledger read-only
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-private-stage-trace-test-20261128.yml]
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_private_stage_trace.py
+            scripts/ntl_evidence_gate.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q numpy==2.3.4 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,tempfile,json,subprocess,csv,io
+          from pathlib import Path
+          import numpy as np
+          from scripts.ntl_private_stage_trace import Trace,PIN
+          from scripts.ntl_evidence_gate import Evidence,classify
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True),flush=True)
+          def rejected(exc,fn):
+              try:fn()
+              except exc:return
+              raise AssertionError('expected rejection')
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp)
+              ids=np.array(['synthetic-a','synthetic-b','synthetic-c'])
+              labs=np.array([f'synthetic-model-{i:02d}' for i in range(18)])
+              z=np.arange(54,dtype=float).reshape(3,18)
+              def make(name):return Trace(root/name,ids,labs,source_sha=PIN,cohort_sha='a'*64,asset_manifest_sha='b'*64)
+              os.environ.pop('NTL_PRIVATE_TRACE_AUTHORIZED',None)
+              rejected(PermissionError,lambda:make('unauthorized'))
+              os.environ['NTL_PRIVATE_TRACE_AUTHORIZED']='1'
+              t=make('valid')
+              rejected(ValueError,lambda:t.scores('native',ids[[0,0,2]],labs,z,semantics='logits'))
+              rejected(ValueError,lambda:t.scores('native',ids,labs,np.full_like(z,np.nan),semantics='logits'))
+              t.scores('native',ids[::-1],labs[::-1],z[::-1,::-1],semantics='weighted_log_score')
+              with np.load(t.root/'native.npz',allow_pickle=False) as f:
+                  assert np.array_equal(f['logits'],z) and np.array_equal(f['ids'],ids) and np.array_equal(f['labels'],labs)
+              rejected(ValueError,lambda:t.scores('native',ids,labs,z,semantics='logits'))
+              t.scores('apex_refined',ids,labs,z,semantics='logits')
+              t.final(ids[::-1],labs[[2,1,0]])
+              runtime=dict(seconds=0.1,peak_memory_bytes=1024,fallback_count=0)
+              rejected(ValueError,lambda:t.seal(v1_status='applied',runtime=runtime))
+              t.scores('post_v1',ids,labs,z,semantics='logits')
+              t.mask('v1_selected',ids[::-1],np.array([False,True,True]))
+              t.mask('apex_protection',ids,np.array([False,False,True]))
+              with np.load(t.root/'v1_selected.npz',allow_pickle=False) as f:assert f['mask'].tolist()==[True,True,False]
+              result=t.seal(v1_status='applied',runtime=runtime)
+              assert result['promotion'] is False and result['replay_verified'] is False
+              assert result['stage_count']==6
+              u=make('tampered');u.scores('native',ids,labs,z,semantics='logits')
+              u.scores('apex_refined',ids,labs,z,semantics='logits');u.final(ids,labs[:3])
+              (u.root/'native.npz').write_bytes(b'tampered')
+              rejected(ValueError,lambda:u.seal(v1_status='skipped',runtime=runtime))
+              outcome=classify(Evidence(run_completed=True,outputs_verified=True,intervention='private trace synthetic contract',metric='none',truth_classes=0))
+              assert outcome.value=='ENGINEERING_ONLY'
+              log('TRACE_CONTRACT_RESULT',{'synthetic_checks':'PASS','receipt':result,'classification':outcome.value,'actual_champion_inference':False,'gpu':False,'submission':False})
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=90)
+          assert p.returncode==0
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          vals=[]
+          for r in rows:
+              try:vals.append(float(r.get('publicScore','')))
+              except (ValueError,TypeError):pass
+          log('CURRENT_SCORE',{'best_public':max(vals) if vals else None,'selected':[{k:r.get(k) for k in ('ref','status','publicScore','privateScore')} for r in rows if r.get('ref') in ('58755304','59044358')]})
+          PY
