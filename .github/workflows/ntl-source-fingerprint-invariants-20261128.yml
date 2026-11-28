@@ -1,0 +1,24 @@
+name: NTL source fingerprint readout CPU invariants
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-source-fingerprint-invariants-20261128.yml]
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_source_fingerprint.py
+            tests/test_ntl_source_fingerprint.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: |
+          set -euo pipefail
+          python -m pip install -q numpy==2.3.4
+          python -m unittest discover -s tests -p test_ntl_source_fingerprint.py -v
