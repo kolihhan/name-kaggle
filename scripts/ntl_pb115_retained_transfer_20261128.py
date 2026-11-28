@@ -115,7 +115,20 @@ def main():
         a=align(pd.read_csv(paths["flash_features.csv"],dtype={"id":str}))
         b=align(pd.read_csv(paths["glm53_features.csv"],dtype={"id":str}))
         q=align(pd.read_parquet(paths["paired_token_features.parquet"]))[spec["features_61"]]
-        assert np.allclose(q["p:dlp_mean"],a.lp_mean-b.lp_mean,rtol=1e-4,atol=1e-5)
+        # The donor paired extractor truncates each pair to min(n_flash,n_full).
+        # Determine whether unequal scored lengths explain the failed equality.
+        diff=q["p:dlp_mean"].to_numpy(float)-(a.lp_mean-b.lp_mean).to_numpy(float)
+        same=a.n_tok.to_numpy()==b.n_tok.to_numpy()
+        close=np.isclose(diff,0,rtol=0,atol=1e-5)
+        def detail(mask):
+            v=np.abs(diff[mask])
+            return {"rows":int(mask.sum()),"close":int((close&mask).sum()),"abs_error_quantiles":np.quantile(v,[0,.5,.9,.99,1]).tolist() if len(v) else []}
+        log("PB115_BANK_CONSISTENCY",{"same_length":detail(same),"different_length":detail(~same),
+          "mean_difference_correlation":float(np.corrcoef(q["p:dlp_mean"],a.lp_mean-b.lp_mean)[0,1]),
+          "flash_n_tok_range":[int(a.n_tok.min()),int(a.n_tok.max())],
+          "glm_n_tok_range":[int(b.n_tok.min()),int(b.n_tok.max())],
+          "scope":"pinned public bank, aggregate only"})
+        assert close[same].all(), "same-length paired means inconsistent: investigate bank provenance before replay"
         x=matrix(a,b,spec);z=q.to_numpy(float)
         assert x.shape==(2699,54) and z.shape==(2699,61)
         run("kernels","output","kolihhan/ntl-fable-preservation-252-v2-20261125","-p",str(o),"--file-pattern",r"(^|/)(submission\.parquet|flash_scores\.npz|glm53_scores\.npz|report\.json)$","-o")
