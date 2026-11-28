@@ -23,6 +23,8 @@ jobs:
             scripts/ntl_source_fingerprint.py
             scripts/ntl_msf_atlas_cpu_smoke_20261128.py
             scripts/ntl_msf_atlas_cpu_diagnostic_20261128.py
+            scripts/ntl_msf_streamed_head.py
+            tests/test_ntl_msf_streamed_head.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
@@ -41,7 +43,9 @@ jobs:
           mkdir -p "$ATLAS_ASSET_DIR"
           kaggle datasets download -d josephadamski91/ntl-atlas-qwen3-8b-v1 -p "$ATLAS_ASSET_DIR" --unzip -q
           python -m py_compile scripts/ntl_msf_atlas_cpu_diagnostic_20261128.py
-      - name: Compare fixed readouts on real matched text
+          python -m unittest discover -s tests -p test_ntl_msf_streamed_head.py -v
+          lscpu | grep -E 'Model name|Flags|CPU\(s\)' || true
+      - name: Profile full-vocabulary streamed inference and complete original cohort if within budget
         run: |
           set -euo pipefail
           python -u -m scripts.ntl_msf_atlas_cpu_diagnostic_20261128
