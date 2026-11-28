@@ -1,0 +1,73 @@
+name: NTL reset PB115 effective window forensic CPU
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-window-forensics-20261128.yml]
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Infer paired score length from exact count fractions and split means
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0
+          python - <<'PY'
+          import hashlib,json,tempfile,subprocess
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          def log(k,x):print(k+'='+json.dumps(x,sort_keys=True),flush=True)
+          hashes={'flash_features.csv':'35c2b383fb45d4797091d401f7e9d951051d68dbed8cb8eb6fd2c66ee5394f36','glm53_features.csv':'882b695788b06fdd5717bcab1cce663ea26628cecc6dcca237c3255f92a9817b','paired_token_features.parquet':'55860b37a488c5a94533524973666b25b2474df1649a86ba11f1c62f1d61210a'}
+          def possible(frac,lengths):
+              v=frac[:,None,:]*lengths[None,:,None]
+              return (np.abs(v-np.rint(v))<1e-7).all(axis=2)
+          def half_ok(mean,first,second,lengths):
+              n=lengths[None,:]
+              return np.abs(mean[:,None]-(first[:,None]*(n//2)+second[:,None]*(n-n//2))/n)<1e-9
+          rng=np.random.default_rng(8)
+          lengths=np.arange(2,2049)
+          assert possible(np.array([[17/161,19/161,33/161]]),lengths)[0,159]
+          assert not possible(np.array([[17/161,19/161,33/161]]),lengths)[0,158]
+          assert half_ok(np.array([-1.5]),np.array([-1.]),np.array([-2.]),np.array([4]))[0,0]
+          with tempfile.TemporaryDirectory() as d:
+              r=subprocess.run(['kaggle','datasets','download','-d','lumibee/ntl-prefixb-full-115','-p',d,'--unzip','-q'],capture_output=True,timeout=180)
+              assert r.returncode==0
+              paths={k:next(Path(d).rglob(k)) for k in hashes}
+              assert all(hashlib.sha256(p.read_bytes()).hexdigest()==hashes[k] for k,p in paths.items())
+              f=pd.read_csv(paths['flash_features.csv'],dtype={'id':str}).set_index('id')
+              g=pd.read_csv(paths['glm53_features.csv'],dtype={'id':str}).set_index('id')
+              q=pd.read_parquet(paths['paired_token_features.parquet'])
+              if 'id' in q:q=q.set_index('id')
+              q.index=q.index.astype(str)
+              assert all(x.index.is_unique and len(x)==2699 for x in (f,g,q))
+              assert set(f.index)==set(g.index)==set(q.index)
+              g=g.loc[f.index];q=q.loc[f.index];n=f.n_tok.to_numpy()
+              assert np.array_equal(n,g.n_tok.to_numpy())
+              bad=np.abs(q['p:dlp_mean']-(f.lp_mean-g.lp_mean)).to_numpy()>1e-5
+              assert bad.sum()==1024 and np.all(n[bad]==160)
+              cols=['p:dlp_pos','p:dlp_big_pos','p:dlp_big_neg','p:excl_t1_f','p:excl_t1_g','p:both_t1','p:excl_t5_f','p:excl_t5_g','p:dz_pos','p:dent_pos']
+              frac=q[cols].to_numpy(float)
+              assert np.isfinite(frac).all() and ((frac>=0)&(frac<=1)).all()
+              m=q['p:dlp_mean'].to_numpy();a=q['p:dlp_first'].to_numpy();b=q['p:dlp_second'].to_numpy()
+              candidates=[];ambiguous=[];native=[];halves=[]
+              for i in range(0,len(n),64):
+                  p=possible(frac[i:i+64],lengths)
+                  h=half_ok(m[i:i+64],a[i:i+64],b[i:i+64],lengths)
+                  z=p&h
+                  candidates.extend(np.where(z.any(axis=1),lengths[z.argmax(axis=1)],0).tolist())
+                  ambiguous.extend(z.sum(axis=1).tolist())
+                  ix=n[i:i+64].astype(int)-2
+                  native.extend(z[np.arange(len(ix)),ix].tolist())
+                  halves.extend(h[np.arange(len(ix)),ix].tolist())
+              c=np.array(candidates);native=np.array(native);ambiguous=np.array(ambiguous)
+              for name,mask in [('short',n<160),('cap_match',(n==160)&~bad),('cap_mismatch',bad)]:
+                  vals,counts=np.unique(c[mask],return_counts=True)
+                  order=np.argsort(-counts)[:20]
+                  log('WINDOW_INFERENCE',{'stratum':name,'n':int(mask.sum()),'native_compatible':int(native[mask].sum()),'min_denominator_ge_160':int((c[mask]>=160).sum()),'min_denominator_gt_160':int((c[mask]>160).sum()),'no_candidate_le_2048':int((c[mask]==0).sum()),'unique_candidate':int((ambiguous[mask]==1).sum()),'most_common_min_lengths':[[int(vals[i]),int(counts[i])] for i in order]})
+              log('WINDOW_VERDICT',{'no_labels':True,'no_training':True,'no_gpu':True,'no_submission':True,'note':'minimum compatible denominator is not necessarily actual token count; original cache provenance remains necessary'})
+          PY
