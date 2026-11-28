@@ -1,0 +1,137 @@
+name: NTL reset soft joint marginal versus hard assignment CPU
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-soft-joint-marginal-20261128.yml]
+permissions: {contents: read}
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Test exact two-row probabilistic exclusion versus hard assignment on frozen historical scores
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 scipy==1.15.3 scikit-learn==1.7.2
+          python - <<'PY'
+          import hashlib,json,tempfile,subprocess,zipfile
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from scipy.special import softmax
+          from scipy.optimize import linear_sum_assignment
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          SEED=20261128;K=18;WEIGHT=.5
+          def log(k,x):print(k+'='+json.dumps(x,sort_keys=True),flush=True)
+          def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+          def get(args,d,name,digest):
+              d.mkdir()
+              p=subprocess.run(['kaggle',*args,'-p',str(d),'-q'],capture_output=True,timeout=120)
+              assert p.returncode==0,'one-shot pinned cache/data acquisition blocked'
+              f=list(d.rglob(name))
+              if not f:
+                  for z in d.glob('*.zip'):
+                      with zipfile.ZipFile(z) as q:
+                          members=[x for x in q.namelist() if Path(x).name==name]
+                          if len(members)==1:
+                              out=d/name;out.write_bytes(q.read(members[0]));f.append(out)
+              assert len(f)==1 and sha(f[0])==digest,'pinned input mismatch'
+              return f[0]
+          def joint(a,b):
+              # Exact marginal under the event that two independent draws differ.
+              den=1-float(a@b)
+              if den<=1e-12:return a,b
+              return a*(1-b)/den,b*(1-a)/den
+          def apply(p,pairs,mode):
+              out=p.argmax(1).copy()
+              for i,j in pairs:
+                  a,b=p[i],p[j]
+                  if mode=='hard':
+                      r,c=linear_sum_assignment(-np.log(np.maximum(p[[i,j]],1e-300)))
+                      out[np.array([i,j])[r]]=c
+                  else:
+                      u,v=joint(a,b)
+                      out[i]=np.argmax((1-WEIGHT)*a+WEIGHT*u)
+                      out[j]=np.argmax((1-WEIGHT)*b+WEIGHT*v)
+              return out
+          a=np.array([.8,.15,.05]);b=np.array([.7,.2,.1])
+          z=np.outer(a,b);np.fill_diagonal(z,0);z/=z.sum()
+          u,v=joint(a,b)
+          assert np.allclose(u,z.sum(1)) and np.allclose(v,z.sum(0))
+          assert np.allclose(joint(a,b)[0].sum(),1)
+          assert np.array_equal(apply(np.stack([a,b]),[],'soft'),[0,0])
+          def blind_pairs(texts,fold):
+              pairs=[]
+              for f in np.unique(fold):
+                  ids=np.flatnonzero(fold==f)
+                  # Label-free similarity, vectorizer sees only the current validation fold.
+                  x=TfidfVectorizer(analyzer='word',ngram_range=(1,2),stop_words='english',min_df=1,sublinear_tf=True,max_features=50000).fit_transform(texts[ids])
+                  s=(x@x.T).toarray();np.fill_diagonal(s,-1)
+                  j=s.argmax(1)
+                  for i,k in enumerate(j):
+                      if i<k and j[k]==i and s[i,k]>=.15:pairs.append((int(ids[i]),int(ids[k])))
+              return pairs
+          def oracle_pairs(groups):
+              rng=np.random.default_rng(SEED);pairs=[]
+              for g in np.unique(groups):
+                  ids=rng.permutation(np.flatnonzero(groups==g))
+                  pairs.extend((int(i),int(j)) for i,j in zip(ids[::2],ids[1::2]))
+              return pairs
+          def random_pairs(fold,pairs):
+              rng=np.random.default_rng(SEED);out=[]
+              for f in np.unique(fold):
+                  n=sum(fold[i]==f for i,j in pairs);ids=rng.permutation(np.flatnonzero(fold==f))[:2*n]
+                  out.extend((int(i),int(j)) for i,j in zip(ids[::2],ids[1::2]))
+              return out
+          def stats(y,groups,pred,base):
+              hit=pred==y;old=base==y
+              ba=lambda h:float(np.mean([h[y==k].mean() for k in range(K)]))
+              _,gi=np.unique(groups,return_inverse=True);n=gi.max()+1
+              counts=np.zeros((n,K));gain=np.zeros_like(counts)
+              np.add.at(counts,(gi,y),1);np.add.at(gain,(gi,y),hit.astype(float)-old.astype(float))
+              rng=np.random.default_rng(SEED);w=rng.multinomial(n,np.full(n,1/n),size=2000)
+              den=w@counts;assert np.all(den>0)
+              ci=np.quantile(((w@gain)/den).mean(1),[.025,.975]).tolist()
+              return {'BA':ba(hit),'delta':ba(hit)-ba(old),'ci':ci,'changes':int((pred!=base).sum()),'rescues':int((~old&hit).sum()),'regressions':int((old&~hit).sum())}
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp)
+              f=get(['datasets','download','lightningv08/ntl-olmo2-native24-final-inference-assets','-f','name-that-llm-artifacts/ntl-oof-validation-cache/diverse_oof.npz'],root/'scores','diverse_oof.npz','3db2ada2d57e074ad7507361896a2e976e8a0586f7a89f549e404b3ca4aa455f')
+              t=get(['competitions','download','name-that-llm','-f','train.csv'],root/'train','train.csv','40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707')
+              fold=Path('artifacts/phase1/folds.csv');assert sha(fold)=='94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d'
+              d=pd.read_csv(t,dtype=str).merge(pd.read_csv(fold,dtype=str),on=['id','model','prompt_id'],validate='one_to_one')
+              assert len(d)==2699 and d.id.is_unique and d.text.notna().all() and d.prompt_id.nunique()==150
+              assert d.groupby('prompt_id').fold_id.nunique().eq(1).all()
+              with np.load(f,allow_pickle=False) as z:
+                  ids=z['ids'].astype(str);labs=z['labels'].astype(str)
+                  assert len(ids)==len(set(ids))==len(d) and set(ids)==set(d.id) and len(labs)==K
+                  ix=pd.Index(ids).get_indexer(d.id);y=pd.Index(labs).get_indexer(d.model)
+                  assert np.array_equal(z['y'][ix],y) and set(y)==set(range(K))
+                  scores=z['reference'][:,ix,:];assert scores.shape==(3,2699,18) and np.isfinite(scores).all()
+              groups=d.prompt_id.to_numpy();folds=d.fold_id.to_numpy();texts=d.text.to_numpy()
+              blind=blind_pairs(texts,folds);oracle=oracle_pairs(groups);random=random_pairs(folds,blind)
+              for name,pairs in [('blind',blind),('random',random),('oracle',oracle)]:
+                  ids=[i for p in pairs for i in p];assert len(ids)==len(set(ids))
+                  log('PAIR_COVERAGE',{'mode':name,'pairs':len(pairs),'same_prompt':sum(bool(groups[i]==groups[j]) for i,j in pairs),'same_truth_label':sum(bool(y[i]==y[j]) for i,j in pairs)})
+              for sc,raw in zip((1,3,6),scores):
+                  # Historical weighted log-probability reference; use softmax, no fitting or temperature tuning.
+                  p=softmax(raw,axis=1);base=p.argmax(1);assert np.array_equal(base,raw.argmax(1))
+                  baseline=stats(y,groups,base,base)['BA']
+                  if sc==6:assert abs(baseline-.562682)<1e-6
+                  for name,pairs in [('blind',blind),('random',random),('oracle',oracle)]:
+                      for method in ('hard','soft'):
+                          pred=apply(p,pairs,method)
+                          log('JOINT_RESULT',{'scenario':sc,'groups':name,'method':method,'baseline':baseline,**stats(y,groups,pred,base)})
+              log('JOINT_SCOPE',{'scope':'one-shot historical spent OOF bank; not v36 or v29 logits; oracle pairs diagnostic only; blind matching uses text not labels; raw score scale not independently calibrated','gate':'blind soft delta >=.02 and CI lower>0 in all three scenarios, superior to matched random control; diagnostic only','gpu':False,'fit':False,'submission':False,'promotion':False})
+          PY
