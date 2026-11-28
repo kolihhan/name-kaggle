@@ -1,0 +1,58 @@
+name: NTL source-conditioned 18-way generative architecture feasibility
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-source-conditioned-architecture-20261128.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify existing exact-class source-conditioned model and scoring granularity
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1 numpy pandas pyarrow
+          python - <<'PY'
+          import os,re,json,hashlib,subprocess,tempfile,httpx,ast
+          from pathlib import Path
+          def log(k,v):print(k+"="+json.dumps(v,sort_keys=True),flush=True)
+          with httpx.Client(follow_redirects=True,timeout=50,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=headers);r.raise_for_status();return r
+              def source(ref,version):
+                  author,slug=ref.split('/')
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  e=[e for e in items if (e.get('version') or {}).get('versionNumber')==version]
+                  assert len(e)==1
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(e[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  log('EXACT_SOURCE',{'ref':ref,'version':version,'sha256':hashlib.sha256(raw.encode()).hexdigest(),'best':v.get('bestSubmissionScore')})
+                  return [''.join(c.get('source',[])) for c in json.loads(raw)['cells'] if c.get('cell_type')=='code']
+              ref='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+              cells=source(ref,36)
+              for c in cells:
+                  m=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                  if not m:continue
+                  name=Path(m.group(1).strip()).name
+                  if name not in {'atlas_infer.py','infer.py','pinned_assets.py'}:continue
+                  code=c[m.end():]
+                  tree=ast.parse(code)
+                  for node in ast.walk(tree):
+                      if isinstance(node,ast.FunctionDef) and node.name in {'score_columns','token_logp','score','run_candidates','atlas_lite','atlas_scores','candidate_logprobs','calibrated','_score_rows','load_state'}:
+                          body=ast.get_source_segment(code,node)
+                          log('GENERATOR_SCORER_CONTRACT',{'module':name,'function':node.name,'source':body[:14000]})
+                  lines=code.splitlines()
+                  hits=[i for i,l in enumerate(lines) if re.search(r'(?i)(atlas|source_names|labels|n_sources|control|adapter|safetensors)',l)]
+                  log('ATLAS_ASSET_CONTRACT',{'module':name,'lines':[{'line':i+1,'code':lines[i][:240]} for i in hits[:130]]})
+          ref='josephadamski91/ntl-atlas-qwen3-8b-v1'
+          r=subprocess.run(['kaggle','datasets','files',ref,'-v'],capture_output=True,text=True,timeout=90)
+          log('SOURCE_ADAPTER_FILES',{'ref':ref,'exit':r.returncode,'files':r.stdout.splitlines()[:120] if r.returncode==0 else []})
+          log('DONE',{'gpu':False,'fit':False,'submit':False,'raw_ids_exported':False})
+          PY
