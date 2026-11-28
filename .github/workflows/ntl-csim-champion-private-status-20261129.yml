@@ -1,0 +1,52 @@
+name: NTL 500-row private champion diagnostic status and aggregate read only
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-csim-champion-private-status-20261129.yml]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Retrieve private status and aggregate only, no model launch
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import subprocess,re,json,csv,io,tempfile
+          from pathlib import Path
+          ref='kolihhan/ntl-v36-csim-stage-diagnostic-500-20261128'
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True),flush=True)
+          def cmd(*args):return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=90)
+          p=cmd('kernels','status',ref)
+          status=re.findall(r'KernelWorkerStatus[.][A-Z_]+',p.stdout+p.stderr)
+          log('DIAGNOSTIC_WORKER',{'ref':ref,'exit':p.returncode,'status':status})
+          if p.returncode==0 and 'KernelWorkerStatus.COMPLETE' in status:
+              with tempfile.TemporaryDirectory() as tmp:
+                  p=cmd('kernels','output',ref,'-p',tmp,'--file-pattern',r'(^|/)csim_champion_aggregate[.]json$','-o')
+                  fs=list(Path(tmp).rglob('csim_champion_aggregate.json'))
+                  log('AGGREGATE_FETCH',{'exit':p.returncode,'files':len(fs)})
+                  if p.returncode==0 and len(fs)==1:
+                      d=json.loads(fs[0].read_text())
+                      assert d['rows']==500 and d['truth_classes']==5 and d['output_classes']==18
+                      assert d['official_submission'] is False and d['promotion'] is False
+                      log('ACTUAL_CHAMPION_DIAGNOSTIC',d)
+          q=cmd('competitions','submissions','name-that-llm','-v')
+          if q.returncode==0:
+              rows=list(csv.DictReader(io.StringIO(q.stdout.lstrip('\ufeff'))))
+              scores=[]
+              for r in rows:
+                  try:scores.append(float(r.get('publicScore','')))
+                  except (TypeError,ValueError):pass
+              log('OWNER_SCORE',{'best_public':max(scores) if scores else None,'selected':[{k:r.get(k) for k in ('ref','status','publicScore','privateScore')} for r in rows if r.get('ref') in ('58755304','59044358')]})
+          q=cmd('quota','--format','json')
+          if q.returncode==0:
+              log('GPU_QUOTA_READONLY',{'remaining_gpu_hours':[str(x['remaining']) for x in json.loads(q.stdout) if x.get('resource')=='GPU']})
+          log('READ_ONLY_SCOPE',{'new_gpu':False,'submission':False,'raw_rows_exported':False})
+          PY
