@@ -1,0 +1,66 @@
+name: NTL MSF private T4x2 paired diagnostic one shot
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-msf-atlas-t4-paired-20261128.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-msf-atlas-t4-paired-20261128
+  cancel-in-progress: false
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_source_fingerprint.py
+            scripts/ntl_msf_atlas_cpu_smoke_20261128.py
+            scripts/build_ntl_msf_atlas_t4_paired_20261128.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Build one private diagnostic and check actual quota
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python scripts/build_ntl_msf_atlas_t4_paired_20261128.py /tmp/msf-gpu
+          kaggle quota --format json >/tmp/msf-quota.json
+          python - <<'PY'
+          import json
+          q=json.load(open('/tmp/msf-quota.json'))
+          hours=[float(str(x['remaining']).rstrip('h')) for x in q if x.get('resource')=='GPU']
+          assert len(hours)==1
+          print('MSF_GPU_QUOTA_REMAINING_H='+str(hours[0]),flush=True)
+          assert hours[0]>=1,'insufficient GPU quota for one pilot'
+          PY
+      - name: Launch exactly one private T4x2 inference kernel, no competition submission
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess,re
+          ref='kolihhan/ntl-msf-atlas-t4-paired-20261128'
+          def call(*a):return subprocess.run(['kaggle',*a],capture_output=True,text=True,timeout=300)
+          p=call('kernels','list','--mine','--search','ntl-msf-atlas-t4-paired-20261128','-v')
+          assert p.returncode==0,'idempotency query failed'
+          if ref in p.stdout:
+              print('MSF_GPU_ALREADY_EXISTS_NO_DUPLICATE=TRUE',flush=True)
+          else:
+              p=call('kernels','push','-p','/tmp/msf-gpu','--accelerator','NvidiaTeslaT4','--timeout','3600')
+              if p.returncode:
+                  safe=re.sub(r'KGAT_[A-Za-z0-9_-]+|Bearer[ ]+[^ ]+|https?://[^ ]+', '[REDACTED]',p.stdout+' '+p.stderr)
+                  print('MSF_GPU_PUSH_REJECTED='+repr(safe[-1000:]),flush=True)
+                  raise RuntimeError('private kernel push rejected')
+              print('MSF_GPU_PRIVATE_PUSH_ACCEPTED=TRUE',flush=True)
+          p=call('kernels','status',ref)
+          assert p.returncode==0,'status query failed'
+          print('MSF_GPU_WORKER='+str(re.findall(r'KernelWorkerStatus[.][A-Z_]+',p.stdout)),flush=True)
+          print('MSF_OFFICIAL_SUBMISSION=FALSE',flush=True)
+          PY
+      - if: always()
+        run: rm -rf /tmp/msf-gpu /tmp/msf-quota.json
