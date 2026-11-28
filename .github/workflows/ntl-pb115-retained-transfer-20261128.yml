@@ -23,7 +23,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
-      - name: Reconstruct real token caches and evaluate pinned standalone heads
+      - name: Check paired bank token coverage before reconstructing real caches
         run: |
           set -euo pipefail
           test ! -e data/train.csv
