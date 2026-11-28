@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np,pandas as pd,torch
 from scripts.ntl_msf_atlas_cpu_smoke_20261128 import BASE,REV,ADAPTER_SHA,BUNDLE_SHA,sha,log,unique,load_base,install,score,AutoTokenizer,snapshot_download
 from scripts.ntl_source_fingerprint import fingerprint
+from scripts.ntl_msf_streamed_head import score_streamed
 PANEL_SHA="bce34670f4d1170375e7baf85eec5577af4282d5f0ca6cf1573ce46e81c5a45c"
 TRAIN_SHA="40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707"
 def run(*a):
@@ -48,8 +49,16 @@ def main():
         assert min(lengths)>=16
         model=load_base(path,meta);route,control,handles=install(model,adapter)
         outputs=[];elapsed=[]
+        # The existing runner permits 55 minutes including asset setup. Keep
+        # the original cohort and stop cleanly rather than censoring slow rows.
+        budget=2400.0
         for i,ids in enumerate(tokens):
-            a=time.monotonic();x=score(model,control,route,ids,list(range(18)))
+            if i and sum(elapsed)+max(elapsed)*(len(tokens)-i)>budget:
+                log('MSF_CPU_BUDGET_BLOCKED',{'completed':i,'total':len(tokens),'seconds':sum(elapsed),'projected_inference_seconds':sum(elapsed)+max(elapsed)*(len(tokens)-i),'BA':None})
+                for h in handles:h.remove()
+                return
+            a=time.monotonic();x,perf=score_streamed(model,control,route,ids,list(range(18)),check_reference=(i==0))
+            log('MSF_PROFILE',{'row_number':i+1,**perf})
             assert x.shape==(18,ids.shape[1]-1) and np.isfinite(x).all()
             rep=fingerprint(x,labels)
             # ATLAS v36 raw (uncalibrated) product scores:
@@ -69,6 +78,6 @@ def main():
                 "msf_vs_product":{"rescues":int((~correct[:,1]&correct[:,2]).sum()),"regressions":int((correct[:,1]&~correct[:,2]).sum())},
                 "family_correct":[int(sum(family(p)==family(q) for p,q in zip(a[:,k],y))) for k in range(3)],
                 "mean_inference_seconds":float(np.mean(elapsed)),"total_inference_seconds":float(sum(elapsed)),"seconds":round(time.monotonic()-t,2),
-                "scope":"spent one matched publisher prompt block, truncated first 65 tokens, not independent, not v36/calibrated ATLAS","fit":False,"gpu":False,"submission":False}
+                "scope":"spent one matched publisher prompt block, truncated first 65 tokens, not independent, not v36/calibrated ATLAS","fit":False,"gpu":False,"submission":False,"execution":"streamed_full_vocabulary"}
         log("MSF_REAL_DIAGNOSTIC_RESULT",report)
 if __name__=="__main__":main()
