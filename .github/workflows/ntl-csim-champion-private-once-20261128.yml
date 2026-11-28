@@ -1,0 +1,84 @@
+name: NTL 500-row private champion diagnostic once max 4h
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-csim-champion-private-once-20261128.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-csim-champion-private-500-once
+  cancel-in-progress: false
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/build_ntl_v36_trace_preflight.py
+            scripts/build_ntl_csim_champion_private.py
+            scripts/ntl_csim_champion_panel.py
+            scripts/ntl_private_stage_trace.py
+            docs/research/ntl-v36-historical-lineage-mount-inventory.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Build and conditionally launch a single private inference-only kernel
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1 pandas==2.3.3
+          python - <<'PY'
+          import os,json,hashlib,tempfile,subprocess,re,httpx
+          from pathlib import Path
+          from scripts.build_ntl_csim_champion_private import construct,DEST
+          from scripts.build_ntl_v36_trace_preflight import PIN
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True),flush=True)
+          def cmd(*args,timeout=90):return subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=timeout)
+          quota=cmd('quota','--format','json')
+          assert quota.returncode==0
+          q=json.loads(quota.stdout)
+          hrs=[float(str(x['remaining']).rstrip('h')) for x in q if x.get('resource')=='GPU']
+          assert len(hrs)==1
+          log('GPU_QUOTA',{'remaining_hours':hrs[0],'runtime_cap_hours':4})
+          assert hrs[0]>=8,'quota buffer insufficient'
+          listing=cmd('kernels','list','--mine','--search',DEST.split('/')[1],'-v')
+          assert listing.returncode==0
+          if DEST in listing.stdout:
+              log('PRIVATE_DIAGNOSTIC_ALREADY_EXISTS',{'no_duplicate':True});raise SystemExit(0)
+          with tempfile.TemporaryDirectory() as temp:
+              root=Path(temp);prior=root/'prior';prior.mkdir()
+              p=cmd('kernels','pull','kolihhan/ntl-fable-preservation-252-v2-20261125','-p',str(prior),'-m')
+              assert p.returncode==0,'prior private lineage unavailable'
+              md=json.loads((prior/'kernel-metadata.json').read_text())
+              inv=json.loads(Path('docs/research/ntl-v36-historical-lineage-mount-inventory.json').read_text())
+              with httpx.Client(follow_redirects=True,timeout=45,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+                  s.get('https://www.kaggle.com')
+                  hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+                  def post(route,data):
+                      r=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);r.raise_for_status();return r
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'evgendvorkin','kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'}).json()
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  sel=[x for x in items if (x.get('version') or {}).get('versionNumber')==36 and (x.get('run') or {}).get('id')]
+                  assert len(sel)==1
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(sel[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  assert hashlib.sha256(raw.encode()).hexdigest()==PIN
+              nb,newmd,receipt=construct(raw,md,inv,Path('scripts/ntl_private_stage_trace.py').read_text(),Path('scripts/ntl_csim_champion_panel.py').read_text())
+              assert newmd['id']==DEST and newmd['is_private'] is True and newmd['enable_internet'] is False
+              assert len(newmd['dataset_sources'])==27 and len(newmd['model_sources'])==9 and len(newmd['kernel_sources'])==10
+              assert 'lumibee/ntl-prefixb-full-115' not in newmd['dataset_sources']
+              out=root/'launch';out.mkdir()
+              (out/'diagnostic.ipynb').write_text(json.dumps(nb,ensure_ascii=False))
+              (out/'kernel-metadata.json').write_text(json.dumps(newmd))
+              log('PRIVATE_BUILD',receipt)
+              p=cmd('kernels','push','-p',str(out),'--accelerator','NvidiaTeslaT4','--timeout','14400',timeout=300)
+              if p.returncode:
+                  log('PRIVATE_LAUNCH_REJECTED',{'exit':p.returncode,'category':'quota' if 'quota' in (p.stdout+p.stderr).lower() else 'other'})
+                  raise RuntimeError('private push rejected; no retries')
+              log('PRIVATE_LAUNCH_ACCEPTED',{'ref':DEST,'max_runtime_hours':4,'private':True,'competition_submit':False,'new_neural_training':False})
+              status=cmd('kernels','status',DEST)
+              log('PRIVATE_WORKER',{'exit':status.returncode,'status':re.findall(r'KernelWorkerStatus[.][A-Z_]+',status.stdout+status.stderr)})
+          PY
