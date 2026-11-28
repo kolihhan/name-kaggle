@@ -1,0 +1,67 @@
+name: NTL 0730 scored public reference submission readiness (read only)
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-0730-reference-readiness-20261128.yml]
+permissions: {contents: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Verify exact scored public version, current mount accessibility and submission slots
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1
+          python - <<'PY'
+          import os,hashlib,json,re,csv,io,subprocess,tempfile,concurrent.futures,httpx
+          from pathlib import Path
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          ref='pablodiegoo/name-that-llm-starter-notebook'
+          version=29
+          digest='58a7db194e3ec53220911edbd2ab7553f7fc42c40eb998bc68e3c713237cfaa8'
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True,default=str),flush=True)
+          def call(*a):return subprocess.run(['kaggle',*a],capture_output=True,text=True,timeout=65)
+          api=KaggleApi();api.authenticate()
+          lim=api.competition_get_submission_limits('name-that-llm')
+          ledger=call('competitions','submissions','name-that-llm','-v')
+          assert ledger.returncode==0
+          rows=list(csv.DictReader(io.StringIO(ledger.stdout.lstrip('\ufeff'))))
+          log('REFERENCE_LEDGER',{'remaining_slots':int(lim.num_allowed_now),'prior_attempts':[r for r in rows if ref in str(r) or 'pablodiegoo' in str(r).lower()],'active_count':sum(str(r.get('status','')).upper() in ('RUNNING','PENDING','QUEUED','PROCESSING') for r in rows)})
+          with httpx.Client(follow_redirects=True,timeout=45,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,data):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);r.raise_for_status();return r
+              author,slug=ref.split('/')
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+              best=v.get('bestSubmissionScore') or {}
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+              found=[e for e in items if (e.get('version') or {}).get('versionNumber')==version and (e.get('run') or {}).get('id')]
+              assert len(found)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(found[0]['run']['id']),'includeOutputIfAvailable':False}).text
+              assert hashlib.sha256(raw.encode()).hexdigest()==digest
+              assert best.get('kernelVersionNumber')==version and best.get('scoreFormatted')=='0.730'
+              nb=json.loads(raw)
+              code='\n'.join(''.join(c.get('source',[])) for c in nb['cells'] if c.get('cell_type')=='code')
+              log('REFERENCE_PINNED',{'ref':ref,'version':version,'source_sha':digest,'score':best,'submission_parquet_mentioned':'submission.parquet' in code,'submission_csv_mentioned':'submission.csv' in code,'soup_mentioned':bool(re.search(r'warm.soup|ntl-v90-locked-v1-warm-soup',code,re.I))})
+          status=call('kernels','status',ref)
+          log('REFERENCE_WORKER',{'exit':status.returncode,'status':re.findall(r'KernelWorkerStatus[.][A-Z_]+',status.stdout)})
+          with tempfile.TemporaryDirectory() as tmp:
+              p=call('kernels','pull',ref,'-p',tmp,'-m')
+              assert p.returncode==0,'source metadata pull failed'
+              md=json.loads((Path(tmp)/'kernel-metadata.json').read_text())
+              deps=md.get('dataset_sources',[])
+              log('REFERENCE_CURRENT_MOUNTS',{'models':md.get('model_sources',[]),'datasets':deps,'kernels':md.get('kernel_sources',[]),'historical_metadata_verified':False})
+              def check(dep):
+                  p=call('datasets','files',dep)
+                  return {'ref':dep,'exit':p.returncode,'readable_listing':p.returncode==0}
+              with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+                  results=list(ex.map(check,deps))
+              log('REFERENCE_DATASET_LISTINGS',{'total':len(results),'accessible':sum(x['readable_listing'] for x in results),'unavailable':[x for x in results if not x['readable_listing']]})
+          log('REFERENCE_DECISION',{'gpu':False,'fit':False,'official_submission':False,'candidate_type':'exact public reproduction reference, not original solution','remaining_unverified':'historical mounts and hidden execution; no claim own score'})
+          PY
