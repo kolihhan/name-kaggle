@@ -1,0 +1,58 @@
+name: NTL v36 historical mount comparison read-only
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-v36-mount-lineage-20261128.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docs/research/ntl-v36-historical-lineage-mount-inventory.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1
+          python - <<'PY'
+          import os,json,subprocess,tempfile,httpx
+          from pathlib import Path
+          pin=json.loads(Path('docs/research/ntl-v36-historical-lineage-mount-inventory.json').read_text())
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True),flush=True)
+          refs=['evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie','kolihhan/ntl-evgen-forensic-eda-repro-20261123','kolihhan/ntl-fable-preservation-252-v2-20261125']
+          for ref in refs:
+              with tempfile.TemporaryDirectory() as tmp:
+                  p=subprocess.run(['kaggle','kernels','pull',ref,'-p',tmp,'-m'],capture_output=True,timeout=75)
+                  f=Path(tmp)/'kernel-metadata.json'
+                  if p.returncode or not f.exists():
+                      log('MOUNT_READ_BLOCKED',{'ref':ref,'returncode':p.returncode});continue
+                  m=json.loads(f.read_text())
+                  diff={}
+                  for k,old in pin['mounts'].items():
+                      a=set(old);b=set(m.get(k,[]))
+                      diff[k]={'added':sorted(b-a),'removed':sorted(a-b),'same_set':a==b}
+                  log('MOUNT_DIFF',{'ref':ref,'diff':diff,'metadata_is_current_not_historical':True})
+          # Inspect historical session metadata keys only, no notebook output, user fields or raw source.
+          with httpx.Client(follow_redirects=True,timeout=35,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(method,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+method,json=body,headers=hdr);r.raise_for_status();return r.json()
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'evgendvorkin','kernelSlug':'name-that-llm-deep-forensic-eda-with-analogie','tab':'output'})
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200})['items']
+              selected=[x for x in items if (x.get('version') or {}).get('versionNumber')==36]
+              assert len(selected)==1
+              x=selected[0]
+              def keys(a):return sorted(a) if isinstance(a,dict) else []
+              log('HISTORICAL_SESSION_SCHEMA',{'top_keys':keys(x),'version_keys':keys(x.get('version')),'run_keys':keys(x.get('run')),'source_version':36})
+          log('LINEAGE_SCOPE',{'asset_bytes_verified':False,'historical_versions_verified':False,'gpu':False,'submission':False,'promotion':False})
+          PY
