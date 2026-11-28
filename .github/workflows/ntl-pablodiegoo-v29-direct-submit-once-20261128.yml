@@ -1,0 +1,74 @@
+name: NTL Pablodiegoo v29 exact 0730 public reference direct submission once
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-pablodiegoo-v29-direct-submit-once-20261128.yml]
+permissions: {contents: read}
+concurrency:
+  group: ntl-pablodiegoo-v29-direct-20261128
+  cancel-in-progress: false
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1
+      - name: Pin exact public scored source and make one official reproduction attempt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,subprocess,re,hashlib,json,httpx
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          comp='name-that-llm'
+          ref='pablodiegoo/name-that-llm-starter-notebook'
+          version=29
+          digest='58a7db194e3ec53220911edbd2ab7553f7fc42c40eb998bc68e3c713237cfaa8'
+          marker='pablodiegoo-v29-exact-public-reference-20261128'
+          token=os.environ['KAGGLE_API_TOKEN']
+          def clean(s):
+              return re.sub(r'KGAT_[A-Za-z0-9_-]+|Bearer[ ]+[^ ]+|https?://[^ ]+', '[REDACTED]',s.replace(token,'[REDACTED]'))
+          def call(*args):
+              p=subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=150)
+              return p.returncode,clean(p.stdout),clean(p.stderr)
+          rc,ledger,err=call('competitions','submissions',comp,'-v')
+          assert rc==0,'ledger unavailable'
+          if marker in ledger or 'pablodiegoo' in ledger.lower():
+              print('REFERENCE_ALREADY_ATTEMPTED_NO_DUPLICATE',flush=True)
+              raise SystemExit(0)
+          api=KaggleApi();api.authenticate()
+          slots=int(api.competition_get_submission_limits(comp).num_allowed_now)
+          print('REFERENCE_SLOTS='+str(slots),flush=True)
+          assert slots>=1
+          with httpx.Client(follow_redirects=True,timeout=40,headers={'Authorization':'Bearer '+token}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+token,'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,data):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);r.raise_for_status();return r
+              author,slug=ref.split('/')
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+              best=v.get('bestSubmissionScore') or {}
+              assert best.get('kernelVersionNumber')==version and best.get('scoreFormatted')=='0.730'
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+              found=[e for e in items if (e.get('version') or {}).get('versionNumber')==version and (e.get('run') or {}).get('id')]
+              assert len(found)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(found[0]['run']['id']),'includeOutputIfAvailable':False}).text
+              assert hashlib.sha256(raw.encode()).hexdigest()==digest
+          rc,status,err=call('kernels','status',ref)
+          assert rc==0 and 'COMPLETE' in status.upper()
+          print('REFERENCE_PINNED_0730_VERSION_29_NO_PERSONAL_GPU_OR_KERNEL_PUSH',flush=True)
+          rc,out,err=call('competitions','submit',comp,'-k',ref,'-v',str(version),'-f','submission.parquet','-m','Exact public reproduction of pablodiegoo v29 (author 0.730); '+marker)
+          print('REFERENCE_SUBMIT_EXIT='+str(rc),flush=True)
+          print('REFERENCE_SUBMIT_RESPONSE='+repr(out[-1500:]),flush=True)
+          if rc:
+              print('REFERENCE_SUBMIT_REJECTED='+repr(err[-1200:]),flush=True)
+              raise SystemExit(1)
+          rc,ledger,err=call('competitions','submissions',comp,'-v')
+          if rc==0:
+              print('REFERENCE_LEDGER_MATCHES='+repr([l for l in ledger.splitlines() if marker in l]),flush=True)
+          else:
+              print('REFERENCE_LEDGER_UNAVAILABLE_AFTER_ACCEPTANCE',flush=True)
+          PY
