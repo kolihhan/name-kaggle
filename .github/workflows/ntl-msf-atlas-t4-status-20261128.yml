@@ -1,0 +1,39 @@
+name: NTL MSF actual Kaggle worker result read only
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-msf-atlas-t4-status-20261128.yml]
+permissions: {contents: read}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read actual worker status and aggregate outputs only
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,re,subprocess,tempfile
+          from pathlib import Path
+          ref='kolihhan/ntl-msf-atlas-t4-paired-20261128'
+          p=subprocess.run(['kaggle','kernels','status',ref],capture_output=True,text=True,timeout=60)
+          assert p.returncode==0
+          status=re.findall(r'KernelWorkerStatus[.][A-Z_]+',p.stdout)
+          print('MSF_ACTUAL_STATUS='+json.dumps(status),flush=True)
+          with tempfile.TemporaryDirectory() as d:
+              r=subprocess.run(['kaggle','kernels','output',ref,'-p',d,'--file-pattern',r'(^|/)(msf_aggregate\.json|[^/]+\.log)$','-o'],capture_output=True,text=True,timeout=90)
+              print('MSF_OUTPUT_EXIT='+str(r.returncode),flush=True)
+              for path in Path(d).rglob('msf_aggregate.json'):
+                  result=json.loads(path.read_text())
+                  assert result['rows']==18 and result['submission']==False
+                  print('MSF_REAL_RESULT='+json.dumps(result,sort_keys=True),flush=True)
+              for path in Path(d).rglob('*.log'):
+                  for line in path.read_text(errors='replace').splitlines():
+                      if re.search(r'MSF_GPU_(PROGRESS|CROSSCHECK|REAL_RESULT)=|GPU_BASE_READY=|GPU_ADAPTER_READY=|AssertionError|Traceback|RuntimeError|ValueError|FileNotFoundError|OutOfMemoryError',line):
+                          print(re.sub(r'KGAT_[A-Za-z0-9_-]+|Bearer[ ]+[^ ]+|https?://[^ ]+', '[REDACTED]',line)[:2500],flush=True)
+          PY
