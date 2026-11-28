@@ -1,0 +1,128 @@
+name: NTL reset matched-window PB54 versus PB115 CPU
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-matched-window-ablation-20261128.yml]
+permissions: {contents: read}
+jobs:
+  matched:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_pb115_paired_ablation_20261128.py
+            scripts/ntl_pb115_retained_transfer_20261128.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Same-window controlled fold experiment and spent retained-cache transfer
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0 scikit-learn==1.7.2 lightgbm==4.6.0
+          python - <<'PY'
+          import hashlib,json,tempfile,time,zipfile
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from sklearn.metrics import roc_auc_score
+          from scripts.ntl_pb115_paired_ablation_20261128 import HASHES,check,run,fit,metrics,ci_delta,log
+          from scripts.ntl_pb115_retained_transfer_20261128 import PANEL_SHA,TOPICS,load_cache,seq,extra,pair,matrix
+          start=time.monotonic()
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp);d=root/'bank';d.mkdir();o=root/'cache';o.mkdir();p=root/'panel';p.mkdir()
+              run('datasets','download','-d','lumibee/ntl-prefixb-full-115','-p',str(d),'--unzip','-q')
+              run('competitions','download','-c','name-that-llm','-f','train.csv','-p',str(root),'-q')
+              trfile=root/'train.csv'
+              if not trfile.exists():
+                  with zipfile.ZipFile(next(root.glob('*.zip'))) as z:trfile.write_bytes(z.read('train.csv'))
+              t=pd.read_csv(check(trfile),dtype=str,usecols=['id','model','prompt_id'])
+              folds=pd.read_csv(check(Path('artifacts/phase1/folds.csv')),dtype=str)
+              t=t.merge(folds,on=['id','model','prompt_id'],validate='one_to_one')
+              assert len(t)==2699 and t.id.is_unique and t.prompt_id.nunique()==150
+              assert t.groupby('prompt_id').fold_id.nunique().eq(1).all() and t.fold_id.nunique()==5
+              labs=sorted(t.model.unique());assert len(labs)==18
+              y=pd.Index(labs).get_indexer(t.model);glm=[labs.index('glm-5.3'),labs.index('glm-5.3-flash')]
+              paths={k:check(next(d.rglob(k))) for k in HASHES if k not in ('train.csv','folds.csv')}
+              spec=json.loads(paths['spec.json'].read_text());assert spec['format']=='ntl-prefixb-115-v1'
+              def align(f):
+                  if 'id' in f:f=f.set_index('id')
+                  f.index=f.index.astype(str)
+                  assert f.index.is_unique and set(f.index)==set(t.id)
+                  return f.loc[t.id]
+              a=align(pd.read_csv(paths['flash_features.csv'],dtype={'id':str}))
+              b=align(pd.read_csv(paths['glm53_features.csv'],dtype={'id':str}))
+              q=align(pd.read_parquet(paths['paired_token_features.parquet']))
+              n=a.n_tok.to_numpy();assert np.array_equal(n,b.n_tok.to_numpy())
+              err=np.abs(q['p:dlp_mean'].to_numpy()-(a.lp_mean-b.lp_mean).to_numpy())
+              eligible=n<160
+              assert eligible.sum()==1665 and (err[eligible]<=1e-5).all() and (err>1e-5).sum()==1024
+              x=matrix(a,b,spec);z=q[spec['features_61']].to_numpy(float)
+              assert x.shape==(2699,54) and z.shape==(2699,61) and np.isfinite(x).all() and np.isfinite(z).all()
+              X=[x,np.column_stack([x,z])]
+              pred=np.full((2,len(y),18),np.nan);seen=np.zeros(len(y),int)
+              for fold in sorted(t.fold_id.unique()):
+                  val=np.flatnonzero(eligible&(t.fold_id.to_numpy()==fold));train=np.flatnonzero(eligible&(t.fold_id.to_numpy()!=fold))
+                  assert set(y[val])==set(y[train])==set(range(18))
+                  assert not set(t.prompt_id.iloc[val])&set(t.prompt_id.iloc[train])
+                  seen[val]+=1
+                  for j,v in enumerate(X):pred[j,val]=fit(v,y,train,val)
+                  log('MATCHED_FOLD',{'fold':fold,'n_train':len(train),'n_val':len(val),'BA54':metrics(pred[0,val],y[val],glm)['BA'],'BA115':metrics(pred[1,val],y[val],glm)['BA']})
+              assert np.array_equal(seen,eligible.astype(int)) and np.isfinite(pred[:,eligible]).all()
+              yy=y[eligible];pp=pred[:,eligible];m0,m1=(metrics(v,yy,glm) for v in pp)
+              h0,h1=(v.argmax(1)==yy for v in pp)
+              ci=ci_delta(yy,t.prompt_id.to_numpy()[eligible],h0,h1)
+              log('MATCHED_OOF',{'n':len(yy),'labels':18,'prompts':int(t.prompt_id[eligible].nunique()),'old54':m0,'new115':m1,'delta':m1['BA']-m0['BA'],'ci':ci,'rescues':int((~h0&h1).sum()),'regressions':int((h0&~h1).sum()),'class_support':np.bincount(yy,minlength=18).tolist(),'scope':'spent official development, strictly n<160, matched train and heldout folds, standalone CPU heads; no champion promotion'})
+              # Retained cache transfer is diagnostic only. No raw IDs, text, predictions or artifacts leave the worker.
+              run('kernels','output','kolihhan/ntl-fable-preservation-252-v2-20261125','-p',str(o),'--file-pattern',r'(^|/)(submission\.parquet|flash_scores\.npz|glm53_scores\.npz|report\.json)$','-o')
+              run('datasets','download','-d','nischaydnk/ntl-topic-synthetic-18llms','-f','generations.csv','-p',str(p),'--unzip')
+              source=next(p.rglob('generations.csv'));assert hashlib.sha256(source.read_bytes()).hexdigest()==PANEL_SHA
+              raw=pd.read_csv(source);blocks=[]
+              for version,topics in TOPICS.items():
+                  for topic in topics:
+                      g=raw.loc[(raw.version==version)&(raw.topic_id==topic)].sort_values('model',kind='stable')
+                      assert len(g)==g.model.nunique()==18 and set(g.model)==set(labs)
+                      blocks.append(g[['text','model']])
+              panel=pd.concat(blocks,ignore_index=True)
+              panel.insert(0,'id',[f'fable-observation-{i:03d}' for i in range(252)])
+              panel=panel.set_index('id');assert panel.text.notna().all()
+              inc=pd.read_parquet(next(o.rglob('submission.parquet'))).set_index('id')
+              assert inc.index.is_unique and set(inc.index)==set(panel.index)
+              assert int((inc.loc[panel.index,'model']==panel.model).sum())==151
+              report=json.loads(next(o.rglob('report.json')).read_text());assert report['status']=='applied' and report['n_selected']==75
+              f=load_cache(next(o.rglob('flash_scores.npz')),'flash',set(panel.index))
+              g=load_cache(next(o.rglob('glm53_scores.npz')),'glm53',set(panel.index))
+              assert set(f)==set(g) and sum(len(v[0]) for v in f.values())==6987
+              ids=list(f);aa=[];bb=[];zz=[];nn=[]
+              for rid in ids:
+                  sf,tf,pf=f[rid];sg,tg,pg=g[rid]
+                  assert np.array_equal(tf,tg) and pf==pg and len(sf)==len(sg)<=160
+                  nc=len(panel.loc[rid,'text']);af=seq(sf,nc);ag=seq(sg,nc)
+                  ep=pair(sf,sg);assert np.isclose(ep['p:dlp_mean'],af['lp_mean']-ag['lp_mean'],atol=1e-10)
+                  aa.append(af);bb.append(ag);zz.append({**extra(sf,'flash'),**extra(sg,'glm53'),**ep});nn.append(len(sf))
+              xx=matrix(pd.DataFrame(aa),pd.DataFrame(bb),spec)
+              zz=pd.DataFrame(zz);assert set(zz.columns)==set(spec['features_61'])
+              zz=zz[spec['features_61']].to_numpy(float)
+              assert xx.shape==(75,54) and zz.shape==(75,61) and np.isfinite(xx).all() and np.isfinite(zz).all()
+              tr=np.flatnonzero(eligible);va=np.arange(len(y),len(y)+75)
+              yy=np.r_[y,np.full(75,-1)]
+              p0=fit(np.vstack([x,xx]),yy,tr,va)
+              p1=fit(np.vstack([X[1],np.column_stack([xx,zz])]),yy,tr,va)
+              truth=pd.Index(labs).get_indexer(panel.loc[ids,'model']);baseline=pd.Index(labs).get_indexer(inc.loc[ids,'model'])
+              assert min(truth)>=0 and min(baseline)>=0
+              nn=np.array(nn)
+              for name,mask in [('all75',np.ones(75,bool)),('strict_short',nn<160),('cap_160',nn==160)]:
+                  if not mask.any():continue
+                  yt=truth[mask];s0=p0[mask].argmax(1)==yt;s1=p1[mask].argmax(1)==yt
+                  k=np.unique(yt);ba=lambda hit:float(np.mean([hit[yt==i].mean() for i in k]))
+                  log('MATCHED_TRANSFER',{'stratum':name,'n':int(mask.sum()),'labels_supported':len(k),'correct54':int(s0.sum()),'correct115':int(s1.sum()),'supported_BA54':ba(s0),'supported_BA115':ba(s1),'rescues':int((~s0&s1).sum()),'regressions':int((s0&~s1).sum()),'incumbent_correct':int((baseline[mask]==yt).sum()),'scope':'spent incumbent-selected cache, standalone heads, cap160 extrapolation outside strict training length; not champion paired intervention'})
+              log('MATCHED_DONE',{'seconds':round(time.monotonic()-start,2),'gpu':False,'neural_training':False,'submission':False,'promotion':False,'independence_verified':False})
+          PY
