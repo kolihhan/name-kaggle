@@ -1,3 +1,13 @@
+# 2026-11-29 01:02 MYT — Authenticated Public best .730; separate original research from reproduction
+
+Official Kaggle ledger [46163588414 attempt 2](https://github.com/kolihhan/name-kaggle/actions/runs/46163588414/attempts/2) confirms **#59044358 COMPLETE 0.730 Public BA**. This is exact Pablodiegoo v29 public-source reproduction (pinned source SHA256 58a7db194e3ec53220911edbd2ab7553f7fc42c40eb998bc68e3c713237cfaa8), not original research. Previous reproduced .718 #58755304 remains scored and unchanged. Private scores are not available. Do not infer private performance from either public score.
+
+Separate references: **account Public Champion .730**, **v36 .718 lineage experimental control**, **original research goal >=.760 final Private BA**. The existing private 500-row v36 inference diagnostic remains valid for its frozen control only, not a direct ablation of .730. At 01:02 MYT it was QUEUED; GPU remaining 29.95h. No duplicate launch. The v36 trace is for identifying stage errors, not evidence of a new leaderboard candidate.
+
+Next architecture decision: use actual aligned native/post-V1/Apex/final evidence from the existing private run when available; preserve 18-class outputs, five-class diagnostic scope, and prior independent full18 promotion requirements. V29 source inspection identified exact/approximate joint marginals, gated family-mass-preserving corrections and damped marginal balancing; their independent causal effect and hidden execution remain unverified. Do not assume the .012 gap is attributable to a single component or transfer a tuned weak-proxy rule. No further small-model training, new GPU launch, or official submission in this update.
+
+---
+
 # 2026-11-28 — Research reset: proxy metrics are not the objective
 
 **Current verified account Public BA: 0.718 (#58755304, attributed public reproduction). Private BA unknown.** Reference submission #59044358 last authenticated PENDING at 18:39 MYT [46136170973](https://github.com/kolihhan/name-kaggle/actions/runs/46136170973). Target >=0.760 final Private BA; public score is a separate intermediate outcome.
