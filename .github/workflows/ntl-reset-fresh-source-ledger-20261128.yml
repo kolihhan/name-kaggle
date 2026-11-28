@@ -1,0 +1,67 @@
+name: NTL reset fresh source admission discovery and owner ledger read only
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-fresh-source-ledger-20261128.yml]
+permissions: {contents: read}
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Read submission ledger and discover post-audit public candidate corpora
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,json,re,subprocess,tempfile
+          from pathlib import Path
+          from concurrent.futures import ThreadPoolExecutor
+          def log(k,x):print(k+'='+json.dumps(x,sort_keys=True),flush=True)
+          def call(*args):
+              p=subprocess.run(['kaggle',*args],capture_output=True,text=True,timeout=60)
+              return p.returncode,p.stdout
+          def rows(s):return list(csv.DictReader(io.StringIO(s.lstrip('\ufeff'))))
+          rc,s=call('competitions','submissions','name-that-llm','-v')
+          assert rc==0
+          ledger=rows(s)
+          # Export only requested reference state and numeric best; not the complete private ledger.
+          hit=[x for x in ledger if str(x.get('ref',''))=='59044358']
+          safe=[{k:v for k,v in x.items() if k.lower() in ('ref','status','publicscore','privatescore','date')} for x in hit]
+          scores=[]
+          for x in ledger:
+              try:scores.append(float(x.get('publicScore','')))
+              except (ValueError,TypeError):pass
+          log('OWNER_LEDGER',{'match':safe,'best_public':max(scores) if scores else None,'ledger_rows':len(ledger),'fields':list(ledger[0]) if ledger else []})
+          terms=('name-that-llm','name that llm','ntl generations','matched passages')
+          found={}
+          for term in terms:
+              rc,s=call('datasets','list','--search',term,'--sort-by','updated','--page-size','100','-v')
+              rr=rows(s) if rc==0 else []
+              log('SOURCE_QUERY',{'term':term,'rc':rc,'rows':len(rr)})
+              for x in rr:
+                  ref=x.get('ref','');date=x.get('lastUpdated','') or x.get('lastUpdatedDate','')
+                  if not re.fullmatch(r'[A-Za-z0-9_-]+/[A-Za-z0-9_-]+',ref):continue
+                  found[ref]={'ref':ref,'updated':date,'title':str(x.get('title',''))[:160],'license':str(x.get('licenseName',''))[:80]}
+          fresh=[x for x in found.values() if x['updated'][:10]>='2026-11-23' and re.search(r'(?i)generat|corpus|passage|prompt|source|dataset|response|external|pool',x['title']+' '+x['ref'])]
+          fresh.sort(key=lambda x:x['updated'],reverse=True)
+          log('FRESH_SOURCE_LIST',{'total_distinct':len(found),'fresh_candidate_count':len(fresh),'candidates':fresh[:30]})
+          # Metadata and filenames only; never download examples or model artifacts.
+          def probe(x):
+              ref=x['ref']
+              if ref.startswith(('kolihhan/','crtproduction/','prvsiyan/')):return {**x,'status':'KNOWN_LINEAGE_OR_OWNER_EXCLUDED'}
+              with tempfile.TemporaryDirectory() as d:
+                  rc,_=call('datasets','metadata',ref,'-p',d)
+                  files=list(Path(d).rglob('dataset-metadata.json'))
+                  m=json.loads(files[0].read_text()) if rc==0 and files else {}
+                  rc2,s=call('datasets','files',ref,'-v')
+                  fs=rows(s) if rc2==0 else []
+                  return {**x,'metadata_rc':rc,'files_rc':rc2,'licenses':m.get('licenses',[]),'description':str(m.get('description',''))[:650],'files':[{k:r.get(k) for k in ('name','size','creationDate')} for r in fs[:16]],'admitted':False}
+          with ThreadPoolExecutor(max_workers=3) as pool:
+              for x in pool.map(probe,fresh[:12]):log('SOURCE_METADATA',x)
+          log('DISCOVERY_VERDICT',{'independent_full18_admitted':0,'scope':'listing and metadata only; source identity, rights, overlap and row coverage unverified','gpu':False,'training':False,'submission':False})
+          PY
