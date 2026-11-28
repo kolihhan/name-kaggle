@@ -1,0 +1,52 @@
+name: NTL fixed 500-row champion diagnostic admission CPU
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-csim-champion-panel-20261128.yml]
+permissions: {contents: read}
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ntl_csim_champion_panel.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 pandas==2.3.3 pyarrow==21.0.0
+          python - <<'PY'
+          import subprocess,tempfile,zipfile
+          from pathlib import Path
+          from scripts.ntl_csim_champion_panel import freeze
+          import json
+          def get(args,d,name):
+              d.mkdir()
+              p=subprocess.run(['kaggle',*args,'-p',str(d),'-q'],capture_output=True,timeout=180)
+              assert p.returncode==0,'authenticated data acquisition blocked: '+name
+              f=list(d.rglob(name))
+              if not f:
+                  for z in d.glob('*.zip'):
+                      with zipfile.ZipFile(z) as q:
+                          members=[x for x in q.namelist() if Path(x).name==name]
+                          if len(members)==1:
+                              out=d/name;out.write_bytes(q.read(members[0]));f.append(out)
+              assert len(f)==1,'missing or ambiguous '+name
+              return f[0]
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp)
+              publisher=get(['datasets','download','markbarney/ntl-matched-passages-five-models-1k','-f','passages.csv'],root/'publisher','passages.csv')
+              official=get(['competitions','download','name-that-llm','-f','train.csv'],root/'official','train.csv')
+              pool=get(['datasets','download','crtproduction/name-that-llm-open-pool','-f','ntl_open_pool.parquet'],root/'pool','ntl_open_pool.parquet')
+              panel,result=freeze(publisher,official,pool)
+              print('CHAMPION_PANEL='+json.dumps(result,sort_keys=True),flush=True)
+              print('CHAMPION_PANEL_SCOPE='+json.dumps({'gpu':False,'external_training':False,'submission':False,'actual_champion_inference':False,'raw_rows_exported':False,'private_launch_authorized':False}),flush=True)
+          PY
