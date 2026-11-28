@@ -1,0 +1,96 @@
+name: NTL current scored public mechanism and dependency audit
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-current-scored-mechanisms-20261128.yml]
+permissions: {contents: read}
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Inspect current actual scored source versions and incremental mechanisms
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import csv,io,os,json,hashlib,re,ast,httpx,subprocess,tempfile
+          from pathlib import Path
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True,default=str),flush=True)
+          def sha(x):return hashlib.sha256(x.encode()).hexdigest()
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api=KaggleApi();api.authenticate()
+          for ref in [58755304,58935812,58958281]:
+              try:
+                  d=api.get_submission(ref).to_dict()
+                  log('SCORE_RECEIPT',{k:d.get(k) for k in ('status','publicScore','privateScore')}|{'ref':ref})
+              except Exception as e:log('RECEIPT_ERROR',{'ref':ref,'type':type(e).__name__})
+          r=subprocess.run(['kaggle','kernels','list','--competition','name-that-llm','--sort-by','scoreDescending','--page-size','25','-v'],capture_output=True,text=True,timeout=90)
+          assert r.returncode==0
+          rows=list(csv.DictReader(io.StringIO(r.stdout.lstrip('\ufeff'))))
+          refs=list(dict.fromkeys(x['ref'] for x in rows if x.get('ref') and '/' in x['ref']))[:12]
+          log('RANKED_PUBLIC_REFS',refs)
+          assert refs
+          with httpx.Client(follow_redirects=True,timeout=45,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,data):
+                  rr=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);rr.raise_for_status();return rr
+              def retrieve(ref,requested=None):
+                  author,slug=ref.split('/',1)
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+                  best=v.get('bestSubmissionScore') or {}
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  n=requested or best.get('kernelVersionNumber')
+                  log('RANKED_SCORE_METADATA',{'ref':ref,'best':best,'selected_version':n})
+                  if not n:return None
+                  found=[e for e in items if (e.get('version') or {}).get('versionNumber')==n and (e.get('run') or {}).get('id')]
+                  if len(found)!=1:return None
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(found[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  nb=json.loads(raw)
+                  cells=[''.join(c.get('source',[])) for c in nb['cells'] if c.get('cell_type')=='code']
+                  return raw,cells,n,best
+              def modules(cells):
+                  d={}
+                  for c in cells:
+                      m=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                      if m:
+                          k=Path(m.group(1).strip()).name
+                          if k in d:k=m.group(1)
+                          d[k]=c[m.end():]
+                  return d
+              v36=retrieve('evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie',36)
+              assert v36 and sha(v36[0])=='5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'
+              base=modules(v36[1])
+              keywords=['logprob','likelihood','sibling','prefix','contrastive','soup','adapter','lora','residual','calibrat','centering','assignment','sinkhorn','transport','knn','retriev','token','fingerprint','gemini','kimi','atlas','glms','pb115','rank','margin','gate']
+              def summarize(c):
+                  funcs=[]
+                  try:funcs=[x.name for x in ast.walk(ast.parse(c)) if isinstance(x,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+                  except SyntaxError:pass
+                  return {'sha':sha(c),'chars':len(c),'defs':funcs[:30],'mechanism_counts':{k:len(re.findall(k,c,re.I)) for k in keywords if re.search(k,c,re.I)}}
+              seen=set()
+              for ref in refs:
+                  try:
+                      a=retrieve(ref)
+                      if not a:continue
+                      raw,cells,n,best=a
+                      digest=sha(raw)
+                      if digest in seen:continue
+                      seen.add(digest)
+                      m=modules(cells)
+                      diff={k:summarize(c) for k,c in m.items() if k not in base or sha(c)!=sha(base[k])}
+                      log('SCORED_MECHANISM',{'ref':ref,'version':n,'sha':digest,'cells':len(cells),'same_v36_modules':sorted(k for k,c in m.items() if k in base and sha(c)==sha(base[k])),'changed_or_new_modules':diff,'nonmodule':summarize('\n'.join(c for c in cells if not c.startswith('%%writefile'))),'source_version_receipt':best})
+                      # Current mount metadata only, not historical proof or a download test.
+                      with tempfile.TemporaryDirectory() as d:
+                          p=subprocess.run(['kaggle','kernels','pull',ref,'-p',d,'-m'],capture_output=True,text=True,timeout=70)
+                          if p.returncode==0:
+                              md=json.loads((Path(d)/'kernel-metadata.json').read_text())
+                              log('CURRENT_MOUNTS',{'ref':ref,'models':md.get('model_sources',[]),'datasets':md.get('dataset_sources',[]),'kernels':md.get('kernel_sources',[]),'historical_version_verified':False})
+                          else:log('MOUNT_UNAVAILABLE',{'ref':ref,'exit':p.returncode})
+                  except Exception as e:log('SOURCE_AUDIT_ERROR',{'ref':ref,'type':type(e).__name__})
+              log('AUDIT_END',{'sources_inspected':len(seen),'gpu':False,'training':False,'submission':False,'raw_passages_exported':False})
+          PY
