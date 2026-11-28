@@ -1,3 +1,13 @@
+# 2026-11-28 — Research reset: proxy metrics are not the objective
+
+**Current verified account Public BA: 0.718 (#58755304, attributed public reproduction). Private BA unknown.** Reference submission #59044358 last authenticated PENDING at 18:39 MYT [46136170973](https://github.com/kolihhan/name-kaggle/actions/runs/46136170973). Target >=0.760 final Private BA; public score is a separate intermediate outcome.
+
+**Research decision:** [PB115 matched-window result](docs/research/ntl-reset-pb115-window-decision-20261128.md) retires only the exact global short-window readout as a demonstrated improvement; it does not establish hidden-score harm. CSIM first conditional-objective diagnostic [46139254989](https://github.com/kolihhan/name-kaggle/actions/runs/46139254989): same char 3–5gram linear readout, CE vs 50% matched-prompt column CE; official five-way 750 rows .492 -> .461333, external 4,820 rows / 964 groups .467635 -> .461203 (delta -.006432; prompt CI [-.012863, approximately 0]; 111 rescues, 142 regressions). This exact intervention failed its predeclared +.02 mechanistic gate, not a verdict against large-backbone CSIM, training objectives generally, or Kaggle hidden performance. External source uses public Open Pool prompts; no independent full18 champion comparison, no external fitting or neural training.
+
+**Evaluation interpretation:** development CV, partial-class diagnostics, external transfer, official Public BA and final Private BA measure different populations. None can be substituted for another. No inference of public/private deltas from proxy deltas; a negative proxy does not prove a hidden-score decline. Positive proxy metrics do not authorize a submission. Keep the frozen evaluation policy, exact-intervention stop rules, and independent same-row evidence gate intact; do not tune against Public LB. Next: compare pinned scored strong architectures for a distinct mechanism rather than optimize this weak readout. No new submission or GPU authorized by this record.
+
+---
+
 # 2026-11-23 10:30 MYT — OFFICIAL NTL JOINT-DECODER SCORE 0.594, HARD NO-GO
 
 **Authenticated Kaggle terminal receipt: official Code Submission #58729013 COMPLETE with Public Balanced Accuracy 0.594**, vs unchanged true account Champion **#58680531 COMPLETE 0.715**, delta **−0.121** (−12.1 percentage points). Independent authenticated read-only Kaggle ledger in [GitHub Actions #45100579731](https://github.com/kolihhan/name-kaggle/actions/runs/45100579731), executed 2026-11-23 10:30 MYT.
