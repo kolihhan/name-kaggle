@@ -1,0 +1,70 @@
+name: NTL reset five-model corpus source admission CPU
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-five-model-source-admission-20261128.yml]
+permissions: {contents: read}
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect new public dataset card and schema without fitting
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1 pandas==2.3.3
+          python - <<'PY'
+          import csv,io,json,re,subprocess,tempfile,hashlib
+          from pathlib import Path
+          import pandas as pd
+          REF='markbarney/ntl-matched-passages-five-models-1k'
+          def log(k,x):print(k+'='+json.dumps(x,sort_keys=True,default=str),flush=True)
+          def call(*a):
+              p=subprocess.run(['kaggle',*a],capture_output=True,text=True,timeout=90)
+              assert p.returncode==0, 'Kaggle request failed'
+              return p.stdout
+          with tempfile.TemporaryDirectory() as tmp:
+              p=Path(tmp)
+              call('datasets','metadata',REF,'-p',tmp)
+              mf=list(p.rglob('dataset-metadata.json'));assert len(mf)==1
+              m=json.loads(mf[0].read_text())
+              log('CARD_METADATA',{'ref':REF,'keys':sorted(m),'title':m.get('title'),'licenses':m.get('licenses'),'licenseName':m.get('licenseName'),'license':m.get('license'),'resources':[{k:v.get(k) for k in ('path','name','schema')} for v in m.get('resources',[]) if isinstance(v,dict)][:5]})
+              call('datasets','download','-d',REF,'-f','README.md','-p',tmp,'--unzip','-q')
+              readme=next(p.rglob('README.md'));s=readme.read_text()
+              # Public documentation, not example passages. Select only provenance lines.
+              safe=[line[:280] for line in s.splitlines() if re.search(r'(?i)licen[cs]e|model|provider|route|generat|prompt|protocol|temperature|top.p|source|seed|date|version|dedup|overlap|api',line) and not re.search(r'(?i)api.key|token\s*[:=]|secret|password|bearer',line)]
+              log('CARD_PROVENANCE',{'sha256':hashlib.sha256(readme.read_bytes()).hexdigest(),'lines':safe[:35],'scope':'public README claims only'})
+              # Read only column names and aggregate metadata. No text passage is printed or persisted.
+              # Only download the public rows if the card states a recognizable permissive license.
+              license_text=json.dumps([m.get('licenses'),m.get('licenseName'),m.get('license')])+' '+s
+              explicit_license=bool(re.search(r'(?i)CC\s*(?:BY(?:[- ]SA)?\s*4\.0|0\s*1\.0)|creative commons attribution|apache\s*2\.0|MIT license|public domain',license_text))
+              if not explicit_license:
+                  log('SOURCE_BLOCKED',{'reason':'no explicit permissive license in metadata/card; row inspection deferred','admitted':False})
+              else:
+                  call('datasets','download','-d',REF,'-f','passages.csv','-p',tmp,'--unzip','-q')
+                  f=next(p.rglob('passages.csv'));h=pd.read_csv(f,nrows=0)
+                  cols=list(h.columns)
+                  # Only known categorical metadata columns; never output arbitrary column values.
+                  names={c.lower():c for c in cols}
+                  model=next((names[k] for k in ('model','model_name','label','generator') if k in names),None)
+                  prompt=next((names[k] for k in ('prompt_id','topic_id','request_id') if k in names),None)
+                  route=next((names[k] for k in ('served_model','actual_model','response_model','model_id') if k in names),None)
+                  provider=next((names[k] for k in ('provider','api_provider','source_provider','host') if k in names),None)
+                  use=list(dict.fromkeys(x for x in (model,prompt,route,provider) if x))
+                  assert use
+                  df=pd.read_csv(f,usecols=use,dtype=str)
+                  def enum(col):
+                      if not col:return None
+                      counts=df[col].fillna('').value_counts()
+                      return {'distinct':len(counts),'missing':int(df[col].isna().sum()),'counts':{str(k)[:100]:int(v) for k,v in counts.head(25).items() if re.fullmatch(r'[A-Za-z0-9_. /:-]{1,100}',str(k))}}
+                  complete=None
+                  if model and prompt:
+                      g=df.groupby(prompt)[model].agg(['size','nunique'])
+                      complete={'prompts':len(g),'five_distinct':int((g['nunique']==5).sum()),'exactly_five_rows':int((g['size']==5).sum())}
+                  log('SOURCE_SCHEMA',{'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),'rows':len(df),'columns':cols,'model':enum(model),'served_route':enum(route),'provider':enum(provider),'matched_groups':complete,'license_pattern_detected':True})
+              log('ADMISSION_DECISION',{'full18_admitted':False,'source_disjointness_verified':False,'exact_snapshot_verified':False,'rights_review_complete':False,'reason':'partial candidate only; card claims and aggregate metadata are not independent provenance','gpu':False,'fit':False,'submission':False})
+          PY
