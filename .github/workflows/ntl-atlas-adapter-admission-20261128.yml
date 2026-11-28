@@ -1,0 +1,55 @@
+name: NTL ATLAS full 18 source adapter admission CPU
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-atlas-adapter-admission-20261128.yml]
+permissions: {contents: read}
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Inspect source labels, adapter tensor schema and lineage without model execution
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import json,hashlib,struct,subprocess,tempfile,zipfile
+          from pathlib import Path
+          ref='josephadamski91/ntl-atlas-qwen3-8b-v1'
+          expected=['claude-fable-5','claude-opus-4-6','claude-opus-4-8','claude-opus-5','claude-sonnet-5','gemini-3.1-pro-preview','gemini-3.6-flash','gemini-3.7-flash','gemini-3.8-flash','glm-5.3','glm-5.3-flash','gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra','kimi-k3','qwen3.8-max']
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True),flush=True)
+          with tempfile.TemporaryDirectory() as d:
+              root=Path(d)
+              p=subprocess.run(['kaggle','datasets','download','-d',ref,'-p',d,'--unzip','-q'],capture_output=True,timeout=420)
+              assert p.returncode==0,'dataset download failed'
+              def unique(name):
+                  a=list(root.rglob(name));assert len(a)==1,name;return a[0]
+              def sha(p):
+                  with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+              meta=unique('atlas_bundle.json')
+              x=json.loads(meta.read_text());labels=x.get('labels',[])
+              log('ATLAS_BUNDLE',{'sha256':sha(meta),'labels':labels,'exact_18':len(labels)==18 and set(labels)==set(expected),'keys':sorted(x),'config':{k:v for k,v in x.items() if k in ('config','base_model','rank','alpha','max_length','base','model_config')}})
+              for n in ['checkpoint.json','training-source-manifest.json','inference-source-manifest.json','base-fingerprint.json']:
+                  p=unique(n);z=json.loads(p.read_text())
+                  log('ATLAS_METADATA',{'name':n,'sha256':sha(p),'metadata':z})
+              p=unique('adapters.safetensors')
+              with p.open('rb') as f:
+                  n=struct.unpack('<Q',f.read(8))[0];assert 0<n<10_000_000
+                  h=json.loads(f.read(n))
+              tensors={k:v for k,v in h.items() if k!='__metadata__'}
+              ranges=sorted((v['data_offsets'][0],v['data_offsets'][1]) for v in tensors.values())
+              assert ranges[0][0]==0 and ranges[-1][1]==p.stat().st_size-8-n
+              assert all(a[1]==b[0] for a,b in zip(ranges,ranges[1:]))
+              b={k:v for k,v in tensors.items() if k.endswith('.b')}
+              a={k:v for k,v in tensors.items() if k.endswith('.a')}
+              ctrl=tensors.get('control')
+              log('ATLAS_TENSOR_SCHEMA',{'sha256':sha(p),'bytes':p.stat().st_size,'tensor_count':len(tensors),'shared_a_count':len(a),'source_b_count':len(b),'control':ctrl,'source_b_shapes':sorted(set(tuple(v['shape']) for v in b.values())),'all_b_source_axis_matches':bool(b) and all(v['shape'][0]==len(labels) for v in b.values()),'head_files':[q.name for q in root.rglob('atlas_head*.json')],'weights_executed':False})
+              assert len(labels)==18 and set(labels)==set(expected)
+              assert ctrl and ctrl['shape'][0]==18 and b and all(v['shape'][0]==18 for v in b.values())
+              log('ATLAS_ADMISSION',{'structural_pass':True,'exact_labels':18,'gpu':False,'training':False,'inference':False,'submission':False,'rights_and_independence_verified':False})
+          PY
