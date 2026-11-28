@@ -1,0 +1,77 @@
+name: NTL reset scored strong architecture differential and official ledger
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-strong-architecture-diff-20261128.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compare exact scored source modules and decisions without executing donor code
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1
+          python - <<'PY'
+          import os,hashlib,json,re,ast,subprocess,csv,io,httpx,difflib
+          from pathlib import PurePosixPath
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True,default=str),flush=True)
+          def sha(s):return hashlib.sha256(s.encode()).hexdigest()
+          specs=[('evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie',36,'5988d64922650bf94490810effb7278907b301c07f581efbc6d4865d84e63d52'),('pablodiegoo/name-that-llm-starter-notebook',29,'58a7db194e3ec53220911edbd2ab7553f7fc42c40eb998bc68e3c713237cfaa8')]
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=60)
+          assert p.returncode==0
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          vals=[]
+          for x in rows:
+              try:vals.append(float(x['publicScore']))
+              except (ValueError,KeyError,TypeError):pass
+          log('OWNER_SCORE',{'best_public':max(vals) if vals else None,'selected':[{'ref':x.get('ref'),'status':x.get('status'),'public':x.get('publicScore'),'private':x.get('privateScore')} for x in rows if x.get('ref') in ('58755304','59044358')]})
+          def parse(raw):
+              cells=[''.join(c.get('source',[])) for c in json.loads(raw)['cells'] if c.get('cell_type')=='code']
+              files={};other=[]
+              for c in cells:
+                  m=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                  if m:
+                      name=PurePosixPath(m.group(1).strip()).name
+                      assert name not in files
+                      files[name]=c[m.end():]
+                  else:other.append(c)
+              return files,other
+          def funcs(code):
+              try:t=ast.parse(code)
+              except SyntaxError:return {}
+              return {n.name:sha(ast.dump(n,include_attributes=False)) for n in t.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
+          def mechanisms(code):
+              pats={'assignment':r'linear_sum_assignment|hungarian|sinkhorn','likelihood':r'logrank|log_likelihood|prefix_variant|paired_token_features','residual':r'residual','expert':r'expert|ensemble','calibration':r'temperature|calibrat','sibling':r'sibling','train':r'\.fit\(|\.backward\(|\.train\(','adapter':r'LoRA|lora|adapter','source':r'open_pool|source_dataset|train_prompt_regen','group':r'prompt_group|cluster|groupby','guard':r'guard|fallback|protect','runtime':r'time_budget|deadline|time_limit'}
+              return {k:len(re.findall(v,code,re.I)) for k,v in pats.items()}
+          versions=[]
+          with httpx.Client(follow_redirects=True,timeout=45,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,data):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);r.raise_for_status();return r
+              for ref,ver,expected in specs:
+                  author,slug=ref.split('/')
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  sel=[x for x in items if (x.get('version') or {}).get('versionNumber')==ver and (x.get('run') or {}).get('id')]
+                  assert len(sel)==1
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(sel[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  assert sha(raw)==expected,'pinned version mismatch'
+                  files,other=parse(raw);versions.append((files,other))
+                  log('ARCHITECTURE_SOURCE',{'ref':ref,'version':ver,'sha256':expected,'best_current':v.get('bestSubmissionScore'),'modules':{k:{'lines':len(x.splitlines()),'sha':sha(x),'mechanisms':mechanisms(x)} for k,x in files.items()},'nonmodule_cells':[{'lines':len(x.splitlines()),'sha':sha(x),'mechanisms':mechanisms(x)} for x in other]})
+          a,ac=versions[0];b,bc=versions[1];common=set(a)&set(b)
+          identical=sorted(k for k in common if sha(a[k])==sha(b[k]))
+          changed=sorted(common-set(identical))
+          log('ARCHITECTURE_DIFF',{'identical_modules':identical,'changed_modules':changed,'only_champion':sorted(set(a)-set(b)),'only_reference':sorted(set(b)-set(a))})
+          for k in changed:
+              x,y=funcs(a[k]),funcs(b[k]);same=sorted(n for n in set(x)&set(y) if x[n]==y[n])
+              log('FUNCTION_DIFF',{'module':k,'identical':same,'changed':sorted((set(x)&set(y))-set(same)),'removed':sorted(set(x)-set(y)),'added':sorted(set(y)-set(x)),'line_similarity':round(difflib.SequenceMatcher(None,a[k].splitlines(),b[k].splitlines(),autojunk=True).ratio(),4)})
+          # Static evidence only: exact modules / functions, not their hidden execution or causal contribution.
+          log('DECISION_SCOPE',{'source_executed':False,'new_training':False,'gpu':False,'submission':False,'causal_score_delta_established':False,'private_score_inferred':False})
+          PY
