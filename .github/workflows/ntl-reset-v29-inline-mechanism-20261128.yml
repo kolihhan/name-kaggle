@@ -1,0 +1,68 @@
+name: NTL reset v29 inline strong-score joint mechanism
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-v29-inline-mechanism-20261128.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Recover actual inline stage inputs, score fusion and assignment control flow
+        run: |
+          set -euo pipefail
+          python -m pip install -q httpx==0.28.1
+          python - <<'PY'
+          import os,json,hashlib,re,ast,httpx
+          def log(k,x):print(k+'='+json.dumps(x,sort_keys=True),flush=True)
+          expected='58a7db194e3ec53220911edbd2ab7553f7fc42c40eb998bc68e3c713237cfaa8'
+          with httpx.Client(follow_redirects=True,timeout=45,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,data):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);r.raise_for_status();return r.json() if 'GetKernelSessionSource' not in route else r.text
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':'pablodiegoo','kernelSlug':'name-that-llm-starter-notebook','tab':'output'})
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200})['items']
+              q=[x for x in items if (x.get('version') or {}).get('versionNumber')==29 and (x.get('run') or {}).get('id')]
+              assert len(q)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(q[0]['run']['id']),'includeOutputIfAvailable':False})
+              assert hashlib.sha256(raw.encode()).hexdigest()==expected
+          cells=[''.join(c.get('source',[])) for c in json.loads(raw)['cells'] if c.get('cell_type')=='code']
+          assert len(cells)==13
+          # The previous writefile parser did not capture inline Python or embedded scripts.
+          # Parse only, never eval/exec/import donor code.
+          key=re.compile(r'(?i)linear_sum_assignment|hungarian|sinkhorn|assignment|cluster|groupby|logits|log_probs|logprobs|predict_proba|softmax|residual|sibling|confidence|margin|abstain|fallback|guard|capacity|class_mass|deadline')
+          secret=re.compile(r'(?i)api[_-]?key|bearer\s|password|secret|token\s*[:=]\s*[\'\"]')
+          seen=set()
+          def inspect(code,where,depth=0):
+              if depth>2:return
+              h=hashlib.sha256(code.encode()).hexdigest()
+              if h in seen:return
+              seen.add(h)
+              lines=code.splitlines()
+              clean='\n'.join('' if l.lstrip().startswith(('%','!')) else l for l in lines)
+              try:tree=ast.parse(clean)
+              except SyntaxError:
+                  tree=None
+              funcs=[];embedded=[]
+              if tree is not None:
+                  for n in ast.walk(tree):
+                      if isinstance(n,(ast.FunctionDef,ast.ClassDef,ast.AsyncFunctionDef)):
+                          block=ast.get_source_segment(clean,n) or ''
+                          if key.search(block):funcs.append({'name':n.name,'line':n.lineno,'end':n.end_lineno,'args':[x.arg for x in n.args.args] if hasattr(n,'args') else []})
+                      elif isinstance(n,ast.Constant) and isinstance(n.value,str) and len(n.value)>500 and '\n' in n.value and re.search(r'(?m)^\s*(def |class |import |from )',n.value):
+                          embedded.append((n.value,'embedded@'+str(getattr(n,'lineno',0))))
+              hits=[i for i,l in enumerate(lines) if key.search(l) and len(l)<450 and not secret.search(l)]
+              # prioritize actual calls/branches and assignment code rather than comments.
+              hits.sort(key=lambda i:(not bool(re.search(r'linear_sum_assignment|hungarian|sinkhorn|argmax|if |return |\.fit\(|\.predict|np\.save|submission',lines[i],re.I)),i))
+              keep=sorted(hits[:65])
+              log('INLINE_STAGE',{'path':where,'sha256':h,'lines':len(lines),'ast_ok':tree is not None,'functions':funcs[:60],'decision_lines':[{'line':i+1,'code':lines[i].strip()[:280]} for i in keep],'embedded_scripts':len(embedded)})
+              for inner,label in embedded:inspect(inner,where+'/'+label,depth+1)
+          for i,c in enumerate(cells):inspect(c,'cell'+str(i))
+          log('INLINE_RESULT',{'code_cells':len(cells),'distinct_code_blocks':len(seen),'source_pinned':True,'executed_donor':False,'gpu':False,'fit':False,'submission':False,'causal_effect_established':False})
+          PY
