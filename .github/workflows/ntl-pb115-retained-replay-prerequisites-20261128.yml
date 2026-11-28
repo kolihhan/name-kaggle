@@ -1,0 +1,67 @@
+name: NTL PB115 exact token feature replay prerequisites
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-pb115-retained-replay-prerequisites-20261128.yml]
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Read exact scored feature extraction contract and public head artifacts
+        run: |
+          set -euo pipefail
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 httpx==0.28.1 numpy pandas pyarrow
+          python - <<'PY'
+          import os,re,json,hashlib,subprocess,tempfile,httpx,ast
+          from pathlib import Path
+          def log(k,v):print(k+"="+json.dumps(v,sort_keys=True),flush=True)
+          with httpx.Client(follow_redirects=True,timeout=50,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,body):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=body,headers=headers);r.raise_for_status();return r
+              def source(ref,version):
+                  author,slug=ref.split('/')
+                  v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+                  items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+                  e=[e for e in items if (e.get('version') or {}).get('versionNumber')==version]
+                  assert len(e)==1
+                  raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(e[0]['run']['id']),'includeOutputIfAvailable':False}).text
+                  log('EXACT_SOURCE',{'ref':ref,'version':version,'sha256':hashlib.sha256(raw.encode()).hexdigest(),'best':v.get('bestSubmissionScore')})
+                  return [''.join(c.get('source',[])) for c in json.loads(raw)['cells'] if c.get('cell_type')=='code']
+              for ref,v in [('ozertuu/0-730-residual-sibling-gating-pb115-hybrid',79),('evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie',36)]:
+                  for c in source(ref,v):
+                      m=re.match(r'^%%writefile\s+([^\n]+)\n',c)
+                      if not m:continue
+                      name=Path(m.group(1).strip()).name
+                      if name not in {'segio.py','v1_token_features.py','v1_stage.py','prefix_variant_stage.py','run_pipeline.py'}:continue
+                      code=c[m.end():]
+                      try:tree=ast.parse(code)
+                      except SyntaxError:continue
+                      defs=['read_scores','_single_extra','_paired_token_features','extract_paired_score_features','build_54_matrix','fit_and_predict_pb115','compute_hybrid_delta','member_logp']
+                      for node in ast.walk(tree):
+                          if isinstance(node,ast.FunctionDef) and node.name in defs:
+                              body=ast.get_source_segment(code,node)
+                              log('FEATURE_CONTRACT',{'ref':ref,'module':name,'function':node.name,'sha256':hashlib.sha256(body.encode()).hexdigest(),'source':body})
+                      # Source for writing the cache and 4-column interpretation, not arbitrary raw data.
+                      lines=code.splitlines()
+                      hits=[i for i,l in enumerate(lines) if re.search(r'(?i)(n_prefix|scores\.npz|scores\[:,|scores\[.*, *[0-3]\]|lp_mean|entropy|logrank|margin)',l)]
+                      log('CACHE_SEMANTICS',{'ref':ref,'module':name,'lines':[{'line':i+1,'code':lines[i][:300]} for i in hits[:90]]})
+          r=subprocess.run(['kaggle','datasets','files','lumibee/ntl-prefixb-full-115','-v'],capture_output=True,text=True,timeout=90)
+          assert r.returncode==0
+          log('PB115_FILES',r.stdout.splitlines()[:100])
+          with tempfile.TemporaryDirectory() as d:
+              r=subprocess.run(['kaggle','datasets','download','-d','lumibee/ntl-prefixb-full-115','-f','spec.json','-p',d,'--unzip'],capture_output=True,text=True,timeout=90)
+              if r.returncode==0:
+                  p=next(Path(d).rglob('spec.json'))
+                  x=json.loads(p.read_text())
+                  log('PB115_SPEC',{'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'format':x.get('format'),'features_54':x.get('features_54'),'features_61':x.get('features_61'),'keys':sorted(x)})
+              else:log('SPEC_DOWNLOAD_FAILED',{'exit':r.returncode})
+          log('DONE',{'gpu':False,'fit':False,'submit':False,'raw_ids_exported':False})
+          PY
