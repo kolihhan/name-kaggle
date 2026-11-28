@@ -1,0 +1,46 @@
+name: NTL MSF real ATLAS 18-source CPU inference smoke
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-msf-atlas-cpu-smoke-20261128.yml]
+permissions: {contents: read}
+jobs:
+  inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      ATLAS_ASSET_DIR: /tmp/ntl-atlas-assets
+      HF_HOME: /tmp/ntl-msf-hf
+      HF_HUB_DISABLE_XET: '1'
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_source_fingerprint.py
+            scripts/ntl_msf_atlas_cpu_smoke_20261128.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Prepare ephemeral CPU runner and download pinned assets
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          df -h /tmp
+          free -h
+          # Free unrelated preinstalled SDK space on the disposable runner only.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /tmp
+          test "$(df -B1 --output=avail /tmp | tail -1)" -gt 23000000000
+          python -m pip install --no-cache-dir -q torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir -q transformers==4.57.1 huggingface-hub==0.36.0 safetensors==0.6.2 numpy==2.3.4 kaggle==2.2.5 six==1.17.0
+          mkdir -p "$ATLAS_ASSET_DIR"
+          kaggle datasets download -d josephadamski91/ntl-atlas-qwen3-8b-v1 -p "$ATLAS_ASSET_DIR" --unzip -q
+          python -m py_compile scripts/ntl_msf_atlas_cpu_smoke_20261128.py
+      - name: Execute all 18 source conditions and numerical crosscheck
+        run: |
+          set -euo pipefail
+          python -u -m scripts.ntl_msf_atlas_cpu_smoke_20261128
