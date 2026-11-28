@@ -1,0 +1,68 @@
+name: NTL v36 exact-source trace integration preflight CPU
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-v36-trace-source-preflight-20261128.yml]
+permissions: {contents: read}
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/build_ntl_v36_trace_preflight.py
+            scripts/ntl_private_stage_trace.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compile and recover exact scorer source; verify instrumentation without execution
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q httpx==0.28.1 kaggle==2.2.5 six==1.17.0
+          python - <<'PY'
+          import os,json,hashlib,httpx,tempfile,subprocess,csv,io
+          from pathlib import Path
+          from scripts.build_ntl_v36_trace_preflight import build,PIN
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True),flush=True)
+          ref='evgendvorkin/name-that-llm-deep-forensic-eda-with-analogie'
+          author,slug=ref.split('/')
+          with httpx.Client(follow_redirects=True,timeout=45,headers={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN']}) as s:
+              s.get('https://www.kaggle.com')
+              hdr={'Authorization':'Bearer '+os.environ['KAGGLE_API_TOKEN'],'Content-Type':'application/json','X-XSRF-TOKEN':s.cookies['XSRF-TOKEN']}
+              def post(route,data):
+                  r=s.post('https://www.kaggle.com/api/i/'+route,json=data,headers=hdr);r.raise_for_status();return r
+              v=post('kernels.LegacyKernelsService/GetKernelViewModel',{'authorUserName':author,'kernelSlug':slug,'tab':'output'}).json()
+              items=post('kernels.KernelsService/ListKernelVersions',{'kernelId':int(v['kernel']['id']),'sortOption':'VERSION_ID','pageSize':200}).json()['items']
+              sel=[x for x in items if (x.get('version') or {}).get('versionNumber')==36 and (x.get('run') or {}).get('id')]
+              assert len(sel)==1
+              raw=post('kernels.KernelsService/GetKernelSessionSource',{'kernelSessionId':int(sel[0]['run']['id']),'includeOutputIfAvailable':False}).text
+              assert hashlib.sha256(raw.encode()).hexdigest()==PIN
+          nb,report=build(raw,Path('scripts/ntl_private_stage_trace.py').read_text())
+          log('V36_TRACE_BUILD',report)
+          assert report['unchanged_original_cells']==56 and len(nb['cells'])==60
+          # No generated notebook or raw source is uploaded. Current mounts are not an attestation of v36 historical versions.
+          with tempfile.TemporaryDirectory() as tmp:
+              p=subprocess.run(['kaggle','kernels','pull',ref,'-p',tmp,'-m'],capture_output=True,timeout=90)
+              assert p.returncode==0
+              md=json.loads((Path(tmp)/'kernel-metadata.json').read_text())
+              counts={k:len(md.get(k,[])) for k in ('model_sources','dataset_sources','kernel_sources')}
+              log('CURRENT_ASSET_METADATA',{'counts':counts,'historical_count_match':counts=={'model_sources':9,'dataset_sources':26,'kernel_sources':10},'historical_versions_verified':False})
+          p=subprocess.run(['kaggle','quota','--format','json'],capture_output=True,text=True,timeout=90)
+          if p.returncode==0:
+              q=json.loads(p.stdout);log('GPU_QUOTA_READONLY',{'remaining_gpu_hours':[str(x['remaining']) for x in q if x.get('resource')=='GPU']})
+          p=subprocess.run(['kaggle','competitions','submissions','name-that-llm','-v'],capture_output=True,text=True,timeout=90)
+          assert p.returncode==0
+          rows=list(csv.DictReader(io.StringIO(p.stdout.lstrip('\ufeff'))))
+          scores=[]
+          for x in rows:
+              try:scores.append(float(x['publicScore']))
+              except (ValueError,TypeError,KeyError):pass
+          log('OWNER_SCORE',{'best_public':max(scores) if scores else None,'selected':[{k:x.get(k) for k in ('ref','status','publicScore','privateScore')} for x in rows if x.get('ref') in ('58755304','59044358')]})
+          log('PREFLIGHT_SCOPE',{'source_build':True,'independent_full18_admitted':False,'per_expert_trace_complete':False,'token_cache_trace_complete':False,'runtime_parity_verified':False,'gpu_launched':False,'submission':False,'promotion':False})
+          PY
