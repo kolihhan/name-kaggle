@@ -1,0 +1,32 @@
+name: NTL PB115 paired prompt-grouped CPU ablation
+on:
+  push:
+    branches: [research/ntl-rcma-20261127]
+    paths: [.github/workflows/ntl-pb115-paired-ablation-20261128.yml]
+permissions: {contents: read}
+jobs:
+  ablation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ntl_pb115_paired_ablation_20261128.py
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Fixed paired 5-fold diagnostic on CPU
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 pyarrow==22.0.0 scikit-learn==1.7.2 lightgbm==4.6.0
+          python -m py_compile scripts/ntl_pb115_paired_ablation_20261128.py
+          python -m scripts.ntl_pb115_paired_ablation_20261128
