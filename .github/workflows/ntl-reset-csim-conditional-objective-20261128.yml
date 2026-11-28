@@ -1,0 +1,126 @@
+name: NTL reset CSIM matched prompt conditional objective CPU diagnostic
+on:
+  push:
+    branches: [research/ntl-reset-bank-provenance-20261128]
+    paths: [.github/workflows/ntl-reset-csim-conditional-objective-20261128.yml]
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            artifacts/phase1/folds.csv
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compare row CE with matched-prompt conditional identity objective
+        run: |
+          set -euo pipefail
+          test ! -e data/train.csv
+          python -m pip install -q kaggle==2.2.5 six==1.17.0 numpy==2.3.4 pandas==2.3.3 scipy==1.15.3 scikit-learn==1.7.2
+          python - <<'PY'
+          import hashlib,json,tempfile,subprocess,zipfile,time
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          from scipy.optimize import minimize,check_grad
+          from scipy.special import logsumexp
+          from scipy.sparse import csr_matrix
+          from sklearn.feature_extraction.text import TfidfVectorizer
+          LABS=['gemini-3.7-flash','glm-5.3','glm-5.3-flash','kimi-k3','qwen3.8-max']
+          K=len(LABS);SEED=20261128;REG=.01;WEIGHT=.5
+          def log(k,v):print(k+'='+json.dumps(v,sort_keys=True,default=str),flush=True)
+          def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+          def norm(s):return ' '.join(str(s).casefold().split())
+          def hashes(s):return {hashlib.sha256(norm(t).encode()).digest() for t in s}
+          def download(*args):
+              p=subprocess.run(['kaggle',*args],capture_output=True,timeout=180)
+              assert p.returncode==0,'Kaggle download failed'
+          def panels(df):
+              g=df.groupby('prompt_id').model.agg(['size','nunique'])
+              ids=g.index[(g['size']==K)&(g['nunique']==K)]
+              return df[df.prompt_id.isin(ids)].sort_values(['prompt_id','model']).reset_index(drop=True)
+          def loss(w,X,y,weight):
+              N,D=X.shape;W=w.reshape(D,K)
+              z=X@W
+              assert N%K==0
+              g=z.reshape(-1,K,K)
+              rowlog=z-logsumexp(z,axis=1,keepdims=True)
+              rg=np.exp(rowlog);rg[np.arange(N),y]-=1
+              a=-rowlog[np.arange(N),y].mean();rg/=N
+              if weight:
+                  # Within each matched prompt, each model column identifies its own response.
+                  # No test groups, labels, assignment or source metadata enter the scorer.
+                  glog=g-logsumexp(g,axis=1,keepdims=True)
+                  cg=np.exp(glog);ix=np.arange(K)
+                  cg[:,ix,ix]-=1
+                  b=-glog[:,ix,ix].mean()
+                  rg=(1-weight)*rg+weight*cg.reshape(N,K)/N
+                  a=(1-weight)*a+weight*b
+              return float(a+REG*.5*np.sum(W*W)),np.asarray(X.T@rg+REG*W).ravel()
+          rng=np.random.default_rng(SEED)
+          sx=csr_matrix(rng.normal(size=(10,3)));sy=np.tile(np.arange(K),2);sw=rng.normal(size=15)*.1
+          for weight in (0,WEIGHT):
+              assert check_grad(lambda w:loss(w,sx,sy,weight)[0],lambda w:loss(w,sx,sy,weight)[1],sw)<1e-5
+          def train_predict(tr,va):
+              y=pd.Index(LABS).get_indexer(tr.model)
+              assert np.array_equal(y,np.tile(np.arange(K),len(tr)//K))
+              tf=TfidfVectorizer(analyzer='char',ngram_range=(3,5),lowercase=False,min_df=2,max_features=40000,sublinear_tf=True,dtype=np.float64)
+              X=tf.fit_transform(tr.text);Z=tf.transform(va.text)
+              pred=[]
+              for weight in (0,WEIGHT):
+                  result=minimize(loss,np.zeros(X.shape[1]*K),args=(X,y,weight),jac=True,method='L-BFGS-B',options={'maxiter':200,'ftol':1e-10,'gtol':1e-6})
+                  assert result.success,'optimizer did not converge'
+                  pred.append(np.argmax(Z@result.x.reshape(X.shape[1],K),axis=1))
+              return np.array(pred)
+          def metrics(df,p):
+              y=pd.Index(LABS).get_indexer(df.model);assert min(y)>=0
+              h=p==y;ba=[float(np.mean([v[y==k].mean() for k in range(K)])) for v in h]
+              assert np.array_equal(y,np.tile(np.arange(K),len(y)//K))
+              delta=(h[1].astype(float)-h[0]).reshape(-1,K).mean(1)
+              rng=np.random.default_rng(SEED);boot=np.array([delta[rng.integers(0,len(delta),len(delta))].mean() for _ in range(2000)])
+              return {'rows':len(y),'prompts':len(delta),'BA_control':ba[0],'BA_candidate':ba[1],'delta':ba[1]-ba[0],'ci':np.quantile(boot,[.025,.975]).tolist(),'rescues':int((~h[0]&h[1]).sum()),'regressions':int((h[0]&~h[1]).sum()),'recall':{lab:[float(v[y==i].mean()) for v in h] for i,lab in enumerate(LABS)}}
+          start=time.monotonic()
+          with tempfile.TemporaryDirectory() as tmp:
+              root=Path(tmp);ext=root/'external';ext.mkdir()
+              download('competitions','download','-c','name-that-llm','-f','train.csv','-p',tmp,'-q')
+              f=root/'train.csv'
+              if not f.exists():
+                  with zipfile.ZipFile(next(root.glob('*.zip'))) as z:f.write_bytes(z.read('train.csv'))
+              assert sha(f)=='40a22ce8d88c5f46feb4637a099db815bef5f713ffe53e89dbe1b7b21de77707'
+              folds=Path('artifacts/phase1/folds.csv');assert sha(folds)=='94136d7dcb4689b0a8a21b742c20e886b865db67f5643c3402e6c1727b27f66d'
+              a=pd.read_csv(f,dtype=str);b=pd.read_csv(folds,dtype=str)
+              a=a.merge(b,on=['id','model','prompt_id'],validate='one_to_one');assert len(a)==2699 and a.text.notna().all()
+              assert a.groupby('prompt_id').fold_id.nunique().eq(1).all()
+              tr=panels(a[a.model.isin(LABS)]);assert tr.prompt_id.nunique()>=140
+              # Publisher card permits authorship evaluation; provider rights/version not independently verified.
+              # No external training or output content redistribution.
+              download('datasets','download','-d','markbarney/ntl-matched-passages-five-models-1k','-f','passages.csv','-p',str(ext),'--unzip','-q')
+              f=next(ext.rglob('passages.csv'));assert sha(f)=='b581463c90354a57e693f8c7066a8fdd9b12b7cadcab9a9466b1e85c370ea86b'
+              e=pd.read_csv(f,dtype=str,usecols=['id','prompt_id','model','text','served_model','provider'])
+              assert len(e)==4964 and set(e.model)==set(LABS) and e.id.is_unique and e.text.notna().all()
+              assert e.served_model.notna().all()
+              official=hashes(a.text)
+              duplicate=e.text.map(lambda t:hashlib.sha256(norm(t).encode()).digest() in official)
+              blocked=set(e.loc[duplicate,'prompt_id']);external=panels(e[~e.prompt_id.isin(blocked)])
+              assert external.prompt_id.nunique()>=800
+              log('CSIM_INPUT',{'official_train_rows':len(tr),'official_prompts':tr.prompt_id.nunique(),'external_rows':len(external),'external_prompts':external.prompt_id.nunique(),'official_exact_text_matches':int(duplicate.sum()),'excluded_external_prompt_groups':len(blocked),'prompt_source_independence':False,'external_fit':False,'objective':'(1-w)*rowCE+w*within-prompt columnCE, w=0 vs .5, identical L2 and features'})
+              results=[]
+              for fold in sorted(tr.fold_id.unique()):
+                  fitdf=tr[tr.fold_id!=fold];val=tr[tr.fold_id==fold]
+                  assert not set(fitdf.prompt_id)&set(val.prompt_id)
+                  pp=train_predict(fitdf,val)
+                  results.append((val,pp))
+              dev=pd.concat([d for d,p in results],ignore_index=True);pdv=np.concatenate([p for d,p in results],axis=1)
+              log('CSIM_DEV',metrics(dev,pdv))
+              pp=train_predict(tr,external)
+              result=metrics(external,pp)
+              log('CSIM_TRANSFER',{**result,'mechanistic_positive':bool(result['delta']>=.02 and result['ci'][0]>0),'scope':'5-way conditional diagnostic, official-only CPU readout, public Open Pool-derived prompts, no independent 18-way or incumbent score','gpu':False,'neural_training':False,'submission':False,'promotion':False,'seconds':round(time.monotonic()-start,2)})
+          PY
